@@ -24,6 +24,9 @@ dist-ssr
 *.sln
 *.sw?
 
+# Wrangler local state
+.wrangler/
+
 # Gas Town (added by gt)
 .runtime/
 .claude/

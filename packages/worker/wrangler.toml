@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding       = "DB"
 database_name = "tasksquad-db"
-database_id   = "REPLACE_WITH_D1_DATABASE_ID"
+database_id   = "172c2b3e-3547-45e5-8a58-fa5e73b4e63d"
 
 # R2
 [[r2_buckets]]
@@ -17,7 +17,7 @@ bucket_name = "tasksquad-logs"
 # KV — Firebase JWKS cache
 [[kv_namespaces]]
 binding = "JWKS_CACHE"
-id      = "REPLACE_WITH_KV_NAMESPACE_ID"
+id      = "2fd5d9c6fb734e07940c1d825c7d1411"
 
 # Durable Objects
 [[durable_objects.bindings]]
