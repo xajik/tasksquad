@@ -1,0 +1,8 @@
+{
+  "name": "tasksquad",
+  "private": true,
+  "workspaces": [
+    "packages/portal",
+    "packages/worker"
+  ]
+}

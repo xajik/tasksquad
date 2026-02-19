@@ -1,0 +1,52 @@
+name: Release Daemon
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: |
+          GOOS=darwin GOARCH=arm64 go build -o dist/tsq-darwin-arm64 .
+          GOOS=darwin GOARCH=amd64 go build -o dist/tsq-darwin-amd64 .
+        working-directory: daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-binaries
+          path: daemon/dist/
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: |
+          apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+          GOOS=linux GOARCH=amd64 go build -o dist/tsq-linux-amd64 .
+        working-directory: daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries
+          path: daemon/dist/
+
+  release:
+    needs: [build-macos, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist/
+      - run: gh release create ${{ github.ref_name }} dist/* --title ${{ github.ref_name }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

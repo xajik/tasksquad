@@ -1,0 +1,34 @@
+name = "tasksquad-api"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1
+[[d1_databases]]
+binding       = "DB"
+database_name = "tasksquad-db"
+database_id   = "REPLACE_WITH_D1_DATABASE_ID"
+
+# R2
+[[r2_buckets]]
+binding     = "LOGS"
+bucket_name = "tasksquad-logs"
+
+# KV — Firebase JWKS cache
+[[kv_namespaces]]
+binding = "JWKS_CACHE"
+id      = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Durable Objects
+[[durable_objects.bindings]]
+name       = "AGENT_RELAY"
+class_name = "AgentRelay"
+
+[[migrations]]
+tag         = "v1"
+new_classes = ["AgentRelay"]
+
+# Secrets — set via: npx wrangler secret put <KEY>
+# FIREBASE_PROJECT_ID          tasksquad-e1442
+# FIREBASE_SERVICE_ACCOUNT_KEY base64-encoded Firebase service account JSON
+# DAEMON_SECRET                shared secret for X-TSQ-Token validation

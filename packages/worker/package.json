@@ -1,0 +1,20 @@
+{
+  "name": "@tasksquad/worker",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "cloudfire-auth": "^1.0.0",
+    "itty-router": "^5.0.18",
+    "ulidx": "^2.3.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "typescript": "^5.6.2",
+    "wrangler": "^3.91.0"
+  }
+}
