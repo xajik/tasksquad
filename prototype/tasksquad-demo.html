@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskSquad — macOS Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --mono: 'IBM Plex Mono', 'Menlo', monospace;
+  --sans: 'IBM Plex Sans', -apple-system, sans-serif;
+  --green:  #00D97E;
+  --amber:  #F0A500;
+  --red:    #E05252;
+  --blue:   #4A9EFF;
+  --green-d: rgba(0,217,126,.12);
+  --amber-d: rgba(240,165,0,.12);
+  --red-d:   rgba(224,82,82,.12);
+  --blue-d:  rgba(74,158,255,.12);
+}
+
+html,body {
+  width:100%; min-height:100vh;
+  background:#111318;
+  font-family: var(--mono);
+  overflow-x:hidden;
+}
+
+/* ═══════════════════════════════════
+   DESKTOP CHROME
+═══════════════════════════════════ */
+.desktop {
+  width:1280px; height:800px;
+  margin:32px auto;
+  border-radius:12px;
+  overflow:hidden;
+  box-shadow:0 48px 120px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.06);
+  position:relative;
+  background:
+    radial-gradient(ellipse at 20% 80%, rgba(15,30,60,.9) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 15%, rgba(10,25,50,.8) 0%, transparent 50%),
+    linear-gradient(145deg, #0d1525 0%, #080d18 40%, #0a1020 100%);
+  user-select:none;
+}
+
+/* Subtle grid texture on wallpaper */
+.desktop::before {
+  content:'';
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.015) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events:none; z-index:0;
+}
+
+/* ── macOS Menubar ── */
+.menubar {
+  position:absolute; top:0; left:0; right:0; height:26px; z-index:100;
+  background:rgba(12,14,20,.92);
+  backdrop-filter:blur(24px);
+  border-bottom:1px solid rgba(255,255,255,.07);
+  display:flex; align-items:center;
+  padding:0 14px;
+}
+.mb-apple { font-size:14px; color:rgba(255,255,255,.8); padding:0 10px; cursor:default; }
+.mb-appname { font-family:var(--sans); font-size:13px; font-weight:600; color:#fff; padding:0 8px; }
+.mb-item { font-family:var(--sans); font-size:13px; color:rgba(255,255,255,.55); padding:0 8px; cursor:default; }
+.mb-right { margin-left:auto; display:flex; align-items:center; }
+.mb-tray { height:26px; padding:0 7px; display:flex; align-items:center; font-size:12px; color:rgba(255,255,255,.55); cursor:default; }
+.mb-tray.lit { color:rgba(255,255,255,.9); background:rgba(255,255,255,.12); border-radius:4px; }
+.tsq-tray {
+  display:flex; align-items:center; gap:5px;
+  font-family:var(--mono); font-size:11px; font-weight:600;
+  color:rgba(255,255,255,.9);
+}
+.tsq-dot {
+  width:6px; height:6px; border-radius:50%; background:var(--green);
+  box-shadow:0 0 6px rgba(0,217,126,.7);
+  animation:pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* ── Dock ── */
+.dock {
+  position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
+  display:flex; align-items:flex-end; gap:6px;
+  background:rgba(255,255,255,.08);
+  backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:18px;
+  padding:8px 12px 6px;
+  z-index:5;
+}
+.dock-icon {
+  width:52px; height:52px; border-radius:13px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:28px; cursor:pointer;
+  transition:transform .15s;
+  position:relative;
+}
+.dock-icon:hover { transform:translateY(-8px) scale(1.1); }
+.dock-icon.active::after {
+  content:''; position:absolute; bottom:-6px; left:50%; transform:translateX(-50%);
+  width:4px; height:4px; border-radius:50%; background:rgba(255,255,255,.6);
+}
+.di-finder { background:linear-gradient(145deg,#2196f3,#1565c0); }
+.di-terminal { background:#1a1a1a; border:1px solid rgba(255,255,255,.1); }
+.di-tasksquad { background:linear-gradient(145deg,#0a1a0a,#0d2a0d); border:1px solid rgba(0,217,126,.2); }
+.di-vscode { background:linear-gradient(145deg,#0078d7,#004c8c); }
+.di-chrome { background:linear-gradient(145deg,#ea4335,#fbbc04,#34a853,#4285f4); }
+.di-tsq-logo {
+  width:32px; height:32px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:10px; font-weight:700;
+  color:var(--green); letter-spacing:-.02em;
+}
+
+/* ═══════════════════════════════════
+   TMUX TERMINAL WINDOWS (behind)
+═══════════════════════════════════ */
+.term-window {
+  position:absolute;
+  background:#0a0c10;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 20px 60px rgba(0,0,0,.6);
+  overflow:hidden;
+  z-index:10;
+  font-family:var(--mono);
+}
+.term-titlebar {
+  height:30px; background:#141618;
+  border-bottom:1px solid rgba(255,255,255,.06);
+  display:flex; align-items:center; padding:0 12px; gap:8px;
+}
+.term-dots { display:flex; gap:6px; }
+.td { width:11px; height:11px; border-radius:50%; }
+.td-r{background:#FF5F57} .td-y{background:#FFBD2E} .td-g{background:#28CA41}
+.term-title {
+  flex:1; text-align:center;
+  font-size:11px; color:rgba(255,255,255,.35);
+  letter-spacing:.05em;
+}
+.term-body { padding:12px 14px; font-size:11.5px; line-height:1.65; }
+.tc  { color:rgba(200,210,220,.85); } /* default text */
+.tg  { color:var(--green); }
+.ta  { color:var(--amber); }
+.tr  { color:var(--red);   }
+.tb  { color:var(--blue);  }
+.td2 { color:rgba(100,110,130,.6); }
+.tw  { color:#eef0f5; font-weight:500; }
+.tcursor { display:inline-block; width:8px; height:14px; background:var(--green); animation:blink 1.2s step-end infinite; vertical-align:text-bottom; margin-left:2px; }
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Terminal 1 — build-server-01 */
+.term-1 { width:520px; top:60px; left:30px; }
+/* Terminal 2 — gpu-worker-03 (behind) */
+.term-2 { width:460px; top:90px; left:580px; opacity:.7; }
+
+/* ═══════════════════════════════════
+   SYSTRAY CONTEXT MENU
+═══════════════════════════════════ */
+.ctx-menu {
+  position:absolute; top:30px; right:14px;
+  width:224px; z-index:200;
+  background:rgba(22,25,35,.97);
+  backdrop-filter:blur(32px);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:9px;
+  box-shadow:0 12px 40px rgba(0,0,0,.6), 0 2px 8px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.06);
+  overflow:hidden;
+  font-family:var(--mono);
+}
+.ctx-head {
+  padding:8px 12px 5px;
+  display:flex; align-items:center; gap:7px;
+}
+.ctx-head-dot { width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 6px rgba(0,217,126,.5); }
+.ctx-head-name { font-size:11px; font-weight:600; color:rgba(200,210,225,.8); letter-spacing:.08em; }
+.ctx-head-ver  { font-size:9px; color:rgba(80,90,110,.7); margin-left:auto; }
+.ctx-stats { display:flex; gap:10px; padding:0 12px 7px; }
+.ctx-stat { display:flex; align-items:center; gap:4px; font-size:10px; color:rgba(110,120,145,.8); }
+.ctx-stat-dot { width:5px; height:5px; border-radius:50%; }
+.ctx-sep { height:1px; background:rgba(255,255,255,.06); margin:2px 0; }
+.ctx-section { padding:3px; }
+.ctx-lbl {
+  padding:5px 10px 3px;
+  font-size:9px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+  color:rgba(80,90,110,.7);
+}
+.ctx-item {
+  display:flex; align-items:center; gap:9px;
+  padding:5px 10px; border-radius:5px; margin:0 1px;
+  font-size:12.5px; color:rgba(210,220,235,.88);
+  cursor:default; transition:background .08s;
+}
+.ctx-item:hover, .ctx-item.on { background:rgba(74,158,255,.8); color:#fff; }
+.ctx-item:hover .ctx-sc, .ctx-item.on .ctx-sc { color:rgba(255,255,255,.65); }
+.ctx-ico { width:15px; display:flex; align-items:center; justify-content:center; flex-shrink:0; opacity:.7; }
+.ctx-item.on .ctx-ico, .ctx-item:hover .ctx-ico { opacity:1; }
+.ctx-sc { font-size:11px; color:rgba(120,130,155,.6); margin-left:auto; }
+.ctx-check { font-size:11px; color:var(--green); margin-left:auto; }
+/* agent sub-rows */
+.ctx-agent {
+  display:flex; align-items:center; gap:8px;
+  padding:4px 10px; border-radius:5px; margin:0 1px;
+  cursor:default; transition:background .08s;
+}
+.ctx-agent:hover { background:rgba(255,255,255,.04); }
+.ctx-agent-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.ctx-agent-name { font-size:11.5px; color:rgba(190,200,215,.85); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ctx-agent-status { font-size:9.5px; letter-spacing:.05em; }
+.ctx-danger { color:rgba(224,82,82,.85) !important; }
+.ctx-danger:hover { background:rgba(224,82,82,.15) !important; color:var(--red) !important; }
+
+/* ═══════════════════════════════════
+   DASHBOARD WINDOW
+═══════════════════════════════════ */
+.dash-window {
+  position:absolute;
+  top:58px; left:200px;
+  width:780px;
+  background:#0b0d12;
+  border-radius:11px;
+  border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 32px 80px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.03);
+  overflow:hidden;
+  z-index:150;
+  font-family:var(--mono);
+}
+.dash-titlebar {
+  height:36px; background:#0f1117;
+  border-bottom:1px solid rgba(255,255,255,.06);
+  display:flex; align-items:center; padding:0 14px; gap:0;
+  position:relative;
+}
+.dash-dots { display:flex; gap:7px; }
+.dd { width:12px; height:12px; border-radius:50%; cursor:pointer; border:none; }
+.dd-r{background:#FF5F57} .dd-y{background:#FFBD2E} .dd-g{background:#28CA41}
+.dash-title {
+  position:absolute; left:50%; transform:translateX(-50%);
+  font-size:12px; font-weight:500; color:rgba(180,190,210,.5);
+  letter-spacing:.08em;
+  display:flex; align-items:center; gap:7px;
+}
+.dash-title-dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:pulse 2.4s ease-in-out infinite; }
+
+/* Dashboard nav tabs */
+.dash-tabs {
+  display:flex; background:#0d0f15;
+  border-bottom:1px solid rgba(255,255,255,.05);
+}
+.dash-tab {
+  padding:9px 20px; font-size:10.5px; font-weight:500;
+  letter-spacing:.09em; text-transform:uppercase;
+  color:rgba(90,100,120,.7); cursor:pointer;
+  border-right:1px solid rgba(255,255,255,.04);
+  transition:color .12s; position:relative;
+}
+.dash-tab:hover { color:rgba(180,190,210,.8); }
+.dash-tab.active { color:var(--green); background:#0b0d12; }
+.dash-tab.active::after {
+  content:''; position:absolute; bottom:-1px; left:0; right:0;
+  height:1px; background:var(--green);
+}
+.dash-tab-badge {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:14px; height:14px; border-radius:50%; font-size:8.5px; font-weight:700;
+  background:var(--red); color:#fff; margin-left:5px; vertical-align:middle;
+}
+
+/* Dashboard body */
+.dash-body { display:flex; height:480px; }
+
+/* Left sidebar: agent list */
+.dash-sidebar {
+  width:240px; flex-shrink:0;
+  border-right:1px solid rgba(255,255,255,.05);
+  display:flex; flex-direction:column;
+}
+.dash-sidebar-head {
+  padding:10px 14px 7px;
+  font-size:9px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+  color:rgba(70,80,100,.7);
+  border-bottom:1px solid rgba(255,255,255,.04);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.add-btn {
+  width:18px; height:18px; border-radius:4px;
+  background:rgba(0,217,126,.1); border:1px solid rgba(0,217,126,.2);
+  color:var(--green); font-size:14px; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+}
+.agent-item {
+  display:flex; align-items:center; gap:9px;
+  padding:9px 14px;
+  border-bottom:1px solid rgba(255,255,255,.03);
+  cursor:pointer; position:relative;
+  transition:background .1s;
+}
+.agent-item:hover { background:rgba(255,255,255,.025); }
+.agent-item.selected { background:rgba(255,255,255,.04); }
+.agent-item.selected::before {
+  content:''; position:absolute; left:0; top:0; bottom:0;
+  width:2px; background:var(--green);
+}
+.ai-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.ai-body { flex:1; min-width:0; }
+.ai-name { font-size:11.5px; font-weight:500; color:#d8dde8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ai-cmd  { font-size:9.5px; color:rgba(80,90,110,.7); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ai-pill {
+  font-size:8.5px; font-weight:600; letter-spacing:.06em;
+  text-transform:uppercase; padding:2px 6px; border-radius:3px; flex-shrink:0;
+}
+.pill-active { background:var(--green-d); color:var(--green); }
+.pill-busy   { background:var(--amber-d); color:var(--amber); }
+.pill-idle   { background:rgba(255,255,255,.04); color:rgba(80,90,110,.8); }
+.pill-error  { background:var(--red-d); color:var(--red); }
+.pill-stuck  { background:var(--amber-d); color:var(--amber); animation:blink-amber 1s step-end infinite; }
+@keyframes blink-amber{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* Right main panel */
+.dash-main { flex:1; display:flex; flex-direction:column; min-width:0; }
+
+/* Agent detail header */
+.detail-head {
+  padding:14px 18px 12px;
+  border-bottom:1px solid rgba(255,255,255,.05);
+  display:flex; align-items:flex-start; gap:12px;
+}
+.detail-status-bar {
+  width:3px; height:100%; border-radius:2px;
+  align-self:stretch; flex-shrink:0; min-height:40px;
+}
+.detail-name { font-size:15px; font-weight:600; color:#eef0f5; }
+.detail-cmd  { font-size:11px; color:rgba(80,90,110,.8); margin-top:3px; font-style:italic; }
+.detail-dir  { font-size:10px; color:rgba(60,70,90,.7); margin-top:2px; }
+.detail-actions { display:flex; gap:6px; margin-left:auto; align-items:center; }
+.act-btn {
+  padding:5px 12px; border-radius:5px;
+  font-family:var(--mono); font-size:10px; font-weight:600;
+  letter-spacing:.06em; text-transform:uppercase;
+  cursor:pointer; border:none; transition:all .12s;
+}
+.act-stop  { background:var(--red-d); color:var(--red); border:1px solid rgba(224,82,82,.2); }
+.act-restart { background:rgba(255,255,255,.05); color:rgba(160,170,190,.8); border:1px solid rgba(255,255,255,.08); }
+.act-msg   { background:var(--amber-d); color:var(--amber); border:1px solid rgba(240,165,0,.2); }
+
+/* Resource bars */
+.res-row {
+  display:flex; align-items:center; gap: 8px;
+  padding:4px 18px;
+}
+.res-lbl { font-size:9px; color:rgba(70,80,100,.7); width:24px; }
+.res-track { flex:1; height:2px; background:rgba(255,255,255,.06); border-radius:1px; overflow:hidden; }
+.res-fill  { height:100%; border-radius:1px; transition:width .5s; }
+.res-val   { font-size:9px; color:rgba(100,110,130,.7); width:30px; text-align:right; }
+
+/* Pane view */
+.pane-label {
+  padding:8px 18px 5px;
+  font-size:9px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+  color:rgba(60,70,90,.6);
+  display:flex; align-items:center; gap:7px;
+}
+.pane-live { width:5px; height:5px; border-radius:50%; background:var(--green); animation:pulse 2.4s ease-in-out infinite; }
+.pane-body {
+  margin:0 18px; flex:1;
+  background:#07090d;
+  border:1px solid rgba(255,255,255,.05);
+  border-radius:6px;
+  padding:10px 12px;
+  font-size:11px; line-height:1.65;
+  overflow:hidden;
+  height:240px;
+}
+
+/* Send message area */
+.send-area {
+  display:flex; align-items:center; gap:8px;
+  padding:10px 18px;
+  border-top:1px solid rgba(255,255,255,.05);
+}
+.send-label { font-size:9px; color:rgba(70,80,100,.6); letter-spacing:.06em; white-space:nowrap; }
+.send-input {
+  flex:1; background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:5px; padding:6px 10px;
+  font-family:var(--mono); font-size:11px; color:rgba(200,210,225,.8);
+  outline:none;
+}
+.send-btn {
+  padding:6px 14px; border-radius:5px; border:none;
+  background:rgba(0,217,126,.12); color:var(--green);
+  font-family:var(--mono); font-size:10px; font-weight:600;
+  letter-spacing:.06em; cursor:pointer;
+  border:1px solid rgba(0,217,126,.2);
+}
+
+/* Config tab */
+.cfg-form { padding:18px; overflow-y:auto; height:100%; }
+.cfg-section { margin-bottom:20px; }
+.cfg-section-title {
+  font-size:9px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+  color:rgba(70,80,100,.6); margin-bottom:10px;
+  padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,.05);
+}
+.cfg-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.cfg-label { font-size:11px; color:rgba(160,170,190,.7); width:110px; flex-shrink:0; }
+.cfg-input {
+  flex:1; background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:5px; padding:6px 10px;
+  font-family:var(--mono); font-size:11px; color:rgba(200,210,225,.8);
+  outline:none;
+}
+.cfg-input:focus { border-color:rgba(0,217,126,.3); }
+.cfg-save {
+  padding:7px 20px; border-radius:6px; border:none;
+  background:var(--green-d); color:var(--green);
+  font-family:var(--mono); font-size:10px; font-weight:600;
+  letter-spacing:.07em; cursor:pointer;
+  border:1px solid rgba(0,217,126,.2);
+}
+
+/* Dashboard footer */
+.dash-footer {
+  height:28px; background:#0a0c10;
+  border-top:1px solid rgba(255,255,255,.05);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 18px;
+  font-size:9px; color:rgba(70,80,100,.7);
+}
+.dash-footer span { color:var(--green); }
+
+/* ── Log tab ── */
+.log-body { padding:0; height:100%; overflow-y:auto; }
+.log-body::-webkit-scrollbar{width:3px}
+.log-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.06)}
+.log-line {
+  display:flex; gap:0; padding:3px 18px;
+  font-size:10.5px; line-height:1.6;
+  border-bottom:1px solid transparent;
+  transition:background .07s;
+}
+.log-line:hover{background:rgba(255,255,255,.025)}
+.ll-ts { color:rgba(70,80,100,.6); min-width:58px; flex-shrink:0; }
+.ll-ag { color:rgba(100,110,135,.7); min-width:90px; flex-shrink:0; font-size:10px; }
+.ll-msg { flex:1; }
+.lvl-ok { color:var(--green); } .lvl-info { color:var(--blue); }
+.lvl-warn { color:var(--amber); } .lvl-err { color:var(--red); }
+.msg-ok { color:rgba(200,210,225,.85); } .msg-info { color:rgba(200,210,225,.85); }
+.msg-warn { color:var(--amber); } .msg-err { color:var(--red); }
+
+/* ── Tooltip label at bottom ── */
+.scene-note {
+  width:1280px; margin:0 auto 24px;
+  display:flex; gap:20px; padding:0 4px;
+}
+.note {
+  flex:1; background:#0f1117;
+  border:1px solid rgba(255,255,255,.05);
+  border-radius:8px; padding:10px 14px;
+  display:flex; gap:10px; align-items:flex-start;
+}
+.note-num {
+  width:18px; height:18px; border-radius:50%;
+  background:rgba(74,158,255,.12); color:var(--blue);
+  font-size:9px; font-weight:700; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+}
+.note-text { font-size:10.5px; color:rgba(120,130,155,.8); line-height:1.5; }
+.note-text strong { color:rgba(200,210,230,.9); }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     DESKTOP
+══════════════════════════════════════ -->
+<div class="desktop">
+
+  <!-- Menubar -->
+  <div class="menubar">
+    <div class="mb-apple">&#63743;</div>
+    <div class="mb-appname">TaskSquad</div>
+    <div class="mb-item">File</div>
+    <div class="mb-item">Edit</div>
+    <div class="mb-item">View</div>
+    <div class="mb-item">Window</div>
+    <div class="mb-right">
+      <div class="mb-tray">&#9711;</div>
+      <div class="mb-tray">&#8472;</div>
+      <div class="mb-tray">100%</div>
+      <div class="mb-tray">Thu 16:42</div>
+      <div class="mb-tray lit">
+        <div class="tsq-tray">
+          <div class="tsq-dot"></div>
+          tsq
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Terminal 2 (behind, gpu-worker) ── -->
+  <div class="term-window term-2">
+    <div class="term-titlebar">
+      <div class="term-dots"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div></div>
+      <div class="term-title">tmux: gpu-worker-03</div>
+    </div>
+    <div class="term-body">
+<span class="td2">tasksquad-daemon $ </span><span class="tw">tmux attach -t gpu-worker-03</span><br>
+<span class="td2">─────────────────────────────────────</span><br>
+<span class="tg">✓</span> <span class="tc">gemini session started in /home/igor/ml</span><br>
+<span class="tb">[gemini]</span> <span class="tc">Loading model context...</span><br>
+<span class="tb">[gemini]</span> <span class="tc">Task: Run ML inference batch 7</span><br>
+<span class="ta">⚠</span>  <span class="ta">Memory pressure detected: 81% used</span><br>
+<span class="tr">✕</span>  <span class="tr">CUDA out of memory — process killed</span><br>
+<span class="td2">exit code 137</span><br>
+<br>
+<span class="tg">→</span> <span class="tc">Auto-restarting session in 3s...</span><br>
+<span class="tg">✓</span> <span class="tg">Session restarted</span><span class="tcursor"></span>
+    </div>
+  </div>
+
+  <!-- ── Terminal 1 (build-server) ── -->
+  <div class="term-window term-1">
+    <div class="term-titlebar">
+      <div class="term-dots"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div></div>
+      <div class="term-title">tmux: build-server-01 — claude</div>
+    </div>
+    <div class="term-body">
+<span class="td2">─── tasksquad agent: build-server-01 ────</span><br>
+<span class="tg">✓</span> <span class="tc">claude started in /home/igor/projects/backend</span><br>
+<span class="tb">[claude]</span> <span class="tc">Task assigned: Refactor auth middleware</span><br>
+<span class="tb">[claude]</span> <span class="tc">Reading src/middleware/auth.js...</span><br>
+<span class="tg">✓</span> <span class="tc">Found 3 files to modify</span><br>
+<span class="tb">[claude]</span> <span class="tc">Migrating session tokens to JWT...</span><br>
+<span class="td2">  ├── Updated: src/middleware/auth.js</span><br>
+<span class="td2">  ├── Updated: src/routes/api.js</span><br>
+<span class="td2">  └── Created: tests/auth.test.js</span><br>
+<span class="tg">✓</span> <span class="tc">Running tests...</span><br>
+<span class="tg">✓</span> <span class="tg">All 14 tests passed</span><br>
+<span class="tb">[claude]</span> <span class="tc">Committing to feat/jwt-auth</span><span class="tcursor"></span>
+    </div>
+  </div>
+
+  <!-- ── Systray Context Menu ── -->
+  <div class="ctx-menu">
+    <!-- Header -->
+    <div class="ctx-head">
+      <div class="ctx-head-dot"></div>
+      <span class="ctx-head-name">TASKSQUAD</span>
+      <span class="ctx-head-ver">v0.1.4</span>
+    </div>
+    <div class="ctx-stats">
+      <span class="ctx-stat"><span class="ctx-stat-dot" style="background:var(--green)"></span>2 active</span>
+      <span class="ctx-stat"><span class="ctx-stat-dot" style="background:var(--amber)"></span>1 stuck</span>
+      <span class="ctx-stat"><span class="ctx-stat-dot" style="background:var(--red)"></span>1 error</span>
+    </div>
+
+    <div class="ctx-sep"></div>
+
+    <!-- Quick actions -->
+    <div class="ctx-section">
+      <div class="ctx-item on">
+        <div class="ctx-ico">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+        </div>
+        Open Dashboard
+      </div>
+      <div class="ctx-item">
+        <div class="ctx-ico">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg>
+        </div>
+        Start All
+        <span class="ctx-sc">⌘S</span>
+      </div>
+      <div class="ctx-item">
+        <div class="ctx-ico">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        </div>
+        Stop All
+        <span class="ctx-sc">⌘X</span>
+      </div>
+      <div class="ctx-item">
+        <div class="ctx-ico">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.47-3.15"/></svg>
+        </div>
+        Restart All
+        <span class="ctx-sc">⌘R</span>
+      </div>
+    </div>
+
+    <div class="ctx-sep"></div>
+
+    <!-- Agents -->
+    <div class="ctx-section">
+      <div class="ctx-lbl">Agents</div>
+      <div class="ctx-agent">
+        <div class="ctx-agent-dot" style="background:var(--amber)"></div>
+        <span class="ctx-agent-name">build-server-01</span>
+        <span class="ctx-agent-status" style="color:var(--amber)">busy</span>
+      </div>
+      <div class="ctx-agent">
+        <div class="ctx-agent-dot" style="background:var(--green)"></div>
+        <span class="ctx-agent-name">staging-runner</span>
+        <span class="ctx-agent-status" style="color:var(--green)">active</span>
+      </div>
+      <div class="ctx-agent">
+        <div class="ctx-agent-dot" style="background:var(--amber)"></div>
+        <span class="ctx-agent-name">frontend-01</span>
+        <span class="ctx-agent-status" style="color:var(--amber)">stuck</span>
+      </div>
+      <div class="ctx-agent">
+        <div class="ctx-agent-dot" style="background:var(--red)"></div>
+        <span class="ctx-agent-name">gpu-worker-03</span>
+        <span class="ctx-agent-status" style="color:var(--red)">error</span>
+      </div>
+    </div>
+
+    <div class="ctx-sep"></div>
+
+    <div class="ctx-section">
+      <div class="ctx-item ctx-danger">
+        <div class="ctx-ico"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></div>
+        Quit
+        <span class="ctx-sc" style="color:rgba(224,82,82,.4)">⌘Q</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       DASHBOARD WINDOW
+  ══════════════════════════════════════ -->
+  <div class="dash-window" id="dashWindow">
+
+    <!-- Titlebar -->
+    <div class="dash-titlebar">
+      <div class="dash-dots">
+        <button class="dd dd-r"></button>
+        <button class="dd dd-y"></button>
+        <button class="dd dd-g"></button>
+      </div>
+      <div class="dash-title">
+        <div class="dash-title-dot"></div>
+        TaskSquad Dashboard
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="dash-tabs">
+      <div class="dash-tab active" onclick="switchTab('agents',this)">Agents</div>
+      <div class="dash-tab" onclick="switchTab('logs',this)">Logs <span class="dash-tab-badge">2</span></div>
+      <div class="dash-tab" onclick="switchTab('config',this)">Config</div>
+    </div>
+
+    <!-- ── TAB: AGENTS ── -->
+    <div class="dash-body" id="tab-agents">
+      <!-- Sidebar -->
+      <div class="dash-sidebar">
+        <div class="dash-sidebar-head">
+          Agents (4)
+          <div class="add-btn" title="Add agent">+</div>
+        </div>
+
+        <div class="agent-item selected" onclick="selectAgent(this,'build')">
+          <div class="ai-dot" style="background:var(--amber)"></div>
+          <div class="ai-body">
+            <div class="ai-name">build-server-01</div>
+            <div class="ai-cmd">claude</div>
+          </div>
+          <div class="ai-pill pill-busy">Busy</div>
+        </div>
+
+        <div class="agent-item" onclick="selectAgent(this,'staging')">
+          <div class="ai-dot" style="background:var(--green)"></div>
+          <div class="ai-body">
+            <div class="ai-name">staging-runner</div>
+            <div class="ai-cmd">opencode</div>
+          </div>
+          <div class="ai-pill pill-active">Active</div>
+        </div>
+
+        <div class="agent-item" onclick="selectAgent(this,'frontend')">
+          <div class="ai-dot" style="background:var(--amber)"></div>
+          <div class="ai-body">
+            <div class="ai-name">frontend-01</div>
+            <div class="ai-cmd">codex</div>
+          </div>
+          <div class="ai-pill pill-stuck">Stuck</div>
+        </div>
+
+        <div class="agent-item" onclick="selectAgent(this,'gpu')">
+          <div class="ai-dot" style="background:var(--red)"></div>
+          <div class="ai-body">
+            <div class="ai-name">gpu-worker-03</div>
+            <div class="ai-cmd">gemini</div>
+          </div>
+          <div class="ai-pill pill-error">Error</div>
+        </div>
+      </div>
+
+      <!-- Main: agent detail -->
+      <div class="dash-main" id="agentDetail">
+
+        <!-- Detail header -->
+        <div class="detail-head">
+          <div class="detail-status-bar" id="detailBar" style="background:var(--amber)"></div>
+          <div>
+            <div class="detail-name" id="detailName">build-server-01</div>
+            <div class="detail-cmd" id="detailCmd">claude --dangerously-skip-permissions</div>
+            <div class="detail-dir" id="detailDir">~/projects/backend &nbsp;·&nbsp; up 6h 14m &nbsp;·&nbsp; last output 3s ago</div>
+          </div>
+          <div class="detail-actions" id="detailActions">
+            <button class="act-btn act-restart">↺ Restart</button>
+            <button class="act-btn act-stop">▪ Stop</button>
+          </div>
+        </div>
+
+        <!-- Resource bars -->
+        <div style="padding:8px 0 4px">
+          <div class="res-row">
+            <span class="res-lbl">cpu</span>
+            <div class="res-track"><div class="res-fill" id="cpuBar" style="width:72%;background:var(--amber)"></div></div>
+            <span class="res-val" id="cpuVal">72%</span>
+          </div>
+          <div class="res-row">
+            <span class="res-lbl">mem</span>
+            <div class="res-track"><div class="res-fill" style="width:58%;background:var(--blue)"></div></div>
+            <span class="res-val">58%</span>
+          </div>
+        </div>
+
+        <!-- Pane view -->
+        <div class="pane-label">
+          <div class="pane-live"></div>
+          tmux pane — snapshot every 2s
+          &nbsp;<span style="color:rgba(70,80,100,.5);font-size:9px">(tmux capture-pane -p)</span>
+        </div>
+        <div class="pane-body" id="paneBody">
+<span style="color:rgba(70,80,100,.6)">─── build-server-01 @ /home/igor/projects/backend ──────────────</span><br>
+<span class="tg">✓</span> <span class="tc">Task assigned: Refactor auth middleware — JWT migration</span><br>
+<span class="tb">[claude]</span> <span class="tc">Reading 3 source files...</span><br>
+<span class="tg">✓</span> <span class="tc">Found 14 references to legacy session tokens</span><br>
+<span class="tb">[claude]</span> <span class="tc">Applying migration in src/middleware/auth.js</span><br>
+<span style="color:rgba(70,80,100,.5)">  ├── line 24: replace SessionManager → JWTManager</span><br>
+<span style="color:rgba(70,80,100,.5)">  ├── line 67: update verifyToken() signature</span><br>
+<span style="color:rgba(70,80,100,.5)">  └── line 112: add refresh token endpoint</span><br>
+<span class="tg">✓</span> <span class="tc">Writing tests/auth.test.js</span><br>
+<span class="tb">[claude]</span> <span class="tc">Running: npm test -- --testPathPattern=auth</span><br>
+<span class="tg">✓</span> <span class="tg">14/14 tests passed (2.3s)</span><br>
+<span class="tb">[claude]</span> <span class="tc">Committing: "refactor: migrate auth to JWT"</span><br>
+<span class="tg">✓</span> <span class="tg">Task complete. Polling for next task...</span><span class="tcursor"></span>
+        </div>
+
+        <!-- Send message -->
+        <div class="send-area" id="sendArea">
+          <span class="send-label">send-keys →</span>
+          <input class="send-input" id="sendInput" placeholder="type message to inject into session..." value="">
+          <button class="send-btn" onclick="sendMessage()">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: LOGS ── -->
+    <div class="dash-body" id="tab-logs" style="display:none; flex-direction:column;">
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 18px;border-bottom:1px solid rgba(255,255,255,.05);font-size:9px;color:rgba(70,80,100,.7)">
+        <div style="width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2.4s ease-in-out infinite"></div>
+        LIVE &nbsp;·&nbsp; 10 entries &nbsp;·&nbsp;
+        <span style="color:rgba(200,210,225,.5);cursor:default;padding:1px 6px;background:rgba(255,255,255,.04);border-radius:3px">All</span>
+        <span style="cursor:default;padding:1px 6px">Errors</span>
+        <span style="cursor:default;padding:1px 6px">build-01</span>
+      </div>
+      <div class="log-body">
+        <div class="log-line"><span class="ll-ts">16:42:11</span><span class="ll-ag">build-01</span><span class="ll-msg msg-ok"><span class="lvl-ok">[ok]</span> Task complete — JWT migration committed to feat/jwt-auth</span></div>
+        <div class="log-line"><span class="ll-ts">16:42:08</span><span class="ll-ag">build-01</span><span class="ll-msg msg-info"><span class="lvl-info">[info]</span> Running npm test — 14 tests passed in 2.3s</span></div>
+        <div class="log-line"><span class="ll-ts">16:41:55</span><span class="ll-ag">gpu-03</span><span class="ll-msg msg-err"><span class="lvl-err">[error]</span> CUDA OOM — session killed (exit 137), auto-restarting</span></div>
+        <div class="log-line"><span class="ll-ts">16:41:54</span><span class="ll-ag">gpu-03</span><span class="ll-msg msg-warn"><span class="lvl-warn">[warn]</span> Memory pressure 81% — approaching OOM threshold</span></div>
+        <div class="log-line"><span class="ll-ts">16:41:30</span><span class="ll-ag">frontend-01</span><span class="ll-msg msg-warn"><span class="lvl-warn">[warn]</span> No output for 120s — marking as stuck</span></div>
+        <div class="log-line"><span class="ll-ts">16:41:28</span><span class="ll-ag">frontend-01</span><span class="ll-msg msg-info"><span class="lvl-info">[info]</span> Sent recovery message via tmux send-keys</span></div>
+        <div class="log-line"><span class="ll-ts">16:40:11</span><span class="ll-ag">staging</span><span class="ll-msg msg-ok"><span class="lvl-ok">[ok]</span> Ping acknowledged — no pending tasks, polling in 30s</span></div>
+        <div class="log-line"><span class="ll-ts">16:39:54</span><span class="ll-ag">build-01</span><span class="ll-msg msg-info"><span class="lvl-info">[info]</span> New task assigned: t13 — add rate limiting to /api/upload</span></div>
+        <div class="log-line"><span class="ll-ts">16:38:02</span><span class="ll-ag">gpu-03</span><span class="ll-msg msg-info"><span class="lvl-info">[info]</span> Session started in /home/igor/ml with command: gemini</span></div>
+        <div class="log-line"><span class="ll-ts">16:35:10</span><span class="ll-ag">build-01</span><span class="ll-msg msg-warn"><span class="lvl-warn">[warn]</span> CPU spike 94% sustained for 12s during compilation</span></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: CONFIG ── -->
+    <div class="dash-body" id="tab-config" style="display:none; overflow-y:auto;">
+      <div class="cfg-form">
+
+        <div class="cfg-section">
+          <div class="cfg-section-title">Server</div>
+          <div class="cfg-row">
+            <span class="cfg-label">API URL</span>
+            <input class="cfg-input" value="https://api.tasksquad.ai">
+          </div>
+          <div class="cfg-row">
+            <span class="cfg-label">Token</span>
+            <input class="cfg-input" value="tsq_ak7x4r9p..." type="password">
+          </div>
+          <div class="cfg-row">
+            <span class="cfg-label">Poll interval</span>
+            <input class="cfg-input" value="30" style="max-width:80px"> <span style="font-size:10px;color:rgba(100,110,130,.6);margin-left:6px">seconds</span>
+          </div>
+        </div>
+
+        <div class="cfg-section">
+          <div class="cfg-section-title">Agents</div>
+
+          <div style="background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-radius:7px;padding:12px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div style="width:6px;height:6px;border-radius:50%;background:var(--amber)"></div>
+              <span style="font-size:11px;font-weight:600;color:#d0d8e8">build-server-01</span>
+              <span style="margin-left:auto;font-size:9px;color:rgba(80,90,110,.6);cursor:pointer">remove</span>
+            </div>
+            <div class="cfg-row" style="margin-bottom:6px">
+              <span class="cfg-label">Command</span>
+              <input class="cfg-input" value="claude --dangerously-skip-permissions">
+            </div>
+            <div class="cfg-row" style="margin-bottom:0">
+              <span class="cfg-label">Work dir</span>
+              <input class="cfg-input" value="~/projects/backend">
+            </div>
+          </div>
+
+          <div style="background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-radius:7px;padding:12px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div style="width:6px;height:6px;border-radius:50%;background:var(--green)"></div>
+              <span style="font-size:11px;font-weight:600;color:#d0d8e8">staging-runner</span>
+              <span style="margin-left:auto;font-size:9px;color:rgba(80,90,110,.6);cursor:pointer">remove</span>
+            </div>
+            <div class="cfg-row" style="margin-bottom:6px">
+              <span class="cfg-label">Command</span>
+              <input class="cfg-input" value="opencode">
+            </div>
+            <div class="cfg-row" style="margin-bottom:0">
+              <span class="cfg-label">Work dir</span>
+              <input class="cfg-input" value="~/projects/frontend">
+            </div>
+          </div>
+
+          <div style="margin-top:12px">
+            <button class="act-btn" style="background:rgba(0,217,126,.06);color:var(--green);border:1px dashed rgba(0,217,126,.25);padding:7px 16px;font-size:10px">+ Add agent</button>
+          </div>
+        </div>
+
+        <div class="cfg-section">
+          <div class="cfg-section-title">Stuck detection</div>
+          <div class="cfg-row">
+            <span class="cfg-label">Timeout</span>
+            <input class="cfg-input" value="120" style="max-width:80px"> <span style="font-size:10px;color:rgba(100,110,130,.6);margin-left:6px">seconds of no output</span>
+          </div>
+          <div class="cfg-row">
+            <span class="cfg-label">On stuck</span>
+            <input class="cfg-input" value="auto-restart" style="max-width:140px">
+          </div>
+        </div>
+
+        <button class="cfg-save">Save config.toml</button>
+        <span style="font-size:10px;color:rgba(70,80,100,.5);margin-left:12px">hot-reloads on save</span>
+
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="dash-footer">
+      <span>4 agents &nbsp;·&nbsp; 2 running &nbsp;·&nbsp; 1 stuck &nbsp;·&nbsp; 1 error</span>
+      <span>ping <span>8s ago</span> &nbsp;·&nbsp; next poll in <span>22s</span></span>
+    </div>
+
+  </div><!-- /dash-window -->
+
+  <!-- Dock -->
+  <div class="dock">
+    <div class="dock-icon di-finder active"><span>🗂</span></div>
+    <div class="dock-icon di-terminal active"><span style="font-size:20px;font-family:monospace;color:var(--green)">$_</span></div>
+    <div class="dock-icon di-tasksquad active">
+      <div class="di-tsq-logo">tsq</div>
+    </div>
+    <div class="dock-icon di-vscode active"><span>⌨</span></div>
+    <div class="dock-icon di-chrome"><span>🌐</span></div>
+  </div>
+
+</div><!-- /desktop -->
+
+
+<!-- ══════════════════════════════════════
+     ANNOTATIONS
+══════════════════════════════════════ -->
+<div class="scene-note">
+  <div class="note">
+    <div class="note-num">1</div>
+    <div class="note-text"><strong>Systray menu</strong> — getlantern/systray, native macOS. Quick Start/Stop All with ⌘ shortcuts. Per-agent live status. Always-open on click.</div>
+  </div>
+  <div class="note">
+    <div class="note-num">2</div>
+    <div class="note-text"><strong>Dashboard window</strong> — webview/webview, vanilla JS + SetHtml(). Agents tab shows selected agent's tmux pane snapshot (capture-pane every 2s) + send-keys input.</div>
+  </div>
+  <div class="note">
+    <div class="note-num">3</div>
+    <div class="note-text"><strong>tmux sessions</strong> — one per agent, any CLI command. Terminals show live state. Stuck agents auto-restart after 120s of no output.</div>
+  </div>
+  <div class="note">
+    <div class="note-num">4</div>
+    <div class="note-text"><strong>Config tab</strong> — form writes ~/.tasksquad/config.toml. Daemon hot-reloads on file change via fsnotify. Manual edits also work simultaneously.</div>
+  </div>
+</div>
+
+<script>
+// ── Tab switching ──
+function switchTab(name, el) {
+  ['agents','logs','config'].forEach(t => {
+    const tab = document.getElementById('tab-'+t);
+    tab.style.display = 'none';
+  });
+  document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
+  const target = document.getElementById('tab-'+name);
+  target.style.display = name === 'agents' ? 'flex' : (name === 'logs' ? 'flex' : 'block');
+  if (name === 'logs') target.style.flexDirection = 'column';
+  el.classList.add('active');
+}
+
+// ── Agent selection ──
+const AGENTS = {
+  build: {
+    name: 'build-server-01', cmd: 'claude --dangerously-skip-permissions',
+    dir: '~/projects/backend · up 6h 14m · last output 3s ago',
+    color: 'var(--amber)', cpu: 72,
+    actions: '<button class="act-btn act-restart">↺ Restart</button><button class="act-btn act-stop">▪ Stop</button>',
+    pane: `<span style="color:rgba(70,80,100,.6)">─── build-server-01 @ ~/projects/backend ──────────────</span><br>
+<span class="tg">✓</span> <span class="tc">Task: Refactor auth middleware — JWT migration</span><br>
+<span class="tb">[claude]</span> <span class="tc">Reading 3 source files...</span><br>
+<span class="tg">✓</span> <span class="tc">14/14 tests passed — committing to feat/jwt-auth</span><span class="tcursor"></span>`
+  },
+  staging: {
+    name: 'staging-runner', cmd: 'opencode',
+    dir: '~/projects/frontend · up 2d 3h · last output 28s ago',
+    color: 'var(--green)', cpu: 4,
+    actions: '<button class="act-btn act-restart">↺ Restart</button><button class="act-btn act-stop">▪ Stop</button>',
+    pane: `<span style="color:rgba(70,80,100,.6)">─── staging-runner @ ~/projects/frontend ──────────────</span><br>
+<span class="tg">✓</span> <span class="tc">Session active — polling for tasks...</span><br>
+<span class="tb">[opencode]</span> <span class="tc">No pending tasks. Next poll in 22s.</span><span class="tcursor"></span>`
+  },
+  frontend: {
+    name: 'frontend-01', cmd: 'codex',
+    dir: '~/projects/dashboard · up 4h 2m · no output for 2m 10s ⚠',
+    color: 'var(--amber)', cpu: 0,
+    actions: '<button class="act-btn act-msg">⚡ Send Message</button><button class="act-btn act-restart">↺ Restart</button>',
+    pane: `<span style="color:rgba(70,80,100,.6)">─── frontend-01 @ ~/projects/dashboard ─────────────</span><br>
+<span class="tb">[codex]</span> <span class="tc">Task: Rebuild settings page components</span><br>
+<span class="ta">⚠</span>  <span class="ta">No output for 130s — agent may be stuck</span><br>
+<span style="color:rgba(70,80,100,.5)">Waiting for response...</span><span class="tcursor"></span>`
+  },
+  gpu: {
+    name: 'gpu-worker-03', cmd: 'gemini',
+    dir: '~/ml · crashed · auto-restarting',
+    color: 'var(--red)', cpu: 0,
+    actions: '<button class="act-btn act-restart">↺ Restart</button><button class="act-btn act-stop">▪ Stop</button>',
+    pane: `<span style="color:rgba(70,80,100,.6)">─── gpu-worker-03 @ ~/ml ──────────────────────────</span><br>
+<span class="tr">✕</span>  <span class="tr">CUDA out of memory — exit code 137</span><br>
+<span class="tg">→</span>  <span class="tc">Auto-restarting session in 3s...</span><br>
+<span class="tg">✓</span>  <span class="tg">Session restarted</span><span class="tcursor"></span>`
+  }
+};
+
+function selectAgent(el, key) {
+  document.querySelectorAll('.agent-item').forEach(a => a.classList.remove('selected'));
+  el.classList.add('selected');
+  const a = AGENTS[key];
+  document.getElementById('detailBar').style.background = a.color;
+  document.getElementById('detailName').textContent = a.name;
+  document.getElementById('detailCmd').textContent = a.cmd;
+  document.getElementById('detailDir').textContent = a.dir;
+  document.getElementById('detailActions').innerHTML = a.actions;
+  document.getElementById('paneBody').innerHTML = a.pane;
+  const cpu = a.cpu;
+  document.getElementById('cpuBar').style.width = cpu+'%';
+  document.getElementById('cpuBar').style.background = cpu > 70 ? 'var(--amber)' : cpu > 0 ? 'var(--green)' : 'rgba(255,255,255,.1)';
+  document.getElementById('cpuVal').textContent = cpu+'%';
+}
+
+function sendMessage() {
+  const v = document.getElementById('sendInput').value.trim();
+  if (!v) return;
+  // simulate send
+  const pane = document.getElementById('paneBody');
+  pane.innerHTML += `<br><span class="ta">→ sent: </span><span class="tc">${v}</span>`;
+  document.getElementById('sendInput').value = '';
+}
+
+// ── Animate CPU bar for build-server ──
+let t = 0;
+setInterval(() => {
+  t++;
+  const cpu = Math.round(72 + Math.sin(t * 0.3) * 14);
+  const bar = document.getElementById('cpuBar');
+  const val = document.getElementById('cpuVal');
+  if (bar && val && document.querySelector('.agent-item.selected')?.querySelector('.ai-name')?.textContent === 'build-server-01') {
+    bar.style.width = cpu + '%';
+    val.textContent = cpu + '%';
+  }
+}, 1000);
+</script>
+
+</body>
+</html>

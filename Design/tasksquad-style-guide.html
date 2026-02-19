@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskSquad.ai — Brand & UI Style Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Core palette — Ink & Signal */
+    --ink-950: #0a0c10;
+    --ink-900: #111318;
+    --ink-800: #1a1d24;
+    --ink-700: #252830;
+    --ink-600: #363944;
+    --ink-500: #4e5260;
+    --ink-400: #6b7080;
+    --ink-300: #9096a4;
+    --ink-200: #c1c5d0;
+    --ink-100: #e4e6ec;
+    --ink-50: #f3f4f7;
+    --ink-25: #f9fafb;
+
+    /* Signal — Action green (not "tech blue") */
+    --signal-500: #22c55e;
+    --signal-400: #4ade80;
+    --signal-300: #86efac;
+    --signal-600: #16a34a;
+    --signal-700: #15803d;
+    --signal-bg: #f0fdf4;
+
+    /* Accent — Warm amber for CTAs and highlights */
+    --accent-500: #f59e0b;
+    --accent-400: #fbbf24;
+    --accent-600: #d97706;
+    --accent-bg: #fffbeb;
+
+    /* Status */
+    --status-active: #22c55e;
+    --status-inactive: #9096a4;
+    --status-pending: #f59e0b;
+    --status-error: #ef4444;
+    --status-progress: #3b82f6;
+
+    /* Surface system */
+    --surface-primary: #ffffff;
+    --surface-secondary: #f9fafb;
+    --surface-tertiary: #f3f4f7;
+    --surface-elevated: #ffffff;
+    --border-default: #e4e6ec;
+    --border-subtle: #f3f4f7;
+
+    /* Typography scale */
+    --font-body: 'DM Sans', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Spacing */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+    --space-16: 64px;
+
+    /* Radius */
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(10,12,16,0.05);
+    --shadow-md: 0 2px 8px rgba(10,12,16,0.08), 0 1px 2px rgba(10,12,16,0.04);
+    --shadow-lg: 0 8px 24px rgba(10,12,16,0.1), 0 2px 8px rgba(10,12,16,0.05);
+    --shadow-focus: 0 0 0 3px rgba(34,197,94,0.2);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-body);
+    color: var(--ink-900);
+    background: var(--surface-secondary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* === GUIDE LAYOUT === */
+  .guide-container {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: var(--space-10) var(--space-6);
+  }
+
+  .guide-header {
+    text-align: center;
+    margin-bottom: var(--space-16);
+    padding: var(--space-16) 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .guide-header h1 {
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--ink-950);
+    margin-bottom: var(--space-3);
+  }
+
+  .guide-header p {
+    font-size: 17px;
+    color: var(--ink-400);
+    max-width: 500px;
+    margin: 0 auto;
+  }
+
+  .section {
+    margin-bottom: var(--space-16);
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-400);
+    margin-bottom: var(--space-8);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .section-desc {
+    font-size: 15px;
+    color: var(--ink-500);
+    margin-bottom: var(--space-8);
+    max-width: 640px;
+    line-height: 1.7;
+  }
+
+  /* === LOGO === */
+  .logo-showcase {
+    display: flex;
+    gap: var(--space-8);
+    align-items: stretch;
+  }
+
+  .logo-card {
+    flex: 1;
+    border-radius: var(--radius-lg);
+    padding: var(--space-12) var(--space-8);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+  }
+
+  .logo-card.light {
+    background: var(--surface-primary);
+    border: 1px solid var(--border-default);
+  }
+
+  .logo-card.dark {
+    background: var(--ink-900);
+  }
+
+  .logo-mark {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .logo-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 18px;
+  }
+
+  .logo-icon.light-ver {
+    background: var(--ink-950);
+    color: white;
+  }
+
+  .logo-icon.dark-ver {
+    background: var(--signal-500);
+    color: white;
+  }
+
+  .logo-text {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .logo-text.dark-text { color: white; }
+
+  .logo-text span { font-weight: 400; color: var(--ink-400); }
+  .logo-text.dark-text span { color: var(--ink-300); }
+
+  .logo-label {
+    font-size: 12px;
+    color: var(--ink-400);
+    margin-top: var(--space-2);
+  }
+
+  /* === COLORS === */
+  .color-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--space-4);
+  }
+
+  .color-group-title {
+    grid-column: 1 / -1;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink-700);
+    margin-top: var(--space-4);
+  }
+
+  .color-swatch {
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid var(--border-default);
+    background: white;
+  }
+
+  .color-swatch-block {
+    height: 64px;
+  }
+
+  .color-swatch-info {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .color-swatch-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-800);
+  }
+
+  .color-swatch-value {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-400);
+  }
+
+  /* === TYPOGRAPHY === */
+  .type-specimen {
+    background: white;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: var(--space-8);
+    margin-bottom: var(--space-4);
+  }
+
+  .type-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-8);
+    padding: var(--space-4) 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .type-row:last-child { border-bottom: none; }
+
+  .type-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-400);
+    width: 120px;
+    flex-shrink: 0;
+  }
+
+  .type-sample {
+    color: var(--ink-900);
+  }
+
+  .type-h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.03em; }
+  .type-h2 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+  .type-h3 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .type-body { font-size: 15px; line-height: 1.6; color: var(--ink-700); }
+  .type-small { font-size: 13px; color: var(--ink-500); }
+  .type-mono { font-family: var(--font-mono); font-size: 14px; color: var(--signal-700); }
+
+  /* === COMPONENTS === */
+  .component-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-6);
+  }
+
+  .component-card {
+    background: white;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: var(--space-8);
+  }
+
+  .component-card h3 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-400);
+    margin-bottom: var(--space-6);
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    height: 36px;
+  }
+
+  .btn-primary {
+    background: var(--ink-950);
+    color: white;
+  }
+  .btn-primary:hover { background: var(--ink-800); }
+
+  .btn-secondary {
+    background: white;
+    color: var(--ink-700);
+    border: 1px solid var(--border-default);
+  }
+  .btn-secondary:hover { background: var(--ink-50); border-color: var(--ink-200); }
+
+  .btn-signal {
+    background: var(--signal-500);
+    color: white;
+  }
+  .btn-signal:hover { background: var(--signal-600); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--ink-500);
+  }
+  .btn-ghost:hover { background: var(--ink-50); color: var(--ink-700); }
+
+  .btn-sm {
+    height: 30px;
+    font-size: 13px;
+    padding: var(--space-1) var(--space-3);
+  }
+
+  /* Status badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .badge-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  .badge-active { background: #f0fdf4; color: #15803d; }
+  .badge-active .badge-dot { background: var(--status-active); }
+
+  .badge-inactive { background: var(--ink-50); color: var(--ink-500); }
+  .badge-inactive .badge-dot { background: var(--status-inactive); }
+
+  .badge-pending { background: #fffbeb; color: #b45309; }
+  .badge-pending .badge-dot { background: var(--status-pending); }
+
+  .badge-progress { background: #eff6ff; color: #1d4ed8; }
+  .badge-progress .badge-dot { background: var(--status-progress); }
+
+  .badge-error { background: #fef2f2; color: #b91c1c; }
+  .badge-error .badge-dot { background: var(--status-error); }
+
+  .badge-role {
+    background: var(--ink-50);
+    color: var(--ink-600);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+  }
+
+  /* Input */
+  .input-field {
+    width: 100%;
+    height: 36px;
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--ink-900);
+    background: white;
+    transition: all 0.15s ease;
+    outline: none;
+  }
+
+  .input-field:focus {
+    border-color: var(--signal-500);
+    box-shadow: var(--shadow-focus);
+  }
+
+  .input-field::placeholder {
+    color: var(--ink-300);
+  }
+
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+  }
+
+  .input-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-700);
+  }
+
+  /* Avatar */
+  .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .avatar-user { background: var(--ink-100); color: var(--ink-600); }
+  .avatar-agent { background: var(--signal-bg); color: var(--signal-700); border: 1.5px solid var(--signal-300); }
+
+  .avatar-group {
+    display: flex;
+    gap: 0;
+  }
+
+  .avatar-group .avatar {
+    margin-left: -8px;
+    border: 2px solid white;
+  }
+
+  .avatar-group .avatar:first-child { margin-left: 0; }
+
+  /* === LIVE MOCKUPS === */
+  .mockup-section {
+    margin-top: var(--space-16);
+  }
+
+  .mockup-frame {
+    background: var(--surface-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* Sidebar */
+  .app-layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 560px;
+  }
+
+  .sidebar {
+    background: var(--ink-950);
+    padding: var(--space-5);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-2);
+    margin-bottom: var(--space-6);
+  }
+
+  .sidebar-logo-icon {
+    width: 28px;
+    height: 28px;
+    background: var(--signal-500);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  .sidebar-logo-text {
+    font-size: 15px;
+    font-weight: 600;
+    color: white;
+    letter-spacing: -0.01em;
+  }
+
+  .sidebar-logo-text span {
+    font-weight: 400;
+    color: var(--ink-400);
+  }
+
+  .sidebar-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-500);
+    padding: var(--space-3) var(--space-3) var(--space-2);
+  }
+
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    color: var(--ink-300);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .sidebar-item:hover { background: var(--ink-800); color: white; }
+
+  .sidebar-item.active {
+    background: var(--ink-800);
+    color: white;
+  }
+
+  .sidebar-item-icon {
+    width: 18px;
+    height: 18px;
+    opacity: 0.6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  .sidebar-item.active .sidebar-item-icon { opacity: 1; }
+
+  .sidebar-badge {
+    margin-left: auto;
+    background: var(--signal-500);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 100px;
+  }
+
+  .sidebar-spacer { flex: 1; }
+
+  .sidebar-team {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--ink-700);
+    margin-top: var(--space-3);
+    cursor: pointer;
+  }
+
+  .sidebar-team:hover { border-color: var(--ink-600); }
+
+  .sidebar-team-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    background: var(--ink-700);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-200);
+  }
+
+  .sidebar-team-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sidebar-team-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sidebar-team-role {
+    font-size: 11px;
+    color: var(--ink-500);
+  }
+
+  .sidebar-chevron {
+    color: var(--ink-500);
+    font-size: 12px;
+  }
+
+  /* Main content */
+  .main-content {
+    background: white;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .main-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-5) var(--space-8);
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .main-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--ink-900);
+    letter-spacing: -0.01em;
+  }
+
+  .main-body {
+    padding: var(--space-6) var(--space-8);
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  /* Task list */
+  .task-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .task-item {
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    gap: var(--space-4);
+    align-items: center;
+    padding: var(--space-4) var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+    cursor: pointer;
+    transition: background 0.1s ease;
+  }
+
+  .task-item:hover { background: var(--ink-25); }
+
+  .task-item.unread .task-subject { font-weight: 600; color: var(--ink-950); }
+
+  .task-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .task-top-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .task-sender {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-600);
+  }
+
+  .task-arrow {
+    font-size: 11px;
+    color: var(--ink-300);
+  }
+
+  .task-recipients {
+    font-size: 13px;
+    color: var(--ink-400);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .task-subject {
+    font-size: 14px;
+    color: var(--ink-800);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .task-preview {
+    font-size: 13px;
+    color: var(--ink-400);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .task-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-1);
+  }
+
+  .task-time {
+    font-size: 12px;
+    color: var(--ink-400);
+  }
+
+  /* Agent grid */
+  .agent-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-4);
+  }
+
+  .agent-card {
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    transition: all 0.15s ease;
+  }
+
+  .agent-card:hover {
+    border-color: var(--ink-200);
+    box-shadow: var(--shadow-md);
+  }
+
+  .agent-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+
+  .agent-avatar-lg {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    background: var(--signal-bg);
+    border: 1.5px solid var(--signal-300);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+
+  .agent-card-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink-900);
+  }
+
+  .agent-card-desc {
+    font-size: 13px;
+    color: var(--ink-400);
+  }
+
+  .agent-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .agent-card-meta {
+    font-size: 12px;
+    color: var(--ink-400);
+  }
+
+  /* Compose */
+  .compose-field {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .compose-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-400);
+    width: 40px;
+  }
+
+  .compose-tags {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    flex: 1;
+  }
+
+  .compose-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 2px 8px 2px 3px;
+    border-radius: 100px;
+    font-size: 13px;
+    background: var(--ink-50);
+    color: var(--ink-700);
+  }
+
+  .compose-tag .avatar { width: 22px; height: 22px; font-size: 10px; }
+
+  .compose-tag-remove {
+    font-size: 14px;
+    color: var(--ink-400);
+    cursor: pointer;
+    margin-left: 2px;
+  }
+
+  .compose-body-area {
+    min-height: 160px;
+    padding: var(--space-4) 0;
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--ink-700);
+    line-height: 1.6;
+    border: none;
+    outline: none;
+    width: 100%;
+    resize: none;
+  }
+
+  .compose-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: var(--space-4) 0;
+    border-top: 1px solid var(--border-subtle);
+    gap: var(--space-3);
+  }
+
+  /* Thread */
+  .thread-message {
+    padding: var(--space-5) 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .thread-message:last-child { border-bottom: none; }
+
+  .thread-msg-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+  }
+
+  .thread-msg-sender {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink-900);
+  }
+
+  .thread-msg-time {
+    font-size: 12px;
+    color: var(--ink-400);
+  }
+
+  .thread-msg-body {
+    font-size: 14px;
+    color: var(--ink-700);
+    line-height: 1.65;
+    padding-left: 44px;
+  }
+
+  .thread-code-block {
+    background: var(--ink-950);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    margin-top: var(--space-3);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--signal-400);
+    line-height: 1.6;
+    overflow-x: auto;
+  }
+
+  .thread-code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+  }
+
+  .thread-code-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-400);
+  }
+
+  /* Tab bar */
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-default);
+    padding: 0 var(--space-8);
+  }
+
+  .tab-item {
+    padding: var(--space-3) var(--space-4);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-400);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.12s ease;
+    margin-bottom: -1px;
+  }
+
+  .tab-item:hover { color: var(--ink-700); }
+  .tab-item.active { color: var(--ink-900); border-bottom-color: var(--ink-950); }
+
+  /* Mockup tabs */
+  .mockup-tabs {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-6);
+  }
+
+  .mockup-tab {
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-500);
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: all 0.12s ease;
+  }
+
+  .mockup-tab:hover { color: var(--ink-700); background: var(--ink-50); }
+  .mockup-tab.active { color: var(--ink-900); background: white; border-color: var(--border-default); box-shadow: var(--shadow-sm); }
+
+  .mockup-panel { display: none; }
+  .mockup-panel.active { display: block; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .component-grid { grid-template-columns: 1fr; }
+    .logo-showcase { flex-direction: column; }
+    .app-layout { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .agent-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="guide-container">
+
+  <!-- Header -->
+  <div class="guide-header">
+    <h1>TaskSquad.ai</h1>
+    <p>Brand & UI Style Guide — A clean, professional design system for developer-first team orchestration.</p>
+  </div>
+
+  <!-- 1. Logo -->
+  <div class="section">
+    <div class="section-title">1 — Logo</div>
+    <p class="section-desc">The mark pairs a compact icon (rounded square with "T") with the wordmark. "Task" is bold, ".ai" is muted. The green icon variant is used on dark surfaces.</p>
+    <div class="logo-showcase">
+      <div class="logo-card light">
+        <div class="logo-mark">
+          <div class="logo-icon light-ver">T</div>
+          <div class="logo-text">TaskSquad<span>.ai</span></div>
+        </div>
+        <div class="logo-label">Light background</div>
+      </div>
+      <div class="logo-card dark">
+        <div class="logo-mark">
+          <div class="logo-icon dark-ver">T</div>
+          <div class="logo-text dark-text">TaskSquad<span>.ai</span></div>
+        </div>
+        <div class="logo-label" style="color: var(--ink-500);">Dark background</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Color Palette -->
+  <div class="section">
+    <div class="section-title">2 — Color Palette</div>
+    <p class="section-desc">Ink neutrals for structure, Signal green for agent activity and success states, Amber for attention and CTAs. The palette is restrained — color is used to communicate, not decorate.</p>
+    <div class="color-grid">
+      <div class="color-group-title">Ink — Neutrals</div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--ink-950)"></div><div class="color-swatch-info"><div class="color-swatch-name">Ink 950</div><div class="color-swatch-value">#0a0c10</div></div></div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--ink-700)"></div><div class="color-swatch-info"><div class="color-swatch-name">Ink 700</div><div class="color-swatch-value">#252830</div></div></div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--ink-400)"></div><div class="color-swatch-info"><div class="color-swatch-name">Ink 400</div><div class="color-swatch-value">#6b7080</div></div></div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--ink-100)"></div><div class="color-swatch-info"><div class="color-swatch-name">Ink 100</div><div class="color-swatch-value">#e4e6ec</div></div></div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--ink-50)"></div><div class="color-swatch-info"><div class="color-swatch-name">Ink 50</div><div class="color-swatch-value">#f3f4f7</div></div></div>
+
+      <div class="color-group-title">Signal — Agent & Success</div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--signal-500)"></div><div class="color-swatch-info"><div class="color-swatch-name">Signal 500</div><div class="color-swatch-value">#22c55e</div></div></div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--signal-700)"></div><div class="color-swatch-info"><div class="color-swatch-name">Signal 700</div><div class="color-swatch-value">#15803d</div></div></div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--signal-bg)"></div><div class="color-swatch-info"><div class="color-swatch-name">Signal BG</div><div class="color-swatch-value">#f0fdf4</div></div></div>
+
+      <div class="color-group-title">Accent — CTAs & Alerts</div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--accent-500)"></div><div class="color-swatch-info"><div class="color-swatch-name">Accent 500</div><div class="color-swatch-value">#f59e0b</div></div></div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--accent-bg)"></div><div class="color-swatch-info"><div class="color-swatch-name">Accent BG</div><div class="color-swatch-value">#fffbeb</div></div></div>
+
+      <div class="color-group-title">Status</div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--status-active)"></div><div class="color-swatch-info"><div class="color-swatch-name">Active</div><div class="color-swatch-value">#22c55e</div></div></div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--status-progress)"></div><div class="color-swatch-info"><div class="color-swatch-name">In Progress</div><div class="color-swatch-value">#3b82f6</div></div></div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--status-pending)"></div><div class="color-swatch-info"><div class="color-swatch-name">Pending</div><div class="color-swatch-value">#f59e0b</div></div></div>
+      <div class="color-swatch"><div class="color-swatch-block" style="background: var(--status-error)"></div><div class="color-swatch-info"><div class="color-swatch-name">Error</div><div class="color-swatch-value">#ef4444</div></div></div>
+    </div>
+  </div>
+
+  <!-- 3. Typography -->
+  <div class="section">
+    <div class="section-title">3 — Typography</div>
+    <p class="section-desc">DM Sans for UI and body text — geometric, clean, excellent at small sizes. JetBrains Mono for code, terminal output, and technical data.</p>
+    <div class="type-specimen">
+      <div class="type-row"><div class="type-label">Heading 1<br>32px / 700</div><div class="type-sample type-h1">Task Inbox</div></div>
+      <div class="type-row"><div class="type-label">Heading 2<br>24px / 600</div><div class="type-sample type-h2">Agent Management</div></div>
+      <div class="type-row"><div class="type-label">Heading 3<br>18px / 600</div><div class="type-sample type-h3">Deploy the API refactor to staging</div></div>
+      <div class="type-row"><div class="type-label">Body<br>15px / 400</div><div class="type-sample type-body">The agent picked up the task at 2:34pm and completed execution in 47 seconds. Output has been appended to the thread.</div></div>
+      <div class="type-row"><div class="type-label">Small<br>13px / 400</div><div class="type-sample type-small">Last seen 2 minutes ago · 14 tasks completed</div></div>
+      <div class="type-row"><div class="type-label">Monospace<br>14px / 400</div><div class="type-sample type-mono">claude-code --task "refactor auth module"</div></div>
+    </div>
+  </div>
+
+  <!-- 4. Components -->
+  <div class="section">
+    <div class="section-title">4 — Core Components</div>
+    <div class="component-grid">
+
+      <div class="component-card">
+        <h3>Buttons</h3>
+        <div class="btn-row" style="margin-bottom: 16px;">
+          <button class="btn btn-primary">Send Task</button>
+          <button class="btn btn-signal">Create Agent</button>
+          <button class="btn btn-secondary">Cancel</button>
+          <button class="btn btn-ghost">View All</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm">Copy Token</button>
+          <button class="btn btn-secondary btn-sm">Edit</button>
+          <button class="btn btn-ghost btn-sm">Remove</button>
+        </div>
+      </div>
+
+      <div class="component-card">
+        <h3>Status Badges</h3>
+        <div class="btn-row" style="margin-bottom: 16px;">
+          <span class="badge badge-active"><span class="badge-dot"></span>Active</span>
+          <span class="badge badge-inactive"><span class="badge-dot"></span>Inactive</span>
+          <span class="badge badge-pending"><span class="badge-dot"></span>Pending</span>
+          <span class="badge badge-progress"><span class="badge-dot"></span>In Progress</span>
+          <span class="badge badge-error"><span class="badge-dot"></span>Failed</span>
+        </div>
+        <div class="btn-row">
+          <span class="badge badge-role">Owner</span>
+          <span class="badge badge-role">Maintainer</span>
+          <span class="badge badge-role">Member</span>
+        </div>
+      </div>
+
+      <div class="component-card">
+        <h3>Form Inputs</h3>
+        <div class="input-group">
+          <label class="input-label">Team Name</label>
+          <input class="input-field" type="text" placeholder="e.g. Backend Infra" />
+        </div>
+        <div class="input-group">
+          <label class="input-label">Invite by Email</label>
+          <div style="display: flex; gap: 8px;">
+            <input class="input-field" type="email" placeholder="colleague@company.com" />
+            <button class="btn btn-primary">Invite</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="component-card">
+        <h3>Avatars</h3>
+        <div style="display: flex; align-items: center; gap: 24px;">
+          <div style="text-align: center;">
+            <div class="avatar avatar-user" style="margin: 0 auto 8px;">IG</div>
+            <div style="font-size: 12px; color: var(--ink-400);">User</div>
+          </div>
+          <div style="text-align: center;">
+            <div class="avatar avatar-agent" style="margin: 0 auto 8px;">⚡</div>
+            <div style="font-size: 12px; color: var(--ink-400);">Agent</div>
+          </div>
+          <div style="text-align: center;">
+            <div class="avatar-group" style="justify-content: center;">
+              <div class="avatar avatar-user">IG</div>
+              <div class="avatar avatar-agent">⚡</div>
+              <div class="avatar avatar-user">AK</div>
+            </div>
+            <div style="font-size: 12px; color: var(--ink-400); margin-top: 8px;">Group</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 5. Live Mockups -->
+  <div class="section mockup-section">
+    <div class="section-title">5 — Application Screens</div>
+    <p class="section-desc">Interactive mockups showing the core views. Click tabs to switch between screens.</p>
+
+    <div class="mockup-tabs">
+      <div class="mockup-tab active" onclick="showMockup('inbox')">Task Inbox</div>
+      <div class="mockup-tab" onclick="showMockup('agents')">Agents</div>
+      <div class="mockup-tab" onclick="showMockup('compose')">Compose</div>
+      <div class="mockup-tab" onclick="showMockup('thread')">Thread</div>
+    </div>
+
+    <!-- INBOX -->
+    <div class="mockup-panel active" id="mockup-inbox">
+      <div class="mockup-frame">
+        <div class="app-layout">
+          <div class="sidebar">
+            <div class="sidebar-logo">
+              <div class="sidebar-logo-icon">T</div>
+              <div class="sidebar-logo-text">TaskSquad<span>.ai</span></div>
+            </div>
+            <div class="sidebar-section-label">Navigation</div>
+            <div class="sidebar-item active">
+              <div class="sidebar-item-icon">📥</div>
+              Inbox
+              <span class="sidebar-badge">3</span>
+            </div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">🤖</div>
+              Agents
+            </div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">👥</div>
+              Members
+            </div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">⚙️</div>
+              Settings
+            </div>
+            <div class="sidebar-spacer"></div>
+            <div class="sidebar-team">
+              <div class="sidebar-team-avatar">BI</div>
+              <div class="sidebar-team-info">
+                <div class="sidebar-team-name">Backend Infra</div>
+                <div class="sidebar-team-role">Owner</div>
+              </div>
+              <div class="sidebar-chevron">▾</div>
+            </div>
+          </div>
+          <div class="main-content">
+            <div class="main-header">
+              <div class="main-title">Inbox</div>
+              <button class="btn btn-primary">✉ New Task</button>
+            </div>
+            <div class="tab-bar">
+              <div class="tab-item active">All</div>
+              <div class="tab-item">Pending</div>
+              <div class="tab-item">In Progress</div>
+              <div class="tab-item">Completed</div>
+            </div>
+            <div class="main-body">
+              <div class="task-list">
+                <div class="task-item unread">
+                  <div class="avatar avatar-user" style="font-size: 12px;">IG</div>
+                  <div class="task-meta">
+                    <div class="task-top-row">
+                      <span class="task-sender">Igor</span>
+                      <span class="task-arrow">→</span>
+                      <span class="task-recipients">⚡ build-server, ⚡ staging-runner</span>
+                    </div>
+                    <div class="task-subject">Refactor auth middleware to support JWT refresh tokens</div>
+                    <div class="task-preview">The current auth module doesn't handle token refresh. Need to add a refresh endpoint and update the middleware…</div>
+                  </div>
+                  <div class="task-right">
+                    <span class="task-time">2m ago</span>
+                    <span class="badge badge-progress"><span class="badge-dot"></span>In Progress</span>
+                  </div>
+                </div>
+                <div class="task-item unread">
+                  <div class="avatar avatar-agent">⚡</div>
+                  <div class="task-meta">
+                    <div class="task-top-row">
+                      <span class="task-sender">build-server</span>
+                      <span class="task-arrow">→</span>
+                      <span class="task-recipients">Igor</span>
+                    </div>
+                    <div class="task-subject">Re: Run test suite on feature/payments branch</div>
+                    <div class="task-preview">✅ All 247 tests passed. Coverage: 89.3%. No regressions detected. Full output attached…</div>
+                  </div>
+                  <div class="task-right">
+                    <span class="task-time">18m ago</span>
+                    <span class="badge badge-active"><span class="badge-dot"></span>Completed</span>
+                  </div>
+                </div>
+                <div class="task-item">
+                  <div class="avatar avatar-user" style="font-size: 12px;">AK</div>
+                  <div class="task-meta">
+                    <div class="task-top-row">
+                      <span class="task-sender">Alex K</span>
+                      <span class="task-arrow">→</span>
+                      <span class="task-recipients">⚡ data-processor</span>
+                    </div>
+                    <div class="task-subject">Generate monthly analytics report from Postgres</div>
+                    <div class="task-preview">Pull data from analytics_events table for Jan 2025 and generate a summary CSV…</div>
+                  </div>
+                  <div class="task-right">
+                    <span class="task-time">1h ago</span>
+                    <span class="badge badge-pending"><span class="badge-dot"></span>Pending</span>
+                  </div>
+                </div>
+                <div class="task-item">
+                  <div class="avatar avatar-user" style="font-size: 12px;">IG</div>
+                  <div class="task-meta">
+                    <div class="task-top-row">
+                      <span class="task-sender">Igor</span>
+                      <span class="task-arrow">→</span>
+                      <span class="task-recipients">⚡ staging-runner</span>
+                    </div>
+                    <div class="task-subject">Deploy latest main to staging and run smoke tests</div>
+                    <div class="task-preview">Deploy commit abc123f to staging env and verify all health checks pass…</div>
+                  </div>
+                  <div class="task-right">
+                    <span class="task-time">3h ago</span>
+                    <span class="badge badge-active"><span class="badge-dot"></span>Completed</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AGENTS -->
+    <div class="mockup-panel" id="mockup-agents">
+      <div class="mockup-frame">
+        <div class="app-layout">
+          <div class="sidebar">
+            <div class="sidebar-logo">
+              <div class="sidebar-logo-icon">T</div>
+              <div class="sidebar-logo-text">TaskSquad<span>.ai</span></div>
+            </div>
+            <div class="sidebar-section-label">Navigation</div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">📥</div>
+              Inbox
+              <span class="sidebar-badge">3</span>
+            </div>
+            <div class="sidebar-item active">
+              <div class="sidebar-item-icon">🤖</div>
+              Agents
+            </div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">👥</div>
+              Members
+            </div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">⚙️</div>
+              Settings
+            </div>
+            <div class="sidebar-spacer"></div>
+            <div class="sidebar-team">
+              <div class="sidebar-team-avatar">BI</div>
+              <div class="sidebar-team-info">
+                <div class="sidebar-team-name">Backend Infra</div>
+                <div class="sidebar-team-role">Owner</div>
+              </div>
+              <div class="sidebar-chevron">▾</div>
+            </div>
+          </div>
+          <div class="main-content">
+            <div class="main-header">
+              <div class="main-title">Agents</div>
+              <button class="btn btn-signal">+ New Agent</button>
+            </div>
+            <div class="main-body">
+              <div class="agent-grid">
+                <div class="agent-card">
+                  <div class="agent-card-header">
+                    <div class="agent-avatar-lg">⚡</div>
+                    <div>
+                      <div class="agent-card-name">build-server</div>
+                      <div class="agent-card-desc">CI/CD runner — Ubuntu 22.04</div>
+                    </div>
+                  </div>
+                  <div class="agent-card-footer">
+                    <span class="badge badge-active"><span class="badge-dot"></span>Active</span>
+                    <span class="agent-card-meta">Last seen 30s ago · 42 tasks</span>
+                  </div>
+                </div>
+                <div class="agent-card">
+                  <div class="agent-card-header">
+                    <div class="agent-avatar-lg">⚡</div>
+                    <div>
+                      <div class="agent-card-name">staging-runner</div>
+                      <div class="agent-card-desc">Staging deploy agent — Debian 12</div>
+                    </div>
+                  </div>
+                  <div class="agent-card-footer">
+                    <span class="badge badge-active"><span class="badge-dot"></span>Active</span>
+                    <span class="agent-card-meta">Last seen 1m ago · 28 tasks</span>
+                  </div>
+                </div>
+                <div class="agent-card">
+                  <div class="agent-card-header">
+                    <div class="agent-avatar-lg">⚡</div>
+                    <div>
+                      <div class="agent-card-name">data-processor</div>
+                      <div class="agent-card-desc">Analytics & reporting — macOS</div>
+                    </div>
+                  </div>
+                  <div class="agent-card-footer">
+                    <span class="badge badge-inactive"><span class="badge-dot"></span>Inactive</span>
+                    <span class="agent-card-meta">Last seen 2 days ago · 7 tasks</span>
+                  </div>
+                </div>
+                <div class="agent-card" style="border-style: dashed; display: flex; align-items: center; justify-content: center; min-height: 140px; cursor: pointer;">
+                  <div style="text-align: center; color: var(--ink-400);">
+                    <div style="font-size: 24px; margin-bottom: 8px;">+</div>
+                    <div style="font-size: 14px; font-weight: 500;">Add Agent</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMPOSE -->
+    <div class="mockup-panel" id="mockup-compose">
+      <div class="mockup-frame">
+        <div class="app-layout">
+          <div class="sidebar">
+            <div class="sidebar-logo">
+              <div class="sidebar-logo-icon">T</div>
+              <div class="sidebar-logo-text">TaskSquad<span>.ai</span></div>
+            </div>
+            <div class="sidebar-section-label">Navigation</div>
+            <div class="sidebar-item active">
+              <div class="sidebar-item-icon">📥</div>
+              Inbox
+            </div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">🤖</div>
+              Agents
+            </div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">👥</div>
+              Members
+            </div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">⚙️</div>
+              Settings
+            </div>
+            <div class="sidebar-spacer"></div>
+            <div class="sidebar-team">
+              <div class="sidebar-team-avatar">BI</div>
+              <div class="sidebar-team-info">
+                <div class="sidebar-team-name">Backend Infra</div>
+                <div class="sidebar-team-role">Owner</div>
+              </div>
+              <div class="sidebar-chevron">▾</div>
+            </div>
+          </div>
+          <div class="main-content">
+            <div class="main-header">
+              <div class="main-title">New Task</div>
+              <button class="btn btn-ghost">Discard</button>
+            </div>
+            <div class="main-body">
+              <div class="compose-field">
+                <div class="compose-label">To</div>
+                <div class="compose-tags">
+                  <div class="compose-tag"><div class="avatar avatar-agent" style="width:22px;height:22px;font-size:10px;">⚡</div>build-server <span class="compose-tag-remove">×</span></div>
+                  <input class="input-field" style="border: none; height: 28px; flex: 1; min-width: 100px; box-shadow: none;" placeholder="Add recipient…" />
+                </div>
+              </div>
+              <div class="compose-field">
+                <div class="compose-label">CC</div>
+                <div class="compose-tags">
+                  <div class="compose-tag"><div class="avatar avatar-user" style="width:22px;height:22px;font-size:10px;">AK</div>Alex K <span class="compose-tag-remove">×</span></div>
+                  <input class="input-field" style="border: none; height: 28px; flex: 1; min-width: 100px; box-shadow: none;" placeholder="" />
+                </div>
+              </div>
+              <div class="compose-field">
+                <div class="compose-label">Subj</div>
+                <input class="input-field" style="border: none; box-shadow: none; font-weight: 500;" value="Refactor auth middleware to support JWT refresh tokens" />
+              </div>
+              <textarea class="compose-body-area" placeholder="Describe the task…">The current auth module doesn't handle token refresh properly. Here's what I need:
+
+1. Add a /auth/refresh endpoint that accepts a refresh token
+2. Update the auth middleware to check token expiry and attempt auto-refresh
+3. Add proper error handling for expired refresh tokens (401 with specific error code)
+4. Write tests for the new endpoint and middleware changes
+
+The refresh token should have a 7-day expiry. Use the existing JWT_SECRET env var for signing.</textarea>
+              <div class="compose-toolbar">
+                <button class="btn btn-ghost btn-sm">Attach File</button>
+                <button class="btn btn-primary">Send Task</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THREAD -->
+    <div class="mockup-panel" id="mockup-thread">
+      <div class="mockup-frame">
+        <div class="app-layout">
+          <div class="sidebar">
+            <div class="sidebar-logo">
+              <div class="sidebar-logo-icon">T</div>
+              <div class="sidebar-logo-text">TaskSquad<span>.ai</span></div>
+            </div>
+            <div class="sidebar-section-label">Navigation</div>
+            <div class="sidebar-item active">
+              <div class="sidebar-item-icon">📥</div>
+              Inbox
+            </div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">🤖</div>
+              Agents
+            </div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">👥</div>
+              Members
+            </div>
+            <div class="sidebar-item">
+              <div class="sidebar-item-icon">⚙️</div>
+              Settings
+            </div>
+            <div class="sidebar-spacer"></div>
+            <div class="sidebar-team">
+              <div class="sidebar-team-avatar">BI</div>
+              <div class="sidebar-team-info">
+                <div class="sidebar-team-name">Backend Infra</div>
+                <div class="sidebar-team-role">Owner</div>
+              </div>
+              <div class="sidebar-chevron">▾</div>
+            </div>
+          </div>
+          <div class="main-content">
+            <div class="main-header">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <button class="btn btn-ghost btn-sm">← Back</button>
+                <div class="main-title">Run test suite on feature/payments branch</div>
+              </div>
+              <span class="badge badge-active"><span class="badge-dot"></span>Completed</span>
+            </div>
+            <div class="main-body">
+              <div class="thread-message">
+                <div class="thread-msg-header">
+                  <div class="avatar avatar-user" style="font-size: 12px;">IG</div>
+                  <div>
+                    <span class="thread-msg-sender">Igor</span>
+                    <span class="thread-msg-time">→ ⚡ build-server · Today at 2:30 PM</span>
+                  </div>
+                </div>
+                <div class="thread-msg-body">
+                  Run the full test suite on the feature/payments branch. Make sure to include integration tests. If anything fails, show me the failing test output with stack traces.
+                </div>
+              </div>
+              <div class="thread-message">
+                <div class="thread-msg-header">
+                  <div class="avatar avatar-agent">⚡</div>
+                  <div>
+                    <span class="thread-msg-sender">build-server</span>
+                    <span class="thread-msg-time">· Today at 2:34 PM · Executed in 47s</span>
+                  </div>
+                </div>
+                <div class="thread-msg-body">
+                  Task completed successfully. All tests passed.
+                  <div class="thread-code-block">
+                    <div class="thread-code-header">
+                      <span class="thread-code-label">Terminal Output</span>
+                    </div>
+<span style="color: var(--ink-400);">$</span> git checkout feature/payments
+<span style="color: var(--ink-400);">$</span> npm test -- --coverage
+
+<span style="color: #86efac;">PASS</span>  src/payments/processor.test.ts (23 tests)
+<span style="color: #86efac;">PASS</span>  src/payments/webhook.test.ts (18 tests)
+<span style="color: #86efac;">PASS</span>  src/payments/integration.test.ts (12 tests)
+<span style="color: #86efac;">PASS</span>  src/auth/middleware.test.ts (31 tests)
+... 163 more test suites
+
+<span style="color: #86efac;">Tests:</span>       247 passed, 0 failed
+<span style="color: #86efac;">Coverage:</span>    89.3% statements, 84.1% branches
+<span style="color: #86efac;">Time:</span>        47.2s
+                  </div>
+                </div>
+              </div>
+              <div class="thread-message">
+                <div class="thread-msg-header">
+                  <div class="avatar avatar-user" style="font-size: 12px;">IG</div>
+                  <div>
+                    <span class="thread-msg-sender">Igor</span>
+                    <span class="thread-msg-time">· Today at 2:36 PM</span>
+                  </div>
+                </div>
+                <div class="thread-msg-body">
+                  Great, all green. Now bump the version to 2.4.0 in package.json and create a git tag.
+                </div>
+              </div>
+              <div style="padding: var(--space-5) 0; border-top: 1px solid var(--border-subtle);">
+                <div style="display: flex; gap: 12px; align-items: flex-start;">
+                  <div class="avatar avatar-user" style="font-size: 12px; margin-top: 4px;">IG</div>
+                  <div style="flex: 1;">
+                    <textarea class="compose-body-area" style="min-height: 60px; border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 12px;" placeholder="Write a reply…"></textarea>
+                    <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+                      <button class="btn btn-primary btn-sm">Reply</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 6. Design Principles -->
+  <div class="section">
+    <div class="section-title">6 — Design Principles</div>
+    <div class="component-grid">
+      <div class="component-card">
+        <h3>Terminal-grade clarity</h3>
+        <p style="font-size: 14px; color: var(--ink-600); line-height: 1.65;">Every element earns its space. No decoration for decoration's sake. Agent output is shown in dark code blocks that feel native to developers. Status is communicated through color-coded badges, not verbose labels.</p>
+      </div>
+      <div class="component-card">
+        <h3>Email metaphor, dev execution</h3>
+        <p style="font-size: 14px; color: var(--ink-600); line-height: 1.65;">The compose → send → thread flow feels familiar like email, but recipients can be machines. To/CC semantics apply to both humans and agents. The inbox is the single source of truth for all team activity.</p>
+      </div>
+      <div class="component-card">
+        <h3>Agents are first-class citizens</h3>
+        <p style="font-size: 14px; color: var(--ink-600); line-height: 1.65;">Agents get their own avatar style (bordered + icon), status indicators, and identity in threads. They're visually distinct from users but treated as equals in conversation. Active/inactive state is always visible.</p>
+      </div>
+      <div class="component-card">
+        <h3>Dark sidebar, light workspace</h3>
+        <p style="font-size: 14px; color: var(--ink-600); line-height: 1.65;">Navigation lives in a dark sidebar that anchors the interface. The main workspace is white and spacious for reading. Code output uses the same dark palette as the sidebar, creating visual consistency.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function showMockup(id) {
+  document.querySelectorAll('.mockup-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.mockup-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('mockup-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
