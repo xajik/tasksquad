@@ -12,8 +12,8 @@ import (
 
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/config"
-	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/provider"
 )
 
 type Mode string
@@ -26,6 +26,7 @@ const (
 
 type Agent struct {
 	Config config.AgentConfig
+	prov   provider.Provider
 
 	mu          sync.Mutex
 	mode        Mode
@@ -38,10 +39,17 @@ type Agent struct {
 }
 
 func New(cfg config.AgentConfig) *Agent {
-	return &Agent{Config: cfg, mode: ModeIdle}
+	return &Agent{
+		Config: cfg,
+		mode:   ModeIdle,
+		prov:   provider.Detect(cfg.Command, cfg.Provider),
+	}
 }
 
-// GetMode implements the hooks.Agent interface.
+// Name implements the ui.AgentStatus interface.
+func (a *Agent) Name() string { return a.Config.Name }
+
+// GetMode implements the hooks.Agent and ui.AgentStatus interfaces.
 func (a *Agent) GetMode() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -50,6 +58,8 @@ func (a *Agent) GetMode() string {
 
 // Run is the main poll loop for this agent.
 func (a *Agent) Run(cfg *config.Config) {
+	logger.Info(fmt.Sprintf("[%s] Starting — provider: %s, command: %s", a.Config.Name, a.prov.Name(), a.Config.Command))
+
 	ticker := time.NewTicker(time.Duration(cfg.Server.PollInterval) * time.Second)
 	defer ticker.Stop()
 
@@ -82,7 +92,7 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 		return
 	}
 
-	// Resolve agentID from first heartbeat response
+	// Resolve agentID from first heartbeat response.
 	if id, ok := resp["agent_id"].(string); ok && id != "" {
 		a.mu.Lock()
 		if a.agentID == "" {
@@ -120,7 +130,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 
 	logger.Info(fmt.Sprintf("[%s] Starting task %s: \"%s\"", a.Config.Name, taskID, subject))
 
-	// Open session
+	// Open session on the server.
 	sessResp, err := a.post(cfg, "/daemon/session/open", map[string]any{
 		"task_id": taskID,
 	})
@@ -137,10 +147,12 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.sessionID = sessionID
 	a.mu.Unlock()
 
-	// Write claude-code hooks into the work directory so the CLI notifies us
-	hooks.WriteHooks(a.Config.WorkDir, cfg.Hooks.Port)
+	// Let the provider write any hook/config files it needs (e.g. .claude/settings.json).
+	if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Provider setup warning: %v", a.Config.Name, err))
+	}
 
-	// Build prompt
+	// Build prompt.
 	prompt := subject
 	if body != "" && body != subject {
 		prompt = fmt.Sprintf("%s\n\n%s", subject, body)
@@ -151,7 +163,14 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	args := append(parts[1:], "-p", prompt)
 	cmd := exec.Command(parts[0], args...)
 	cmd.Dir = a.Config.WorkDir
-	cmd.Env = os.Environ()
+
+	// Merge provider env vars into the process environment.
+	provEnv := a.prov.Env(cfg.Hooks.Port)
+	if len(provEnv) > 0 {
+		cmd.Env = append(os.Environ(), provEnv...)
+	} else {
+		cmd.Env = os.Environ()
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -176,20 +195,22 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	agentID := a.agentID
 	a.mu.Unlock()
 
-	// Drain stderr silently
+	// Drain stderr silently.
 	go io.Copy(io.Discard, stderr)
 
-	// Stream stdout lines to server
+	// Stream stdout lines to the server.
 	go a.streamOutput(cfg, agentID, stdout)
 
-	// Wait for process exit
+	// Wait for process exit.
+	// For hook-based providers the hook usually fires first; the completing
+	// guard makes the process-exit path a safe no-op in that case.
 	code := 0
 	if err := cmd.Wait(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			code = exitErr.ExitCode()
 		}
 	}
-	logger.Info(fmt.Sprintf("[%s] Process exited with code %d", a.Config.Name, code))
+	logger.Info(fmt.Sprintf("[%s] Process exited (code %d)", a.Config.Name, code))
 
 	status := "closed"
 	if code != 0 {
@@ -229,7 +250,8 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 	flush()
 }
 
-// complete finalizes the current task. Safe to call multiple times (guarded by completing flag).
+// complete finalises the current task. Safe to call from both the hook handler
+// and the process-exit path — the completing flag prevents double execution.
 func (a *Agent) complete(cfg *config.Config, status string) {
 	a.mu.Lock()
 	if a.completing || a.sessionID == "" {
@@ -259,7 +281,7 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 		logger.Error(fmt.Sprintf("[%s] Session close error: %v", a.Config.Name, err))
 	}
 
-	// Push done/waiting_input SSE event to portal viewers
+	// Push SSE "done" / "waiting_input" event to any portal viewers.
 	if agentID != "" {
 		sseType := "done"
 		if status == "waiting_input" {
@@ -271,7 +293,7 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 		})
 	}
 
-	// Upload full log to R2 if server returned a presigned URL
+	// Upload full log to R2 when the server provides a presigned URL.
 	if closeResp != nil {
 		if uploadURL, ok := closeResp["upload_url"].(string); ok && uploadURL != "" {
 			data := []byte(all)
@@ -296,7 +318,7 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	a.mu.Unlock()
 }
 
-// Complete is called by the hook server when Claude Code emits a Stop event.
+// Complete is called by the hook server when the provider emits a Stop event.
 func (a *Agent) Complete(cfg *config.Config) {
 	a.mu.Lock()
 	mode := a.mode
@@ -318,11 +340,11 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string) {
 		return
 	}
 
-	// Notify SSE clients that Claude is paused
+	// Notify SSE clients that the agent is paused waiting for user input.
 	if agentID != "" {
 		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
 			"type":  "line",
-			"lines": []string{"\n[Claude is waiting for your input]\n" + message},
+			"lines": []string{"\n[Waiting for your input]\n" + message},
 		})
 	}
 

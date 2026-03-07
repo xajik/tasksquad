@@ -17,10 +17,18 @@ type Agent interface {
 	GetMode() string
 }
 
-// StartHookServer starts an HTTP server that receives Claude Code hook events
-// (Stop and Notification) and dispatches them to the appropriate agent.
+// StartHookServer starts a local HTTP server that receives lifecycle events from
+// CLI providers and dispatches them to the appropriate agent.
+//
+// Registered endpoints:
+//
+//	POST /hooks/stop         — claude-code Stop hook (task finished)
+//	POST /hooks/notification — claude-code Notification hook (waiting for input)
+//	POST /hooks/codex        — TODO: codex completion event (see provider/codex.go)
 func StartHookServer(cfg *config.Config, agents []Agent) {
 	mux := http.NewServeMux()
+
+	// ── claude-code: Stop ──────────────────────────────────────────────────────
 	mux.HandleFunc("/hooks/stop", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		var payload struct {
@@ -38,9 +46,10 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			}
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		w.Write([]byte("ok")) //nolint:errcheck
 	})
 
+	// ── claude-code: Notification (waiting for input) ──────────────────────────
 	mux.HandleFunc("/hooks/notification", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		var payload struct {
@@ -50,7 +59,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 
 		msg := payload.Message
 		if msg == "" {
-			msg = "Claude is waiting for your input"
+			msg = "Waiting for your input"
 		}
 		logger.Info(fmt.Sprintf("[hooks] Notification received: %s", msg))
 
@@ -61,7 +70,17 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			}
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		w.Write([]byte("ok")) //nolint:errcheck
+	})
+
+	// ── codex: TODO ────────────────────────────────────────────────────────────
+	// TODO: Map codex event payload to Complete() / SetWaitingInput() once
+	// CODEX_HOOKS_SERVER_URL support is confirmed. See provider/codex.go.
+	mux.HandleFunc("/hooks/codex", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		logger.Warn(fmt.Sprintf("[hooks] Codex hook received but not yet implemented: %s", body))
+		w.WriteHeader(http.StatusNotImplemented)
+		w.Write([]byte("codex hooks not yet implemented")) //nolint:errcheck
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Hooks.Port)

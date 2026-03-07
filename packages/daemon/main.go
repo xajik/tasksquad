@@ -13,6 +13,8 @@ import (
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/provider"
+	"github.com/tasksquad/daemon/ui"
 )
 
 const version = "0.1.0"
@@ -47,29 +49,36 @@ func main() {
 		cfg.Server.URL = *apiURL
 	}
 
-	logger.Info("TaskSquad daemon starting")
+	logger.Info("TaskSquad daemon starting — tsq " + version)
 	logger.Info(fmt.Sprintf("API: %s", cfg.Server.URL))
 	logger.Info(fmt.Sprintf("Poll interval: %ds", cfg.Server.PollInterval))
+	logger.Info(fmt.Sprintf("Hooks port: %d", cfg.Hooks.Port))
 
-	// Build agents
+	// Build agents and collect ui.AgentStatus handles.
 	agentList := make([]hooks.Agent, 0, len(cfg.Agents))
+	uiAgents := make([]ui.AgentStatus, 0, len(cfg.Agents))
+
 	for _, ac := range cfg.Agents {
+		p := provider.Detect(ac.Command, ac.Provider)
+		logger.Info(fmt.Sprintf("  - %s (command: %s, provider: %s)", ac.Name, ac.Command, p.Name()))
 		a := agent.New(ac)
 		agentList = append(agentList, a)
-		logger.Info(fmt.Sprintf("  - %s (command: %s)", ac.Name, ac.Command))
+		uiAgents = append(uiAgents, a)
 	}
 
-	// Start hook server (receives Claude Code Stop + Notification events)
+	// Start hook server (receives Stop / Notification events from CLI providers).
 	hooks.StartHookServer(cfg, agentList)
 
-	// Start each agent's poll loop
+	// Start each agent's poll loop in its own goroutine.
 	for _, a := range agentList {
 		go a.(*agent.Agent).Run(cfg)
 	}
 
 	logger.Info("Running — waiting for tasks...")
 
-	// Block forever (systray would own this thread in future)
+	// ui.Run blocks on the main thread (required for systray on macOS).
+	// Currently a no-op stub; replace select{} with ui.Run once systray is wired.
+	ui.Run(uiAgents, cfg.Server.URL)
 	select {}
 }
 
@@ -98,6 +107,7 @@ func runInit() {
 	token := read("Agent token (paste from portal)", "")
 	name := read("Agent name", "my-agent")
 	command := read("CLI command", "claude")
+	providerName := provider.Detect(command, "").Name()
 	workDir := read("Work directory", "~/Projects")
 	port := read("Hooks port", "7374")
 
@@ -112,8 +122,9 @@ port = %s
 token = %q
 name = %q
 command = %q
+# provider = %q  # auto-detected from command; uncomment to override
 work_dir = %q
-`, apiURL, port, token, name, command, workDir)
+`, apiURL, port, token, name, command, providerName, workDir)
 
 	home, _ := os.UserHomeDir()
 	dir := filepath.Join(home, ".tasksquad")
@@ -126,18 +137,20 @@ work_dir = %q
 	}
 
 	fmt.Printf("\nConfig written to %s\n", path)
+	fmt.Printf("Detected provider: %s\n", providerName)
 	fmt.Println("Run: tsq")
 
-	// Also print a sample JSON config for reference (matches old TS format)
+	// sample JSON kept as dead variable — useful reference, not printed
 	sample, _ := json.MarshalIndent(map[string]any{
 		"apiUrl":       apiURL,
 		"pollInterval": 30,
 		"hooksPort":    7374,
 		"agents": []map[string]any{{
-			"token":   token,
-			"name":    name,
-			"command": command,
-			"workDir": workDir,
+			"token":    token,
+			"name":     name,
+			"command":  command,
+			"provider": providerName,
+			"workDir":  workDir,
 		}},
 	}, "", "  ")
 	_ = sample

@@ -21,6 +21,10 @@ type AgentConfig struct {
 	Name    string `toml:"name"`
 	Command string `toml:"command"`
 	WorkDir string `toml:"work_dir"`
+	// Provider selects the hook integration for the CLI tool.
+	// Valid values: "claude-code", "opencode", "codex", "stdout".
+	// Auto-detected from the command binary name when empty.
+	Provider string `toml:"provider"`
 }
 
 type HooksConfig struct {
