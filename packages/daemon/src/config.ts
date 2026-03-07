@@ -1,5 +1,6 @@
 import { homedir } from 'os'
 import { join } from 'path'
+import { readFileSync } from 'fs'
 
 export interface AgentConfig {
   token: string    // tsq_... — identifies both agent and team
@@ -24,8 +25,7 @@ export function loadConfig(): Config {
   let fileConfig: Partial<Config & { agents: (Partial<AgentConfig> & { work_dir?: string })[] }> = {}
 
   try {
-    const raw = Bun.file(configPath).textSync()
-    fileConfig = JSON.parse(raw)
+    fileConfig = JSON.parse(readFileSync(configPath, 'utf8'))
   } catch {
     // Fall back to env vars
   }
