@@ -3,28 +3,18 @@ import { json, err } from '../auth.js'
 import type { Env, DaemonContext } from '../types.js'
 
 export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
-  const body = await req.json<{ agent_id?: string; status?: string }>().catch(() => ({} as { agent_id?: string; status?: string }))
-  const { agent_id, status } = body
-  if (!agent_id) return err('agent_id_required', 400)
-
-  // Verify agent belongs to this team
-  const agent = await env.DB
-    .prepare('SELECT id FROM agents WHERE id = ? AND team_id = ?')
-    .bind(agent_id, daemon.teamId)
-    .first<{ id: string }>()
-  if (!agent) return err('agent_not_found', 404)
-
-  const agentStatus = status ?? 'idle'
+  const body = await req.json<{ status?: string }>().catch(() => ({} as { status?: string }))
+  const agentId = daemon.agentId
+  const agentStatus = body.status ?? 'idle'
   const now = Date.now()
 
   await env.DB.batch([
-    env.DB.prepare("UPDATE agents SET status = ?, last_seen = ? WHERE id = ?")
-      .bind(agentStatus, now, agent_id),
+    env.DB.prepare('UPDATE agents SET status = ?, last_seen = ? WHERE id = ?')
+      .bind(agentStatus, now, agentId),
     env.DB.prepare('UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?')
-      .bind(agentStatus === 'idle' ? 'idle' : agentStatus, now, agent_id),
+      .bind(agentStatus, now, agentId),
   ])
 
-  // Check for pending task — return latest user message as body (supports resume flow)
   if (agentStatus === 'idle') {
     const task = await env.DB
       .prepare(`
@@ -35,26 +25,26 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
         ORDER BY t.created_at ASC
         LIMIT 1
       `)
-      .bind(agent_id)
+      .bind(agentId)
       .first<{ id: string; subject: string; body: string }>()
 
     if (task) {
-      return json({ ok: true, task: { id: task.id, subject: task.subject, body: task.body } })
+      return json({ ok: true, agent_id: agentId, task: { id: task.id, subject: task.subject, body: task.body } })
     }
   }
 
-  return json({ ok: true })
+  return json({ ok: true, agent_id: agentId })
 }
 
 export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
-  const body = await req.json<{ task_id?: string; agent_id?: string; tmux_session?: string }>().catch(() => ({} as { task_id?: string; agent_id?: string; tmux_session?: string }))
-  const { task_id, agent_id, tmux_session } = body
-  if (!task_id || !agent_id) return err('missing_fields', 400)
+  const body = await req.json<{ task_id?: string; tmux_session?: string }>().catch(() => ({} as { task_id?: string; tmux_session?: string }))
+  const { task_id, tmux_session } = body
+  const agentId = daemon.agentId
+  if (!task_id) return err('missing_fields', 400)
 
-  // Verify task + agent belong to daemon's team
   const task = await env.DB
     .prepare('SELECT id FROM tasks WHERE id = ? AND team_id = ? AND agent_id = ?')
-    .bind(task_id, daemon.teamId, agent_id)
+    .bind(task_id, daemon.teamId, agentId)
     .first<{ id: string }>()
   if (!task) return err('not_found', 404)
 
@@ -63,13 +53,13 @@ export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon:
 
   await env.DB.batch([
     env.DB.prepare('INSERT INTO sessions (id, task_id, agent_id, status, started_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(sessionId, task_id, agent_id, 'running', now),
+      .bind(sessionId, task_id, agentId, 'running', now),
     env.DB.prepare("UPDATE tasks SET status = 'running', started_at = ? WHERE id = ?")
       .bind(now, task_id),
     env.DB.prepare('UPDATE agent_state SET current_task_id = ?, current_session = ?, mode = ?, tmux_session = ?, updated_at = ? WHERE agent_id = ?')
-      .bind(task_id, sessionId, 'accumulating', tmux_session ?? null, now, agent_id),
+      .bind(task_id, sessionId, 'accumulating', tmux_session ?? null, now, agentId),
     env.DB.prepare('UPDATE agents SET status = ? WHERE id = ?')
-      .bind('running', agent_id),
+      .bind('running', agentId),
     // System message
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(ulid(), task_id, null, 'system', 'Task started.', now),
@@ -78,19 +68,19 @@ export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon:
   return json({ session_id: sessionId }, 201)
 }
 
-export async function sessionClose(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {
+export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const body = await req.json<{
     session_id?: string
-    agent_id?: string
     status?: string
     final_text?: string
-  }>().catch(() => ({} as { session_id?: string; agent_id?: string; status?: string; final_text?: string }))
-  const { session_id, agent_id, status = 'closed', final_text } = body
-  if (!session_id || !agent_id) return err('missing_fields', 400)
+  }>().catch(() => ({} as { session_id?: string; status?: string; final_text?: string }))
+  const { session_id, status = 'closed', final_text } = body
+  const agentId = daemon.agentId
+  if (!session_id) return err('missing_fields', 400)
 
   const session = await env.DB
     .prepare('SELECT task_id FROM sessions WHERE id = ? AND agent_id = ?')
-    .bind(session_id, agent_id)
+    .bind(session_id, agentId)
     .first<{ task_id: string }>()
   if (!session) return err('not_found', 404)
 
@@ -106,10 +96,10 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, _daemo
       .bind(status, now, session_id),
     env.DB.prepare('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?')
       .bind(taskStatus, now, session.task_id),
-    env.DB.prepare("UPDATE agents SET status = ? WHERE id = ?")
-      .bind(agentStatus, agent_id),
+    env.DB.prepare('UPDATE agents SET status = ? WHERE id = ?')
+      .bind(agentStatus, agentId),
     env.DB.prepare('UPDATE agent_state SET current_task_id = ?, current_session = ?, mode = ?, updated_at = ? WHERE agent_id = ?')
-      .bind(null, null, agentStatus === 'idle' ? 'idle' : 'waiting_input', now, agent_id),
+      .bind(null, null, agentStatus === 'idle' ? 'idle' : 'waiting_input', now, agentId),
   ]
 
   if (final_text) {
@@ -137,15 +127,15 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, _daemo
   return json({ ok: true, ...(uploadUrl ? { r2_key: uploadUrl } : {}) })
 }
 
-export async function complete(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {
-  // Simple alias for sessionClose with status=closed
-  const body = await req.json<{ session_id?: string; agent_id?: string; output?: string }>().catch(() => ({} as { session_id?: string; agent_id?: string; output?: string }))
-  const { session_id, agent_id, output } = body
-  if (!session_id || !agent_id) return err('missing_fields', 400)
+export async function complete(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const body = await req.json<{ session_id?: string; output?: string }>().catch(() => ({} as { session_id?: string; output?: string }))
+  const { session_id, output } = body
+  const agentId = daemon.agentId
+  if (!session_id) return err('missing_fields', 400)
 
   const session = await env.DB
     .prepare('SELECT task_id FROM sessions WHERE id = ? AND agent_id = ?')
-    .bind(session_id, agent_id)
+    .bind(session_id, agentId)
     .first<{ task_id: string }>()
   if (!session) return err('not_found', 404)
 
@@ -153,8 +143,8 @@ export async function complete(req: Request, env: Env, _ctx: unknown, _daemon: D
   await env.DB.batch([
     env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE id = ?").bind(now, session_id),
     env.DB.prepare("UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?").bind(now, session.task_id),
-    env.DB.prepare("UPDATE agents SET status = 'idle' WHERE id = ?").bind(agent_id),
-    env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agent_id),
+    env.DB.prepare("UPDATE agents SET status = 'idle' WHERE id = ?").bind(agentId),
+    env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
     ...(output ? [env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(ulid(), session.task_id, null, 'agent', output, now)] : []),
   ])

@@ -16,5 +16,6 @@ export interface AuthContext {
 
 export interface DaemonContext {
   teamId: string
+  agentId: string
   tokenId: string
 }

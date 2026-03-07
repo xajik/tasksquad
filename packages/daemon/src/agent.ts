@@ -16,6 +16,7 @@ export class Agent {
   mode: Mode = 'idle'
   taskId: string | null = null
   sessionId: string | null = null
+  agentId: string | null = null   // resolved from server on first heartbeat
 
   private outputLines: string[] = []
   private isCompleting = false
@@ -25,12 +26,21 @@ export class Agent {
     this.config = agentConfig
   }
 
+  private post<T = Record<string, unknown>>(cfg: Config, path: string, body: unknown): Promise<T> {
+    return apiPost<T>(cfg, this.config.token, path, body)
+  }
+
   async heartbeat(cfg: Config): Promise<void> {
     try {
-      const res = await apiPost<{ ok: boolean; task?: Task }>(cfg, '/daemon/heartbeat', {
-        agent_id: this.config.id,
+      const res = await this.post<{ ok: boolean; agent_id?: string; task?: Task }>(cfg, '/daemon/heartbeat', {
         status: this.mode,
       })
+
+      // Server returns agent_id so we don't need it in config
+      if (res.agent_id && !this.agentId) {
+        this.agentId = res.agent_id
+        console.log(`[${this.config.name}] Agent ID: ${this.agentId}`)
+      }
 
       if (res.task && this.mode === 'idle') {
         await this.startTask(cfg, res.task)
@@ -47,12 +57,10 @@ export class Agent {
     this.outputLines = []
     this.isCompleting = false
 
-    // Open session on the server
     let sessionId: string
     try {
-      const res = await apiPost<{ session_id: string }>(cfg, '/daemon/session/open', {
+      const res = await this.post<{ session_id: string }>(cfg, '/daemon/session/open', {
         task_id: task.id,
-        agent_id: this.config.id,
       })
       sessionId = res.session_id
       this.sessionId = sessionId
@@ -62,15 +70,12 @@ export class Agent {
       return
     }
 
-    // Write Claude Code hooks into the project's .claude/settings.json
     this.writeHooks(cfg)
 
-    // Build prompt
     const prompt = task.body && task.body !== task.subject
       ? `${task.subject}\n\n${task.body}`
       : task.subject
 
-    // Spawn claude
     const [cmd, ...args] = this.config.command.split(' ')
     const proc = Bun.spawn([cmd, ...args, '-p', prompt], {
       cwd: this.config.workDir,
@@ -80,12 +85,10 @@ export class Agent {
     })
     this.proc = proc
 
-    // Stream stdout to server
     this.streamOutput(cfg, proc).catch(err =>
       console.error(`[${this.config.name}] stream error:`, err)
     )
 
-    // On process exit → complete
     proc.exited.then(code => {
       this.complete(cfg, code === 0 ? 'closed' : 'crashed').catch(err =>
         console.error(`[${this.config.name}] complete error:`, err)
@@ -105,23 +108,17 @@ export class Agent {
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
 
-      if (lines.length > 0) {
+      if (lines.length > 0 && this.agentId) {
         this.outputLines.push(...lines)
-        // Push lines to SSE in the background — don't block streaming
-        apiPost(cfg, `/daemon/push/${this.config.id}`, {
-          type: 'line',
-          lines,
-        }).catch(() => { /* ignore push failures */ })
+        this.post(cfg, `/daemon/push/${this.agentId}`, { type: 'line', lines })
+          .catch(() => {})
       }
     }
 
-    // Flush any remaining buffer
-    if (buffer) {
+    if (buffer && this.agentId) {
       this.outputLines.push(buffer)
-      apiPost(cfg, `/daemon/push/${this.config.id}`, {
-        type: 'line',
-        lines: [buffer],
-      }).catch(() => {})
+      this.post(cfg, `/daemon/push/${this.agentId}`, { type: 'line', lines: [buffer] })
+        .catch(() => {})
     }
   }
 
@@ -131,14 +128,12 @@ export class Agent {
 
     console.log(`[${this.config.name}] Completing task ${this.taskId} with status=${status}`)
 
-    // Last ~2000 chars of output as final_text
     const fullOutput = this.outputLines.join('\n')
     const finalText = fullOutput.slice(-2000).trim()
 
     try {
-      await apiPost(cfg, '/daemon/session/close', {
+      await this.post(cfg, '/daemon/session/close', {
         session_id: this.sessionId,
-        agent_id: this.config.id,
         status,
         final_text: finalText || undefined,
       })
@@ -146,12 +141,13 @@ export class Agent {
       console.error(`[${this.config.name}] session-close error:`, err)
     }
 
-    // Signal SSE viewers that the session ended
-    const sseType = status === 'waiting_input' ? 'waiting_input' : 'done'
-    apiPost(cfg, `/daemon/push/${this.config.id}`, {
-      type: sseType,
-      lines: [finalText || ''],
-    }).catch(() => {})
+    if (this.agentId) {
+      const sseType = status === 'waiting_input' ? 'waiting_input' : 'done'
+      this.post(cfg, `/daemon/push/${this.agentId}`, {
+        type: sseType,
+        lines: [finalText || ''],
+      }).catch(() => {})
+    }
 
     this.mode = status === 'waiting_input' ? 'waiting_input' : 'idle'
     this.sessionId = null
@@ -161,9 +157,8 @@ export class Agent {
   }
 
   async setWaitingInput(cfg: Config, message: string): Promise<void> {
-    if (this.mode !== 'running') return
-    // Push the notification message as a line first
-    await apiPost(cfg, `/daemon/push/${this.config.id}`, {
+    if (this.mode !== 'running' || !this.agentId) return
+    await this.post(cfg, `/daemon/push/${this.agentId}`, {
       type: 'line',
       lines: [`\n[Claude is waiting for your input]\n${message}`],
     }).catch(() => {})

@@ -279,7 +279,7 @@ function AgentsView({ teamId }: { teamId: string }) {
 
   async function genToken(agentId: string) {
     const label = tokenLabel || 'My Machine'
-    const d = await api.agents.createToken(teamId, label)
+    const d = await api.agents.createToken(teamId, agentId, label)
     setNewToken({ agentId, token: d.token })
   }
 
@@ -294,6 +294,7 @@ function AgentsView({ teamId }: { teamId: string }) {
             <div>
               <div style={{ fontWeight: 500 }}>{a.name}</div>
               <div style={{ color: '#888', fontSize: 12 }}>{a.command} · {a.work_dir}</div>
+              <div style={{ color: '#bbb', fontSize: 11, fontFamily: 'monospace', marginTop: 2 }}>ID: {a.id}</div>
               {a.last_seen && <div style={{ color: '#aaa', fontSize: 11, marginTop: 2 }}>Last seen {relativeTime(a.last_seen)}</div>}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -309,22 +310,40 @@ function AgentsView({ teamId }: { teamId: string }) {
         ))}
       </div>
 
-      {newToken && (
-        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: 16, marginBottom: 24 }}>
-          <strong>Token generated — copy now, shown once:</strong>
-          <div style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 8, wordBreak: 'break-all' }}>{newToken.token}</div>
-          <button onClick={() => { navigator.clipboard.writeText(newToken.token); setNewToken(null) }} style={{ marginTop: 8, padding: '6px 12px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 12 }}>
-            Copy &amp; dismiss
-          </button>
-        </div>
-      )}
+      {newToken && (() => {
+        const snippet = JSON.stringify({
+          apiUrl: 'https://tasksquad-api.xajik0.workers.dev',
+          pollInterval: 10,
+          hooksPort: 7374,
+          agents: [{
+            token: newToken.token,
+            name: 'local-dev',
+            command: 'claude --dangerously-skip-permissions',
+            workDir: '/path/to/your/project',
+          }],
+        }, null, 2)
+        return (
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: 16, marginBottom: 24 }}>
+            <strong>Token generated — copy config now, shown once:</strong>
+            <pre style={{ fontFamily: 'monospace', fontSize: 12, marginTop: 8, whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#fff', border: '1px solid #d1fae5', borderRadius: 6, padding: 12 }}>{snippet}</pre>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button onClick={() => { navigator.clipboard.writeText(snippet); setNewToken(null) }} style={{ padding: '6px 12px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 12 }}>
+                Copy config &amp; dismiss
+              </button>
+              <button onClick={() => setNewToken(null)} style={{ padding: '6px 12px', background: 'none', border: '1px solid #86efac', borderRadius: 5, cursor: 'pointer', fontSize: 12, color: '#15803d' }}>
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       <h3 style={{ marginBottom: 16 }}>Add agent</h3>
       <form onSubmit={createAgent} style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 480 }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. build-server-01)" required style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 14 }} />
         <input value={command} onChange={e => setCommand(e.target.value)} placeholder="Command" required style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 14 }} />
         <input value={workDir} onChange={e => setWorkDir(e.target.value)} placeholder="Work dir" required style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 14 }} />
-        <button type="submit" disabled={creating} style={{ padding: '9px', background: '#111', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', alignSelf: 'flex-start', padding: '9px 20px' }}>
+        <button type="submit" disabled={creating} style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', alignSelf: 'flex-start', padding: '9px 20px' }}>
           {creating ? '…' : 'Create agent'}
         </button>
       </form>
@@ -337,10 +356,21 @@ function SettingsView({ teamId, teamName }: { teamId: string; teamName: string }
   return (
     <div>
       <h2 style={{ marginBottom: 24 }}>Settings</h2>
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 24, maxWidth: 480 }}>
         <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Team name</div>
-        <div style={{ fontSize: 16, fontWeight: 500 }}>{teamName}</div>
-        <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>ID: {teamId}</div>
+        <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 16 }}>{teamName}</div>
+
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Team ID</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <code style={{ fontFamily: 'monospace', fontSize: 13, background: '#f5f5f5', padding: '6px 10px', borderRadius: 5, flex: 1, wordBreak: 'break-all' }}>{teamId}</code>
+          <button
+            onClick={() => navigator.clipboard.writeText(teamId)}
+            style={{ padding: '6px 10px', background: 'none', border: '1px solid #ddd', borderRadius: 5, cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
+          >
+            Copy
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>Used in daemon config and API calls</div>
       </div>
     </div>
   )

@@ -71,10 +71,19 @@ export async function createToken(req: Request, env: Env, _ctx: unknown, auth: A
 
   if (!(await requireMaintainer(env.DB, teamId, auth.userId))) return err('forbidden', 403)
 
-  const body = await req.json<{ label?: string }>().catch(() => ({} as { label?: string }))
+  const body = await req.json<{ label?: string; agent_id?: string }>().catch(() => ({} as { label?: string; agent_id?: string }))
   const label = body.label?.trim() || 'Unnamed'
+  const agentId = body.agent_id
 
-  // Generate a random 32-byte token prefixed with tsq_
+  // Verify agent belongs to this team (if provided)
+  if (agentId) {
+    const agent = await env.DB
+      .prepare('SELECT id FROM agents WHERE id = ? AND team_id = ?')
+      .bind(agentId, teamId)
+      .first<{ id: string }>()
+    if (!agent) return err('agent_not_found', 404)
+  }
+
   const rawBytes = crypto.getRandomValues(new Uint8Array(32))
   const rawHex = Array.from(rawBytes).map(b => b.toString(16).padStart(2, '0')).join('')
   const rawToken = `tsq_${rawHex}`
@@ -84,8 +93,8 @@ export async function createToken(req: Request, env: Env, _ctx: unknown, auth: A
   const now = Date.now()
 
   await env.DB
-    .prepare('INSERT INTO daemon_tokens (id, team_id, token_hash, label, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(id, teamId, hash, label, now)
+    .prepare('INSERT INTO daemon_tokens (id, team_id, agent_id, token_hash, label, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(id, teamId, agentId ?? null, hash, label, now)
     .run()
 
   return json({ id, token: rawToken, label }, 201)

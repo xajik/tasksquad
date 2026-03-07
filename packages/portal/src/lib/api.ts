@@ -29,10 +29,10 @@ export const api = {
       request<{ agents: Agent[] }>(`/teams/${teamId}/agents`),
     create: (teamId: string, body: { name: string; command: string; work_dir: string }) =>
       request<Agent>(`/teams/${teamId}/agents`, { method: 'POST', body: JSON.stringify(body) }),
-    createToken: (teamId: string, label: string) =>
+    createToken: (teamId: string, agentId: string, label: string) =>
       request<{ id: string; token: string; label: string }>(`/teams/${teamId}/tokens`, {
         method: 'POST',
-        body: JSON.stringify({ label }),
+        body: JSON.stringify({ label, agent_id: agentId }),
       }),
   },
   tasks: {

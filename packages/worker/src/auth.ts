@@ -20,7 +20,7 @@ export async function withFirebaseAuth(
   }
 
   const token = header.slice(7)
-  let decoded: { uid: string; email?: string }
+  let decoded: { uid?: string; sub?: string; email?: string }
 
   try {
     const auth = getAuth(env)
@@ -32,9 +32,14 @@ export async function withFirebaseAuth(
     })
   }
 
+  const firebaseUid = decoded.uid ?? decoded.sub ?? ''
+  if (!firebaseUid) return new Response(JSON.stringify({ error: 'invalid_token' }), {
+    status: 401,
+    headers: { 'Content-Type': 'application/json' },
+  })
   const email = decoded.email ?? ''
-  const userId = await upsertUser(env.DB, decoded.uid, email)
-  return { uid: decoded.uid, email, userId }
+  const userId = await upsertUser(env.DB, firebaseUid, email)
+  return { uid: firebaseUid, email, userId }
 }
 
 async function upsertUser(db: D1Database, firebaseUid: string, email: string): Promise<string> {
@@ -69,9 +74,9 @@ export async function withDaemonAuth(
 
   const hash = await sha256(raw)
   const row = await env.DB
-    .prepare('SELECT id, team_id FROM daemon_tokens WHERE token_hash = ?')
+    .prepare('SELECT id, team_id, agent_id FROM daemon_tokens WHERE token_hash = ?')
     .bind(hash)
-    .first<{ id: string; team_id: string }>()
+    .first<{ id: string; team_id: string; agent_id: string }>()
 
   if (!row) {
     return new Response(JSON.stringify({ error: 'forbidden' }), {
@@ -80,13 +85,12 @@ export async function withDaemonAuth(
     })
   }
 
-  // Update last_used timestamp
   await env.DB
     .prepare('UPDATE daemon_tokens SET last_used = ? WHERE id = ?')
     .bind(Date.now(), row.id)
     .run()
 
-  return { teamId: row.team_id, tokenId: row.id }
+  return { teamId: row.team_id, agentId: row.agent_id, tokenId: row.id }
 }
 
 export async function sha256(text: string): Promise<string> {
@@ -100,10 +104,12 @@ export async function sha256(text: string): Promise<string> {
 export async function verifyTokenString(token: string, env: Env): Promise<AuthContext | null> {
   try {
     const auth = getAuth(env)
-    const decoded = await auth.verifyIdToken(token)
+    const decoded = await auth.verifyIdToken(token) as { uid?: string; sub?: string; email?: string }
+    const firebaseUid = decoded.uid ?? decoded.sub ?? ''
+    if (!firebaseUid) return null
     const email = decoded.email ?? ''
-    const userId = await upsertUser(env.DB, decoded.uid, email)
-    return { uid: decoded.uid, email, userId }
+    const userId = await upsertUser(env.DB, firebaseUid, email)
+    return { uid: firebaseUid, email, userId }
   } catch {
     return null
   }

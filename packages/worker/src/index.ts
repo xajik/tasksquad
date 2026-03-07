@@ -76,7 +76,15 @@ function addCors(res: Response): Response {
 
 export default {
   fetch: async (req: Request, env: Env, ctx: ExecutionContext): Promise<Response> => {
-    const res = await router.fetch(req, env, ctx)
-    return addCors(res)
+    try {
+      const res = await router.fetch(req, env, ctx)
+      return addCors(res)
+    } catch (e) {
+      console.error('Unhandled worker error:', e)
+      return addCors(new Response(JSON.stringify({ error: 'internal_error', detail: String(e) }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+    }
   },
 }
