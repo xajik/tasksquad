@@ -96,6 +96,19 @@ export async function sha256(text: string): Promise<string> {
     .join('')
 }
 
+// Used by SSE routes where EventSource cannot send Authorization header
+export async function verifyTokenString(token: string, env: Env): Promise<AuthContext | null> {
+  try {
+    const auth = getAuth(env)
+    const decoded = await auth.verifyIdToken(token)
+    const email = decoded.email ?? ''
+    const userId = await upsertUser(env.DB, decoded.uid, email)
+    return { uid: decoded.uid, email, userId }
+  } catch {
+    return null
+  }
+}
+
 export function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,

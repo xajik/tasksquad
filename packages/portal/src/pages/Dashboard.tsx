@@ -62,6 +62,7 @@ function Inbox({ teamId }: { teamId: string }) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [showCompose, setShowCompose] = useState(false)
   const [subject, setSubject] = useState('')
+  const [taskBody, setTaskBody] = useState('')
   const [agentId, setAgentId] = useState('')
   const [creating, setCreating] = useState(false)
   const nav = useNavigate()
@@ -78,8 +79,8 @@ function Inbox({ teamId }: { teamId: string }) {
     e.preventDefault()
     setCreating(true)
     try {
-      await api.tasks.create({ agent_id: agentId, subject, team_id: teamId })
-      setShowCompose(false); setSubject(''); setAgentId('')
+      await api.tasks.create({ agent_id: agentId, subject, team_id: teamId, body: taskBody || undefined })
+      setShowCompose(false); setSubject(''); setTaskBody(''); setAgentId('')
       load()
     } finally { setCreating(false) }
   }
@@ -103,6 +104,7 @@ function Inbox({ teamId }: { teamId: string }) {
             {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
           <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" required style={{ display: 'block', width: '100%', marginBottom: 12, padding: 8, borderRadius: 6, border: '1px solid #ddd', boxSizing: 'border-box' }} />
+          <textarea value={taskBody} onChange={e => setTaskBody(e.target.value)} placeholder="Task description (optional — give Claude full context here)" rows={5} style={{ display: 'block', width: '100%', marginBottom: 12, padding: 8, borderRadius: 6, border: '1px solid #ddd', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: 13, resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit" disabled={creating} style={{ padding: '8px 16px', background: '#111', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
               {creating ? '…' : 'Send'}
@@ -146,6 +148,7 @@ function TaskThread() {
   const [sending, setSending] = useState(false)
   const [liveLines, setLiveLines] = useState<string[]>([])
   const [watching, setWatching] = useState(false)
+  const [showLog, setShowLog] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
 
@@ -157,6 +160,7 @@ function TaskThread() {
   }, [taskId])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { if (watching) setShowLog(true) }, [watching])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, liveLines])
 
   async function startLive() {
@@ -167,7 +171,9 @@ function TaskThread() {
     setWatching(true)
     setLiveLines([])
     es.onmessage = (e) => {
+      if (e.data.startsWith(':')) return // SSE comment/ping
       const data = JSON.parse(e.data) as { type: string; text: string }
+      if (data.type === 'connected') return
       if (data.type === 'line') setLiveLines(prev => [...prev, data.text])
       if (data.type === 'backlog') setLiveLines(data.text.split('\n'))
       if (data.type === 'done' || data.type === 'waiting_input') { es.close(); esRef.current = null; setWatching(false); load() }
@@ -210,9 +216,20 @@ function TaskThread() {
         {messages.map(m => (
           <div key={m.id} style={roleStyle(m.role)}>{m.body}</div>
         ))}
-        {watching && liveLines.length > 0 && (
-          <div style={{ background: '#111', color: '#0f0', borderRadius: 8, padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 400, overflow: 'auto' }}>
-            {liveLines.join('\n')}
+        {liveLines.length > 0 && (
+          <div style={{ border: '1px solid #ddd', borderRadius: 8, overflow: 'hidden' }}>
+            <button
+              onClick={() => setShowLog(x => !x)}
+              style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: '#f5f5f5', border: 'none', cursor: 'pointer', fontSize: 12, color: '#555', display: 'flex', justifyContent: 'space-between' }}
+            >
+              <span>Session log ({liveLines.length} lines){watching ? ' · live' : ''}</span>
+              <span>{showLog ? '▲' : '▼'}</span>
+            </button>
+            {showLog && (
+              <div style={{ background: '#111', color: '#0f0', padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 480, overflow: 'auto' }}>
+                {liveLines.join('\n')}
+              </div>
+            )}
           </div>
         )}
         <div ref={bottomRef} />

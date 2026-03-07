@@ -47,8 +47,8 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
 }
 
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
-  const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string }))
-  const { agent_id, subject, team_id } = body
+  const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string }))
+  const { agent_id, subject, team_id, body: taskBody } = body
   if (!agent_id || !subject?.trim() || !team_id) return err('missing_fields', 400)
 
   if (!(await requireMember(env.DB, team_id, auth.userId))) return err('forbidden', 403)
@@ -73,9 +73,9 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   await env.DB.batch([
     env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'pending', now),
-    // Insert initial user message
+    // Insert initial user message — use body if provided, else fall back to subject
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(ulid(), taskId, auth.userId, 'user', subject.trim(), now),
+      .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now),
   ])
 
   return json({ id: taskId, status: 'pending' }, 201)

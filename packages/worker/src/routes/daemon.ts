@@ -24,15 +24,15 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
       .bind(agentStatus === 'idle' ? 'idle' : agentStatus, now, agent_id),
   ])
 
-  // Check for pending task
+  // Check for pending task — return latest user message as body (supports resume flow)
   if (agentStatus === 'idle') {
     const task = await env.DB
       .prepare(`
-        SELECT t.id, t.subject, m.body
+        SELECT t.id, t.subject,
+          (SELECT body FROM messages WHERE task_id = t.id AND role = 'user' ORDER BY created_at DESC LIMIT 1) as body
         FROM tasks t
-        JOIN messages m ON m.task_id = t.id AND m.role = 'user'
         WHERE t.agent_id = ? AND t.status = 'pending'
-        ORDER BY t.created_at ASC, m.created_at ASC
+        ORDER BY t.created_at ASC
         LIMIT 1
       `)
       .bind(agent_id)
@@ -166,12 +166,10 @@ export async function viewers(req: Request, env: Env, _ctx: unknown, _daemon: Da
   const url = new URL(req.url)
   const agentId = url.pathname.split('/')[3]
 
-  const row = await env.DB
-    .prepare('SELECT viewer_count FROM agent_state WHERE agent_id = ?')
-    .bind(agentId)
-    .first<{ viewer_count: number }>()
-
-  return json({ count: row?.viewer_count ?? 0 })
+  // Proxy to the AgentRelay DO which tracks live SSE connections
+  const doId = env.AGENT_RELAY.idFromName(agentId)
+  const stub = env.AGENT_RELAY.get(doId)
+  return stub.fetch(new Request('https://relay/viewers'))
 }
 
 export async function push(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {

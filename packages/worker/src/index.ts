@@ -55,7 +55,7 @@ router.get ('/tasks/:taskId/messages',   firebaseRoute(messages.list))
 router.post('/tasks/:taskId/messages',   firebaseRoute(messages.create))
 router.get ('/tasks/:taskId/logs',       firebaseRoute(tasks.logs))
 
-router.get ('/live/:agentId',            firebaseRoute(live.connect))
+router.get ('/live/:agentId',            (req: IRequest, env: Env) => live.connect(req as Request, env))
 
 // ── Daemon routes (X-TSQ-Token) ───────────────────────────────────────────────
 router.post('/daemon/heartbeat',         daemonRoute(daemon.heartbeat))
