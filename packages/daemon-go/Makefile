@@ -1,0 +1,17 @@
+.PHONY: build install clean build-all
+
+build:
+	go build -o tsq .
+
+build-all:
+	mkdir -p dist
+	GOOS=darwin  GOARCH=arm64 go build -o dist/tsq-darwin-arm64 .
+	GOOS=darwin  GOARCH=amd64 go build -o dist/tsq-darwin-amd64 .
+	GOOS=linux   GOARCH=amd64 go build -o dist/tsq-linux-amd64  .
+
+install: build
+	cp tsq /usr/local/bin/tsq
+
+clean:
+	rm -f tsq
+	rm -rf dist/

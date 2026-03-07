@@ -1,9 +1,13 @@
 # TaskSquad Go Daemon — Implementation Spec
 
 **Source of truth:** `specs/tasksquad-techspec-mvp.md` §7, §8, §9, §10, §11, §13
-**Language:** Go 1.22
+**Language:** Go 1.22+
 **Binary name:** `tsq`
 **Install path:** `/usr/local/bin/tsq`
+
+> **Implementation note (MVP):** tmux is NOT used. The daemon spawns the CLI tool directly via
+> `os/exec` and streams stdout in real-time, matching the behaviour of the TypeScript daemon.
+> Per-agent tokens: each `[[agents]]` entry has its own `token`; no global `server.token` or `server.team_id`.
 
 ---
 

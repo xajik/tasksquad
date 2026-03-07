@@ -1,10 +1,11 @@
 package agent
 
 import (
-	"crypto/sha256"
+	"bufio"
 	"fmt"
+	"io"
 	"os"
-	"path/filepath"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -13,299 +14,317 @@ import (
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
-	"github.com/tasksquad/daemon/stream"
-	"github.com/tasksquad/daemon/tmux"
-	"github.com/tasksquad/daemon/upload"
 )
 
 type Mode string
 
 const (
 	ModeIdle         Mode = "idle"
-	ModeAccumulating Mode = "accumulating"
-	ModeLive         Mode = "live"
+	ModeRunning      Mode = "running"
 	ModeWaitingInput Mode = "waiting_input"
 )
 
 type Agent struct {
-	ID         string
-	Config     config.AgentConfig
-	Mode       Mode
-	TaskID     string
-	SessionID  string
-	LogPath    string
-	startedAt  time.Time
-	stuckSince time.Time
-	prevHash   [32]byte
-	mu         sync.Mutex
-	doneCh     chan struct{}
+	Config config.AgentConfig
+
+	mu          sync.Mutex
+	mode        Mode
+	agentID     string // resolved from server on first heartbeat
+	sessionID   string
+	taskID      string
+	outputLines []string
+	completing  bool
+	proc        *exec.Cmd
 }
 
 func New(cfg config.AgentConfig) *Agent {
-	return &Agent{
-		ID:     cfg.ID,
-		Config: cfg,
-		Mode:   ModeIdle,
-	}
+	return &Agent{Config: cfg, mode: ModeIdle}
 }
 
+// GetMode implements the hooks.Agent interface.
 func (a *Agent) GetMode() string {
-	return string(a.Mode)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return string(a.mode)
 }
 
+// Run is the main poll loop for this agent.
 func (a *Agent) Run(cfg *config.Config) {
 	ticker := time.NewTicker(time.Duration(cfg.Server.PollInterval) * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			logger.Debug(fmt.Sprintf("[%s] Tick — mode=%s", a.Config.Name, a.Mode))
-			a.heartbeat(cfg)
-			a.checkStuck(cfg)
-			a.syncMode(cfg)
-		}
+	// run one heartbeat immediately on start
+	a.heartbeat(cfg)
+
+	for range ticker.C {
+		a.heartbeat(cfg)
 	}
 }
 
-func (a *Agent) heartbeat(cfg *config.Config) {
-	logger.Debug(fmt.Sprintf("[%s] Heartbeat → status=%s", a.Config.Name, a.Mode))
+func (a *Agent) post(cfg *config.Config, path string, body any) (map[string]any, error) {
+	return api.Post(cfg, a.Config.Token, path, body)
+}
 
-	resp, err := api.Post(cfg, "/daemon/heartbeat", map[string]any{
-		"status": string(a.Mode),
+// ── Heartbeat ─────────────────────────────────────────────────────────────────
+
+func (a *Agent) heartbeat(cfg *config.Config) {
+	a.mu.Lock()
+	mode := a.mode
+	a.mu.Unlock()
+
+	logger.Debug(fmt.Sprintf("[%s] Heartbeat → status=%s", a.Config.Name, mode))
+
+	resp, err := a.post(cfg, "/daemon/heartbeat", map[string]any{
+		"status": string(mode),
 	})
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] Heartbeat failed: %v", a.Config.Name, err))
 		return
 	}
 
-	if agentID, ok := resp["agent_id"].(string); ok && a.ID == "" {
-		a.ID = agentID
-		logger.Info(fmt.Sprintf("[%s] Resolved agent ID: %s", a.Config.Name, a.ID))
+	// Resolve agentID from first heartbeat response
+	if id, ok := resp["agent_id"].(string); ok && id != "" {
+		a.mu.Lock()
+		if a.agentID == "" {
+			a.agentID = id
+			logger.Info(fmt.Sprintf("[%s] Resolved agent ID: %s", a.Config.Name, id))
+		}
+		a.mu.Unlock()
 	}
 
-	if task, ok := resp["task"].(map[string]any); ok && a.Mode == ModeIdle {
-		logger.Debug(fmt.Sprintf("[%s] Task received: %s — \"%s\"", a.Config.Name, task["id"], task["subject"]))
-		a.startTask(cfg, task)
+	a.mu.Lock()
+	isIdle := a.mode == ModeIdle
+	a.mu.Unlock()
+
+	if task, ok := resp["task"].(map[string]any); ok && isIdle {
+		logger.Info(fmt.Sprintf("[%s] Task received: %s — \"%s\"", a.Config.Name, task["id"], task["subject"]))
+		go a.startTask(cfg, task)
 	} else {
 		logger.Debug(fmt.Sprintf("[%s] No pending tasks", a.Config.Name))
 	}
-
-	if resume, ok := resp["resume"].(map[string]any); ok && a.Mode == ModeWaitingInput {
-		a.resumeTask(cfg, resume)
-	}
 }
 
-func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+// ── Task lifecycle ─────────────────────────────────────────────────────────────
 
-	taskID := task["id"].(string)
-	subject := task["subject"].(string)
+func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
+	taskID, _ := task["id"].(string)
+	subject, _ := task["subject"].(string)
 	body, _ := task["body"].(string)
 
-	a.TaskID = taskID
-	a.LogPath = filepath.Join(os.TempDir(), fmt.Sprintf("tsq-%s.log", a.Config.ID))
-	a.startedAt = time.Now()
+	a.mu.Lock()
+	a.mode = ModeRunning
+	a.taskID = taskID
+	a.outputLines = nil
+	a.completing = false
+	a.mu.Unlock()
 
-	sessionResp, err := api.Post(cfg, "/daemon/session/open", map[string]any{
+	logger.Info(fmt.Sprintf("[%s] Starting task %s: \"%s\"", a.Config.Name, taskID, subject))
+
+	// Open session
+	sessResp, err := a.post(cfg, "/daemon/session/open", map[string]any{
 		"task_id": taskID,
 	})
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] Session open failed: %v", a.Config.Name, err))
+		a.mu.Lock()
+		a.mode = ModeIdle
+		a.mu.Unlock()
 		return
 	}
-	a.SessionID = sessionResp["session_id"].(string)
 
+	sessionID, _ := sessResp["session_id"].(string)
+	a.mu.Lock()
+	a.sessionID = sessionID
+	a.mu.Unlock()
+
+	// Write claude-code hooks into the work directory so the CLI notifies us
 	hooks.WriteHooks(a.Config.WorkDir, cfg.Hooks.Port)
 
-	tmux.EnsureSession(a.Config.Name, a.Config.WorkDir)
-	tmux.PipeToFile(a.Config.Name, a.LogPath)
-
+	// Build prompt
 	prompt := subject
 	if body != "" && body != subject {
 		prompt = fmt.Sprintf("%s\n\n%s", subject, body)
 	}
 
-	tmux.SendKeys(a.Config.Name, a.Config.Command+" -p \""+prompt+"\"")
+	// Spawn the command: e.g. "claude -p <prompt>"
+	parts := strings.Fields(a.Config.Command)
+	args := append(parts[1:], "-p", prompt)
+	cmd := exec.Command(parts[0], args...)
+	cmd.Dir = a.Config.WorkDir
+	cmd.Env = os.Environ()
 
-	a.Mode = ModeAccumulating
-	a.stuckSince = time.Now()
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, err))
+		a.mu.Lock()
+		a.mode = ModeIdle
+		a.mu.Unlock()
+		return
+	}
+	stderr, _ := cmd.StderrPipe()
 
-	logger.Info(fmt.Sprintf("[%s] Starting task %s: \"%s\"", a.Config.Name, taskID, subject))
-}
-
-func (a *Agent) resumeTask(cfg *config.Config, resume map[string]any) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	message := resume["message"].(string)
-
-	tmux.PipeToFile(a.Config.Name, a.LogPath)
-	tmux.SendKeys(a.Config.Name, message)
-	a.Mode = ModeAccumulating
-	a.stuckSince = time.Now()
-
-	logger.Info(fmt.Sprintf("[%s] Resuming task %s with user message", a.Config.Name, a.TaskID))
-}
-
-func (a *Agent) Complete(cfg *config.Config) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.Mode == ModeIdle {
+	if err := cmd.Start(); err != nil {
+		logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, err))
+		a.mu.Lock()
+		a.mode = ModeIdle
+		a.mu.Unlock()
 		return
 	}
 
-	logger.Info(fmt.Sprintf("[%s] Completing task %s", a.Config.Name, a.TaskID))
+	a.mu.Lock()
+	a.proc = cmd
+	agentID := a.agentID
+	a.mu.Unlock()
 
-	tmux.StopPipe(a.Config.Name)
+	// Drain stderr silently
+	go io.Copy(io.Discard, stderr)
 
-	if a.Mode == ModeLive && a.doneCh != nil {
-		close(a.doneCh)
-	}
+	// Stream stdout lines to server
+	go a.streamOutput(cfg, agentID, stdout)
 
-	finalText := ""
-	if data, err := os.ReadFile(a.LogPath); err == nil {
-		lines := strings.Split(string(data), "\n")
-		if len(lines) > 0 {
-			start := 0
-			if len(lines) > 2000 {
-				start = len(lines) - 2000
-			}
-			finalText = strings.Join(lines[start:], "\n")
+	// Wait for process exit
+	code := 0
+	if err := cmd.Wait(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			code = exitErr.ExitCode()
 		}
 	}
+	logger.Info(fmt.Sprintf("[%s] Process exited with code %d", a.Config.Name, code))
 
-	closeResp, err := api.Post(cfg, "/daemon/session/close", map[string]any{
-		"session_id": a.SessionID,
-		"status":     "closed",
+	status := "closed"
+	if code != 0 {
+		status = "crashed"
+	}
+	a.complete(cfg, status)
+}
+
+func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
+	scanner := bufio.NewScanner(r)
+	var batch []string
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		a.mu.Lock()
+		a.outputLines = append(a.outputLines, batch...)
+		id := a.agentID
+		a.mu.Unlock()
+
+		if id != "" {
+			a.post(cfg, "/daemon/push/"+id, map[string]any{ //nolint:errcheck
+				"type":  "line",
+				"lines": batch,
+			})
+		}
+		batch = nil
+	}
+
+	for scanner.Scan() {
+		batch = append(batch, scanner.Text())
+		if len(batch) >= 10 {
+			flush()
+		}
+	}
+	flush()
+}
+
+// complete finalizes the current task. Safe to call multiple times (guarded by completing flag).
+func (a *Agent) complete(cfg *config.Config, status string) {
+	a.mu.Lock()
+	if a.completing || a.sessionID == "" {
+		a.mu.Unlock()
+		return
+	}
+	a.completing = true
+	sessionID := a.sessionID
+	agentID := a.agentID
+	lines := append([]string(nil), a.outputLines...)
+	a.mu.Unlock()
+
+	logger.Info(fmt.Sprintf("[%s] Completing task %s — status=%s", a.Config.Name, a.taskID, status))
+
+	all := strings.Join(lines, "\n")
+	finalText := strings.TrimSpace(all)
+	if len(finalText) > 10000 {
+		finalText = finalText[len(finalText)-10000:]
+	}
+
+	closeResp, err := a.post(cfg, "/daemon/session/close", map[string]any{
+		"session_id": sessionID,
+		"status":     status,
 		"final_text": finalText,
 	})
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] Session close error: %v", a.Config.Name, err))
 	}
 
-	if uploadURL, ok := closeResp["upload_url"].(string); ok && uploadURL != "" {
-		upload.LogFile(uploadURL, a.LogPath)
+	// Push done/waiting_input SSE event to portal viewers
+	if agentID != "" {
+		sseType := "done"
+		if status == "waiting_input" {
+			sseType = "waiting_input"
+		}
+		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
+			"type":  sseType,
+			"lines": []string{finalText},
+		})
 	}
 
-	tmux.KillSession(a.Config.Name)
+	// Upload full log to R2 if server returned a presigned URL
+	if closeResp != nil {
+		if uploadURL, ok := closeResp["upload_url"].(string); ok && uploadURL != "" {
+			data := []byte(all)
+			if err := api.PutBytes(uploadURL, data); err != nil {
+				logger.Warn(fmt.Sprintf("[%s] R2 upload failed: %v", a.Config.Name, err))
+			} else {
+				logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes to R2", a.Config.Name, len(data)))
+			}
+		}
+	}
 
-	a.Mode = ModeIdle
-	a.SessionID = ""
-	a.TaskID = ""
-
-	logger.Info(fmt.Sprintf("[%s] Task completed — session %s", a.Config.Name, a.SessionID))
+	a.mu.Lock()
+	if status == "waiting_input" {
+		a.mode = ModeWaitingInput
+	} else {
+		a.mode = ModeIdle
+	}
+	a.sessionID = ""
+	a.outputLines = nil
+	a.proc = nil
+	a.completing = false
+	a.mu.Unlock()
 }
 
+// Complete is called by the hook server when Claude Code emits a Stop event.
+func (a *Agent) Complete(cfg *config.Config) {
+	a.mu.Lock()
+	mode := a.mode
+	a.mu.Unlock()
+	if mode == ModeIdle {
+		return
+	}
+	a.complete(cfg, "closed")
+}
+
+// SetWaitingInput is called by the hook server on a Notification event.
 func (a *Agent) SetWaitingInput(cfg *config.Config, message string) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	mode := a.mode
+	agentID := a.agentID
+	a.mu.Unlock()
 
-	if a.Mode != ModeAccumulating && a.Mode != ModeLive {
+	if mode != ModeRunning {
 		return
 	}
 
-	tmux.StopPipe(a.Config.Name)
-	if a.Mode == ModeLive && a.doneCh != nil {
-		close(a.doneCh)
-	}
-
-	api.Post(cfg, "/daemon/session/close", map[string]any{
-		"session_id": a.SessionID,
-		"status":     "waiting_input",
-	})
-
-	a.Mode = ModeWaitingInput
-	logger.Info(fmt.Sprintf("[%s] Waiting for user input: %s", a.Config.Name, message))
-}
-
-func (a *Agent) checkStuck(cfg *config.Config) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.Mode == ModeIdle || a.Mode == ModeWaitingInput {
-		return
-	}
-
-	output, err := tmux.CapturePane(a.Config.Name)
-	if err != nil {
-		return
-	}
-
-	hash := sha256.Sum256([]byte(output))
-	if hash == a.prevHash {
-		if time.Since(a.stuckSince) > time.Duration(cfg.StuckDetection.TimeoutSeconds)*time.Second {
-			a.handleStuckUnlocked(cfg)
-		}
-	} else {
-		a.prevHash = hash
-		a.stuckSince = time.Now()
-	}
-}
-
-func (a *Agent) handleStuckUnlocked(cfg *config.Config) {
-	if cfg.StuckDetection.OnStuck == "auto-restart" {
-		tmux.KillSession(a.Config.Name)
-		task := map[string]any{
-			"id":      a.TaskID,
-			"subject": "",
-			"body":    "",
-		}
-		a.startTask(cfg, task)
-	} else {
-		a.Mode = ModeWaitingInput
-		api.Post(cfg, "/daemon/session/close", map[string]any{
-			"session_id": a.SessionID,
-			"status":     "waiting_input",
-		})
-	}
-	logger.Warn(fmt.Sprintf("[%s] Agent stuck — action=%s", a.Config.Name, cfg.StuckDetection.OnStuck))
-}
-
-func (a *Agent) syncMode(cfg *config.Config) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.Mode == ModeIdle || a.Mode == ModeWaitingInput {
-		return
-	}
-
-	resp, err := api.Get(cfg, fmt.Sprintf("/daemon/viewers/%s", a.ID))
-	if err != nil {
-		return
-	}
-
-	count, _ := resp["count"].(float64)
-	viewerCount := int(count)
-
-	if viewerCount > 0 && a.Mode == ModeAccumulating {
-		a.switchToLive(cfg)
-	} else if viewerCount == 0 && a.Mode == ModeLive {
-		a.switchToAccumulating(cfg)
-	}
-}
-
-func (a *Agent) switchToLive(cfg *config.Config) {
-	if data, err := os.ReadFile(a.LogPath); err == nil && len(data) > 0 {
-		lines := strings.Split(string(data), "\n")
-		api.Post(cfg, fmt.Sprintf("/daemon/push/%s", a.ID), map[string]any{
-			"type":  "backlog",
-			"lines": lines,
+	// Notify SSE clients that Claude is paused
+	if agentID != "" {
+		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
+			"type":  "line",
+			"lines": []string{"\n[Claude is waiting for your input]\n" + message},
 		})
 	}
 
-	tmux.StopPipe(a.Config.Name)
-	a.Mode = ModeLive
-	a.doneCh = make(chan struct{})
-	go stream.Run(cfg, a.ID, a.Config.Name, a.doneCh)
-}
-
-func (a *Agent) switchToAccumulating(cfg *config.Config) {
-	if a.doneCh != nil {
-		close(a.doneCh)
-	}
-	tmux.PipeToFile(a.Config.Name, a.LogPath)
-	a.Mode = ModeAccumulating
+	a.complete(cfg, "waiting_input")
 }

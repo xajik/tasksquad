@@ -11,21 +11,16 @@ import (
 
 type ServerConfig struct {
 	URL          string `toml:"url"`
-	Token        string `toml:"token"`
-	TeamID       string `toml:"team_id"`
 	PollInterval int    `toml:"poll_interval"`
 }
 
+// AgentConfig holds per-agent settings. The token uniquely identifies the agent
+// on the server — no separate agent_id or team_id needed.
 type AgentConfig struct {
-	ID      string `toml:"id"`
+	Token   string `toml:"token"`
 	Name    string `toml:"name"`
 	Command string `toml:"command"`
 	WorkDir string `toml:"work_dir"`
-}
-
-type StuckDetectionConfig struct {
-	TimeoutSeconds int    `toml:"timeout_seconds"`
-	OnStuck        string `toml:"on_stuck"`
 }
 
 type HooksConfig struct {
@@ -33,24 +28,17 @@ type HooksConfig struct {
 }
 
 type Config struct {
-	Server         ServerConfig         `toml:"server"`
-	Agents         []AgentConfig        `toml:"agents"`
-	StuckDetection StuckDetectionConfig `toml:"stuck_detection"`
-	Hooks          HooksConfig          `toml:"hooks"`
+	Server ServerConfig  `toml:"server"`
+	Agents []AgentConfig `toml:"agents"`
+	Hooks  HooksConfig   `toml:"hooks"`
 }
 
-func (c *Config) setDefaults() {
-	if c.Server.PollInterval == 0 {
-		c.Server.PollInterval = 30
+func setDefaults(cfg *Config) {
+	if cfg.Server.PollInterval == 0 {
+		cfg.Server.PollInterval = 30
 	}
-	if c.Hooks.Port == 0 {
-		c.Hooks.Port = 7374
-	}
-	if c.StuckDetection.TimeoutSeconds == 0 {
-		c.StuckDetection.TimeoutSeconds = 120
-	}
-	if c.StuckDetection.OnStuck == "" {
-		c.StuckDetection.OnStuck = "notify"
+	if cfg.Hooks.Port == 0 {
+		cfg.Hooks.Port = 7374
 	}
 }
 
@@ -62,75 +50,67 @@ func expandHome(path string) string {
 	return path
 }
 
-func Load() (*Config, error) {
+func DefaultPath() string {
 	home, _ := os.UserHomeDir()
-	configPath := filepath.Join(home, ".tasksquad", "config.toml")
+	return filepath.Join(home, ".tasksquad", "config.toml")
+}
 
+func Load(path string) (*Config, error) {
 	cfg := &Config{}
 
-	_, err := toml.DecodeFile(configPath, cfg)
-	if err != nil {
+	if _, err := toml.DecodeFile(path, cfg); err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("config file not found at %s", configPath)
+			return nil, fmt.Errorf("config file not found at %s", path)
 		}
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	for i := range cfg.Agents {
-		cfg.Agents[i].WorkDir = expandHome(cfg.Agents[i].WorkDir)
-	}
+	setDefaults(cfg)
 
-	cfg.setDefaults()
-
-	if cfg.Server.Token == "" {
-		return nil, fmt.Errorf("server.token is required")
+	if cfg.Server.URL == "" {
+		return nil, fmt.Errorf("server.url is required")
 	}
-	if cfg.Server.TeamID == "" {
-		return nil, fmt.Errorf("server.team_id is required")
+	if len(cfg.Agents) == 0 {
+		return nil, fmt.Errorf("at least one [[agents]] entry is required")
+	}
+	for i, a := range cfg.Agents {
+		if a.Token == "" {
+			return nil, fmt.Errorf("agents[%d].token is required", i)
+		}
+		cfg.Agents[i].WorkDir = expandHome(a.WorkDir)
 	}
 
 	return cfg, nil
 }
 
-func Watch(cfg *Config, onChange func(*Config)) error {
-	home, _ := os.UserHomeDir()
-	configPath := filepath.Join(home, ".tasksquad", "config.toml")
-
-	watcher, err := fsnotify.NewWatcher()
+func Watch(path string, onChange func(*Config)) (func(), error) {
+	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		return fmt.Errorf("failed to create watcher: %w", err)
+		return nil, err
 	}
-
-	dir := filepath.Dir(configPath)
-	if err := watcher.Add(dir); err != nil {
-		return fmt.Errorf("failed to watch config dir: %w", err)
+	if err := w.Add(filepath.Dir(path)); err != nil {
+		w.Close()
+		return nil, err
 	}
-
 	go func() {
 		for {
 			select {
-			case event, ok := <-watcher.Events:
+			case ev, ok := <-w.Events:
 				if !ok {
 					return
 				}
-				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-					if filepath.Clean(event.Name) == filepath.Clean(configPath) {
-						newCfg, err := Load()
-						if err != nil {
-							fmt.Printf("Error reloading config: %v\n", err)
-							continue
-						}
-						onChange(newCfg)
+				if (ev.Has(fsnotify.Write) || ev.Has(fsnotify.Create)) &&
+					filepath.Clean(ev.Name) == filepath.Clean(path) {
+					if cfg, err := Load(path); err == nil {
+						onChange(cfg)
 					}
 				}
-			case err, ok := <-watcher.Errors:
+			case _, ok := <-w.Errors:
 				if !ok {
 					return
 				}
-				fmt.Printf("Watcher error: %v\n", err)
 			}
 		}
 	}()
-
-	return nil
+	return func() { w.Close() }, nil
 }
