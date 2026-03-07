@@ -43,3 +43,9 @@ dist-ssr
 
 #Firebase
 tasksquad-firebase.json
+
+# Claude Code project config (local/user-specific)
+.claude.json
+
+# Lock files (project uses bun — bun.lockb is committed instead)
+package-lock.json
