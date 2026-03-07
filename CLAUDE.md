@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Structure
 
+Warning: Public Repository! Don't commit and push secrets! 
+
 Two distinct parts:
 
 - **Root** — Product documentation: `tasksquad-user-stories.md` (MVP spec with user story IDs), `tasksquad-ui-proposal.jsx` (original single-file UI reference prototype), and `tasksquad.pdf` (full product doc).
