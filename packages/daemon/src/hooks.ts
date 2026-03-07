@@ -1,5 +1,6 @@
 import type { Config } from './config.ts'
 import type { Agent } from './agent.ts'
+import { log } from './logger.ts'
 
 interface StopPayload {
   stop_reason?: string
@@ -20,7 +21,7 @@ export function startHookServer(cfg: Config, agents: Agent[]): void {
 
       if (req.method === 'POST' && url.pathname === '/hooks/stop') {
         const payload = await req.json().catch(() => ({})) as StopPayload
-        console.log('[hooks] Stop received:', payload)
+        log.info(`[hooks] Stop received: ${JSON.stringify(payload)}`)
 
         // Find the running agent and complete it
         const agent = agents.find(a => a.mode === 'running' || a.mode === 'waiting_input')
@@ -35,7 +36,7 @@ export function startHookServer(cfg: Config, agents: Agent[]): void {
       if (req.method === 'POST' && url.pathname === '/hooks/notification') {
         const payload = await req.json().catch(() => ({})) as NotificationPayload
         const message = payload.message ?? 'Claude is waiting for your input'
-        console.log('[hooks] Notification received:', message)
+        log.info(`[hooks] Notification received: ${message}`)
 
         // Find the running agent and move it to waiting_input
         const agent = agents.find(a => a.mode === 'running')
@@ -51,5 +52,5 @@ export function startHookServer(cfg: Config, agents: Agent[]): void {
     },
   })
 
-  console.log(`[hooks] Server listening on http://localhost:${server.port}`)
+  log.info(`[hooks] Server listening on http://localhost:${server.port}`)
 }

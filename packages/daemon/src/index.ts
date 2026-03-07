@@ -1,37 +1,38 @@
 import { loadConfig } from './config.ts'
 import { Agent } from './agent.ts'
 import { startHookServer } from './hooks.ts'
+import { log } from './logger.ts'
 
 async function main() {
   const cfg = loadConfig()
 
-  console.log(`[tsq] TaskSquad daemon starting`)
-  console.log(`[tsq] API: ${cfg.apiUrl}`)
-  console.log(`[tsq] Agents: ${cfg.agents.map(a => a.name).join(', ')}`)
-  console.log(`[tsq] Poll interval: ${cfg.pollInterval}s`)
+  log.info(`TaskSquad daemon starting`)
+  log.info(`API: ${cfg.apiUrl}`)
+  log.info(`Agents: ${cfg.agents.map(a => a.name).join(', ')}`)
+  log.info(`Poll interval: ${cfg.pollInterval}s`)
 
   const agents = cfg.agents.map(a => new Agent(a))
 
-  // Start hook server for Claude Code hooks (Stop, Notification)
   startHookServer(cfg, agents)
 
-  // Run heartbeat loop for all agents
+  let tickCount = 0
+
   async function tick() {
+    tickCount++
+    log.debug(`Tick #${tickCount} — polling ${agents.length} agent(s)`)
     await Promise.allSettled(agents.map(a => a.heartbeat(cfg)))
   }
 
-  // Initial tick immediately
   await tick()
 
-  // Then poll on interval
   setInterval(() => {
-    tick().catch(err => console.error('[tsq] tick error:', err))
+    tick().catch(err => log.error(`tick error: ${err}`))
   }, cfg.pollInterval * 1000)
 
-  console.log(`[tsq] Running — waiting for tasks...`)
+  log.info(`Running — waiting for tasks...`)
 }
 
 main().catch(err => {
-  console.error('[tsq] Fatal error:', err)
+  log.error(`Fatal error: ${err}`)
   process.exit(1)
 })

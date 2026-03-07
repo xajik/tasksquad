@@ -1,6 +1,7 @@
 import { join } from 'path'
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { apiPost } from './api.ts'
+import { log } from './logger.ts'
 import type { Config, AgentConfig } from './config.ts'
 
 interface Task {
@@ -31,27 +32,30 @@ export class Agent {
   }
 
   async heartbeat(cfg: Config): Promise<void> {
+    log.debug(`[${this.config.name}] Heartbeat → status=${this.mode}`)
     try {
       const res = await this.post<{ ok: boolean; agent_id?: string; task?: Task }>(cfg, '/daemon/heartbeat', {
         status: this.mode,
       })
 
-      // Server returns agent_id so we don't need it in config
       if (res.agent_id && !this.agentId) {
         this.agentId = res.agent_id
-        console.log(`[${this.config.name}] Agent ID: ${this.agentId}`)
+        log.info(`[${this.config.name}] Resolved agent ID: ${this.agentId}`)
       }
 
-      if (res.task && this.mode === 'idle') {
-        await this.startTask(cfg, res.task)
+      if (res.task) {
+        log.debug(`[${this.config.name}] Task received: ${res.task.id} — "${res.task.subject}"`)
+        if (this.mode === 'idle') await this.startTask(cfg, res.task)
+      } else {
+        log.debug(`[${this.config.name}] No pending tasks`)
       }
     } catch (err) {
-      console.error(`[${this.config.name}] heartbeat error:`, err)
+      log.error(`[${this.config.name}] Heartbeat failed: ${err}`)
     }
   }
 
   private async startTask(cfg: Config, task: Task): Promise<void> {
-    console.log(`[${this.config.name}] Starting task ${task.id}: ${task.subject}`)
+    log.info(`[${this.config.name}] Starting task ${task.id}: "${task.subject}"`)
     this.mode = 'running'
     this.taskId = task.id
     this.outputLines = []
@@ -65,7 +69,7 @@ export class Agent {
       sessionId = res.session_id
       this.sessionId = sessionId
     } catch (err) {
-      console.error(`[${this.config.name}] session-open failed:`, err)
+      log.error(`[${this.config.name}] Session open failed: ${err}`)
       this.mode = 'idle'
       return
     }
@@ -85,13 +89,15 @@ export class Agent {
     })
     this.proc = proc
 
+    log.debug(`[${this.config.name}] Spawned process, streaming output`)
     this.streamOutput(cfg, proc).catch(err =>
-      console.error(`[${this.config.name}] stream error:`, err)
+      log.error(`[${this.config.name}] Stream error: ${err}`)
     )
 
     proc.exited.then(code => {
+      log.info(`[${this.config.name}] Process exited with code ${code}`)
       this.complete(cfg, code === 0 ? 'closed' : 'crashed').catch(err =>
-        console.error(`[${this.config.name}] complete error:`, err)
+        log.error(`[${this.config.name}] Complete error: ${err}`)
       )
     })
   }
@@ -126,7 +132,7 @@ export class Agent {
     if (this.isCompleting || !this.sessionId) return
     this.isCompleting = true
 
-    console.log(`[${this.config.name}] Completing task ${this.taskId} with status=${status}`)
+    log.info(`[${this.config.name}] Completing task ${this.taskId} — status=${status}`)
 
     const fullOutput = this.outputLines.join('\n')
     const finalText = fullOutput.slice(-2000).trim()
@@ -138,7 +144,7 @@ export class Agent {
         final_text: finalText || undefined,
       })
     } catch (err) {
-      console.error(`[${this.config.name}] session-close error:`, err)
+      log.error(`[${this.config.name}] Session close error: ${err}`)
     }
 
     if (this.agentId) {
@@ -185,7 +191,7 @@ export class Agent {
 
       writeFileSync(settingsPath, JSON.stringify({ ...existing, hooks }, null, 2))
     } catch (err) {
-      console.warn(`[${this.config.name}] Could not write .claude/settings.json:`, err)
+      log.warn(`[${this.config.name}] Could not write .claude/settings.json: ${err}`)
     }
   }
 }
