@@ -1,0 +1,212 @@
+import { ulid } from 'ulidx'
+import { json, err } from '../auth.js'
+import type { Env, DaemonContext } from '../types.js'
+
+export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const body = await req.json<{ agent_id?: string; status?: string }>().catch(() => ({} as { agent_id?: string; status?: string }))
+  const { agent_id, status } = body
+  if (!agent_id) return err('agent_id_required', 400)
+
+  // Verify agent belongs to this team
+  const agent = await env.DB
+    .prepare('SELECT id FROM agents WHERE id = ? AND team_id = ?')
+    .bind(agent_id, daemon.teamId)
+    .first<{ id: string }>()
+  if (!agent) return err('agent_not_found', 404)
+
+  const agentStatus = status ?? 'idle'
+  const now = Date.now()
+
+  await env.DB.batch([
+    env.DB.prepare("UPDATE agents SET status = ?, last_seen = ? WHERE id = ?")
+      .bind(agentStatus, now, agent_id),
+    env.DB.prepare('UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?')
+      .bind(agentStatus === 'idle' ? 'idle' : agentStatus, now, agent_id),
+  ])
+
+  // Check for pending task
+  if (agentStatus === 'idle') {
+    const task = await env.DB
+      .prepare(`
+        SELECT t.id, t.subject, m.body
+        FROM tasks t
+        JOIN messages m ON m.task_id = t.id AND m.role = 'user'
+        WHERE t.agent_id = ? AND t.status = 'pending'
+        ORDER BY t.created_at ASC, m.created_at ASC
+        LIMIT 1
+      `)
+      .bind(agent_id)
+      .first<{ id: string; subject: string; body: string }>()
+
+    if (task) {
+      return json({ ok: true, task: { id: task.id, subject: task.subject, body: task.body } })
+    }
+  }
+
+  return json({ ok: true })
+}
+
+export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const body = await req.json<{ task_id?: string; agent_id?: string; tmux_session?: string }>().catch(() => ({} as { task_id?: string; agent_id?: string; tmux_session?: string }))
+  const { task_id, agent_id, tmux_session } = body
+  if (!task_id || !agent_id) return err('missing_fields', 400)
+
+  // Verify task + agent belong to daemon's team
+  const task = await env.DB
+    .prepare('SELECT id FROM tasks WHERE id = ? AND team_id = ? AND agent_id = ?')
+    .bind(task_id, daemon.teamId, agent_id)
+    .first<{ id: string }>()
+  if (!task) return err('not_found', 404)
+
+  const sessionId = ulid()
+  const now = Date.now()
+
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO sessions (id, task_id, agent_id, status, started_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(sessionId, task_id, agent_id, 'running', now),
+    env.DB.prepare("UPDATE tasks SET status = 'running', started_at = ? WHERE id = ?")
+      .bind(now, task_id),
+    env.DB.prepare('UPDATE agent_state SET current_task_id = ?, current_session = ?, mode = ?, tmux_session = ?, updated_at = ? WHERE agent_id = ?')
+      .bind(task_id, sessionId, 'accumulating', tmux_session ?? null, now, agent_id),
+    env.DB.prepare('UPDATE agents SET status = ? WHERE id = ?')
+      .bind('running', agent_id),
+    // System message
+    env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(ulid(), task_id, null, 'system', 'Task started.', now),
+  ])
+
+  return json({ session_id: sessionId }, 201)
+}
+
+export async function sessionClose(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {
+  const body = await req.json<{
+    session_id?: string
+    agent_id?: string
+    status?: string
+    final_text?: string
+  }>().catch(() => ({} as { session_id?: string; agent_id?: string; status?: string; final_text?: string }))
+  const { session_id, agent_id, status = 'closed', final_text } = body
+  if (!session_id || !agent_id) return err('missing_fields', 400)
+
+  const session = await env.DB
+    .prepare('SELECT task_id FROM sessions WHERE id = ? AND agent_id = ?')
+    .bind(session_id, agent_id)
+    .first<{ task_id: string }>()
+  if (!session) return err('not_found', 404)
+
+  const taskStatus = status === 'closed' ? 'done'
+    : status === 'waiting_input' ? 'waiting_input'
+    : 'failed'
+
+  const agentStatus = taskStatus === 'waiting_input' ? 'waiting_input' : 'idle'
+  const now = Date.now()
+
+  const ops = [
+    env.DB.prepare('UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?')
+      .bind(status, now, session_id),
+    env.DB.prepare('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?')
+      .bind(taskStatus, now, session.task_id),
+    env.DB.prepare("UPDATE agents SET status = ? WHERE id = ?")
+      .bind(agentStatus, agent_id),
+    env.DB.prepare('UPDATE agent_state SET current_task_id = ?, current_session = ?, mode = ?, updated_at = ? WHERE agent_id = ?')
+      .bind(null, null, agentStatus === 'idle' ? 'idle' : 'waiting_input', now, agent_id),
+  ]
+
+  if (final_text) {
+    ops.push(
+      env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(ulid(), session.task_id, null, 'agent', final_text, now)
+    )
+  }
+
+  await env.DB.batch(ops)
+
+  // Generate presigned R2 upload URL for log file (not for waiting_input)
+  let uploadUrl: string | undefined
+  if (status !== 'waiting_input') {
+    const key = `${agent_id.substring(0, 16)}/${session_id}/output.log`
+    const url = await env.LOGS.createMultipartUpload(key)
+    uploadUrl = url.key // Return key so daemon can use wrangler or direct upload
+    // Store key on session
+    await env.DB
+      .prepare('UPDATE sessions SET r2_log_key = ? WHERE id = ?')
+      .bind(key, session_id)
+      .run()
+  }
+
+  return json({ ok: true, ...(uploadUrl ? { r2_key: uploadUrl } : {}) })
+}
+
+export async function complete(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {
+  // Simple alias for sessionClose with status=closed
+  const body = await req.json<{ session_id?: string; agent_id?: string; output?: string }>().catch(() => ({} as { session_id?: string; agent_id?: string; output?: string }))
+  const { session_id, agent_id, output } = body
+  if (!session_id || !agent_id) return err('missing_fields', 400)
+
+  const session = await env.DB
+    .prepare('SELECT task_id FROM sessions WHERE id = ? AND agent_id = ?')
+    .bind(session_id, agent_id)
+    .first<{ task_id: string }>()
+  if (!session) return err('not_found', 404)
+
+  const now = Date.now()
+  await env.DB.batch([
+    env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE id = ?").bind(now, session_id),
+    env.DB.prepare("UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?").bind(now, session.task_id),
+    env.DB.prepare("UPDATE agents SET status = 'idle' WHERE id = ?").bind(agent_id),
+    env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agent_id),
+    ...(output ? [env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(ulid(), session.task_id, null, 'agent', output, now)] : []),
+  ])
+
+  return json({ ok: true })
+}
+
+export async function viewers(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {
+  const url = new URL(req.url)
+  const agentId = url.pathname.split('/')[3]
+
+  const row = await env.DB
+    .prepare('SELECT viewer_count FROM agent_state WHERE agent_id = ?')
+    .bind(agentId)
+    .first<{ viewer_count: number }>()
+
+  return json({ count: row?.viewer_count ?? 0 })
+}
+
+export async function push(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {
+  const url = new URL(req.url)
+  const agentId = url.pathname.split('/')[3]
+
+  const body = await req.json<{ type?: string; lines?: string[] }>().catch(() => ({} as { type?: string; lines?: string[] }))
+  if (!body.type || !body.lines) return err('missing_fields', 400)
+
+  // Forward to AgentRelay Durable Object
+  const doId = env.AGENT_RELAY.idFromName(agentId)
+  const stub = env.AGENT_RELAY.get(doId)
+  await stub.fetch(new Request('https://relay/push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }))
+
+  return json({ ok: true })
+}
+
+export async function presignUpload(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {
+  const url = new URL(req.url)
+  const sessionId = url.searchParams.get('session_id')
+  const filename = url.searchParams.get('filename') ?? 'partial.log'
+  if (!sessionId) return err('session_id_required', 400)
+
+  const session = await env.DB
+    .prepare('SELECT agent_id FROM sessions WHERE id = ?')
+    .bind(sessionId)
+    .first<{ agent_id: string }>()
+  if (!session) return err('not_found', 404)
+
+  const key = `${session.agent_id.substring(0, 16)}/${sessionId}/${filename}`
+  // R2 doesn't support presigned URLs directly via Workers binding —
+  // return the key and let the daemon upload via the daemon/upload endpoint
+  return json({ key })
+}

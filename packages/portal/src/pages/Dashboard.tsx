@@ -67,7 +67,7 @@ function Inbox({ teamId }: { teamId: string }) {
   const nav = useNavigate()
 
   const load = useCallback(async () => {
-    const [td, ad] = await Promise.all([api.tasks.list(), api.agents.list(teamId)])
+    const [td, ad] = await Promise.all([api.tasks.list(teamId), api.agents.list(teamId)])
     setTasks(td.tasks ?? [])
     setAgents(ad.agents ?? [])
   }, [teamId])
@@ -78,7 +78,7 @@ function Inbox({ teamId }: { teamId: string }) {
     e.preventDefault()
     setCreating(true)
     try {
-      await api.tasks.create({ agent_id: agentId, subject })
+      await api.tasks.create({ agent_id: agentId, subject, team_id: teamId })
       setShowCompose(false); setSubject(''); setAgentId('')
       load()
     } finally { setCreating(false) }

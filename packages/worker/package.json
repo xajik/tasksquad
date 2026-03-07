@@ -8,7 +8,7 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
-    "cloudfire-auth": "^1.0.0",
+    "cloudfire-auth": "^0.4.0",
     "itty-router": "^5.0.18",
     "ulidx": "^2.3.0"
   },

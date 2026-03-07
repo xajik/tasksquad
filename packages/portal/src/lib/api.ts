@@ -36,9 +36,9 @@ export const api = {
       }),
   },
   tasks: {
-    list: (q = '') => request<{ tasks: Task[] }>(`/tasks?${q}`),
+    list: (teamId: string) => request<{ tasks: Task[] }>(`/tasks?team_id=${teamId}`),
     get: (id: string) => request<Task>(`/tasks/${id}`),
-    create: (body: { agent_id: string; subject: string }) =>
+    create: (body: { agent_id: string; subject: string; team_id: string }) =>
       request<{ id: string; status: string }>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
     logs: (taskId: string) => request<{ logs: TaskLog[] }>(`/tasks/${taskId}/logs`),
   },
