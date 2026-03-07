@@ -40,3 +40,6 @@ dist-ssr
 .claude/
 .beads/
 .logs/
+
+#Firebase
+tasksquad-firebase.json
