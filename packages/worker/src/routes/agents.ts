@@ -99,3 +99,40 @@ export async function createToken(req: Request, env: Env, _ctx: unknown, auth: A
 
   return json({ id, token: rawToken, label }, 201)
 }
+
+export async function deleteAgent(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const parts = url.pathname.split('/')
+  const teamId = parts[2]
+  const agentId = parts[4]
+
+  if (!(await requireMaintainer(env.DB, teamId, auth.userId))) return err('forbidden', 403)
+
+  const agent = await env.DB
+    .prepare('SELECT id FROM agents WHERE id = ? AND team_id = ?')
+    .bind(agentId, teamId)
+    .first<{ id: string }>()
+  if (!agent) return err('not_found', 404)
+
+  // Cascade delete: tokens → state → sessions → messages (via tasks) → tasks → agent
+  const taskIds = await env.DB
+    .prepare('SELECT id FROM tasks WHERE agent_id = ?')
+    .bind(agentId)
+    .all<{ id: string }>()
+  const ids = taskIds.results.map(r => r.id)
+
+  const ops = [
+    env.DB.prepare('DELETE FROM daemon_tokens WHERE agent_id = ?').bind(agentId),
+    env.DB.prepare('DELETE FROM agent_state WHERE agent_id = ?').bind(agentId),
+    env.DB.prepare('DELETE FROM sessions WHERE agent_id = ?').bind(agentId),
+  ]
+  for (const taskId of ids) {
+    ops.push(env.DB.prepare('DELETE FROM messages WHERE task_id = ?').bind(taskId))
+    ops.push(env.DB.prepare('DELETE FROM task_logs WHERE task_id = ?').bind(taskId))
+  }
+  ops.push(env.DB.prepare('DELETE FROM tasks WHERE agent_id = ?').bind(agentId))
+  ops.push(env.DB.prepare('DELETE FROM agents WHERE id = ?').bind(agentId))
+
+  await env.DB.batch(ops)
+  return json({ ok: true })
+}

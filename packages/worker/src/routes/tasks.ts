@@ -60,13 +60,6 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     .first<{ id: string }>()
   if (!agent) return err('agent_not_found', 404)
 
-  // Check agent not already busy
-  const busy = await env.DB
-    .prepare("SELECT id FROM tasks WHERE agent_id = ? AND status IN ('pending', 'running', 'waiting_input')")
-    .bind(agent_id)
-    .first<{ id: string }>()
-  if (busy) return err('agent_busy', 409)
-
   const taskId = ulid()
   const now = Date.now()
 
@@ -79,6 +72,26 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   ])
 
   return json({ id: taskId, status: 'pending' }, 201)
+}
+
+export async function deleteTask(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const taskId = url.pathname.split('/')[2]
+
+  const task = await env.DB
+    .prepare('SELECT team_id FROM tasks WHERE id = ?')
+    .bind(taskId)
+    .first<{ team_id: string }>()
+  if (!task) return err('not_found', 404)
+  if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('forbidden', 403)
+
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM messages WHERE task_id = ?').bind(taskId),
+    env.DB.prepare('DELETE FROM task_logs WHERE task_id = ?').bind(taskId),
+    env.DB.prepare('DELETE FROM sessions WHERE task_id = ?').bind(taskId),
+    env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(taskId),
+  ])
+  return json({ ok: true })
 }
 
 export async function logs(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

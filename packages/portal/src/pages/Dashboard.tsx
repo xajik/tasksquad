@@ -14,7 +14,7 @@ function relativeTime(ms: number): string {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  pending: '#888', running: '#2563eb', waiting_input: '#d97706',
+  pending: '#888', queued: '#7c3aed', running: '#2563eb', waiting_input: '#d97706',
   done: '#16a34a', failed: '#dc2626', offline: '#aaa', idle: '#16a34a',
   accumulating: '#2563eb', live: '#2563eb', stuck: '#d97706', error: '#dc2626',
 }
@@ -85,20 +85,35 @@ function Inbox({ teamId }: { teamId: string }) {
     } finally { setCreating(false) }
   }
 
+  async function deleteTask(e: React.MouseEvent, taskId: string) {
+    e.stopPropagation()
+    if (!confirm('Delete this task and all its messages?')) return
+    await api.tasks.delete(taskId)
+    load()
+  }
+
   const agentMap = Object.fromEntries(agents.map(a => [a.id, a]))
+
+  function taskStatus(t: Task): string {
+    if (t.status === 'pending') {
+      const agent = agentMap[t.agent_id]
+      if (agent && (agent.status === 'running' || agent.status === 'waiting_input')) return 'queued'
+    }
+    return t.status
+  }
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h2 style={{ margin: 0 }}>Inbox</h2>
         <button onClick={() => setShowCompose(true)} style={{ padding: '8px 16px', background: '#111', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
-          New task
+          New message
         </button>
       </div>
 
       {showCompose && (
         <form onSubmit={compose} style={{ background: '#f5f5f5', borderRadius: 8, padding: 20, marginBottom: 24 }}>
-          <h3 style={{ margin: '0 0 16px' }}>New task</h3>
+          <h3 style={{ margin: '0 0 16px' }}>New message</h3>
           <select value={agentId} onChange={e => setAgentId(e.target.value)} required style={{ display: 'block', width: '100%', marginBottom: 12, padding: 8, borderRadius: 6, border: '1px solid #ddd' }}>
             <option value="">Select agent…</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -117,7 +132,7 @@ function Inbox({ teamId }: { teamId: string }) {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {tasks.length === 0 && <p style={{ color: '#aaa' }}>No tasks yet.</p>}
+        {tasks.length === 0 && <p style={{ color: '#aaa' }}>No messages yet.</p>}
         {tasks.map(t => (
           <div
             key={t.id}
@@ -129,8 +144,14 @@ function Inbox({ teamId }: { teamId: string }) {
               <div style={{ color: '#888', fontSize: 12, marginTop: 2 }}>{agentMap[t.agent_id]?.name ?? t.agent_id}</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <StatusPill status={t.status} />
+              <StatusPill status={taskStatus(t)} />
               <span style={{ color: '#aaa', fontSize: 12 }}>{relativeTime(t.created_at)}</span>
+              <button
+                onClick={e => deleteTask(e, t.id)}
+                style={{ padding: '3px 8px', background: 'none', border: '1px solid #eee', borderRadius: 4, cursor: 'pointer', color: '#bbb', fontSize: 12 }}
+              >
+                ✕
+              </button>
             </div>
           </div>
         ))}
@@ -151,6 +172,7 @@ function TaskThread() {
   const [showLog, setShowLog] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
+  const nav = useNavigate()
 
   const load = useCallback(async () => {
     if (!taskId) return
@@ -183,6 +205,12 @@ function TaskThread() {
 
   useEffect(() => () => { esRef.current?.close() }, [])
 
+  async function deleteTask() {
+    if (!taskId || !confirm('Delete this task and all its messages?')) return
+    await api.tasks.delete(taskId)
+    nav('/dashboard')
+  }
+
   async function sendReply(e: React.FormEvent) {
     e.preventDefault()
     if (!taskId || !reply.trim()) return
@@ -210,6 +238,9 @@ function TaskThread() {
             Watch live
           </button>
         )}
+        <button onClick={deleteTask} style={{ padding: '6px 12px', background: 'none', border: '1px solid #eee', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#bbb' }}>
+          Delete
+        </button>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
@@ -283,6 +314,12 @@ function AgentsView({ teamId }: { teamId: string }) {
     setNewToken({ agentId, token: d.token })
   }
 
+  async function deleteAgent(agentId: string) {
+    if (!confirm('Delete this agent and all its tasks/messages?')) return
+    await api.agents.delete(teamId, agentId)
+    load()
+  }
+
   return (
     <div>
       <h2 style={{ marginBottom: 24 }}>Agents</h2>
@@ -303,6 +340,9 @@ function AgentsView({ teamId }: { teamId: string }) {
                 <input value={tokenLabel} onChange={e => setTokenLabel(e.target.value)} placeholder="Token label" style={{ padding: '5px 8px', border: '1px solid #ddd', borderRadius: 5, fontSize: 12, width: 100 }} />
                 <button onClick={() => genToken(a.id)} style={{ padding: '5px 10px', background: '#eee', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 12 }}>
                   Gen token
+                </button>
+                <button onClick={() => deleteAgent(a.id)} style={{ padding: '5px 10px', background: 'none', border: '1px solid #eee', borderRadius: 5, cursor: 'pointer', fontSize: 12, color: '#bbb' }}>
+                  Delete
                 </button>
               </div>
             </div>

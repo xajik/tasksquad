@@ -34,12 +34,16 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ label, agent_id: agentId }),
       }),
+    delete: (teamId: string, agentId: string) =>
+      request<{ ok: boolean }>(`/teams/${teamId}/agents/${agentId}`, { method: 'DELETE' }),
   },
   tasks: {
     list: (teamId: string) => request<{ tasks: Task[] }>(`/tasks?team_id=${teamId}`),
     get: (id: string) => request<Task>(`/tasks/${id}`),
     create: (body: { agent_id: string; subject: string; team_id: string; body?: string }) =>
       request<{ id: string; status: string }>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
+    delete: (taskId: string) =>
+      request<{ ok: boolean }>(`/tasks/${taskId}`, { method: 'DELETE' }),
     logs: (taskId: string) => request<{ logs: TaskLog[] }>(`/tasks/${taskId}/logs`),
   },
   messages: {
