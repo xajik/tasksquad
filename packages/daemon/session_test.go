@@ -2,15 +2,20 @@
 
 package main_test
 
-// Integration test: runs claude inside a real tmux session, streams output via
-// tmux pipe-pane → FIFO (exactly as the daemon does), and asserts that:
-//   - the Claude Code Stop hook fires and provides a transcript_path
-//   - the transcript contains a non-empty assistant response
-//   - the response is not equal to the input prompt
+// Integration test: runs claude in interactive mode (no -p flag) inside a real
+// tmux session, streams output through tmux pipe-pane → FIFO, and asserts that
+// the Claude Code Stop hook delivers a transcript with a reply ≠ the input.
+//
+// The test uses the project root as workDir so Claude does not show the
+// "trust this folder" safety dialog (the directory is already trusted).
 //
 // Run with:
 //
 //	go test -v -tags integration -run TestClaudeCodeTmuxSession -timeout 120s ./...
+//
+// NOTE: the test temporarily overwrites .claude/settings.json hooks in the
+// project root and restores them on exit. Do not run it while the daemon is
+// actively handling tasks in the same directory.
 
 import (
 	"bufio"
@@ -47,68 +52,64 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 		t.Skip("claude not found on PATH — skipping")
 	}
 
-	// ── 1. Work dir + hooks ───────────────────────────────────────────────────
-	workDir := t.TempDir()
+	// ── 1. Work dir: project root (already trusted by Claude Code) ────────────
+	// Test runs from packages/daemon/ → ../../ is the project root.
+	daemonDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
+	workDir, err := filepath.Abs(filepath.Join(daemonDir, "..", ".."))
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
 	t.Logf("Work dir: %s", workDir)
 
+	// ── 2. Hooks: overwrite only the hooks key, restore on exit ───────────────
 	port := freePort(t)
 	t.Logf("Hooks port: %d", port)
-	writeTestHooks(t, workDir, port)
+	t.Cleanup(writeTestHooks(t, workDir, port))
 
-	// ── 2. Hooks capture server ───────────────────────────────────────────────
+	// ── 3. Hooks capture server ───────────────────────────────────────────────
 	var (
 		stopOnce sync.Once
 		stopCh   = make(chan stopEvent, 1)
-		notifCh  = make(chan string, 16)
 	)
 	srv := startTestHooksServer(t, port,
 		func(ev stopEvent) { stopOnce.Do(func() { stopCh <- ev }) },
-		func(msg string) {
-			t.Logf("[notification] %s", msg)
-			select {
-			case notifCh <- msg:
-			default:
-			}
-		},
+		func(msg string) { t.Logf("[notification] %s", msg) },
 	)
 	defer srv.Shutdown(context.Background()) //nolint:errcheck
 
-	// ── 3. FIFO for tmux pipe-pane output ─────────────────────────────────────
+	// ── 4. FIFO ───────────────────────────────────────────────────────────────
 	fifoPath := filepath.Join(t.TempDir(), "output.fifo")
 	if err := syscall.Mkfifo(fifoPath, 0644); err != nil {
 		t.Fatalf("mkfifo: %v", err)
 	}
 
-	// ── 4. Start tmux session running claude (interactive, no -p flag) ────────
+	// ── 5. Start tmux session running claude in interactive mode ──────────────
 	sessionName := fmt.Sprintf("ts-test-%d", os.Getpid())
-	env := filterEnv(os.Environ(), "CLAUDECODE") // prevent recursion
+	env := filterEnv(os.Environ(), "CLAUDECODE") // prevent Claude-in-Claude recursion
 
-	// Run claude non-interactively with -p so the prompt is a CLI argument.
-	// This avoids the "trust this folder" TUI dialog that appears when claude
-	// starts in interactive mode inside an untrusted temp directory.
-	// The tmux + pipe-pane + FIFO + Stop-hook path is identical to what the
-	// daemon uses; only the prompt delivery method differs.
-	newSessArgs := []string{
+	newSessCmd := exec.Command(tmuxBin,
 		"new-session", "-d", "-s", sessionName,
 		"-c", workDir, "-x", "220", "-y", "50",
-		"--", "claude", "-p", testPrompt,
-	}
-	newSessCmd := exec.Command(tmuxBin, newSessArgs...)
+		"--", "claude",
+	)
 	newSessCmd.Env = env
 	if out, err := newSessCmd.CombinedOutput(); err != nil {
 		t.Fatalf("tmux new-session: %v: %s", err, out)
 	}
-	t.Logf("tmux session: %s  prompt: %q", sessionName, testPrompt)
+	t.Logf("tmux session started: %s", sessionName)
 
 	t.Cleanup(func() {
 		exec.Command(tmuxBin, "kill-session", "-t", sessionName).Run() //nolint:errcheck
 		os.Remove(fifoPath)
 	})
 
-	// ── 5. Open FIFO reader (blocks until pipe-pane opens write end) ──────────
+	// ── 6. pipe-pane → FIFO + open reader ────────────────────────────────────
 	fifoCh := make(chan *os.File, 1)
 	go func() {
-		f, err := os.Open(fifoPath)
+		f, err := os.Open(fifoPath) // blocks until pipe-pane opens write end
 		if err != nil {
 			t.Logf("FIFO open error: %v", err)
 			return
@@ -116,11 +117,8 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 		fifoCh <- f
 	}()
 
-	// pipe-pane: sends all pane output to FIFO (opens write end → unblocks reader).
-	// Run this immediately after new-session so no early output is missed.
 	exec.Command(tmuxBin, "pipe-pane", "-t", sessionName, "cat > "+fifoPath).Run() //nolint:errcheck
 
-	// ── 6. Wait for FIFO reader to be ready ───────────────────────────────────
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 
@@ -132,7 +130,7 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 		t.Fatal("FIFO open timed out")
 	}
 
-	// ── 7. Stream FIFO output ─────────────────────────────────────────────────
+	// ── 7. Stream FIFO in background ──────────────────────────────────────────
 	var (
 		outputLines []string
 		outputMu    sync.Mutex
@@ -150,17 +148,22 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 		}
 	}()
 
-	// ── 8. Wait for Stop hook ─────────────────────────────────────────────────
+	// ── 8. Wait for Claude's interactive prompt, then send the task ───────────
+	// Give the TUI time to finish rendering its startup screen.
+	time.Sleep(3 * time.Second)
+	exec.Command(tmuxBin, "send-keys", "-t", sessionName, testPrompt, "Enter").Run() //nolint:errcheck
+	t.Logf("Prompt sent via send-keys: %q", testPrompt)
+
+	// ── 9. Wait for Stop hook ─────────────────────────────────────────────────
 	var ev stopEvent
 	select {
 	case ev = <-stopCh:
 		t.Logf("Stop hook: stop_reason=%q transcript_path=%q", ev.StopReason, ev.TranscriptPath)
-
 	case <-ctx.Done():
 		t.Fatal("Timed out waiting for Claude Code Stop hook")
 	}
 
-	// Kill the tmux session so the FIFO writer (cat) closes → readerDone.
+	// Kill session so the FIFO writer closes and readerDone is signalled.
 	exec.Command(tmuxBin, "kill-session", "-t", sessionName).Run() //nolint:errcheck
 	select {
 	case <-readerDone:
@@ -169,16 +172,15 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 	}
 	fifoFile.Close()
 
-	// ── 9. Write session file ────────────────────────────────────────────────
+	// ── 10. Write session file ────────────────────────────────────────────────
 	outputMu.Lock()
 	captured := append([]string(nil), outputLines...)
 	outputMu.Unlock()
 
 	sessionPath := writeSessionFile(t, testPrompt, ev.StopReason, captured)
-	t.Logf("Session log: %s", sessionPath)
-	t.Logf("Captured %d raw FIFO lines", len(captured))
+	t.Logf("Session log: %s  (%d raw FIFO lines)", sessionPath, len(captured))
 
-	// ── 10. Transcript assertions ─────────────────────────────────────────────
+	// ── 11. Transcript assertions ─────────────────────────────────────────────
 	if ev.TranscriptPath == "" {
 		t.Fatal("transcript_path was not provided in the Stop hook payload")
 	}
@@ -194,9 +196,8 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 	}
 }
 
-// ── stopEvent ─────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-// stopEvent carries the payload from the Claude Code Stop hook.
 type stopEvent struct {
 	StopReason     string
 	TranscriptPath string
@@ -204,74 +205,55 @@ type stopEvent struct {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-func filterEnv(env []string, exclude ...string) []string {
-	out := make([]string, 0, len(env))
-	for _, e := range env {
-		skip := false
-		for _, ex := range exclude {
-			if strings.HasPrefix(e, ex+"=") || e == ex {
-				skip = true
-				break
-			}
-		}
-		if !skip {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
-func freePort(t *testing.T) int {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("find free port: %v", err)
-	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
-	return port
-}
-
-func writeTestHooks(t *testing.T, workDir string, port int) {
+// writeTestHooks writes Stop and Notification HTTP hooks into
+// workDir/.claude/settings.json, preserving all other existing keys.
+// Returns a cleanup function that restores the original file content.
+func writeTestHooks(t *testing.T, workDir string, port int) func() {
 	t.Helper()
 	claudeDir := filepath.Join(workDir, ".claude")
 	if err := os.MkdirAll(claudeDir, 0755); err != nil {
 		t.Fatalf("mkdir .claude: %v", err)
 	}
+	settingsPath := filepath.Join(claudeDir, "settings.json")
 
-	settings := map[string]any{
-		"hooks": map[string]any{
-			"Stop": []any{
-				map[string]any{
-					"matcher": "",
-					"hooks": []any{
-						map[string]any{
-							"type": "http",
-							"url":  fmt.Sprintf("http://localhost:%d/hooks/stop", port),
-						},
-					},
+	// Save original so we can restore it on exit.
+	originalData, _ := os.ReadFile(settingsPath)
+
+	// Merge: preserve existing keys, overwrite only "hooks".
+	existing := make(map[string]any)
+	if originalData != nil {
+		json.Unmarshal(originalData, &existing) //nolint:errcheck
+	}
+	existing["hooks"] = map[string]any{
+		"Stop": []any{
+			map[string]any{
+				"matcher": "",
+				"hooks": []any{
+					map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/stop", port)},
 				},
 			},
-			"Notification": []any{
-				map[string]any{
-					"matcher": "",
-					"hooks": []any{
-						map[string]any{
-							"type": "http",
-							"url":  fmt.Sprintf("http://localhost:%d/hooks/notification", port),
-						},
-					},
+		},
+		"Notification": []any{
+			map[string]any{
+				"matcher": "",
+				"hooks": []any{
+					map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/notification", port)},
 				},
 			},
 		},
 	}
-
-	data, err := json.MarshalIndent(settings, "", "  ")
+	data, err := json.MarshalIndent(existing, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal hooks: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(claudeDir, "settings.json"), data, 0644); err != nil {
+	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
 		t.Fatalf("write settings.json: %v", err)
+	}
+
+	return func() {
+		if originalData != nil {
+			os.WriteFile(settingsPath, originalData, 0644) //nolint:errcheck
+		}
 	}
 }
 
@@ -306,8 +288,7 @@ func startTestHooksServer(t *testing.T, port int, onStop func(stopEvent), onNoti
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 100*time.Millisecond)
-		if err == nil {
+		if conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 100*time.Millisecond); err == nil {
 			conn.Close()
 			break
 		}
@@ -316,10 +297,36 @@ func startTestHooksServer(t *testing.T, port int, onStop func(stopEvent), onNoti
 	return srv
 }
 
-// writeSessionFile writes captured output to ~/.tasksquad/logs/test-session-<unix>.txt.
+func freePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("find free port: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	return port
+}
+
+func filterEnv(env []string, exclude ...string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		skip := false
+		for _, ex := range exclude {
+			if strings.HasPrefix(e, ex+"=") || e == ex {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 func writeSessionFile(t *testing.T, prompt, stopReason string, outputLines []string) string {
 	t.Helper()
-
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = os.TempDir()
@@ -328,7 +335,6 @@ func writeSessionFile(t *testing.T, prompt, stopReason string, outputLines []str
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		t.Fatalf("mkdir logs: %v", err)
 	}
-
 	sessionPath := filepath.Join(logsDir, fmt.Sprintf("test-session-%d.txt", time.Now().Unix()))
 
 	var sb strings.Builder
