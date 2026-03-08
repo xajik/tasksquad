@@ -111,8 +111,9 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
     session_id?: string
     status?: string
     final_text?: string
-  }>().catch(() => ({} as { session_id?: string; status?: string; final_text?: string }))
-  const { session_id, status = 'closed', final_text } = body
+    transcript?: string
+  }>().catch(() => ({} as { session_id?: string; status?: string; final_text?: string; transcript?: string }))
+  const { session_id, status = 'closed', final_text, transcript } = body
   const agentId = daemon.agentId
   if (!session_id) return err('missing_fields', 400)
 
@@ -129,6 +130,15 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   const agentStatus = taskStatus === 'waiting_input' ? 'waiting_input' : 'idle'
   const now = Date.now()
 
+  // Upload transcript JSONL to R2 and record its key on the agent message.
+  let transcriptKey: string | null = null
+  if (transcript && env.LOGS) {
+    transcriptKey = `${agentId.substring(0, 16)}/${session_id}/transcript.jsonl`
+    await env.LOGS.put(transcriptKey, transcript, {
+      httpMetadata: { contentType: 'application/x-ndjson' },
+    })
+  }
+
   const ops = [
     env.DB.prepare('UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?')
       .bind(status, now, session_id),
@@ -142,8 +152,8 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
 
   if (final_text) {
     ops.push(
-      env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(ulid(), session.task_id, null, 'agent', final_text, now)
+      env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, transcript_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(ulid(), session.task_id, null, 'agent', final_text, transcriptKey, now)
     )
   }
 

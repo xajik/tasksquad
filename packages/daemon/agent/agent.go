@@ -734,11 +734,20 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 		}
 	}
 
+	// Read the raw transcript JSONL for R2 upload; best-effort (empty string on error).
+	var transcriptContent string
+	if transcriptPath != "" {
+		if data, rerr := os.ReadFile(transcriptPath); rerr == nil {
+			transcriptContent = string(data)
+		}
+	}
+
 	closeResp, err := a.post(cfg, "/daemon/session/close", map[string]any{
 		"session_id": sessionID,
 		"agent_id":   agentID,
 		"status":     status,
 		"final_text": finalText,
+		"transcript": transcriptContent,
 	})
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] Session close error: %v", a.Config.Name, err))

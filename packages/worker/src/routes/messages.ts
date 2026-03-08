@@ -22,10 +22,40 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
 
   const rows = await env.DB
-    .prepare('SELECT id, task_id, sender_id, role, body, created_at FROM messages WHERE task_id = ? ORDER BY created_at ASC')
+    .prepare('SELECT id, task_id, sender_id, role, body, transcript_key, created_at FROM messages WHERE task_id = ? ORDER BY created_at ASC')
     .bind(taskId)
     .all()
   return json({ messages: rows.results })
+}
+
+export async function getTranscript(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const parts = new URL(req.url).pathname.split('/')
+  const taskId = parts[2]
+  const msgId = parts[4]
+
+  const task = await env.DB
+    .prepare('SELECT team_id FROM tasks WHERE id = ?')
+    .bind(taskId)
+    .first<{ team_id: string }>()
+  if (!task) return err('not_found', 404)
+  if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
+
+  const msg = await env.DB
+    .prepare('SELECT transcript_key FROM messages WHERE id = ? AND task_id = ?')
+    .bind(msgId, taskId)
+    .first<{ transcript_key: string | null }>()
+  if (!msg?.transcript_key) return err('not_found', 404)
+
+  const obj = await env.LOGS.get(msg.transcript_key)
+  if (!obj) return err('not_found', 404)
+
+  const text = await obj.text()
+  return new Response(text, {
+    headers: {
+      'Content-Type': 'application/x-ndjson',
+      'Access-Control-Allow-Origin': '*',
+    },
+  })
 }
 
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

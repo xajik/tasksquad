@@ -2,7 +2,7 @@ import { getToken } from './firebase'
 
 const BASE = import.meta.env.VITE_API_BASE_URL
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, rawText = false): Promise<T> {
   const token = await getToken()
   const res = await fetch(BASE + path, {
     ...init,
@@ -13,7 +13,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   })
   if (!res.ok) throw await res.json()
-  return res.json() as Promise<T>
+  return rawText ? res.text() as Promise<T> : res.json() as Promise<T>
 }
 
 export const api = {
@@ -49,6 +49,8 @@ export const api = {
   },
   messages: {
     list: (taskId: string) => request<{ messages: Message[] }>(`/tasks/${taskId}/messages`),
+    transcript: (taskId: string, msgId: string) =>
+      request<string>(`/tasks/${taskId}/messages/${msgId}/transcript`, {}, true),
     create: (taskId: string, body: string) =>
       request<Message>(`/tasks/${taskId}/messages`, {
         method: 'POST',
@@ -90,6 +92,7 @@ export interface Message {
   sender_id: string | null
   role: 'user' | 'agent' | 'system'
   body: string
+  transcript_key: string | null
   created_at: number
 }
 

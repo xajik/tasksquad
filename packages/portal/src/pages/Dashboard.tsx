@@ -45,14 +45,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
   Inbox,
   Settings,
   Bot,
@@ -63,7 +55,117 @@ import {
   ChevronUp,
   Play,
   Loader2,
+  FileText,
 } from 'lucide-react'
+
+// ── Transcript viewer ─────────────────────────────────────────────────────────
+
+interface TranscriptEntry {
+  type: string
+  message?: {
+    role?: string
+    content?: Array<{ type: string; text?: string; name?: string; input?: unknown }>
+  }
+  result?: string
+  total_cost_usd?: number
+}
+
+function TranscriptViewer({ content }: { content: string }) {
+  const entries: TranscriptEntry[] = content
+    .trim()
+    .split('\n')
+    .flatMap(line => { try { return [JSON.parse(line)] } catch { return [] } })
+
+  return (
+    <div className="space-y-3 text-sm">
+      {entries.map((entry, i) => {
+        if (entry.type === 'user') {
+          const text = entry.message?.content?.find(c => c.type === 'text')?.text
+          if (!text) return null
+          return (
+            <div key={i} className="flex gap-2">
+              <span className="font-semibold text-blue-600 shrink-0">Human</span>
+              <span className="whitespace-pre-wrap">{text}</span>
+            </div>
+          )
+        }
+        if (entry.type === 'assistant') {
+          return (entry.message?.content ?? []).map((c, j) => {
+            if (c.type === 'text' && c.text) return (
+              <div key={`${i}-${j}`} className="flex gap-2">
+                <span className="font-semibold text-green-700 shrink-0">Claude</span>
+                <span className="whitespace-pre-wrap">{c.text}</span>
+              </div>
+            )
+            if (c.type === 'tool_use') return (
+              <div key={`${i}-${j}`} className="flex gap-2 text-muted-foreground">
+                <span className="font-semibold shrink-0">Tool</span>
+                <span className="font-mono">{c.name}</span>
+              </div>
+            )
+            return null
+          })
+        }
+        if (entry.type === 'result' && entry.total_cost_usd != null) {
+          return (
+            <div key={i} className="text-xs text-muted-foreground border-t pt-2 mt-2">
+              Cost: ${entry.total_cost_usd.toFixed(4)} · {entry.result}
+            </div>
+          )
+        }
+        return null
+      })}
+    </div>
+  )
+}
+
+function TranscriptButton({ taskId, msgId }: { taskId: string; msgId: string }) {
+  const [open, setOpen] = useState(false)
+  const [content, setContent] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function handleOpen() {
+    setOpen(true)
+    if (content !== null) return
+    setLoading(true)
+    try {
+      const text = await api.messages.transcript(taskId, msgId)
+      setContent(text)
+    } catch {
+      setContent('Failed to load transcript.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={handleOpen}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mt-1 transition-colors"
+      >
+        <FileText className="h-3 w-3" />
+        View transcript
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>CLI Transcript</DialogTitle>
+            <DialogDescription>Full conversation from Claude Code</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 mt-2">
+            <div className="pr-4 font-mono text-xs">
+              {loading && <p className="text-muted-foreground">Loading…</p>}
+              {content && <TranscriptViewer content={content} />}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function relativeTime(ms: number): string {
   const diff = Date.now() - ms
@@ -94,16 +196,29 @@ function useTeam() {
   const [isLoadingTeams, setIsLoadingTeams] = useState(true)
 
   useEffect(() => {
-    const stored = localStorage.getItem('tsq_team_id')
-    if (stored) { setTeamId(stored); setTeamName(localStorage.getItem('tsq_team_name') ?? '') }
-  }, [])
-
-  useEffect(() => {
     async function loadTeams() {
       try {
+        const storedTeamId = localStorage.getItem('tsq_team_id')
+        
         const data = await api.teams.list()
-        setTeams(data.teams ?? [])
-        if (data.teams.length > 0 && !teamId) {
+        const uniqueTeams = Array.from(
+          new Map(data.teams?.map(t => [t.id, t])).values()
+        )
+        setTeams(uniqueTeams)
+
+        if (storedTeamId) {
+          const storedTeam = data.teams.find(t => t.id === storedTeamId)
+          if (storedTeam) {
+            setTeamId(storedTeam.id)
+            setTeamName(storedTeam.name)
+          } else if (data.teams.length > 0) {
+            const firstTeam = data.teams[0]
+            setTeamId(firstTeam.id)
+            setTeamName(firstTeam.name)
+            localStorage.setItem('tsq_team_id', firstTeam.id)
+            localStorage.setItem('tsq_team_name', firstTeam.name)
+          }
+        } else if (data.teams.length > 0) {
           const firstTeam = data.teams[0]
           setTeamId(firstTeam.id)
           setTeamName(firstTeam.name)
@@ -419,7 +534,12 @@ function TaskThread() {
       <ScrollArea className="h-[500px] mb-6">
         <div className="flex flex-col gap-2 pr-4">
           {messages.map(m => (
-            <div key={m.id} className={roleStyle(m.role)}>{m.body}</div>
+            <div key={m.id}>
+              <div className={roleStyle(m.role)}>{m.body}</div>
+              {m.role === 'agent' && m.transcript_key && taskId && (
+                <TranscriptButton taskId={taskId} msgId={m.id} />
+              )}
+            </div>
           ))}
           {liveLines.length > 0 && (
             <div className="border rounded-lg overflow-hidden">
@@ -743,32 +863,27 @@ export default function Dashboard() {
           {isLoadingTeams ? (
             <div className="px-2 py-2 text-sm text-muted-foreground">Loading...</div>
           ) : (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="w-full justify-between font-normal">
-                  <span className="truncate">{teamName}</span>
-                  <ChevronDown className="h-4 w-4 ml-1" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-48">
-                <DropdownMenuLabel>Switch team</DropdownMenuLabel>
-                <DropdownMenuSeparator />
+            <Select
+              value={teamId}
+              onValueChange={(value) => {
+                const team = teams.find(t => t.id === value)
+                if (team) switchTeam(team)
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select team" />
+              </SelectTrigger>
+              <SelectContent>
                 {teams.map(team => (
-                  <DropdownMenuItem
-                    key={team.id}
-                    onClick={() => switchTeam(team)}
-                    className={team.id === teamId ? 'bg-accent' : ''}
-                  >
+                  <SelectItem key={team.id} value={team.id}>
                     {team.name}
-                    {team.id === teamId && <span className="ml-auto text-xs">✓</span>}
-                  </DropdownMenuItem>
+                  </SelectItem>
                 ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-muted-foreground cursor-not-allowed" disabled>
+                <SelectItem value="__create__" disabled className="text-muted-foreground">
                   + Create new team (coming soon)
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           )}
         </div>
         <div className="p-2">

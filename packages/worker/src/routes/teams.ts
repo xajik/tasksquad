@@ -5,7 +5,7 @@ import type { Env, AuthContext } from '../types.js'
 export async function list(_req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const rows = await env.DB
     .prepare(`
-      SELECT t.id, t.name, tm.role
+      SELECT DISTINCT t.id, t.name, tm.role
       FROM teams t JOIN team_members tm ON t.id = tm.team_id
       WHERE tm.user_id = ?
       ORDER BY t.created_at DESC
