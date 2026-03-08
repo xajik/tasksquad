@@ -1,0 +1,6 @@
+# Binaries
+tsq
+daemon
+tsq-daemon
+dist/
+logs/

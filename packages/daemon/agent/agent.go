@@ -6,15 +6,53 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
 )
+
+// ansiEscape matches ANSI/VT100 escape sequences produced by terminal UIs.
+var ansiEscape = regexp.MustCompile(`\x1b(\[[0-9;?]*[A-Za-z]|\][^\x07]*(\x07|\x1b\\)|\(B|[0-9A-Za-z])`)
+
+// cleanLine strips ANSI escape sequences and handles carriage returns (\r).
+// PTY output from TUI programs like Claude Code uses \r to overwrite the
+// current line; we take only the segment after the last \r so the log
+// contains the final visible content of each line.
+func cleanLine(s string) string {
+	if i := strings.LastIndex(s, "\r"); i >= 0 {
+		s = s[i+1:]
+	}
+	return strings.TrimRight(ansiEscape.ReplaceAllString(s, ""), " \t")
+}
+
+// buildNotifyMessage extracts Claude's actual question from recent PTY output.
+// The Notification hook only delivers a generic string ("Claude is waiting for
+// your input"); the real question text lives in the terminal output captured by
+// streamOutput. We take the last 15 non-empty output lines as the message so
+// the user sees meaningful context in the portal thread.
+func buildNotifyMessage(a *Agent, fallback string) string {
+	a.mu.Lock()
+	lines := append([]string(nil), a.outputLines...)
+	a.mu.Unlock()
+
+	var recent []string
+	for i := len(lines) - 1; i >= 0 && len(recent) < 15; i-- {
+		if s := strings.TrimSpace(lines[i]); s != "" {
+			recent = append([]string{lines[i]}, recent...)
+		}
+	}
+	if len(recent) == 0 {
+		return fallback
+	}
+	return strings.Join(recent, "\n")
+}
 
 type Mode string
 
@@ -36,7 +74,7 @@ type Agent struct {
 	outputLines []string
 	completing  bool
 	proc        *exec.Cmd
-	stdinWrite  *io.PipeWriter // open while process is running (stdin-based providers only)
+	stdinWrite  io.WriteCloser // open while process is running (pipe or PTY master)
 	runLog      *os.File       // per-task log file, open while task runs
 	outputDone  chan struct{}   // closed when streamOutput finishes draining stdout
 }
@@ -253,20 +291,6 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	cmd := exec.Command(parts[0], args...)
 	cmd.Dir = a.Config.WorkDir
 
-	if stdinData != "" {
-		pr, pw := io.Pipe()
-		cmd.Stdin = pr
-		a.mu.Lock()
-		a.stdinWrite = pw
-		a.mu.Unlock()
-		// Write the initial prompt; the pipe stays open for future user replies.
-		go func() {
-			if _, err := fmt.Fprintln(pw, stdinData); err != nil {
-				logger.Warn(fmt.Sprintf("[%s] Failed to write prompt to stdin: %v", a.Config.Name, err))
-			}
-		}()
-	}
-
 	// Merge provider env vars into the process environment.
 	provEnv := a.prov.Env(cfg.Hooks.Port)
 	if len(provEnv) > 0 {
@@ -275,22 +299,91 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		cmd.Env = os.Environ()
 	}
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, err))
-		a.mu.Lock()
-		a.mode = ModeIdle
-		a.mu.Unlock()
-		return
-	}
-	stderr, _ := cmd.StderrPipe()
+	// outputDone is closed when the output reader goroutine finishes draining.
+	outputDone := make(chan struct{})
+	a.mu.Lock()
+	a.outputDone = outputDone
+	a.mu.Unlock()
 
-	if err := cmd.Start(); err != nil {
-		logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, err))
-		a.mu.Lock()
-		a.mode = ModeIdle
-		a.mu.Unlock()
-		return
+	var outputReader io.Reader
+
+	if stdinData != "" {
+		// Use a PTY so the provider thinks it's in a real terminal and produces
+		// full output: spinner, tool calls, diffs, colours — everything.
+		ptmx, err := pty.Start(cmd)
+		if err != nil {
+			logger.Warn(fmt.Sprintf("[%s] PTY start failed, falling back to pipe: %v", a.Config.Name, err))
+			// Fallback: plain pipe (no rich output, but still functional).
+			pr, pw := io.Pipe()
+			cmd.Stdin = pr
+			a.mu.Lock()
+			a.stdinWrite = pw
+			a.mu.Unlock()
+			go func() {
+				if _, werr := fmt.Fprintln(pw, stdinData); werr != nil {
+					logger.Warn(fmt.Sprintf("[%s] Failed to write prompt to stdin: %v", a.Config.Name, werr))
+				}
+			}()
+			stdout, serr := cmd.StdoutPipe()
+			if serr != nil {
+				logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))
+				a.mu.Lock()
+				a.mode = ModeIdle
+				a.mu.Unlock()
+				close(outputDone)
+				return
+			}
+			stderr, _ := cmd.StderrPipe()
+			if serr = cmd.Start(); serr != nil {
+				logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, serr))
+				a.mu.Lock()
+				a.mode = ModeIdle
+				a.mu.Unlock()
+				close(outputDone)
+				return
+			}
+			go io.Copy(io.Discard, stderr)
+			outputReader = stdout
+		} else {
+			// PTY started successfully.
+			// Set a wide terminal so progress bars / tables don't wrap.
+			_ = pty.Setsize(ptmx, &pty.Winsize{Rows: 50, Cols: 220})
+
+			a.mu.Lock()
+			a.stdinWrite = ptmx // PTY master is both stdin and stdout
+			a.mu.Unlock()
+
+			// Write the initial prompt into the PTY; keep it open for future replies.
+			go func() {
+				if _, werr := fmt.Fprintln(ptmx, stdinData); werr != nil {
+					logger.Warn(fmt.Sprintf("[%s] Failed to write prompt to PTY: %v", a.Config.Name, werr))
+				}
+			}()
+
+			outputReader = ptmx
+		}
+	} else {
+		// Non-stdin providers (e.g. codex): use regular stdout pipe with -p flag.
+		stdout, serr := cmd.StdoutPipe()
+		if serr != nil {
+			logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))
+			a.mu.Lock()
+			a.mode = ModeIdle
+			a.mu.Unlock()
+			close(outputDone)
+			return
+		}
+		stderr, _ := cmd.StderrPipe()
+		if serr = cmd.Start(); serr != nil {
+			logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, serr))
+			a.mu.Lock()
+			a.mode = ModeIdle
+			a.mu.Unlock()
+			close(outputDone)
+			return
+		}
+		go io.Copy(io.Discard, stderr)
+		outputReader = stdout
 	}
 
 	a.mu.Lock()
@@ -301,17 +394,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s pid=%d", a.Config.Name, taskID, cmd.Process.Pid))
 	a.writeRunLog(fmt.Sprintf("[EVENT] event=running pid=%d", cmd.Process.Pid))
 
-	// Drain stderr silently.
-	go io.Copy(io.Discard, stderr)
-
-	// Stream stdout lines to the server; close outputDone when finished so
-	// complete() can wait for the full output before sending final_text.
-	outputDone := make(chan struct{})
-	a.mu.Lock()
-	a.outputDone = outputDone
-	a.mu.Unlock()
+	// Stream output lines to the server and log file.
 	go func() {
-		a.streamOutput(cfg, agentID, stdout)
+		a.streamOutput(cfg, agentID, outputReader)
 		close(outputDone)
 	}()
 
@@ -352,22 +437,13 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 	scanner := bufio.NewScanner(r)
 	var batch []string
 
-	flush := func() {
+	flushPush := func() {
 		if len(batch) == 0 {
 			return
 		}
 		a.mu.Lock()
-		a.outputLines = append(a.outputLines, batch...)
 		id := a.agentID
 		a.mu.Unlock()
-
-		// Write full output to the per-task run log.
-		if runLog != nil {
-			for _, line := range batch {
-				fmt.Fprintln(runLog, line)
-			}
-		}
-
 		if id != "" {
 			a.post(cfg, "/daemon/push/"+id, map[string]any{ //nolint:errcheck
 				"type":  "line",
@@ -378,12 +454,29 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 	}
 
 	for scanner.Scan() {
-		batch = append(batch, scanner.Text())
+		line := cleanLine(scanner.Text())
+		if line == "" {
+			continue // skip pure escape-sequence lines (TUI redraws, clear-screen, etc.)
+		}
+
+		// Append to outputLines immediately so SetWaitingInput can read the
+		// latest content when the Notification hook fires.
+		a.mu.Lock()
+		a.outputLines = append(a.outputLines, line)
+		a.mu.Unlock()
+
+		// Write to the per-task run log immediately.
+		if runLog != nil {
+			fmt.Fprintln(runLog, line)
+		}
+
+		// Batch lines for server push.
+		batch = append(batch, line)
 		if len(batch) >= 10 {
-			flush()
+			flushPush()
 		}
 	}
-	flush()
+	flushPush()
 }
 
 // complete finalises the current task. Safe to call from both the hook handler
@@ -491,14 +584,29 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 }
 
 // Complete is called by the hook server when the provider emits a Stop event.
+// We only close stdin here so the process can exit cleanly; the actual
+// completion status is determined by the exit code in startTask — this
+// ensures a non-zero exit (e.g. "credit balance too low") is surfaced as
+// failed rather than silently marked done.
 func (a *Agent) Complete(cfg *config.Config) {
 	a.mu.Lock()
 	mode := a.mode
+	pw := a.stdinWrite
 	a.mu.Unlock()
+
 	if mode == ModeIdle {
 		return
 	}
-	a.complete(cfg, "closed")
+
+	// Close stdin so the process knows to exit after finishing its current turn.
+	if pw != nil {
+		a.mu.Lock()
+		if a.stdinWrite != nil {
+			a.stdinWrite = nil
+		}
+		a.mu.Unlock()
+		pw.Close()
+	}
 }
 
 // SetWaitingInput is called by the hook server on a Notification event.
@@ -518,13 +626,22 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string) {
 		return
 	}
 
-	logger.Info(fmt.Sprintf("[%s] Waiting for user input: %s", a.Config.Name, message))
+	// Wait briefly for any PTY output still buffered in the kernel to be read
+	// and appended to outputLines by the streamOutput goroutine.
+	time.Sleep(300 * time.Millisecond)
+
+	// Build the notification message from the last meaningful PTY output lines.
+	// The Notification hook only sends a generic string ("Claude is waiting for
+	// your input"); Claude's actual question is in the terminal output.
+	notifyMsg := buildNotifyMessage(a, message)
+
+	logger.Info(fmt.Sprintf("[%s] Waiting for user input: %s", a.Config.Name, notifyMsg))
 
 	// Notify SSE clients so the portal can display the question.
 	if agentID != "" {
 		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
 			"type":  "waiting_input",
-			"lines": []string{message},
+			"lines": []string{notifyMsg},
 		})
 	}
 
@@ -533,7 +650,7 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string) {
 	a.post(cfg, "/daemon/session/notify", map[string]any{ //nolint:errcheck
 		"session_id": sessionID,
 		"agent_id":   agentID,
-		"message":    message,
+		"message":    notifyMsg,
 	})
 
 	a.mu.Lock()

@@ -48,22 +48,22 @@ func (p *ClaudeCode) Setup(workDir string, hooksPort int) error {
 	existing["hooks"] = map[string]any{
 		"Stop": []any{
 			map[string]any{
-				"matcher": "",
+				"matcher": "*",
 				"hooks": []any{
 					map[string]any{
-						"type":    "command",
-						"command": fmt.Sprintf("curl -s -X POST http://localhost:%d/hooks/stop -H 'Content-Type: application/json' -d @-", hooksPort),
+						"type": "http",
+						"url":  fmt.Sprintf("http://localhost:%d/hooks/stop", hooksPort),
 					},
 				},
 			},
 		},
 		"Notification": []any{
 			map[string]any{
-				"matcher": "",
+				"matcher": "*",
 				"hooks": []any{
 					map[string]any{
-						"type":    "command",
-						"command": fmt.Sprintf("curl -s -X POST http://localhost:%d/hooks/notification -H 'Content-Type: application/json' -d @-", hooksPort),
+						"type": "http",
+						"url":  fmt.Sprintf("http://localhost:%d/hooks/notification", hooksPort),
 					},
 				},
 			},
