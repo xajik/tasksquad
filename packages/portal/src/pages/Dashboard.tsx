@@ -1126,6 +1126,12 @@ export default function Dashboard() {
   const isAgents = location.pathname === '/dashboard/agents'
   const isSettings = location.pathname === '/dashboard/settings'
 
+  if (isLoadingTeams) return (
+    <div className="flex h-screen items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  )
+
   if (!teamId) return <CreateTeam onCreated={createTeam} />
 
   async function handleCreateTeam(e: React.FormEvent) {
