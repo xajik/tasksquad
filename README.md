@@ -63,16 +63,7 @@ You (portal)
 
 ## Multi-agent design
 
-Every agent on every machine gets its own daemon goroutine, its own tmux session, and its own hook URL. The shared hooks server routes `Stop` and `Notification` events by `?agent=<name>` in the URL — so five agents can run simultaneously with no dispatch ambiguity.
-
-```
-hooks server (port 8080)
-  POST /hooks/stop?agent=alpha    →  agent "alpha".StopAndPause()
-  POST /hooks/stop?agent=beta     →  agent "beta".StopAndPause()
-  POST /hooks/notification?agent=alpha  →  agent "alpha".SetWaitingInput()
-```
-
-Each Claude instance calls its own URL, embedded when the daemon writes `.claude/settings.json`.
+Every agent on every machine gets its own daemon goroutine, its own tmux session, and its own hook URL.
 
 ## Components
 
@@ -87,8 +78,9 @@ Each Claude instance calls its own URL, embedded when the daemon writes `.claude
 | Provider | Status | Hook mechanism |
 |---|---|---|
 | Claude Code | ✅ | Native HTTP `Stop` + `Notification` hooks |
-| OpenCode | 🔜 | `opencode.json` session hooks |
-| Codex | 🔜 | `CODEX_HOOKS_SERVER_URL` |
+| Gemini | 🔜 | Via Hooks |
+| OpenCode | 🔜 | Via SDK |
+| Codex | 🔜 | TBD |
 | Any CLI | ✅ | stdout / exit-code fallback |
 
 ## Quick start
@@ -105,7 +97,7 @@ brew tap xajik/tap && brew install tsq
 [[agents]]
 token    = "paste-token-from-portal"
 name     = "my-agent"
-command  = "claude"
+command  = "claude --dangerously-skip-permissions"
 work_dir = "~/Projects"
 ```
 
@@ -124,11 +116,6 @@ port = 7374
 tsq
 ```
 
-Attach to any live agent session:
-```bash
-tmux attach-session -t ts-<taskID>
-```
-
 ## Stack
 
 | Layer | Technology |
@@ -141,28 +128,3 @@ tmux attach-session -t ts-<taskID>
 | Live relay | Server-Sent Events via Cloudflare Workers |
 | Daemon | Go — single binary, tmux session management |
 | Hooks | Claude Code native HTTP hooks → local daemon server |
-
-## Key design decisions
-
-**tmux over PTY** — operators attach to any live session with `tmux attach`. Sessions survive daemon restarts.
-
-**FIFO streaming** — `tmux pipe-pane | cat > /tmp/ts-<id>.fifo` feeds output to the daemon. A FIFO blocks until data arrives; no polling needed.
-
-**Sessions outlive Stop hooks** — when Claude's `Stop` hook fires, the daemon posts the response and stays in `waiting_input`. The tmux session only dies when the user clicks "Complete session". This enables unlimited multi-turn back-and-forth within a single task thread.
-
-**`close` vs `cancel`** — mid-execution aborts send `cancel`; user-initiated session ends send `close`. The daemon handles each differently so partial work and logs are always preserved.
-
-**Flat messages table** — user input, agent replies, and system events all live in one table with a `role` column. A full thread is one query. No joins for rendering.
-
-## Repository layout
-
-```
-tasksquad-doc/
-├── icon/                  Brand assets (SVG + PNG)
-├── prototype/             HTML/JSX reference prototypes
-├── specs/                 User stories + MVP tech spec
-└── packages/
-    ├── daemon/            Go agent daemon
-    ├── worker/            Cloudflare Worker (API + DB)
-    └── portal/            React portal (Vite + TypeScript)
-```
