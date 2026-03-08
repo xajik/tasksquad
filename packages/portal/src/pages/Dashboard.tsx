@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { signOut } from 'firebase/auth'
-import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
+import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { auth, getToken } from '../lib/firebase'
 import { api, type Agent, type Task, type Message } from '../lib/api'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -96,12 +107,15 @@ function InboxView({ teamId }: { teamId: string }) {
   const [taskBody, setTaskBody] = useState('')
   const [agentId, setAgentId] = useState('')
   const [creating, setCreating] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const nav = useNavigate()
 
   const load = useCallback(async () => {
+    setIsLoading(true)
     const [td, ad] = await Promise.all([api.tasks.list(teamId), api.agents.list(teamId)])
     setTasks(td.tasks ?? [])
     setAgents(ad.agents ?? [])
+    setIsLoading(false)
   }, [teamId])
 
   useEffect(() => { load() }, [load])
@@ -116,14 +130,12 @@ function InboxView({ teamId }: { teamId: string }) {
     } finally { setCreating(false) }
   }
 
-  async function deleteTask(e: React.MouseEvent, taskId: string) {
-    e.stopPropagation()
-    if (!confirm('Delete this task and all its messages?')) return
+  async function handleDeleteTask(taskId: string) {
     await api.tasks.delete(taskId)
     load()
   }
 
-  const agentMap = Object.fromEntries(agents.map(a => [a.id, a]))
+  const agentMap = useMemo(() => Object.fromEntries(agents.map(a => [a.id, a])), [agents])
 
   function taskStatus(t: Task): string {
     if (t.status === 'pending') {
@@ -134,7 +146,7 @@ function InboxView({ teamId }: { teamId: string }) {
   }
 
   return (
-    <div>
+    <div className="animate-fade-in">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-semibold">Inbox</h2>
         <Button onClick={() => setShowCompose(true)}>
@@ -200,32 +212,67 @@ function InboxView({ teamId }: { teamId: string }) {
       </Dialog>
 
       <div className="flex flex-col gap-2">
-        {tasks.length === 0 && <p className="text-muted-foreground">No messages yet.</p>}
-        {tasks.map(t => (
-          <Card
-            key={t.id}
-            className="cursor-pointer hover:bg-accent/50 transition-colors"
-            onClick={() => nav(`/dashboard/tasks/${t.id}`)}
-          >
-            <CardContent className="p-4 flex justify-between items-center">
-              <div>
-                <div className="font-medium">{t.subject}</div>
-                <div className="text-sm text-muted-foreground">{agentMap[t.agent_id]?.name ?? t.agent_id}</div>
-              </div>
-              <div className="flex items-center gap-3">
-                <StatusBadge status={taskStatus(t)} />
-                <span className="text-muted-foreground text-sm">{relativeTime(t.created_at)}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={e => deleteTask(e, t.id)}
-                >
-                  <Trash2 className="h-4 w-4 text-muted-foreground" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="p-4">
+                  <div className="h-4 bg-muted rounded w-1/3 mb-2"></div>
+                  <div className="h-3 bg-muted rounded w-1/4"></div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : tasks.length === 0 ? (
+          <p className="text-muted-foreground">No messages yet.</p>
+        ) : (
+          tasks.map(t => (
+            <Card
+              key={t.id}
+              className="cursor-pointer hover:bg-accent/50 transition-colors"
+              onClick={() => nav(`/dashboard/tasks/${t.id}`)}
+            >
+              <CardContent className="p-4 flex justify-between items-center">
+                <div>
+                  <div className="font-medium">{t.subject}</div>
+                  <div className="text-sm text-muted-foreground">{agentMap[t.agent_id]?.name ?? t.agent_id}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <StatusBadge status={taskStatus(t)} />
+                  <span className="text-muted-foreground text-sm">{relativeTime(t.created_at)}</span>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete task</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to delete "{t.subject}"? This will also delete all messages in this thread. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel onClick={e => e.stopPropagation()}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={e => { e.stopPropagation(); handleDeleteTask(t.id) }}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
     </div>
   )
@@ -307,7 +354,7 @@ function TaskThread() {
   }
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-3xl animate-fade-in">
       <div className="flex items-center gap-3 mb-6">
         <h2 className="text-2xl font-semibold flex-1">{task?.subject ?? '...'}</h2>
         {task && <StatusBadge status={task.status} />}
@@ -377,10 +424,13 @@ function AgentsView({ teamId }: { teamId: string }) {
   const [creating, setCreating] = useState(false)
   const [newToken, setNewToken] = useState<{ agentId: string; token: string } | null>(null)
   const [tokenLabel, setTokenLabel] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
 
   const load = useCallback(async () => {
+    setIsLoading(true)
     const d = await api.agents.list(teamId)
     setAgents(d.agents ?? [])
+    setIsLoading(false)
   }, [teamId])
 
   useEffect(() => { load() }, [load])
@@ -401,46 +451,80 @@ function AgentsView({ teamId }: { teamId: string }) {
   }
 
   async function deleteAgent(agentId: string) {
-    if (!confirm('Delete this agent and all its tasks/messages?')) return
     await api.agents.delete(teamId, agentId)
     load()
   }
 
   return (
-    <div>
+    <div className="animate-fade-in">
       <h2 className="text-2xl font-semibold mb-6">Agents</h2>
 
       <div className="flex flex-col gap-3 mb-8">
-        {agents.length === 0 && <p className="text-muted-foreground">No agents yet.</p>}
-        {agents.map(a => (
-          <Card key={a.id}>
-            <CardContent className="p-4 flex justify-between items-start">
-              <div>
-                <div className="font-medium">{a.name}</div>
-                <div className="text-sm text-muted-foreground">{a.command} · {a.work_dir}</div>
-                <div className="text-xs text-muted-foreground font-mono mt-1">ID: {a.id}</div>
-                {a.last_seen && <div className="text-xs text-muted-foreground mt-1">Last seen {relativeTime(a.last_seen)}</div>}
-              </div>
-              <div className="flex items-center gap-3">
-                <StatusBadge status={a.status} />
-                <div className="flex gap-2">
-                  <Input
-                    value={tokenLabel}
-                    onChange={e => setTokenLabel(e.target.value)}
-                    placeholder="Token label"
-                    className="h-8 w-28 text-xs"
-                  />
-                  <Button variant="secondary" size="sm" onClick={() => genToken(a.id)}>
-                    Gen token
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => deleteAgent(a.id)}>
-                    <Trash2 className="h-4 w-4 text-muted-foreground" />
-                  </Button>
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map(i => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="p-4">
+                  <div className="h-4 bg-muted rounded w-1/4 mb-2"></div>
+                  <div className="h-3 bg-muted rounded w-1/2"></div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : agents.length === 0 ? (
+          <p className="text-muted-foreground">No agents yet.</p>
+        ) : (
+          agents.map(a => (
+            <Card key={a.id}>
+              <CardContent className="p-4 flex justify-between items-start">
+                <div>
+                  <div className="font-medium">{a.name}</div>
+                  <div className="text-sm text-muted-foreground">{a.command} · {a.work_dir}</div>
+                  <div className="text-xs text-muted-foreground font-mono mt-1">ID: {a.id}</div>
+                  {a.last_seen && <div className="text-xs text-muted-foreground mt-1">Last seen {relativeTime(a.last_seen)}</div>}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                <div className="flex items-center gap-3">
+                  <StatusBadge status={a.status} />
+                  <div className="flex gap-2">
+                    <Input
+                      value={tokenLabel}
+                      onChange={e => setTokenLabel(e.target.value)}
+                      placeholder="Token label"
+                      className="h-8 w-28 text-xs"
+                    />
+                    <Button variant="secondary" size="sm" onClick={() => genToken(a.id)}>
+                      Gen token
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete agent</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete "{a.name}"? This will also delete all tasks and messages associated with this agent. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteAgent(a.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
 
       {newToken && (() => {
@@ -523,7 +607,7 @@ function AgentsView({ teamId }: { teamId: string }) {
 
 function SettingsView({ teamId, teamName }: { teamId: string; teamName: string }) {
   return (
-    <div>
+    <div className="animate-fade-in">
       <h2 className="text-2xl font-semibold mb-6">Settings</h2>
       <div className="max-w-md">
         <div className="text-sm text-muted-foreground mb-1">Team name</div>
@@ -574,8 +658,11 @@ function CreateTeam({ onCreated }: { onCreated: (name: string) => void }) {
 
 export default function Dashboard() {
   const { teamId, teamName, createTeam } = useTeam()
-  const [view, setView] = useState<'inbox' | 'agents' | 'settings'>('inbox')
+  const location = useLocation()
   const nav = useNavigate()
+
+  const isAgents = location.pathname === '/dashboard/agents'
+  const isSettings = location.pathname === '/dashboard/settings'
 
   if (!teamId) return <CreateTeam onCreated={createTeam} />
 
@@ -585,25 +672,25 @@ export default function Dashboard() {
         <div className="font-bold text-lg px-4 py-5">TaskSquad</div>
         <nav className="flex-1 px-2">
           <Button
-            variant={view === 'inbox' ? 'secondary' : 'ghost'}
+            variant={!isAgents && !isSettings ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
-            onClick={() => { setView('inbox'); nav('/dashboard') }}
+            onClick={() => nav('/dashboard')}
           >
             <Inbox className="mr-2 h-4 w-4" />
             Inbox
           </Button>
           <Button
-            variant={view === 'agents' ? 'secondary' : 'ghost'}
+            variant={isAgents ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
-            onClick={() => { setView('agents'); nav('/dashboard/agents') }}
+            onClick={() => nav('/dashboard/agents')}
           >
             <Bot className="mr-2 h-4 w-4" />
             Agents
           </Button>
           <Button
-            variant={view === 'settings' ? 'secondary' : 'ghost'}
+            variant={isSettings ? 'secondary' : 'ghost'}
             className="w-full justify-start"
-            onClick={() => { setView('settings'); nav('/dashboard/settings') }}
+            onClick={() => nav('/dashboard/settings')}
           >
             <Settings className="mr-2 h-4 w-4" />
             Settings

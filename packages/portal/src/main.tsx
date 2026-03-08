@@ -7,6 +7,7 @@ import { auth } from './lib/firebase'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import './index.css'
 
 function App() {
   const [authed, setAuthed] = useState<boolean | null>(null)

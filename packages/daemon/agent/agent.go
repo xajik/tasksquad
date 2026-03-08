@@ -38,6 +38,7 @@ type Agent struct {
 	proc        *exec.Cmd
 	stdinWrite  *io.PipeWriter // open while process is running (stdin-based providers only)
 	runLog      *os.File       // per-task log file, open while task runs
+	outputDone  chan struct{}   // closed when streamOutput finishes draining stdout
 }
 
 func New(cfg config.AgentConfig) *Agent {
@@ -303,8 +304,16 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	// Drain stderr silently.
 	go io.Copy(io.Discard, stderr)
 
-	// Stream stdout lines to the server.
-	go a.streamOutput(cfg, agentID, stdout)
+	// Stream stdout lines to the server; close outputDone when finished so
+	// complete() can wait for the full output before sending final_text.
+	outputDone := make(chan struct{})
+	a.mu.Lock()
+	a.outputDone = outputDone
+	a.mu.Unlock()
+	go func() {
+		a.streamOutput(cfg, agentID, stdout)
+		close(outputDone)
+	}()
 
 	// Wait for process exit.
 	// For hook-based providers the hook usually fires first; the completing
@@ -389,17 +398,33 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	sessionID := a.sessionID
 	agentID := a.agentID
 	taskID := a.taskID
-	lines := append([]string(nil), a.outputLines...)
 	pw := a.stdinWrite
 	a.stdinWrite = nil
 	runLog := a.runLog
 	a.runLog = nil
+	outputDone := a.outputDone
 	a.mu.Unlock()
 
 	// Signal EOF to the process stdin (if still open) so it can exit cleanly.
 	if pw != nil {
 		pw.Close()
 	}
+
+	// Wait for stdout to finish draining before collecting output.
+	// This is critical when the Stop hook fires mid-execution: the process
+	// may still be writing its final response to stdout. Without this wait,
+	// outputLines is incomplete and final_text ends up empty.
+	if outputDone != nil {
+		select {
+		case <-outputDone:
+		case <-time.After(15 * time.Second):
+			logger.Warn(fmt.Sprintf("[%s] Timed out waiting for stdout drain (task %s)", a.Config.Name, taskID))
+		}
+	}
+
+	a.mu.Lock()
+	lines := append([]string(nil), a.outputLines...)
+	a.mu.Unlock()
 
 	logger.Info(fmt.Sprintf("[%s] Completing task %s — status=%s", a.Config.Name, taskID, status))
 
@@ -459,6 +484,7 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	a.mode = ModeIdle
 	a.sessionID = ""
 	a.outputLines = nil
+	a.outputDone = nil
 	a.proc = nil
 	a.completing = false
 	a.mu.Unlock()
@@ -481,11 +507,14 @@ func (a *Agent) Complete(cfg *config.Config) {
 func (a *Agent) SetWaitingInput(cfg *config.Config, message string) {
 	a.mu.Lock()
 	mode := a.mode
+	completing := a.completing
 	agentID := a.agentID
 	sessionID := a.sessionID
 	a.mu.Unlock()
 
-	if mode != ModeRunning {
+	// Ignore if not running or if complete() is already in progress (e.g. Stop
+	// hook arrived just before this Notification hook was delivered).
+	if mode != ModeRunning || completing {
 		return
 	}
 

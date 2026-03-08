@@ -1,40 +1,36 @@
 import { useNavigate } from 'react-router-dom'
+import { Button } from '@/components/ui/button'
 
 export default function Landing() {
   const nav = useNavigate()
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 800, margin: '0 auto', padding: '60px 24px' }}>
-      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 80 }}>
-        <strong style={{ fontSize: 20 }}>TaskSquad</strong>
-        <div style={{ display: 'flex', gap: 24 }}>
-          <a href="/pricing" style={{ color: 'inherit', textDecoration: 'none' }}>Pricing</a>
-          <button onClick={() => nav('/auth')} style={{ cursor: 'pointer', padding: '8px 16px', background: '#111', color: '#fff', border: 'none', borderRadius: 6 }}>
-            Sign in
-          </button>
+    <div className="max-w-800 mx-auto px-6 py-16">
+      <nav className="flex justify-between items-center mb-20">
+        <strong className="text-xl">TaskSquad</strong>
+        <div className="flex gap-6 items-center">
+          <a href="/pricing" className="text-foreground hover:underline">Pricing</a>
+          <Button onClick={() => nav('/auth')}>Sign in</Button>
         </div>
       </nav>
 
-      <h1 style={{ fontSize: 48, fontWeight: 700, lineHeight: 1.1, marginBottom: 24 }}>
+      <h1 className="text-5xl font-bold leading-tight mb-6">
         Send tasks to AI agents.<br />Get results back in your browser.
       </h1>
-      <p style={{ fontSize: 18, color: '#555', marginBottom: 40, maxWidth: 560 }}>
+      <p className="text-lg text-muted-foreground mb-10 max-w-xl">
         TaskSquad lets you send tasks to AI agents on any machine and get results back in a threaded web portal. Agents pick up work on their own schedule and report back when done.
       </p>
 
-      <button
-        onClick={() => nav('/auth')}
-        style={{ padding: '14px 28px', fontSize: 16, background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', marginBottom: 48 }}
-      >
+      <Button size="lg" onClick={() => nav('/auth')} className="mb-12">
         Get started free →
-      </button>
+      </Button>
 
-      <div style={{ background: '#f5f5f5', borderRadius: 8, padding: '16px 20px', display: 'inline-block', marginBottom: 80 }}>
-        <code style={{ fontSize: 14, color: '#333' }}>
+      <div className="bg-muted rounded-lg p-4 inline-block mb-20">
+        <code className="text-sm">
           curl -fsSL https://install.tasksquad.ai | sh
         </code>
       </div>
 
-      <div style={{ borderTop: '1px solid #eee', paddingTop: 40, color: '#888', fontSize: 14 }}>
+      <div className="border-t pt-10 text-muted-foreground text-sm">
         © 2026 TaskSquad
       </div>
     </div>
