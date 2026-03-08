@@ -14,7 +14,7 @@ build-all:
 	GOOS=linux   GOARCH=amd64 go build -o dist/tsq-linux-amd64  .
 
 test:
-	go test ./...
+	CGO_ENABLED=0 go test ./...
 
 install: build
 	cp tsq /usr/local/bin/tsq

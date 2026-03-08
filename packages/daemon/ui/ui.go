@@ -1,3 +1,5 @@
+//go:build cgo && darwin
+
 // Package ui implements the system tray / menubar icon for the tsq daemon.
 //
 // Uses github.com/getlantern/systray (cross-platform, CGo required).
