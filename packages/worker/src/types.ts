@@ -10,7 +10,7 @@ export interface Env {
   // Set via: wrangler secret put R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
   R2_ACCESS_KEY_ID: string
   R2_SECRET_ACCESS_KEY: string
-  // Set in wrangler.toml [vars]
+  // Set via: wrangler secret put CLOUDFLARE_ACCOUNT_ID / R2_BUCKET_NAME
   CLOUDFLARE_ACCOUNT_ID: string
   R2_BUCKET_NAME: string
 }
