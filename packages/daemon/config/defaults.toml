@@ -1,0 +1,6 @@
+[server]
+url           = "https://tasksquad-api.xajik0.workers.dev"
+poll_interval = 30
+
+[hooks]
+port = 7374

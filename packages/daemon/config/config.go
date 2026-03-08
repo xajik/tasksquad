@@ -1,6 +1,7 @@
 package config
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,9 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/fsnotify/fsnotify"
 )
+
+//go:embed defaults.toml
+var defaultsTOML []byte
 
 type ServerConfig struct {
 	URL          string `toml:"url"`
@@ -37,15 +41,6 @@ type Config struct {
 	Hooks  HooksConfig   `toml:"hooks"`
 }
 
-func setDefaults(cfg *Config) {
-	if cfg.Server.PollInterval == 0 {
-		cfg.Server.PollInterval = 30
-	}
-	if cfg.Hooks.Port == 0 {
-		cfg.Hooks.Port = 7374
-	}
-}
-
 func expandHome(path string) string {
 	if len(path) >= 2 && path[:2] == "~/" {
 		home, _ := os.UserHomeDir()
@@ -60,20 +55,21 @@ func DefaultPath() string {
 }
 
 func Load(path string) (*Config, error) {
+	// Start from embedded defaults so every field has a sensible value
+	// even if the user's config omits it.
 	cfg := &Config{}
+	if _, err := toml.Decode(string(defaultsTOML), cfg); err != nil {
+		return nil, fmt.Errorf("failed to load built-in defaults: %w", err)
+	}
 
+	// Overlay user config (only keys present in the file are overwritten).
 	if _, err := toml.DecodeFile(path, cfg); err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("config file not found at %s", path)
+			return nil, fmt.Errorf("config file not found at %s\nRun: tsq init", path)
 		}
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	setDefaults(cfg)
-
-	if cfg.Server.URL == "" {
-		return nil, fmt.Errorf("server.url is required")
-	}
 	if len(cfg.Agents) == 0 {
 		return nil, fmt.Errorf("at least one [[agents]] entry is required")
 	}

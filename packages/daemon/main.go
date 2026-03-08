@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -101,36 +100,29 @@ func runInit() {
 
 	fmt.Println("TaskSquad daemon setup")
 	fmt.Println("----------------------")
+	fmt.Println("Get your agent token from https://tasksquad.ai")
+	fmt.Println()
 
-	apiURL := read("API URL", "https://tasksquad-api.xajik0.workers.dev")
 	token := read("Agent token (paste from portal)", "")
 	name := read("Agent name", "my-agent")
 	command := read("CLI command", "claude")
 	providerName := provider.Detect(command, "").Name()
 	workDir := read("Work directory", "~/Projects")
-	port := read("Hooks port", "7374")
 
-	toml := fmt.Sprintf(`[server]
-url = %q
-poll_interval = 30
-
-[hooks]
-port = %s
-
-[[agents]]
-token = %q
-name = %q
+	cfg := fmt.Sprintf(`[[agents]]
+token   = %q
+name    = %q
 command = %q
 # provider = %q  # auto-detected from command; uncomment to override
 work_dir = %q
-`, apiURL, port, token, name, command, providerName, workDir)
+`, token, name, command, providerName, workDir)
 
 	home, _ := os.UserHomeDir()
 	dir := filepath.Join(home, ".tasksquad")
 	os.MkdirAll(dir, 0755)
 	path := filepath.Join(dir, "config.toml")
 
-	if err := os.WriteFile(path, []byte(toml), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(cfg), 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "error writing config: %v\n", err)
 		os.Exit(1)
 	}
@@ -138,19 +130,4 @@ work_dir = %q
 	fmt.Printf("\nConfig written to %s\n", path)
 	fmt.Printf("Detected provider: %s\n", providerName)
 	fmt.Println("Run: tsq")
-
-	// sample JSON kept as dead variable — useful reference, not printed
-	sample, _ := json.MarshalIndent(map[string]any{
-		"apiUrl":       apiURL,
-		"pollInterval": 30,
-		"hooksPort":    7374,
-		"agents": []map[string]any{{
-			"token":    token,
-			"name":     name,
-			"command":  command,
-			"provider": providerName,
-			"workDir":  workDir,
-		}},
-	}, "", "  ")
-	_ = sample
 }

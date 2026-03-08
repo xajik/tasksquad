@@ -93,14 +93,39 @@ Each Claude instance calls its own URL, embedded when the daemon writes `.claude
 
 ## Quick start
 
+**1. Install**
 ```bash
-# Build daemon
-cd packages/daemon && go build -o tsq-daemon ./cmd/daemon
+brew tap xajik/tap && brew install tsq
+```
 
-# Configure ~/.tasksquad/config.yaml, then:
-./tsq-daemon
+**2. Create your agent** at [tasksquad.ai](https://tasksquad.ai) — sign in, create a team, add an agent, copy the token.
 
-# Watch any running agent live
+**3. Configure** `~/.tasksquad/config.toml` — only your agent token is required, everything else has a built-in default:
+```toml
+[[agents]]
+token    = "paste-token-from-portal"
+name     = "my-agent"
+command  = "claude"
+work_dir = "~/Projects"
+```
+
+Override server settings only if needed (these are already the defaults):
+```toml
+[server]
+url           = "https://tasksquad-api.xajik0.workers.dev"
+poll_interval = 30
+
+[hooks]
+port = 7374
+```
+
+**4. Run**
+```bash
+tsq
+```
+
+Attach to any live agent session:
+```bash
 tmux attach-session -t ts-<taskID>
 ```
 
