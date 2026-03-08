@@ -791,7 +791,7 @@ func (a *Agent) uploadAndAttachLog(cfg *config.Config, sessionID, logContent str
 	}
 }
 
-// ExtractTranscriptResponse reads Claude Code's JSONL conversation transcript
+// ExtractTranscriptResponse reads a JSONL conversation transcript (Claude or Gemini)
 // and returns the text of the last assistant message. Returns empty string on
 // any read or parse error so callers can fall back to terminal output.
 func ExtractTranscriptResponse(path string) string {

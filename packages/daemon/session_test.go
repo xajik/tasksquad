@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -43,17 +44,24 @@ const testPrompt = "Reply with exactly one word: DONE"
 const testTimeout = 90 * time.Second
 
 func TestClaudeCodeTmuxSession(t *testing.T) {
+	runTmuxIntegrationTest(t, "claude", "claude")
+}
+
+func TestGeminiTmuxSession(t *testing.T) {
+	runTmuxIntegrationTest(t, "gemini", "gemini")
+}
+
+func runTmuxIntegrationTest(t *testing.T, provider, binName string) {
 	// ── 0. Prerequisites ──────────────────────────────────────────────────────
 	tmuxBin, err := exec.LookPath("tmux")
 	if err != nil {
 		t.Skip("tmux not found on PATH — skipping")
 	}
-	if _, err := exec.LookPath("claude"); err != nil {
-		t.Skip("claude not found on PATH — skipping")
+	if _, err := exec.LookPath(binName); err != nil {
+		t.Skipf("%s not found on PATH — skipping", binName)
 	}
 
-	// ── 1. Work dir: project root (already trusted by Claude Code) ────────────
-	// Test runs from packages/daemon/ → ../../ is the project root.
+	// ── 1. Work dir: project root (already trusted) ───────────────────────────
 	daemonDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("os.Getwd: %v", err)
@@ -62,21 +70,21 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("filepath.Abs: %v", err)
 	}
-	t.Logf("Work dir: %s", workDir)
+	t.Logf("[%s] Work dir: %s", provider, workDir)
 
 	// ── 2. Hooks: overwrite only the hooks key, restore on exit ───────────────
 	port := freePort(t)
-	t.Logf("Hooks port: %d", port)
-	t.Cleanup(writeTestHooks(t, workDir, port))
+	t.Logf("[%s] Hooks port: %d", provider, port)
+	t.Cleanup(writeTestHooks(t, workDir, port, provider))
 
 	// ── 3. Hooks capture server ───────────────────────────────────────────────
 	var (
 		stopOnce sync.Once
 		stopCh   = make(chan stopEvent, 1)
 	)
-	srv := startTestHooksServer(t, port,
+	srv := startTestHooksServer(t, port, provider,
 		func(ev stopEvent) { stopOnce.Do(func() { stopCh <- ev }) },
-		func(msg string) { t.Logf("[notification] %s", msg) },
+		func(msg string) { t.Logf("[%s notification] %s", provider, msg) },
 	)
 	defer srv.Shutdown(context.Background()) //nolint:errcheck
 
@@ -86,20 +94,24 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 		t.Fatalf("mkfifo: %v", err)
 	}
 
-	// ── 5. Start tmux session running claude in interactive mode ──────────────
-	sessionName := fmt.Sprintf("ts-test-%d", os.Getpid())
-	env := filterEnv(os.Environ(), "CLAUDECODE") // prevent Claude-in-Claude recursion
+	// ── 5. Start tmux session running CLI in interactive mode ─────────────────
+	sessionName := fmt.Sprintf("ts-test-%s-%d", provider, os.Getpid())
+	env := filterEnv(os.Environ(), "CLAUDECODE", "GEMINI")
 
-	newSessCmd := exec.Command(tmuxBin,
+	newSessArgs := []string{
 		"new-session", "-d", "-s", sessionName,
 		"-c", workDir, "-x", "220", "-y", "50",
-		"--", "claude",
-	)
+		"--", binName,
+	}
+	// For gemini, we might need to skip permissions or something if it's too interactive
+	// but for now we follow the same logic as Claude.
+
+	newSessCmd := exec.Command(tmuxBin, newSessArgs...)
 	newSessCmd.Env = env
 	if out, err := newSessCmd.CombinedOutput(); err != nil {
 		t.Fatalf("tmux new-session: %v: %s", err, out)
 	}
-	t.Logf("tmux session started: %s", sessionName)
+	t.Logf("[%s] tmux session started: %s", provider, sessionName)
 
 	t.Cleanup(func() {
 		exec.Command(tmuxBin, "kill-session", "-t", sessionName).Run() //nolint:errcheck
@@ -125,7 +137,7 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 	var fifoFile *os.File
 	select {
 	case fifoFile = <-fifoCh:
-		t.Logf("FIFO open — streaming output")
+		t.Logf("[%s] FIFO open — streaming output", provider)
 	case <-time.After(5 * time.Second):
 		t.Fatal("FIFO open timed out")
 	}
@@ -144,23 +156,23 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 			outputMu.Lock()
 			outputLines = append(outputLines, line)
 			outputMu.Unlock()
-			t.Logf("[fifo] %s", line)
+			t.Logf("[%s fifo] %s", provider, line)
 		}
 	}()
 
-	// ── 8. Wait for Claude's interactive prompt, then send the task ───────────
+	// ── 8. Wait for interactive prompt, then send the task ────────────────────
 	// Give the TUI time to finish rendering its startup screen.
 	time.Sleep(3 * time.Second)
 	exec.Command(tmuxBin, "send-keys", "-t", sessionName, testPrompt, "Enter").Run() //nolint:errcheck
-	t.Logf("Prompt sent via send-keys: %q", testPrompt)
+	t.Logf("[%s] Prompt sent via send-keys: %q", provider, testPrompt)
 
-	// ── 9. Wait for Stop hook ─────────────────────────────────────────────────
+	// ── 9. Wait for Stop/SessionEnd hook ──────────────────────────────────────
 	var ev stopEvent
 	select {
 	case ev = <-stopCh:
-		t.Logf("Stop hook: stop_reason=%q transcript_path=%q", ev.StopReason, ev.TranscriptPath)
+		t.Logf("[%s] Stop hook: stop_reason=%q transcript_path=%q", provider, ev.StopReason, ev.TranscriptPath)
 	case <-ctx.Done():
-		t.Fatal("Timed out waiting for Claude Code Stop hook")
+		t.Fatalf("Timed out waiting for %s hook", provider)
 	}
 
 	// Kill session so the FIFO writer closes and readerDone is signalled.
@@ -177,17 +189,15 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 	captured := append([]string(nil), outputLines...)
 	outputMu.Unlock()
 
-	sessionPath := writeSessionFile(t, testPrompt, ev.StopReason, captured)
-	t.Logf("Session log: %s  (%d raw FIFO lines)", sessionPath, len(captured))
+	sessionPath := writeSessionFile(t, provider, testPrompt, ev.StopReason, captured)
+	t.Logf("[%s] Session log: %s  (%d raw FIFO lines)", provider, sessionPath, len(captured))
 
 	// ── 11. Transcript assertions ─────────────────────────────────────────────
 	if ev.TranscriptPath == "" {
-		t.Fatal("transcript_path was not provided in the Stop hook payload")
+		t.Fatal("transcript_path was not provided in the hook payload")
 	}
 
-	// Claude Code fires the Stop hook while still finishing the transcript write
-	// (visible as "Embellishing… (running stop hook)" in the TUI). Retry until
-	// the assistant turn appears or the deadline is reached.
+	// Retry until the assistant turn appears or the deadline is reached.
 	var agentResponse string
 	retryDeadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(retryDeadline) {
@@ -197,19 +207,19 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	t.Logf("Agent response (from transcript): %q", agentResponse)
+	t.Logf("[%s] Agent response (from transcript): %q", provider, agentResponse)
 
 	if agentResponse == "" {
 		// Log the raw transcript to help diagnose format mismatches.
 		if raw, err := os.ReadFile(ev.TranscriptPath); err == nil {
-			t.Logf("Raw transcript (%d bytes):\n%s", len(raw), raw)
+			t.Logf("[%s] Raw transcript (%d bytes):\n%s", provider, len(raw), raw)
 		} else {
-			t.Logf("Could not read transcript: %v", err)
+			t.Logf("[%s] Could not read transcript: %v", provider, err)
 		}
-		t.Error("Agent response extracted from transcript is empty after 10s")
+		t.Errorf("[%s] Agent response extracted from transcript is empty after 10s", provider)
 	}
 	if agentResponse == testPrompt {
-		t.Errorf("Agent response equals the input prompt %q — no distinct reply produced", testPrompt)
+		t.Errorf("[%s] Agent response equals the input prompt %q — no distinct reply produced", provider, testPrompt)
 	}
 }
 
@@ -222,16 +232,20 @@ type stopEvent struct {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// writeTestHooks writes Stop and Notification HTTP hooks into
-// workDir/.claude/settings.json, preserving all other existing keys.
-// Returns a cleanup function that restores the original file content.
-func writeTestHooks(t *testing.T, workDir string, port int) func() {
+func writeTestHooks(t *testing.T, workDir string, port int, provider string) func() {
 	t.Helper()
-	claudeDir := filepath.Join(workDir, ".claude")
-	if err := os.MkdirAll(claudeDir, 0755); err != nil {
-		t.Fatalf("mkdir .claude: %v", err)
+
+	var dotDir, settingsPath string
+	if provider == "gemini" {
+		dotDir = filepath.Join(workDir, ".gemini")
+	} else {
+		dotDir = filepath.Join(workDir, ".claude")
 	}
-	settingsPath := filepath.Join(claudeDir, "settings.json")
+	settingsPath = filepath.Join(dotDir, "settings.json")
+
+	if err := os.MkdirAll(dotDir, 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", dotDir, err)
+	}
 
 	// Save original so we can restore it on exit.
 	originalData, _ := os.ReadFile(settingsPath)
@@ -241,24 +255,47 @@ func writeTestHooks(t *testing.T, workDir string, port int) func() {
 	if originalData != nil {
 		json.Unmarshal(originalData, &existing) //nolint:errcheck
 	}
-	existing["hooks"] = map[string]any{
-		"Stop": []any{
-			map[string]any{
-				"matcher": "*",
-				"hooks": []any{
-					map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/stop", port)},
+
+	if provider == "gemini" {
+		existing["hooks"] = map[string]any{
+			"SessionEnd": []any{
+				map[string]any{
+					"matcher": "*",
+					"hooks": []any{
+						map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/stop", port)},
+					},
 				},
 			},
-		},
-		"Notification": []any{
-			map[string]any{
-				"matcher": "*",
-				"hooks": []any{
-					map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/notification", port)},
+			"Notification": []any{
+				map[string]any{
+					"matcher": "*",
+					"hooks": []any{
+						map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/notification", port)},
+					},
 				},
 			},
-		},
+		}
+	} else {
+		existing["hooks"] = map[string]any{
+			"Stop": []any{
+				map[string]any{
+					"matcher": "*",
+					"hooks": []any{
+						map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/stop", port)},
+					},
+				},
+			},
+			"Notification": []any{
+				map[string]any{
+					"matcher": "*",
+					"hooks": []any{
+						map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/notification", port)},
+					},
+				},
+			},
+		}
 	}
+
 	data, err := json.MarshalIndent(existing, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal hooks: %v", err)
@@ -270,33 +307,69 @@ func writeTestHooks(t *testing.T, workDir string, port int) func() {
 	return func() {
 		if originalData != nil {
 			os.WriteFile(settingsPath, originalData, 0644) //nolint:errcheck
+		} else {
+			os.Remove(settingsPath)
 		}
 	}
 }
 
-func startTestHooksServer(t *testing.T, port int, onStop func(stopEvent), onNotif func(string)) *http.Server {
+func startTestHooksServer(t *testing.T, port int, provider string, onStop func(stopEvent), onNotif func(string)) *http.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/hooks/stop", func(w http.ResponseWriter, r *http.Request) {
-		var p struct {
-			StopReason     string `json:"stop_reason"`
-			SessionID      string `json:"session_id"`
-			TranscriptPath string `json:"transcript_path"`
+		body, _ := io.ReadAll(r.Body)
+
+		var transcriptPath string
+		var stopReason string
+
+		if provider == "gemini" {
+			var p struct {
+				Data struct {
+					Reason         string `json:"reason"`
+					TranscriptPath string `json:"transcriptPath"`
+				} `json:"data"`
+			}
+			json.Unmarshal(body, &p) //nolint:errcheck
+			transcriptPath = p.Data.TranscriptPath
+			stopReason = p.Data.Reason
+		} else {
+			var p struct {
+				StopReason     string `json:"stop_reason"`
+				TranscriptPath string `json:"transcript_path"`
+			}
+			json.Unmarshal(body, &p) //nolint:errcheck
+			transcriptPath = p.TranscriptPath
+			stopReason = p.StopReason
 		}
-		json.NewDecoder(r.Body).Decode(&p) //nolint:errcheck
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok")) //nolint:errcheck
-		onStop(stopEvent{StopReason: p.StopReason, TranscriptPath: p.TranscriptPath})
+		onStop(stopEvent{StopReason: stopReason, TranscriptPath: transcriptPath})
 	})
 
 	mux.HandleFunc("/hooks/notification", func(w http.ResponseWriter, r *http.Request) {
-		var p struct{ Message string `json:"message"` }
-		json.NewDecoder(r.Body).Decode(&p) //nolint:errcheck
+		body, _ := io.ReadAll(r.Body)
+		var msg string
+
+		if provider == "gemini" {
+			var p struct {
+				Data struct {
+					Message string `json:"message"`
+				} `json:"data"`
+			}
+			json.Unmarshal(body, &p) //nolint:errcheck
+			msg = p.Data.Message
+		} else {
+			var p struct{ Message string `json:"message"` }
+			json.Unmarshal(body, &p) //nolint:errcheck
+			msg = p.Message
+		}
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok")) //nolint:errcheck
 		if onNotif != nil {
-			onNotif(p.Message)
+			onNotif(msg)
 		}
 	})
 
@@ -342,7 +415,7 @@ func filterEnv(env []string, exclude ...string) []string {
 	return out
 }
 
-func writeSessionFile(t *testing.T, prompt, stopReason string, outputLines []string) string {
+func writeSessionFile(t *testing.T, provider, prompt, stopReason string, outputLines []string) string {
 	t.Helper()
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -352,10 +425,10 @@ func writeSessionFile(t *testing.T, prompt, stopReason string, outputLines []str
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		t.Fatalf("mkdir logs: %v", err)
 	}
-	sessionPath := filepath.Join(logsDir, fmt.Sprintf("test-session-%d.txt", time.Now().Unix()))
+	sessionPath := filepath.Join(logsDir, fmt.Sprintf("test-session-%s-%d.txt", provider, time.Now().Unix()))
 
 	var sb strings.Builder
-	sb.WriteString("=== TaskSquad tmux Integration Test ===\n")
+	sb.WriteString(fmt.Sprintf("=== TaskSquad tmux Integration Test (%s) ===\n", provider))
 	sb.WriteString(fmt.Sprintf("Time:        %s\n", time.Now().Format(time.RFC3339)))
 	sb.WriteString(fmt.Sprintf("Prompt:      %s\n", prompt))
 	sb.WriteString(fmt.Sprintf("Stop reason: %s\n", stopReason))
