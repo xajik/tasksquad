@@ -26,7 +26,9 @@ func (p *OpenCode) Name() string { return "opencode" }
 // TODO: return true once hook setup is verified against opencode's hook format.
 func (p *OpenCode) UsesHooks() bool { return false }
 
-func (p *OpenCode) Env(_ int) []string { return nil }
+func (p *OpenCode) Env(_ int) []string          { return nil }
+func (p *OpenCode) Stdin(_ string) string        { return "" }
+func (p *OpenCode) ExtraArgs() []string          { return nil }
 
 // TODO: Write opencode.json with session hooks pointing to hooksPort.
 func (p *OpenCode) Setup(_ string, _ int) error { return nil }

@@ -76,10 +76,9 @@ func main() {
 
 	logger.Info("Running — waiting for tasks...")
 
-	// ui.Run blocks on the main thread (required for systray on macOS).
-	// Currently a no-op stub; replace select{} with ui.Run once systray is wired.
+	// ui.Run blocks the main OS thread (required by macOS AppKit / systray).
+	// Agents run in goroutines above; the hook server runs in its own goroutine.
 	ui.Run(uiAgents, cfg.Server.URL)
-	select {}
 }
 
 // runInit is a guided wizard that writes ~/.tasksquad/config.toml.

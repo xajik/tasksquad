@@ -23,6 +23,12 @@ func (p *ClaudeCode) Name() string       { return "claude-code" }
 func (p *ClaudeCode) UsesHooks() bool    { return true }
 func (p *ClaudeCode) Env(_ int) []string { return nil }
 
+// Stdin pipes the prompt via stdin so account-login users (no API credits)
+// can run non-interactively without the -p flag.
+func (p *ClaudeCode) Stdin(prompt string) string { return prompt }
+
+func (p *ClaudeCode) ExtraArgs() []string { return nil }
+
 // Setup writes .claude/settings.json into workDir with Stop and Notification hooks
 // pointing to the daemon's local hook server on hooksPort.
 func (p *ClaudeCode) Setup(workDir string, hooksPort int) error {

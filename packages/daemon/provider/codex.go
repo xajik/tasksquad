@@ -35,4 +35,6 @@ func (p *Codex) envWithPort(hooksPort int) []string {
 	return []string{fmt.Sprintf("CODEX_HOOKS_SERVER_URL=http://localhost:%d/hooks/codex", hooksPort)}
 }
 
+func (p *Codex) Stdin(_ string) string        { return "" }
+func (p *Codex) ExtraArgs() []string          { return nil }
 func (p *Codex) Setup(_ string, _ int) error { return nil }

@@ -11,13 +11,21 @@ import (
 //   - Write hook config files into the work directory before spawning (Setup)
 //   - Inject extra environment variables into the spawned process (Env)
 //   - Report whether it signals completion via HTTP hooks (UsesHooks)
+//   - Supply a stdin payload instead of a -p flag (Stdin)
 //
 // If UsesHooks returns false the daemon falls back to process-exit detection only.
+// If Stdin returns a non-empty string the daemon pipes that string to the process
+// stdin and omits the -p flag; this is required for account-login Claude Code users
+// who cannot use -p (API credit mode).
 type Provider interface {
 	Name() string
 	Setup(workDir string, hooksPort int) error
 	Env(hooksPort int) []string
 	UsesHooks() bool
+	// Stdin returns the content to pipe to the process stdin, or "" to use -p flag.
+	Stdin(prompt string) string
+	// ExtraArgs returns additional CLI arguments to prepend (e.g. --dangerously-skip-permissions).
+	ExtraArgs() []string
 }
 
 // Detect returns the provider for the given command.

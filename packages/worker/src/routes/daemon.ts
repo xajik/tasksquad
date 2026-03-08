@@ -15,6 +15,41 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
       .bind(agentStatus, now, agentId),
   ])
 
+  // When waiting for user input: check if a new user message has arrived since the last agent message.
+  if (agentStatus === 'waiting_input') {
+    const state = await env.DB
+      .prepare('SELECT current_task_id FROM agent_state WHERE agent_id = ?')
+      .bind(agentId)
+      .first<{ current_task_id: string | null }>()
+
+    if (state?.current_task_id) {
+      const reply = await env.DB
+        .prepare(`
+          SELECT body FROM messages
+          WHERE task_id = ? AND role = 'user'
+            AND created_at > (
+              SELECT COALESCE(MAX(created_at), 0) FROM messages
+              WHERE task_id = ? AND role = 'agent'
+            )
+          ORDER BY created_at ASC LIMIT 1
+        `)
+        .bind(state.current_task_id, state.current_task_id)
+        .first<{ body: string }>()
+
+      if (reply) {
+        // Resume the agent — set status back to running
+        await env.DB.batch([
+          env.DB.prepare("UPDATE agents SET status = 'running' WHERE id = ?").bind(agentId),
+          env.DB.prepare("UPDATE agent_state SET mode = 'running', updated_at = ? WHERE agent_id = ?").bind(Date.now(), agentId),
+          env.DB.prepare("UPDATE tasks SET status = 'running' WHERE id = ?").bind(state.current_task_id),
+        ])
+        return json({ ok: true, agent_id: agentId, reply: reply.body })
+      }
+    }
+
+    return json({ ok: true, agent_id: agentId })
+  }
+
   if (agentStatus === 'idle') {
     const task = await env.DB
       .prepare(`
@@ -111,20 +146,7 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
 
   await env.DB.batch(ops)
 
-  // Generate presigned R2 upload URL for log file (not for waiting_input)
-  let uploadUrl: string | undefined
-  if (status !== 'waiting_input') {
-    const key = `${agent_id.substring(0, 16)}/${session_id}/output.log`
-    const url = await env.LOGS.createMultipartUpload(key)
-    uploadUrl = url.key // Return key so daemon can use wrangler or direct upload
-    // Store key on session
-    await env.DB
-      .prepare('UPDATE sessions SET r2_log_key = ? WHERE id = ?')
-      .bind(key, session_id)
-      .run()
-  }
-
-  return json({ ok: true, ...(uploadUrl ? { r2_key: uploadUrl } : {}) })
+  return json({ ok: true })
 }
 
 export async function complete(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
@@ -177,6 +199,33 @@ export async function push(req: Request, env: Env, _ctx: unknown, _daemon: Daemo
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }))
+
+  return json({ ok: true })
+}
+
+// Called when Claude Code fires a Notification hook — agent is waiting for user input.
+// Posts the question as an agent thread message and marks the task/agent as waiting_input.
+export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const body = await req.json<{ session_id?: string; agent_id?: string; message?: string }>()
+    .catch(() => ({} as { session_id?: string; agent_id?: string; message?: string }))
+  const { session_id, message } = body
+  const agentId = daemon.agentId
+  if (!session_id || !message) return err('missing_fields', 400)
+
+  const session = await env.DB
+    .prepare('SELECT task_id FROM sessions WHERE id = ? AND agent_id = ?')
+    .bind(session_id, agentId)
+    .first<{ task_id: string }>()
+  if (!session) return err('not_found', 404)
+
+  const now = Date.now()
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(ulid(), session.task_id, null, 'agent', message, now),
+    env.DB.prepare("UPDATE agents SET status = 'waiting_input' WHERE id = ?").bind(agentId),
+    env.DB.prepare("UPDATE tasks SET status = 'waiting_input' WHERE id = ?").bind(session.task_id),
+    env.DB.prepare("UPDATE agent_state SET mode = 'waiting_input', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
+  ])
 
   return json({ ok: true })
 }

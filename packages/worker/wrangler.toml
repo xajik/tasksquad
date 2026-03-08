@@ -28,6 +28,9 @@ class_name = "AgentRelay"
 tag         = "v1"
 new_classes = ["AgentRelay"]
 
+[observability]
+enabled = true
+
 # Secrets — set via: npx wrangler secret put <KEY>
 # FIREBASE_PROJECT_ID          tasksquad-e1442
 # FIREBASE_SERVICE_ACCOUNT_KEY base64-encoded Firebase service account JSON

@@ -36,6 +36,7 @@ type Agent struct {
 	outputLines []string
 	completing  bool
 	proc        *exec.Cmd
+	stdinWrite  *io.PipeWriter // open while process is running (stdin-based providers only)
 }
 
 func New(cfg config.AgentConfig) *Agent {
@@ -103,10 +104,30 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 	}
 
 	a.mu.Lock()
-	isIdle := a.mode == ModeIdle
+	currentMode := a.mode
 	a.mu.Unlock()
 
-	if task, ok := resp["task"].(map[string]any); ok && isIdle {
+	// When waiting for user input: check if the server has a reply ready.
+	if currentMode == ModeWaitingInput {
+		if reply, ok := resp["reply"].(string); ok && reply != "" {
+			a.mu.Lock()
+			pw := a.stdinWrite
+			a.mu.Unlock()
+			if pw != nil {
+				if _, err := fmt.Fprintln(pw, reply); err != nil {
+					logger.Warn(fmt.Sprintf("[%s] Failed to write reply to stdin: %v", a.Config.Name, err))
+				} else {
+					a.mu.Lock()
+					a.mode = ModeRunning
+					a.mu.Unlock()
+					logger.Info(fmt.Sprintf("[%s] User replied — resuming", a.Config.Name))
+				}
+			}
+		}
+		return // never pick up a new task while the process is still running
+	}
+
+	if task, ok := resp["task"].(map[string]any); ok && currentMode == ModeIdle {
 		logger.Info(fmt.Sprintf("[%s] Task received: %s — \"%s\"", a.Config.Name, task["id"], task["subject"]))
 		go a.startTask(cfg, task)
 	} else {
@@ -158,11 +179,35 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		prompt = fmt.Sprintf("%s\n\n%s", subject, body)
 	}
 
-	// Spawn the command: e.g. "claude -p <prompt>"
+	// Spawn the command.
+	// Providers that return a non-empty Stdin() receive the prompt via a pipe
+	// kept open for the lifetime of the process so replies can be forwarded
+	// back to the agent interactively. Others get the prompt via the -p flag.
 	parts := strings.Fields(a.Config.Command)
-	args := append(parts[1:], "-p", prompt)
+	extraArgs := a.prov.ExtraArgs()
+	stdinData := a.prov.Stdin(prompt)
+	var args []string
+	if stdinData != "" {
+		args = append(parts[1:], extraArgs...)
+	} else {
+		args = append(append(parts[1:], extraArgs...), "-p", prompt)
+	}
 	cmd := exec.Command(parts[0], args...)
 	cmd.Dir = a.Config.WorkDir
+
+	if stdinData != "" {
+		pr, pw := io.Pipe()
+		cmd.Stdin = pr
+		a.mu.Lock()
+		a.stdinWrite = pw
+		a.mu.Unlock()
+		// Write the initial prompt; the pipe stays open for future user replies.
+		go func() {
+			if _, err := fmt.Fprintln(pw, stdinData); err != nil {
+				logger.Warn(fmt.Sprintf("[%s] Failed to write prompt to stdin: %v", a.Config.Name, err))
+			}
+		}()
+	}
 
 	// Merge provider env vars into the process environment.
 	provEnv := a.prov.Env(cfg.Hooks.Port)
@@ -210,6 +255,15 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 			code = exitErr.ExitCode()
 		}
 	}
+
+	// Close the stdin pipe now that the process has exited (safe no-op if already closed by complete()).
+	a.mu.Lock()
+	if pw := a.stdinWrite; pw != nil {
+		pw.Close()
+		a.stdinWrite = nil
+	}
+	a.mu.Unlock()
+
 	logger.Info(fmt.Sprintf("[%s] Process exited (code %d)", a.Config.Name, code))
 
 	status := "closed"
@@ -262,7 +316,14 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	sessionID := a.sessionID
 	agentID := a.agentID
 	lines := append([]string(nil), a.outputLines...)
+	pw := a.stdinWrite
+	a.stdinWrite = nil
 	a.mu.Unlock()
+
+	// Signal EOF to the process stdin (if still open) so it can exit cleanly.
+	if pw != nil {
+		pw.Close()
+	}
 
 	logger.Info(fmt.Sprintf("[%s] Completing task %s — status=%s", a.Config.Name, a.taskID, status))
 
@@ -274,6 +335,7 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 
 	closeResp, err := a.post(cfg, "/daemon/session/close", map[string]any{
 		"session_id": sessionID,
+		"agent_id":   agentID,
 		"status":     status,
 		"final_text": finalText,
 	})
@@ -281,14 +343,10 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 		logger.Error(fmt.Sprintf("[%s] Session close error: %v", a.Config.Name, err))
 	}
 
-	// Push SSE "done" / "waiting_input" event to any portal viewers.
+	// Push SSE "done" event to any portal viewers.
 	if agentID != "" {
-		sseType := "done"
-		if status == "waiting_input" {
-			sseType = "waiting_input"
-		}
 		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
-			"type":  sseType,
+			"type":  "done",
 			"lines": []string{finalText},
 		})
 	}
@@ -306,11 +364,7 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	}
 
 	a.mu.Lock()
-	if status == "waiting_input" {
-		a.mode = ModeWaitingInput
-	} else {
-		a.mode = ModeIdle
-	}
+	a.mode = ModeIdle
 	a.sessionID = ""
 	a.outputLines = nil
 	a.proc = nil
@@ -330,23 +384,38 @@ func (a *Agent) Complete(cfg *config.Config) {
 }
 
 // SetWaitingInput is called by the hook server on a Notification event.
+// It does NOT close the session — the process keeps running so the user's
+// reply can be piped back via stdin.
 func (a *Agent) SetWaitingInput(cfg *config.Config, message string) {
 	a.mu.Lock()
 	mode := a.mode
 	agentID := a.agentID
+	sessionID := a.sessionID
 	a.mu.Unlock()
 
 	if mode != ModeRunning {
 		return
 	}
 
-	// Notify SSE clients that the agent is paused waiting for user input.
+	logger.Info(fmt.Sprintf("[%s] Waiting for user input: %s", a.Config.Name, message))
+
+	// Notify SSE clients so the portal can display the question.
 	if agentID != "" {
 		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
-			"type":  "line",
-			"lines": []string{"\n[Waiting for your input]\n" + message},
+			"type":  "waiting_input",
+			"lines": []string{message},
 		})
 	}
 
-	a.complete(cfg, "waiting_input")
+	// Tell the server to post the message as a thread reply and queue for user input.
+	// The server should return {"reply": "..."} on the next heartbeat once the user responds.
+	a.post(cfg, "/daemon/session/notify", map[string]any{ //nolint:errcheck
+		"session_id": sessionID,
+		"agent_id":   agentID,
+		"message":    message,
+	})
+
+	a.mu.Lock()
+	a.mode = ModeWaitingInput
+	a.mu.Unlock()
 }
