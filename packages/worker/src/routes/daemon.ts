@@ -53,18 +53,21 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
   if (agentStatus === 'idle') {
     const task = await env.DB
       .prepare(`
-        SELECT t.id, t.subject,
-          (SELECT body FROM messages WHERE task_id = t.id AND role = 'user' ORDER BY created_at DESC LIMIT 1) as body
-        FROM tasks t
-        WHERE t.agent_id = ? AND t.status = 'pending'
-        ORDER BY t.created_at ASC
+        SELECT id, subject FROM tasks
+        WHERE agent_id = ? AND status = 'pending'
+        ORDER BY created_at ASC
         LIMIT 1
       `)
       .bind(agentId)
-      .first<{ id: string; subject: string; body: string }>()
+      .first<{ id: string; subject: string }>()
 
     if (task) {
-      return json({ ok: true, agent_id: agentId, task: { id: task.id, subject: task.subject, body: task.body } })
+      // Return full conversation history so the agent can build context for follow-ups
+      const msgRows = await env.DB
+        .prepare("SELECT role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') ORDER BY created_at ASC")
+        .bind(task.id)
+        .all<{ role: string; body: string }>()
+      return json({ ok: true, agent_id: agentId, task: { id: task.id, subject: task.subject, messages: msgRows.results } })
     }
   }
 

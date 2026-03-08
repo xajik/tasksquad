@@ -50,10 +50,10 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     .bind(id, taskId, auth.userId, 'user', text, now)
     .run()
 
-  // If task was waiting_input, move it back to pending so daemon picks it up
-  if (task.status === 'waiting_input') {
+  // If task was waiting for input or already done/failed, reopen it as pending so daemon picks it up
+  if (task.status === 'waiting_input' || task.status === 'done' || task.status === 'failed') {
     await env.DB
-      .prepare("UPDATE tasks SET status = 'pending' WHERE id = ?")
+      .prepare("UPDATE tasks SET status = 'pending', completed_at = NULL WHERE id = ?")
       .bind(taskId)
       .run()
   }

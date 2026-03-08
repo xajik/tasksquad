@@ -137,10 +137,45 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 
 // ── Task lifecycle ─────────────────────────────────────────────────────────────
 
+// buildConversationPrompt constructs the prompt to send to the CLI provider.
+// For a fresh task (single message), it uses that message directly.
+// For a follow-up (multiple messages), it formats the full thread as a
+// Human/Assistant conversation so the model has prior context.
+func buildConversationPrompt(subject string, rawMsgs any) string {
+	msgs, _ := rawMsgs.([]interface{})
+	if len(msgs) == 0 {
+		return subject
+	}
+	if len(msgs) == 1 {
+		m, _ := msgs[0].(map[string]interface{})
+		if body, _ := m["body"].(string); body != "" {
+			return body
+		}
+		return subject
+	}
+	// Multi-turn: format as Human/Assistant turns
+	var sb strings.Builder
+	for _, raw := range msgs {
+		m, _ := raw.(map[string]interface{})
+		role, _ := m["role"].(string)
+		body, _ := m["body"].(string)
+		switch role {
+		case "user":
+			sb.WriteString("Human: ")
+			sb.WriteString(body)
+			sb.WriteString("\n\n")
+		case "agent":
+			sb.WriteString("Assistant: ")
+			sb.WriteString(body)
+			sb.WriteString("\n\n")
+		}
+	}
+	return strings.TrimSpace(sb.String())
+}
+
 func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	taskID, _ := task["id"].(string)
 	subject, _ := task["subject"].(string)
-	body, _ := task["body"].(string)
 
 	a.mu.Lock()
 	a.mode = ModeRunning
@@ -173,11 +208,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		logger.Warn(fmt.Sprintf("[%s] Provider setup warning: %v", a.Config.Name, err))
 	}
 
-	// Build prompt.
-	prompt := subject
-	if body != "" && body != subject {
-		prompt = fmt.Sprintf("%s\n\n%s", subject, body)
-	}
+	// Build prompt from the full conversation history.
+	prompt := buildConversationPrompt(subject, task["messages"])
 
 	// Spawn the command.
 	// Providers that return a non-empty Stdin() receive the prompt via a pipe

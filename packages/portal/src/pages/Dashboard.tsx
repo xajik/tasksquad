@@ -3,8 +3,49 @@ import { signOut } from 'firebase/auth'
 import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { auth, getToken } from '../lib/firebase'
 import { api, type Agent, type Task, type Message } from '../lib/api'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Inbox,
+  Settings,
+  Bot,
+  LogOut,
+  Trash2,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+  Play,
+  Loader2,
+} from 'lucide-react'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function relativeTime(ms: number): string {
   const diff = Date.now() - ms
   if (diff < 60_000) return 'just now'
@@ -13,29 +54,20 @@ function relativeTime(ms: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  pending: '#888', queued: '#7c3aed', running: '#2563eb', waiting_input: '#d97706',
-  done: '#16a34a', failed: '#dc2626', offline: '#aaa', idle: '#16a34a',
-  accumulating: '#2563eb', live: '#2563eb', stuck: '#d97706', error: '#dc2626',
+const STATUS_COLOR: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  pending: 'outline', queued: 'secondary', running: 'default', waiting_input: 'secondary',
+  done: 'default', failed: 'destructive', offline: 'outline', idle: 'default',
+  accumulating: 'default', live: 'default', stuck: 'secondary', error: 'destructive',
 }
 
-function StatusPill({ status }: { status: string }) {
+function StatusBadge({ status }: { status: string }) {
   return (
-    <span style={{ background: STATUS_COLOR[status] ?? '#888', color: '#fff', borderRadius: 12, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
+    <Badge variant={STATUS_COLOR[status] ?? 'outline'}>
       {status}
-    </span>
+    </Badge>
   )
 }
 
-const S: Record<string, React.CSSProperties> = {
-  layout: { display: 'flex', height: '100vh', fontFamily: 'system-ui, sans-serif', fontSize: 14 },
-  sidebar: { width: 200, borderRight: '1px solid #eee', display: 'flex', flexDirection: 'column', padding: '20px 0', background: '#fafafa' },
-  logo: { fontWeight: 700, fontSize: 16, padding: '0 20px', marginBottom: 24 },
-  navBtn: { background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '8px 20px', width: '100%', fontSize: 14 },
-  main: { flex: 1, overflow: 'auto', padding: 32 },
-}
-
-// ─── Team context (simplified — uses first team or creates one) ───────────────
 function useTeam() {
   const [teamId, setTeamId] = useState<string | null>(null)
   const [teamName, setTeamName] = useState('')
@@ -56,8 +88,7 @@ function useTeam() {
   return { teamId, teamName, createTeam }
 }
 
-// ─── Inbox ────────────────────────────────────────────────────────────────────
-function Inbox({ teamId }: { teamId: string }) {
+function InboxView({ teamId }: { teamId: string }) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [showCompose, setShowCompose] = useState(false)
@@ -104,63 +135,102 @@ function Inbox({ teamId }: { teamId: string }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ margin: 0 }}>Inbox</h2>
-        <button onClick={() => setShowCompose(true)} style={{ padding: '8px 16px', background: '#111', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-semibold">Inbox</h2>
+        <Button onClick={() => setShowCompose(true)}>
           New message
-        </button>
+        </Button>
       </div>
 
-      {showCompose && (
-        <form onSubmit={compose} style={{ background: '#f5f5f5', borderRadius: 8, padding: 20, marginBottom: 24 }}>
-          <h3 style={{ margin: '0 0 16px' }}>New message</h3>
-          <select value={agentId} onChange={e => setAgentId(e.target.value)} required style={{ display: 'block', width: '100%', marginBottom: 12, padding: 8, borderRadius: 6, border: '1px solid #ddd' }}>
-            <option value="">Select agent…</option>
-            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-          <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" required style={{ display: 'block', width: '100%', marginBottom: 12, padding: 8, borderRadius: 6, border: '1px solid #ddd', boxSizing: 'border-box' }} />
-          <textarea value={taskBody} onChange={e => setTaskBody(e.target.value)} placeholder="Task description (optional — give Claude full context here)" rows={5} style={{ display: 'block', width: '100%', marginBottom: 12, padding: 8, borderRadius: 6, border: '1px solid #ddd', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: 13, resize: 'vertical' }} />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="submit" disabled={creating} style={{ padding: '8px 16px', background: '#111', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
-              {creating ? '…' : 'Send'}
-            </button>
-            <button type="button" onClick={() => setShowCompose(false)} style={{ padding: '8px 16px', background: '#eee', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
+      <Dialog open={showCompose} onOpenChange={setShowCompose}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>New message</DialogTitle>
+            <DialogDescription>
+              Send a task to an agent.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={compose}>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="agent">Agent</Label>
+                <Select value={agentId} onValueChange={setAgentId} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select agent…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agents.map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="subject">Subject</Label>
+                <Input
+                  id="subject"
+                  value={subject}
+                  onChange={e => setSubject(e.target.value)}
+                  placeholder="Task subject"
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="body">Description</Label>
+                <Textarea
+                  id="body"
+                  value={taskBody}
+                  onChange={e => setTaskBody(e.target.value)}
+                  placeholder="Task description (optional — give Claude full context here)"
+                  rows={5}
+                  className="font-mono text-sm"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowCompose(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={creating}>
+                {creating ? '...' : 'Send'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {tasks.length === 0 && <p style={{ color: '#aaa' }}>No messages yet.</p>}
+      <div className="flex flex-col gap-2">
+        {tasks.length === 0 && <p className="text-muted-foreground">No messages yet.</p>}
         {tasks.map(t => (
-          <div
+          <Card
             key={t.id}
+            className="cursor-pointer hover:bg-accent/50 transition-colors"
             onClick={() => nav(`/dashboard/tasks/${t.id}`)}
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#fff', border: '1px solid #eee', borderRadius: 8, cursor: 'pointer' }}
           >
-            <div>
-              <div style={{ fontWeight: 500 }}>{t.subject}</div>
-              <div style={{ color: '#888', fontSize: 12, marginTop: 2 }}>{agentMap[t.agent_id]?.name ?? t.agent_id}</div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <StatusPill status={taskStatus(t)} />
-              <span style={{ color: '#aaa', fontSize: 12 }}>{relativeTime(t.created_at)}</span>
-              <button
-                onClick={e => deleteTask(e, t.id)}
-                style={{ padding: '3px 8px', background: 'none', border: '1px solid #eee', borderRadius: 4, cursor: 'pointer', color: '#bbb', fontSize: 12 }}
-              >
-                ✕
-              </button>
-            </div>
-          </div>
+            <CardContent className="p-4 flex justify-between items-center">
+              <div>
+                <div className="font-medium">{t.subject}</div>
+                <div className="text-sm text-muted-foreground">{agentMap[t.agent_id]?.name ?? t.agent_id}</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <StatusBadge status={taskStatus(t)} />
+                <span className="text-muted-foreground text-sm">{relativeTime(t.created_at)}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={e => deleteTask(e, t.id)}
+                >
+                  <Trash2 className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>
   )
 }
 
-// ─── Task Thread ──────────────────────────────────────────────────────────────
 function TaskThread() {
   const { taskId } = useParams<{ taskId: string }>()
   const [task, setTask] = useState<Task | null>(null)
@@ -185,6 +255,14 @@ function TaskThread() {
   useEffect(() => { if (watching) setShowLog(true) }, [watching])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, liveLines])
 
+  // Auto-poll while the task is active so messages appear without manual refresh
+  useEffect(() => {
+    if (!task || watching) return
+    if (!['running', 'waiting_input', 'pending'].includes(task.status)) return
+    const t = setInterval(load, 5000)
+    return () => clearInterval(t)
+  }, [task?.status, watching, load])
+
   async function startLive() {
     if (!task || esRef.current) return
     const token = await getToken()
@@ -193,7 +271,7 @@ function TaskThread() {
     setWatching(true)
     setLiveLines([])
     es.onmessage = (e) => {
-      if (e.data.startsWith(':')) return // SSE comment/ping
+      if (e.data.startsWith(':')) return
       const data = JSON.parse(e.data) as { type: string; text: string }
       if (data.type === 'connected') return
       if (data.type === 'line') setLiveLines(prev => [...prev, data.text])
@@ -222,67 +300,75 @@ function TaskThread() {
     } finally { setSending(false) }
   }
 
-  function roleStyle(role: string): React.CSSProperties {
-    if (role === 'user') return { background: '#eff6ff', borderRadius: 8, padding: '10px 14px', alignSelf: 'flex-end', maxWidth: '70%' }
-    if (role === 'agent') return { background: '#f5f5f5', borderRadius: 8, padding: '10px 14px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', maxWidth: '90%' }
-    return { color: '#888', fontSize: 12, fontStyle: 'italic', padding: '4px 0' }
+  function roleStyle(role: string) {
+    if (role === 'user') return 'bg-blue-50 rounded-lg p-3 self-end max-w-[70%]'
+    if (role === 'agent') return 'bg-muted rounded-lg p-3 font-mono whitespace-pre-wrap max-w-[90%]'
+    return 'text-muted-foreground text-xs italic py-1'
   }
 
   return (
-    <div style={{ maxWidth: 720 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-        <h2 style={{ margin: 0, flex: 1 }}>{task?.subject ?? '…'}</h2>
-        {task && <StatusPill status={task.status} />}
+    <div className="max-w-3xl">
+      <div className="flex items-center gap-3 mb-6">
+        <h2 className="text-2xl font-semibold flex-1">{task?.subject ?? '...'}</h2>
+        {task && <StatusBadge status={task.status} />}
         {task && (task.status === 'running') && !watching && (
-          <button onClick={startLive} style={{ padding: '6px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+          <Button onClick={startLive} size="sm">
+            <Play className="h-4 w-4 mr-1" />
             Watch live
-          </button>
+          </Button>
         )}
-        <button onClick={deleteTask} style={{ padding: '6px 12px', background: 'none', border: '1px solid #eee', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#bbb' }}>
-          Delete
-        </button>
+        {watching && (
+          <Button variant="secondary" size="sm" disabled>
+            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            Live
+          </Button>
+        )}
+        <Button variant="ghost" size="icon" onClick={deleteTask}>
+          <Trash2 className="h-4 w-4 text-muted-foreground" />
+        </Button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
-        {messages.map(m => (
-          <div key={m.id} style={roleStyle(m.role)}>{m.body}</div>
-        ))}
-        {liveLines.length > 0 && (
-          <div style={{ border: '1px solid #ddd', borderRadius: 8, overflow: 'hidden' }}>
-            <button
-              onClick={() => setShowLog(x => !x)}
-              style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: '#f5f5f5', border: 'none', cursor: 'pointer', fontSize: 12, color: '#555', display: 'flex', justifyContent: 'space-between' }}
-            >
-              <span>Session log ({liveLines.length} lines){watching ? ' · live' : ''}</span>
-              <span>{showLog ? '▲' : '▼'}</span>
-            </button>
-            {showLog && (
-              <div style={{ background: '#111', color: '#0f0', padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 480, overflow: 'auto' }}>
-                {liveLines.join('\n')}
-              </div>
-            )}
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
+      <ScrollArea className="h-[500px] mb-6">
+        <div className="flex flex-col gap-2 pr-4">
+          {messages.map(m => (
+            <div key={m.id} className={roleStyle(m.role)}>{m.body}</div>
+          ))}
+          {liveLines.length > 0 && (
+            <div className="border rounded-lg overflow-hidden">
+              <button
+                onClick={() => setShowLog(x => !x)}
+                className="w-full text-left px-3 py-2 bg-muted text-sm flex justify-between items-center hover:bg-muted/80"
+              >
+                <span>Session log ({liveLines.length} lines){watching ? ' · live' : ''}</span>
+                {showLog ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+              {showLog && (
+                <div className="bg-zinc-900 text-green-400 p-3 font-mono text-xs whitespace-pre-wrap max-h-80 overflow-auto">
+                  {liveLines.join('\n')}
+                </div>
+              )}
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      </ScrollArea>
 
-      {task?.status === 'waiting_input' && (
-        <form onSubmit={sendReply} style={{ display: 'flex', gap: 8 }}>
-          <input
+      {task && ['waiting_input', 'done', 'failed'].includes(task.status) && (
+        <form onSubmit={sendReply} className="flex gap-2">
+          <Input
             value={reply} onChange={e => setReply(e.target.value)}
-            placeholder="Reply to agent…"
-            style={{ flex: 1, padding: '10px 12px', border: '1px solid #ddd', borderRadius: 6, fontSize: 14 }}
+            placeholder={task.status === 'waiting_input' ? 'Reply to agent…' : 'Follow up…'}
+            className="flex-1"
           />
-          <button type="submit" disabled={sending} style={{ padding: '10px 16px', background: '#111', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
-            {sending ? '…' : 'Send'}
-          </button>
+          <Button type="submit" disabled={sending}>
+            {sending ? '...' : 'Send'}
+          </Button>
         </form>
       )}
     </div>
   )
 }
 
-// ─── Agents view ──────────────────────────────────────────────────────────────
 function AgentsView({ teamId }: { teamId: string }) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [name, setName] = useState('')
@@ -322,31 +408,38 @@ function AgentsView({ teamId }: { teamId: string }) {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 24 }}>Agents</h2>
+      <h2 className="text-2xl font-semibold mb-6">Agents</h2>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 32 }}>
-        {agents.length === 0 && <p style={{ color: '#aaa' }}>No agents yet.</p>}
+      <div className="flex flex-col gap-3 mb-8">
+        {agents.length === 0 && <p className="text-muted-foreground">No agents yet.</p>}
         {agents.map(a => (
-          <div key={a.id} style={{ background: '#fff', border: '1px solid #eee', borderRadius: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 500 }}>{a.name}</div>
-              <div style={{ color: '#888', fontSize: 12 }}>{a.command} · {a.work_dir}</div>
-              <div style={{ color: '#bbb', fontSize: 11, fontFamily: 'monospace', marginTop: 2 }}>ID: {a.id}</div>
-              {a.last_seen && <div style={{ color: '#aaa', fontSize: 11, marginTop: 2 }}>Last seen {relativeTime(a.last_seen)}</div>}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <StatusPill status={a.status} />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input value={tokenLabel} onChange={e => setTokenLabel(e.target.value)} placeholder="Token label" style={{ padding: '5px 8px', border: '1px solid #ddd', borderRadius: 5, fontSize: 12, width: 100 }} />
-                <button onClick={() => genToken(a.id)} style={{ padding: '5px 10px', background: '#eee', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 12 }}>
-                  Gen token
-                </button>
-                <button onClick={() => deleteAgent(a.id)} style={{ padding: '5px 10px', background: 'none', border: '1px solid #eee', borderRadius: 5, cursor: 'pointer', fontSize: 12, color: '#bbb' }}>
-                  Delete
-                </button>
+          <Card key={a.id}>
+            <CardContent className="p-4 flex justify-between items-start">
+              <div>
+                <div className="font-medium">{a.name}</div>
+                <div className="text-sm text-muted-foreground">{a.command} · {a.work_dir}</div>
+                <div className="text-xs text-muted-foreground font-mono mt-1">ID: {a.id}</div>
+                {a.last_seen && <div className="text-xs text-muted-foreground mt-1">Last seen {relativeTime(a.last_seen)}</div>}
               </div>
-            </div>
-          </div>
+              <div className="flex items-center gap-3">
+                <StatusBadge status={a.status} />
+                <div className="flex gap-2">
+                  <Input
+                    value={tokenLabel}
+                    onChange={e => setTokenLabel(e.target.value)}
+                    placeholder="Token label"
+                    className="h-8 w-28 text-xs"
+                  />
+                  <Button variant="secondary" size="sm" onClick={() => genToken(a.id)}>
+                    Gen token
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => deleteAgent(a.id)}>
+                    <Trash2 className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
@@ -363,76 +456,122 @@ function AgentsView({ teamId }: { teamId: string }) {
           }],
         }, null, 2)
         return (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: 16, marginBottom: 24 }}>
-            <strong>Token generated — copy config now, shown once:</strong>
-            <pre style={{ fontFamily: 'monospace', fontSize: 12, marginTop: 8, whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#fff', border: '1px solid #d1fae5', borderRadius: 6, padding: 12 }}>{snippet}</pre>
-            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button onClick={() => { navigator.clipboard.writeText(snippet); setNewToken(null) }} style={{ padding: '6px 12px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 12 }}>
+          <Card className="border-green-500 bg-green-50 dark:bg-green-950 mb-6">
+            <CardHeader>
+              <CardTitle className="text-green-700 dark:text-green-400">Token generated</CardTitle>
+              <CardDescription>Copy config now, shown once</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <pre className="bg-background border rounded-md p-3 text-xs font-mono whitespace-pre-wrap break-all">
+                {snippet}
+              </pre>
+            </CardContent>
+            <CardFooter className="gap-2">
+              <Button onClick={() => { navigator.clipboard.writeText(snippet); setNewToken(null) }}>
+                <Copy className="h-4 w-4 mr-1" />
                 Copy config &amp; dismiss
-              </button>
-              <button onClick={() => setNewToken(null)} style={{ padding: '6px 12px', background: 'none', border: '1px solid #86efac', borderRadius: 5, cursor: 'pointer', fontSize: 12, color: '#15803d' }}>
+              </Button>
+              <Button variant="outline" onClick={() => setNewToken(null)}>
                 Dismiss
-              </button>
-            </div>
-          </div>
+              </Button>
+            </CardFooter>
+          </Card>
         )
       })()}
 
-      <h3 style={{ marginBottom: 16 }}>Add agent</h3>
-      <form onSubmit={createAgent} style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 480 }}>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. build-server-01)" required style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 14 }} />
-        <input value={command} onChange={e => setCommand(e.target.value)} placeholder="Command" required style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 14 }} />
-        <input value={workDir} onChange={e => setWorkDir(e.target.value)} placeholder="Work dir" required style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6, fontSize: 14 }} />
-        <button type="submit" disabled={creating} style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', alignSelf: 'flex-start', padding: '9px 20px' }}>
-          {creating ? '…' : 'Create agent'}
-        </button>
+      <Separator className="my-6" />
+
+      <h3 className="text-lg font-semibold mb-4">Add agent</h3>
+      <form onSubmit={createAgent} className="grid gap-4 max-w-md">
+        <div className="grid gap-2">
+          <Label htmlFor="agent-name">Name</Label>
+          <Input
+            id="agent-name"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. build-server-01"
+            required
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="agent-command">Command</Label>
+          <Input
+            id="agent-command"
+            value={command}
+            onChange={e => setCommand(e.target.value)}
+            placeholder="Command"
+            required
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="agent-workdir">Work directory</Label>
+          <Input
+            id="agent-workdir"
+            value={workDir}
+            onChange={e => setWorkDir(e.target.value)}
+            placeholder="Work dir"
+            required
+          />
+        </div>
+        <Button type="submit" disabled={creating} className="w-fit">
+          {creating ? '...' : 'Create agent'}
+        </Button>
       </form>
     </div>
   )
 }
 
-// ─── Settings ─────────────────────────────────────────────────────────────────
 function SettingsView({ teamId, teamName }: { teamId: string; teamName: string }) {
   return (
     <div>
-      <h2 style={{ marginBottom: 24 }}>Settings</h2>
-      <div style={{ marginBottom: 24, maxWidth: 480 }}>
-        <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Team name</div>
-        <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 16 }}>{teamName}</div>
+      <h2 className="text-2xl font-semibold mb-6">Settings</h2>
+      <div className="max-w-md">
+        <div className="text-sm text-muted-foreground mb-1">Team name</div>
+        <div className="font-medium mb-4">{teamName}</div>
 
-        <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Team ID</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <code style={{ fontFamily: 'monospace', fontSize: 13, background: '#f5f5f5', padding: '6px 10px', borderRadius: 5, flex: 1, wordBreak: 'break-all' }}>{teamId}</code>
-          <button
-            onClick={() => navigator.clipboard.writeText(teamId)}
-            style={{ padding: '6px 10px', background: 'none', border: '1px solid #ddd', borderRadius: 5, cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
-          >
-            Copy
-          </button>
+        <div className="text-sm text-muted-foreground mb-1">Team ID</div>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 bg-muted px-3 py-2 rounded-md text-sm font-mono break-all">{teamId}</code>
+          <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(teamId)}>
+            <Copy className="h-4 w-4" />
+          </Button>
         </div>
-        <div style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>Used in daemon config and API calls</div>
+        <div className="text-xs text-muted-foreground mt-1">Used in daemon config and API calls</div>
       </div>
     </div>
   )
 }
 
-// ─── Create team gate ─────────────────────────────────────────────────────────
 function CreateTeam({ onCreated }: { onCreated: (name: string) => void }) {
   const [name, setName] = useState('')
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'system-ui' }}>
-      <form onSubmit={e => { e.preventDefault(); onCreated(name) }} style={{ width: 340, background: '#fff', border: '1px solid #eee', borderRadius: 12, padding: 40 }}>
-        <h2 style={{ margin: '0 0 24px' }}>Create your first team</h2>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Team name" required style={{ display: 'block', width: '100%', padding: '10px 12px', border: '1px solid #ddd', borderRadius: 6, fontSize: 14, marginBottom: 16, boxSizing: 'border-box' }} />
-        <button type="submit" style={{ width: '100%', padding: 12, background: '#111', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, cursor: 'pointer' }}>
-          Create team
-        </button>
-      </form>
+    <div className="min-h-screen flex items-center justify-center">
+      <Card className="w-[340px]">
+        <CardHeader>
+          <CardTitle>Create your first team</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={e => { e.preventDefault(); onCreated(name) }}>
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="team-name">Team name</Label>
+                <Input
+                  id="team-name"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="My Team"
+                  required
+                />
+              </div>
+              <Button type="submit">Create team</Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
-// ─── Dashboard shell ──────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { teamId, teamName, createTeam } = useTeam()
   const [view, setView] = useState<'inbox' | 'agents' | 'settings'>('inbox')
@@ -441,18 +580,45 @@ export default function Dashboard() {
   if (!teamId) return <CreateTeam onCreated={createTeam} />
 
   return (
-    <div style={S.layout}>
-      <aside style={S.sidebar}>
-        <div style={S.logo}>TaskSquad</div>
-        <button style={{ ...S.navBtn, fontWeight: view === 'inbox' ? 600 : 400 }} onClick={() => { setView('inbox'); nav('/dashboard') }}>Inbox</button>
-        <button style={{ ...S.navBtn, fontWeight: view === 'agents' ? 600 : 400 }} onClick={() => { setView('agents'); nav('/dashboard/agents') }}>Agents</button>
-        <button style={{ ...S.navBtn, fontWeight: view === 'settings' ? 600 : 400 }} onClick={() => { setView('settings'); nav('/dashboard/settings') }}>Settings</button>
-        <div style={{ flex: 1 }} />
-        <button onClick={() => signOut(auth)} style={{ ...S.navBtn, color: '#888' }}>Sign out</button>
+    <div className="flex h-screen">
+      <aside className="w-52 border-r bg-background flex flex-col">
+        <div className="font-bold text-lg px-4 py-5">TaskSquad</div>
+        <nav className="flex-1 px-2">
+          <Button
+            variant={view === 'inbox' ? 'secondary' : 'ghost'}
+            className="w-full justify-start mb-1"
+            onClick={() => { setView('inbox'); nav('/dashboard') }}
+          >
+            <Inbox className="mr-2 h-4 w-4" />
+            Inbox
+          </Button>
+          <Button
+            variant={view === 'agents' ? 'secondary' : 'ghost'}
+            className="w-full justify-start mb-1"
+            onClick={() => { setView('agents'); nav('/dashboard/agents') }}
+          >
+            <Bot className="mr-2 h-4 w-4" />
+            Agents
+          </Button>
+          <Button
+            variant={view === 'settings' ? 'secondary' : 'ghost'}
+            className="w-full justify-start"
+            onClick={() => { setView('settings'); nav('/dashboard/settings') }}
+          >
+            <Settings className="mr-2 h-4 w-4" />
+            Settings
+          </Button>
+        </nav>
+        <div className="p-2">
+          <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => signOut(auth)}>
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign out
+          </Button>
+        </div>
       </aside>
-      <main style={S.main}>
+      <main className="flex-1 overflow-auto p-8">
         <Routes>
-          <Route path="/" element={<Inbox teamId={teamId} />} />
+          <Route path="/" element={<InboxView teamId={teamId} />} />
           <Route path="/tasks/:taskId" element={<TaskThread />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} />} />
           <Route path="/settings" element={<SettingsView teamId={teamId} teamName={teamName} />} />
