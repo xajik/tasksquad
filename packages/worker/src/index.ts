@@ -53,6 +53,7 @@ router.delete('/teams/:teamId/agents/:agentId', firebaseRoute(agents.deleteAgent
 router.get ('/tasks',                    firebaseRoute(tasks.list))
 router.post('/tasks',                    firebaseRoute(tasks.create))
 router.get ('/tasks/:taskId',            firebaseRoute(tasks.get))
+router.put ('/tasks/:taskId',            firebaseRoute(tasks.update))
 router.delete('/tasks/:taskId',          firebaseRoute(tasks.deleteTask))
 router.get ('/tasks/:taskId/messages',                        firebaseRoute(messages.list))
 router.post('/tasks/:taskId/messages',                        firebaseRoute(messages.create))

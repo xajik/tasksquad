@@ -16,39 +16,49 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
       .bind(agentStatus, now, agentId),
   ])
 
-  // When waiting for user input: check if a new user message has arrived since the last agent message.
-  if (agentStatus === 'waiting_input') {
+  // When running or waiting for input: check if the task has been cancelled/completed elsewhere.
+  if (agentStatus === 'running' || agentStatus === 'waiting_input') {
     const state = await env.DB
       .prepare('SELECT current_task_id FROM agent_state WHERE agent_id = ?')
       .bind(agentId)
       .first<{ current_task_id: string | null }>()
 
     if (state?.current_task_id) {
-      const reply = await env.DB
-        .prepare(`
-          SELECT body FROM messages
-          WHERE task_id = ? AND role = 'user'
-            AND created_at > (
-              SELECT COALESCE(MAX(created_at), 0) FROM messages
-              WHERE task_id = ? AND role = 'agent'
-            )
-          ORDER BY created_at ASC LIMIT 1
-        `)
-        .bind(state.current_task_id, state.current_task_id)
-        .first<{ body: string }>()
+      const task = await env.DB
+        .prepare('SELECT status FROM tasks WHERE id = ?')
+        .bind(state.current_task_id)
+        .first<{ status: string }>()
 
-      if (reply) {
-        // Resume the agent — set status back to running
-        await env.DB.batch([
-          env.DB.prepare("UPDATE agents SET status = 'running' WHERE id = ?").bind(agentId),
-          env.DB.prepare("UPDATE agent_state SET mode = 'running', updated_at = ? WHERE agent_id = ?").bind(Date.now(), agentId),
-          env.DB.prepare("UPDATE tasks SET status = 'running' WHERE id = ?").bind(state.current_task_id),
-        ])
-        return json({ ok: true, agent_id: agentId, reply: reply.body })
+      // If the task is done/failed but the agent thinks it's still running, signal cancel.
+      if (task && (task.status === 'done' || task.status === 'failed' || task.status === 'cancelled')) {
+        return json({ ok: true, agent_id: agentId, cancel: true })
+      }
+
+      if (agentStatus === 'waiting_input') {
+        const reply = await env.DB
+          .prepare(`
+            SELECT body FROM messages
+            WHERE task_id = ? AND role = 'user'
+              AND created_at > (
+                SELECT COALESCE(MAX(created_at), 0) FROM messages
+                WHERE task_id = ? AND role = 'agent'
+              )
+            ORDER BY created_at ASC LIMIT 1
+          `)
+          .bind(state.current_task_id, state.current_task_id)
+          .first<{ body: string }>()
+
+        if (reply) {
+          // Resume the agent — set status back to running
+          await env.DB.batch([
+            env.DB.prepare("UPDATE agents SET status = 'running' WHERE id = ?").bind(agentId),
+            env.DB.prepare("UPDATE agent_state SET mode = 'running', updated_at = ? WHERE agent_id = ?").bind(Date.now(), agentId),
+            env.DB.prepare("UPDATE tasks SET status = 'running' WHERE id = ?").bind(state.current_task_id),
+          ])
+          return json({ ok: true, agent_id: agentId, reply: reply.body })
+        }
       }
     }
-
-    return json({ ok: true, agent_id: agentId })
   }
 
   if (agentStatus === 'idle') {

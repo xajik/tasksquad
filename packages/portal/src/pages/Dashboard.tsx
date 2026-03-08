@@ -48,6 +48,7 @@ import {
   Inbox,
   Settings,
   Bot,
+  User,
   LogOut,
   Trash2,
   Copy,
@@ -56,6 +57,10 @@ import {
   Play,
   Loader2,
   FileText,
+  Code2,
+  Terminal,
+  ExternalLink,
+  CheckCircle,
 } from 'lucide-react'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
@@ -64,55 +69,137 @@ interface TranscriptEntry {
   type: string
   message?: {
     role?: string
-    content?: Array<{ type: string; text?: string; name?: string; input?: unknown }>
+    content?: Array<{
+      type: string
+      text?: string
+      name?: string
+      input?: any
+      tool_use_id?: string
+      content?: string
+    }>
   }
+  tool_use_id?: string
+  output?: string
+  content?: string
   result?: string
   total_cost_usd?: number
 }
 
-function TranscriptViewer({ content }: { content: string }) {
-  const entries: TranscriptEntry[] = content
-    .trim()
-    .split('\n')
-    .flatMap(line => { try { return [JSON.parse(line)] } catch { return [] } })
+function ToolExecution({ name, input, output }: { name: string; input: any; output?: string }) {
+  const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="space-y-3 text-sm">
+    <div className="border border-border/60 rounded-lg overflow-hidden my-2 bg-muted/20">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/40 transition-colors text-xs font-medium"
+      >
+        <Terminal className="h-3 w-3 text-muted-foreground" />
+        <span className="text-muted-foreground italic">use tool</span>
+        <span className="font-mono text-foreground">{name}</span>
+        <div className="flex-1" />
+        {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+
+      {expanded && (
+        <div className="p-3 pt-0 space-y-3">
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1">
+              <Code2 className="h-2.5 w-2.5" /> Input
+            </div>
+            <pre className="text-[11px] bg-zinc-950 text-emerald-400/90 p-2 rounded border border-white/5 overflow-auto max-h-40">
+              {typeof input === 'string' ? input : JSON.stringify(input, null, 2)}
+            </pre>
+          </div>
+          {output && (
+            <div className="space-y-1">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1">
+                <ExternalLink className="h-2.5 w-2.5" /> Output
+              </div>
+              <pre className="text-[11px] bg-zinc-900 text-zinc-300 p-2 rounded border border-white/5 overflow-auto max-h-60">
+                {output}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TranscriptViewer({ content }: { content: string }) {
+  const entries: TranscriptEntry[] = useMemo(() => {
+    return content
+      .trim()
+      .split('\n')
+      .flatMap(line => { try { return [JSON.parse(line)] } catch { return [] } })
+  }, [content])
+
+  // Link outputs back to tool uses
+  const toolOutputs = useMemo(() => {
+    const outputs: Record<string, string> = {}
+    entries.forEach(e => {
+      if (e.type === 'tool_result' && e.tool_use_id && e.content) {
+        outputs[e.tool_use_id] = e.content
+      }
+    })
+    return outputs
+  }, [entries])
+
+  return (
+    <div className="space-y-6 pb-4">
       {entries.map((entry, i) => {
         if (entry.type === 'user') {
           const text = entry.message?.content?.find(c => c.type === 'text')?.text
           if (!text) return null
           return (
-            <div key={i} className="flex gap-2">
-              <span className="font-semibold text-blue-600 shrink-0">Human</span>
-              <span className="whitespace-pre-wrap">{text}</span>
+            <div key={i} className="space-y-1">
+              <div className="text-[10px] uppercase tracking-widest font-bold text-blue-500/80">Human</div>
+              <div className="text-sm leading-relaxed whitespace-pre-wrap pl-3 border-l-2 border-blue-500/20">{text}</div>
             </div>
           )
         }
+
         if (entry.type === 'assistant') {
-          return (entry.message?.content ?? []).map((c, j) => {
-            if (c.type === 'text' && c.text) return (
-              <div key={`${i}-${j}`} className="flex gap-2">
-                <span className="font-semibold text-green-700 shrink-0">Claude</span>
-                <span className="whitespace-pre-wrap">{c.text}</span>
+          return (
+            <div key={i} className="space-y-3">
+              <div className="text-[10px] uppercase tracking-widest font-bold text-emerald-600/80">Claude</div>
+              <div className="space-y-2 pl-3 border-l-2 border-emerald-500/20">
+                {entry.message?.content?.map((c, j) => {
+                  if (c.type === 'text' && c.text) {
+                    return <div key={j} className="text-sm leading-relaxed whitespace-pre-wrap">{c.text}</div>
+                  }
+                  if (c.type === 'tool_use' && c.name && c.input && c.tool_use_id) {
+                    return (
+                      <ToolExecution
+                        key={j}
+                        name={c.name}
+                        input={c.input}
+                        output={toolOutputs[c.tool_use_id]}
+                      />
+                    )
+                  }
+                  return null
+                })}
               </div>
-            )
-            if (c.type === 'tool_use') return (
-              <div key={`${i}-${j}`} className="flex gap-2 text-muted-foreground">
-                <span className="font-semibold shrink-0">Tool</span>
-                <span className="font-mono">{c.name}</span>
-              </div>
-            )
-            return null
-          })
+            </div>
+          )
         }
+
         if (entry.type === 'result' && entry.total_cost_usd != null) {
           return (
-            <div key={i} className="text-xs text-muted-foreground border-t pt-2 mt-2">
-              Cost: ${entry.total_cost_usd.toFixed(4)} · {entry.result}
+            <div key={i} className="bg-muted/30 rounded-lg p-3 border border-border/40 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-muted-foreground uppercase tracking-tight">Outcome:</span>
+                <span className="font-medium text-foreground capitalize">{entry.result}</span>
+              </div>
+              <div className="text-muted-foreground font-mono">
+                ${entry.total_cost_usd.toFixed(4)}
+              </div>
             </div>
           )
         }
+
         return null
       })}
     </div>
@@ -142,20 +229,27 @@ function TranscriptButton({ taskId, msgId }: { taskId: string; msgId: string }) 
     <>
       <button
         onClick={handleOpen}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mt-1 transition-colors"
+        className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary mt-3 py-1.5 px-3 rounded-md bg-muted/30 border border-border/50 transition-all hover:bg-muted/50"
       >
         <FileText className="h-3 w-3" />
-        View transcript
+        CLI Transcript
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>CLI Transcript</DialogTitle>
-            <DialogDescription>Full conversation from Claude Code</DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="flex-1 mt-2">
-            <div className="pr-4 font-mono text-xs">
-              {loading && <p className="text-muted-foreground">Loading…</p>}
+        <DialogContent className="max-w-4xl w-[90vw] max-h-[90vh] flex flex-col p-0 overflow-hidden border-none shadow-2xl">
+          <div className="bg-muted/30 px-6 py-4 border-b border-border flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-lg font-bold">Execution Transcript</DialogTitle>
+              <DialogDescription className="text-xs">Detailed step-by-step logs from Claude Code</DialogDescription>
+            </div>
+          </div>
+          <ScrollArea className="flex-1 bg-background">
+            <div className="p-8">
+              {loading && (
+                <div className="flex flex-col items-center justify-center py-20 gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+                  <p className="text-sm text-muted-foreground animate-pulse">Retrieving transcript...</p>
+                </div>
+              )}
               {content && <TranscriptViewer content={content} />}
             </div>
           </ScrollArea>
@@ -434,10 +528,68 @@ function InboxView({ teamId }: { teamId: string }) {
   )
 }
 
-function TaskThread() {
+function MessageBubble({ message, agentName, taskId }: { message: Message; agentName?: string; taskId?: string }) {
+  const isUser = message.role === 'user'
+  const isAgent = message.role === 'agent'
+  const isSystem = message.role === 'system'
+
+  if (isSystem) {
+    return (
+      <div className="flex justify-center my-4">
+        <div className="bg-muted/50 text-muted-foreground text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded-full border border-border/50">
+          {message.body}
+        </div>
+      </div>
+    )
+  }
+
+  const time = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-6 group`}>
+      <div className={`flex items-center gap-2 mb-1 px-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isUser ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'} shrink-0`}>
+          {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
+        </div>
+        <span className="text-xs font-semibold text-foreground/70">
+          {isUser ? 'You' : (agentName || 'Agent')}
+        </span>
+        <span className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+          {time}
+        </span>
+      </div>
+
+      <div className={`
+        relative px-4 py-3 rounded-2xl max-w-[85%] shadow-sm transition-all break-words
+        ${isUser
+          ? 'bg-primary text-primary-foreground rounded-tr-none shadow-md'
+          : 'bg-card border border-border text-card-foreground rounded-tl-none font-mono whitespace-pre-wrap'
+        }
+      `}>
+        <div className="text-[14px] leading-relaxed select-text">{message.body}</div>
+
+        <div className={`
+          text-[10px] mt-1.5 flex justify-end font-medium
+          ${isUser ? 'text-primary-foreground/80' : 'text-muted-foreground/80'}
+        `}>
+          {time}
+        </div>
+
+        {isAgent && message.transcript_key && taskId && (
+          <div className="mt-3 pt-2 border-t border-border/10">
+            <TranscriptButton taskId={taskId} msgId={message.id} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TaskThread({ teamId }: { teamId: string }) {
   const { taskId } = useParams<{ taskId: string }>()
   const [task, setTask] = useState<Task | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [agents, setAgents] = useState<Agent[]>([])
   const [reply, setReply] = useState('')
   const [sending, setSending] = useState(false)
   const [liveLines, setLiveLines] = useState<string[]>([])
@@ -449,10 +601,15 @@ function TaskThread() {
 
   const load = useCallback(async () => {
     if (!taskId) return
-    const [t, m] = await Promise.all([api.tasks.get(taskId), api.messages.list(taskId)])
+    const [t, m, ad] = await Promise.all([
+      api.tasks.get(taskId),
+      api.messages.list(taskId),
+      api.agents.list(teamId)
+    ])
     setTask(t)
     setMessages(m.messages ?? [])
-  }, [taskId])
+    setAgents(ad.agents ?? [])
+  }, [taskId, teamId])
 
   useEffect(() => { load() }, [load])
   useEffect(() => { if (watching) setShowLog(true) }, [watching])
@@ -492,6 +649,12 @@ function TaskThread() {
     nav('/dashboard')
   }
 
+  async function closeTask() {
+    if (!taskId) return
+    await api.tasks.update(taskId, { status: 'done' })
+    nav('/dashboard')
+  }
+
   async function sendReply(e: React.FormEvent) {
     e.preventDefault()
     if (!taskId || !reply.trim()) return
@@ -503,75 +666,120 @@ function TaskThread() {
     } finally { setSending(false) }
   }
 
-  function roleStyle(role: string) {
-    if (role === 'user') return 'bg-blue-50 rounded-lg p-3 self-end max-w-[70%]'
-    if (role === 'agent') return 'bg-muted rounded-lg p-3 font-mono whitespace-pre-wrap max-w-[90%]'
-    return 'text-muted-foreground text-xs italic py-1'
-  }
+  const agentName = useMemo(() => {
+    if (!task) return 'Agent'
+    return agents.find(a => a.id === task.agent_id)?.name || 'Agent'
+  }, [task, agents])
 
   return (
-    <div className="max-w-3xl animate-fade-in">
-      <div className="flex items-center gap-3 mb-6">
-        <h2 className="text-2xl font-semibold flex-1">{task?.subject ?? '...'}</h2>
+    <div className="max-w-3xl animate-fade-in mx-auto">
+      <div className="flex items-center gap-3 mb-8 pb-4 border-b border-border/50">
+        <div className="flex-1">
+          <h2 className="text-2xl font-bold tracking-tight">{task?.subject ?? '...'}</h2>
+          <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Bot className="h-3.5 w-3.5" />
+              {agentName}
+            </span>
+            <span>·</span>
+            <span>Started {task ? relativeTime(task.created_at) : '...'}</span>
+          </div>
+        </div>
         {task && <StatusBadge status={task.status} />}
-        {task && (task.status === 'running') && !watching && (
-          <Button onClick={startLive} size="sm">
-            <Play className="h-4 w-4 mr-1" />
-            Watch live
+        <div className="flex items-center gap-2">
+          {task && (task.status === 'running') && !watching && (
+            <Button onClick={startLive} size="sm" className="rounded-full">
+              <Play className="h-4 w-4 mr-1" />
+              Watch live
+            </Button>
+          )}
+          {watching && (
+            <Button variant="secondary" size="sm" disabled className="rounded-full">
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              Live
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" onClick={deleteTask} className="rounded-full hover:bg-destructive/10 hover:text-destructive">
+            <Trash2 className="h-4 w-4" />
           </Button>
-        )}
-        {watching && (
-          <Button variant="secondary" size="sm" disabled>
-            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            Live
-          </Button>
-        )}
-        <Button variant="ghost" size="icon" onClick={deleteTask}>
-          <Trash2 className="h-4 w-4 text-muted-foreground" />
-        </Button>
+        </div>
       </div>
 
-      <ScrollArea className="h-[500px] mb-6">
-        <div className="flex flex-col gap-2 pr-4">
-          {messages.map(m => (
-            <div key={m.id}>
-              <div className={roleStyle(m.role)}>{m.body}</div>
-              {m.role === 'agent' && m.transcript_key && taskId && (
-                <TranscriptButton taskId={taskId} msgId={m.id} />
-              )}
-            </div>
-          ))}
-          {liveLines.length > 0 && (
-            <div className="border rounded-lg overflow-hidden">
-              <button
-                onClick={() => setShowLog(x => !x)}
-                className="w-full text-left px-3 py-2 bg-muted text-sm flex justify-between items-center hover:bg-muted/80"
-              >
-                <span>Session log ({liveLines.length} lines){watching ? ' · live' : ''}</span>
-                {showLog ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
-              {showLog && (
-                <div className="bg-zinc-900 text-green-400 p-3 font-mono text-xs whitespace-pre-wrap max-h-80 overflow-auto">
-                  {liveLines.join('\n')}
-                </div>
-              )}
-            </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
-      </ScrollArea>
+      <div className="bg-background/50 rounded-xl border border-border/40 overflow-hidden shadow-sm">
+        <ScrollArea className="h-[600px] p-6">
+          <div className="flex flex-col pr-4">
+            {messages.map(m => (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                agentName={agentName}
+                taskId={taskId}
+              />
+            ))}
+            {liveLines.length > 0 && (
+              <div className="mt-4 border rounded-xl overflow-hidden shadow-md">
+                <button
+                  onClick={() => setShowLog(x => !x)}
+                  className="w-full text-left px-4 py-3 bg-zinc-900 text-zinc-100 text-sm flex justify-between items-center hover:bg-zinc-800 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${watching ? 'bg-green-500 animate-pulse' : 'bg-zinc-500'}`} />
+                    <span className="font-medium">Session log ({liveLines.length} lines)</span>
+                  </div>
+                  {showLog ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+                {showLog && (
+                  <div className="bg-zinc-950 text-emerald-400 p-4 font-mono text-xs whitespace-pre-wrap max-h-96 overflow-auto scrollbar-thin scrollbar-thumb-zinc-800">
+                    {liveLines.join('\n')}
+                  </div>
+                )}
+              </div>
+            )}
+            <div ref={bottomRef} className="h-4" />
+          </div>
+        </ScrollArea>
 
-      {task && ['waiting_input', 'done', 'failed'].includes(task.status) && (
-        <form onSubmit={sendReply} className="flex gap-2">
-          <Input
-            value={reply} onChange={e => setReply(e.target.value)}
-            placeholder={task.status === 'waiting_input' ? 'Reply to agent…' : 'Follow up…'}
-            className="flex-1"
-          />
-          <Button type="submit" disabled={sending}>
-            {sending ? '...' : 'Send'}
-          </Button>
-        </form>
+        {task && task.status === 'waiting_input' && (
+          <div className="p-4 bg-muted/20 border-t border-border/40">
+            <form onSubmit={sendReply} className="flex gap-2">
+              <Input
+                value={reply} onChange={e => setReply(e.target.value)}
+                placeholder="Reply to agent…"
+                className="flex-1 bg-background border-border/60 focus:ring-primary rounded-full px-5"
+              />
+              <Button type="submit" disabled={sending} className="rounded-full px-6">
+                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send'}
+              </Button>
+            </form>
+          </div>
+        )}
+      </div>
+
+      {task && !['done', 'failed'].includes(task.status) && (
+        <div className="mt-4 flex justify-center">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-emerald-600 transition-colors">
+                <CheckCircle className="h-4 w-4 mr-1.5" />
+                Close Session
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Close Session?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will mark the task as done. You can always follow up later if needed.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep open</AlertDialogCancel>
+                <AlertDialogAction onClick={closeTask} className="bg-emerald-600 hover:bg-emerald-700">
+                  Close Session
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       )}
     </div>
   )
@@ -832,7 +1040,10 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen">
       <aside className="w-52 border-r bg-background flex flex-col">
-        <div className="font-bold text-lg px-4 py-5">TaskSquad</div>
+        <div className="flex items-center gap-2 font-bold text-lg px-4 py-5">
+          <img src="/tasksquad-dark.svg" alt="TaskSquad" className="h-5 w-5" />
+          TaskSquad
+        </div>
         <nav className="flex-1 px-2">
           <Button
             variant={!isAgents && !isSettings ? 'secondary' : 'ghost'}
@@ -896,7 +1107,7 @@ export default function Dashboard() {
       <main className="flex-1 overflow-auto p-8">
         <Routes>
           <Route path="/" element={<InboxView teamId={teamId} />} />
-          <Route path="/tasks/:taskId" element={<TaskThread />} />
+          <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} />} />
           <Route path="/settings" element={<SettingsView teamId={teamId} teamName={teamName} />} />
         </Routes>

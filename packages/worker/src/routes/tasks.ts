@@ -46,6 +46,29 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
   return json(task)
 }
 
+export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const taskId = url.pathname.split('/')[2]
+  const body = await req.json<{ status?: string }>().catch(() => ({} as { status?: string }))
+
+  if (!body.status) return err('status_required', 400)
+
+  const task = await env.DB
+    .prepare('SELECT team_id, status FROM tasks WHERE id = ?')
+    .bind(taskId)
+    .first<{ team_id: string; status: string }>()
+
+  if (!task) return err('not_found', 404)
+  if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('forbidden', 403)
+
+  const now = Date.now()
+  await env.DB.prepare('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?')
+    .bind(body.status, body.status === 'done' || body.status === 'failed' ? now : null, taskId)
+    .run()
+
+  return json({ ok: true })
+}
+
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string }))
   const { agent_id, subject, team_id, body: taskBody } = body

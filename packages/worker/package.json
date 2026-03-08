@@ -6,6 +6,7 @@
     "dev": "wrangler dev --local",
     "deploy": "wrangler deploy",
     "cf-typegen": "wrangler types",
+    "build": "wrangler deploy --dry-run",
     "test": "vitest run"
   },
   "dependencies": {
