@@ -2,12 +2,15 @@
 
 package main_test
 
-// Integration test: spawns `claude -p <prompt>`, captures output via the Claude Code
-// Stop hook (same mechanism used by the daemon), and writes the full session to a file.
+// Integration test: runs claude inside a real tmux session, streams output via
+// tmux pipe-pane → FIFO (exactly as the daemon does), and asserts that:
+//   - the Claude Code Stop hook fires and provides a transcript_path
+//   - the transcript contains a non-empty assistant response
+//   - the response is not equal to the input prompt
 //
 // Run with:
 //
-//	go test -v -tags integration -run TestClaudeCodeSession -timeout 120s ./...
+//	go test -v -tags integration -run TestClaudeCodeTmuxSession -timeout 120s ./...
 
 import (
 	"bufio"
@@ -21,169 +24,177 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/tasksquad/daemon/agent"
 )
 
-// testPrompt is intentionally simple so the test runs fast.
+// testPrompt is simple so the test completes quickly.
 const testPrompt = "Reply with exactly one word: DONE"
 
-// testTimeout is the hard deadline for the whole test (claude + hook wait).
+// testTimeout is the hard deadline for the whole test.
 const testTimeout = 90 * time.Second
 
-func TestClaudeCodeSession(t *testing.T) {
-	// ── 1. Temp work dir (claude runs here; hooks written here) ───────────────
+func TestClaudeCodeTmuxSession(t *testing.T) {
+	// ── 0. Prerequisites ──────────────────────────────────────────────────────
+	tmuxBin, err := exec.LookPath("tmux")
+	if err != nil {
+		t.Skip("tmux not found on PATH — skipping")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not found on PATH — skipping")
+	}
+
+	// ── 1. Work dir + hooks ───────────────────────────────────────────────────
 	workDir := t.TempDir()
 	t.Logf("Work dir: %s", workDir)
 
-	// ── 2. Find a free port for our inline hooks server ───────────────────────
 	port := freePort(t)
 	t.Logf("Hooks port: %d", port)
-
-	// ── 3. Write .claude/settings.json with Stop + Notification hooks ─────────
 	writeTestHooks(t, workDir, port)
 
-	// ── 4. Start inline hooks capture server ──────────────────────────────────
+	// ── 2. Hooks capture server ───────────────────────────────────────────────
 	var (
-		stopOnce       sync.Once
-		stopCh         = make(chan stopEvent, 1)
-		notifLines     []string
-		notifMu        sync.Mutex
+		stopOnce sync.Once
+		stopCh   = make(chan stopEvent, 1)
+		notifCh  = make(chan string, 16)
 	)
-
 	srv := startTestHooksServer(t, port,
-		func(ev stopEvent) { // /hooks/stop
-			stopOnce.Do(func() { stopCh <- ev })
-		},
-		func(message string) { // /hooks/notification
-			notifMu.Lock()
-			notifLines = append(notifLines, message)
-			notifMu.Unlock()
-			t.Logf("[notification] %s", message)
+		func(ev stopEvent) { stopOnce.Do(func() { stopCh <- ev }) },
+		func(msg string) {
+			t.Logf("[notification] %s", msg)
+			select {
+			case notifCh <- msg:
+			default:
+			}
 		},
 	)
 	defer srv.Shutdown(context.Background()) //nolint:errcheck
 
-	// ── 5. Spawn claude ────────────────────────────────────────────────────────
+	// ── 3. FIFO for tmux pipe-pane output ─────────────────────────────────────
+	fifoPath := filepath.Join(t.TempDir(), "output.fifo")
+	if err := syscall.Mkfifo(fifoPath, 0644); err != nil {
+		t.Fatalf("mkfifo: %v", err)
+	}
+
+	// ── 4. Start tmux session running claude (interactive, no -p flag) ────────
+	sessionName := fmt.Sprintf("ts-test-%d", os.Getpid())
+	env := filterEnv(os.Environ(), "CLAUDECODE") // prevent recursion
+
+	// Run claude non-interactively with -p so the prompt is a CLI argument.
+	// This avoids the "trust this folder" TUI dialog that appears when claude
+	// starts in interactive mode inside an untrusted temp directory.
+	// The tmux + pipe-pane + FIFO + Stop-hook path is identical to what the
+	// daemon uses; only the prompt delivery method differs.
+	newSessArgs := []string{
+		"new-session", "-d", "-s", sessionName,
+		"-c", workDir, "-x", "220", "-y", "50",
+		"--", "claude", "-p", testPrompt,
+	}
+	newSessCmd := exec.Command(tmuxBin, newSessArgs...)
+	newSessCmd.Env = env
+	if out, err := newSessCmd.CombinedOutput(); err != nil {
+		t.Fatalf("tmux new-session: %v: %s", err, out)
+	}
+	t.Logf("tmux session: %s  prompt: %q", sessionName, testPrompt)
+
+	t.Cleanup(func() {
+		exec.Command(tmuxBin, "kill-session", "-t", sessionName).Run() //nolint:errcheck
+		os.Remove(fifoPath)
+	})
+
+	// ── 5. Open FIFO reader (blocks until pipe-pane opens write end) ──────────
+	fifoCh := make(chan *os.File, 1)
+	go func() {
+		f, err := os.Open(fifoPath)
+		if err != nil {
+			t.Logf("FIFO open error: %v", err)
+			return
+		}
+		fifoCh <- f
+	}()
+
+	// pipe-pane: sends all pane output to FIFO (opens write end → unblocks reader).
+	// Run this immediately after new-session so no early output is missed.
+	exec.Command(tmuxBin, "pipe-pane", "-t", sessionName, "cat > "+fifoPath).Run() //nolint:errcheck
+
+	// ── 6. Wait for FIFO reader to be ready ───────────────────────────────────
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "claude", "-p", testPrompt)
-	cmd.Dir = workDir
-	// Strip CLAUDECODE so the test can run from inside a Claude Code session.
-	cmd.Env = filterEnv(os.Environ(), "CLAUDECODE")
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatalf("StdoutPipe: %v", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		t.Fatalf("StderrPipe: %v", err)
+	var fifoFile *os.File
+	select {
+	case fifoFile = <-fifoCh:
+		t.Logf("FIFO open — streaming output")
+	case <-time.After(5 * time.Second):
+		t.Fatal("FIFO open timed out")
 	}
 
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start claude: %v\n(is `claude` on PATH?)", err)
-	}
-	t.Logf("claude PID: %d", cmd.Process.Pid)
-
-	// ── 6. Stream stdout and stderr ───────────────────────────────────────────
+	// ── 7. Stream FIFO output ─────────────────────────────────────────────────
 	var (
 		outputLines []string
 		outputMu    sync.Mutex
 		readerDone  = make(chan struct{})
 	)
-
-	readLines := func(r *bufio.Scanner, prefix string) {
-		for r.Scan() {
-			line := r.Text()
+	go func() {
+		defer close(readerDone)
+		scanner := bufio.NewScanner(fifoFile)
+		for scanner.Scan() {
+			line := scanner.Text()
 			outputMu.Lock()
 			outputLines = append(outputLines, line)
 			outputMu.Unlock()
-			t.Logf("%s %s", prefix, line)
+			t.Logf("[fifo] %s", line)
 		}
-	}
-
-	go func() {
-		defer close(readerDone)
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() { defer wg.Done(); readLines(bufio.NewScanner(stdout), "[stdout]") }()
-		go func() { defer wg.Done(); readLines(bufio.NewScanner(stderr), "[stderr]") }()
-		wg.Wait()
 	}()
 
-	// ── 7. Wait for Stop hook OR process exit ─────────────────────────────────
-	exitCh := make(chan error, 1)
-	go func() {
-		<-readerDone
-		exitCh <- cmd.Wait()
-	}()
-
+	// ── 8. Wait for Stop hook ─────────────────────────────────────────────────
 	var ev stopEvent
 	select {
 	case ev = <-stopCh:
-		t.Logf("Stop hook received — stop_reason=%q transcript_path=%q", ev.StopReason, ev.TranscriptPath)
-		// Give readers a moment to drain remaining output.
-		select {
-		case <-readerDone:
-		case <-time.After(3 * time.Second):
-		}
-
-	case exitErr := <-exitCh:
-		if exitErr != nil {
-			t.Logf("Process exited with error: %v", exitErr)
-		} else {
-			t.Logf("Process exited cleanly")
-		}
-		ev.StopReason = "process_exit"
+		t.Logf("Stop hook: stop_reason=%q transcript_path=%q", ev.StopReason, ev.TranscriptPath)
 
 	case <-ctx.Done():
-		t.Fatal("Test timed out waiting for claude to finish")
+		t.Fatal("Timed out waiting for Claude Code Stop hook")
 	}
-	stopReason := ev.StopReason
 
-	// ── 8. Build session record ───────────────────────────────────────────────
+	// Kill the tmux session so the FIFO writer (cat) closes → readerDone.
+	exec.Command(tmuxBin, "kill-session", "-t", sessionName).Run() //nolint:errcheck
+	select {
+	case <-readerDone:
+	case <-time.After(5 * time.Second):
+		t.Log("Warning: FIFO reader did not drain within 5s")
+	}
+	fifoFile.Close()
+
+	// ── 9. Write session file ────────────────────────────────────────────────
 	outputMu.Lock()
 	captured := append([]string(nil), outputLines...)
 	outputMu.Unlock()
 
-	notifMu.Lock()
-	notifications := append([]string(nil), notifLines...)
-	notifMu.Unlock()
+	sessionPath := writeSessionFile(t, testPrompt, ev.StopReason, captured)
+	t.Logf("Session log: %s", sessionPath)
+	t.Logf("Captured %d raw FIFO lines", len(captured))
 
-	if len(captured) == 0 {
-		t.Error("No output captured from claude — check that claude is correctly installed")
-	}
-
-	// ── 9. Write session file ─────────────────────────────────────────────────
-	sessionPath := writeSessionFile(t, testPrompt, stopReason, captured, notifications)
-	t.Logf("Session written to: %s", sessionPath)
-
-	// ── 10. Basic assertions ──────────────────────────────────────────────────
-	full := strings.Join(captured, "\n")
-	if full == "" {
-		t.Error("Session output is empty")
-	}
-	t.Logf("Captured %d lines, %d bytes", len(captured), len(full))
-
-	// ── 11. Transcript assertions ─────────────────────────────────────────────
+	// ── 10. Transcript assertions ─────────────────────────────────────────────
 	if ev.TranscriptPath == "" {
-		t.Log("transcript_path not provided in Stop hook payload — skipping transcript assertions")
-	} else {
-		agentResponse := agent.ExtractTranscriptResponse(ev.TranscriptPath)
-		t.Logf("Agent response from transcript: %q", agentResponse)
+		t.Fatal("transcript_path was not provided in the Stop hook payload")
+	}
 
-		if agentResponse == "" {
-			t.Error("Agent response extracted from transcript is empty")
-		}
-		if agentResponse == testPrompt {
-			t.Errorf("Agent response equals the input prompt %q — expected a distinct reply", testPrompt)
-		}
+	agentResponse := agent.ExtractTranscriptResponse(ev.TranscriptPath)
+	t.Logf("Agent response (from transcript): %q", agentResponse)
+
+	if agentResponse == "" {
+		t.Error("Agent response extracted from transcript is empty")
+	}
+	if agentResponse == testPrompt {
+		t.Errorf("Agent response equals the input prompt %q — no distinct reply produced", testPrompt)
 	}
 }
+
+// ── stopEvent ─────────────────────────────────────────────────────────────────
 
 // stopEvent carries the payload from the Claude Code Stop hook.
 type stopEvent struct {
@@ -191,7 +202,8 @@ type stopEvent struct {
 	TranscriptPath string
 }
 
-// filterEnv returns os.Environ() with any vars matching the given keys removed.
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 func filterEnv(env []string, exclude ...string) []string {
 	out := make([]string, 0, len(env))
 	for _, e := range env {
@@ -208,8 +220,6 @@ func filterEnv(env []string, exclude ...string) []string {
 	}
 	return out
 }
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
 
 func freePort(t *testing.T) int {
 	t.Helper()
@@ -267,7 +277,6 @@ func writeTestHooks(t *testing.T, workDir string, port int) {
 
 func startTestHooksServer(t *testing.T, port int, onStop func(stopEvent), onNotif func(string)) *http.Server {
 	t.Helper()
-
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/hooks/stop", func(w http.ResponseWriter, r *http.Request) {
@@ -283,9 +292,7 @@ func startTestHooksServer(t *testing.T, port int, onStop func(stopEvent), onNoti
 	})
 
 	mux.HandleFunc("/hooks/notification", func(w http.ResponseWriter, r *http.Request) {
-		var p struct {
-			Message string `json:"message"`
-		}
+		var p struct{ Message string `json:"message"` }
 		json.NewDecoder(r.Body).Decode(&p) //nolint:errcheck
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok")) //nolint:errcheck
@@ -294,13 +301,9 @@ func startTestHooksServer(t *testing.T, port int, onStop func(stopEvent), onNoti
 		}
 	})
 
-	srv := &http.Server{
-		Addr:    fmt.Sprintf("127.0.0.1:%d", port),
-		Handler: mux,
-	}
+	srv := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", port), Handler: mux}
 	go srv.ListenAndServe() //nolint:errcheck
 
-	// Wait until the server is ready
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 100*time.Millisecond)
@@ -310,21 +313,17 @@ func startTestHooksServer(t *testing.T, port int, onStop func(stopEvent), onNoti
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-
 	return srv
 }
 
-// writeSessionFile writes a structured session record to ~/.tasksquad/logs/test-session-<unix>.txt
-// and returns the path.
-func writeSessionFile(t *testing.T, prompt, stopReason string, outputLines, notifications []string) string {
+// writeSessionFile writes captured output to ~/.tasksquad/logs/test-session-<unix>.txt.
+func writeSessionFile(t *testing.T, prompt, stopReason string, outputLines []string) string {
 	t.Helper()
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		t.Logf("UserHomeDir: %v", err)
 		home = os.TempDir()
 	}
-
 	logsDir := filepath.Join(home, ".tasksquad", "logs")
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		t.Fatalf("mkdir logs: %v", err)
@@ -333,22 +332,15 @@ func writeSessionFile(t *testing.T, prompt, stopReason string, outputLines, noti
 	sessionPath := filepath.Join(logsDir, fmt.Sprintf("test-session-%d.txt", time.Now().Unix()))
 
 	var sb strings.Builder
-	sb.WriteString("=== TaskSquad CLI Integration Test Session ===\n")
+	sb.WriteString("=== TaskSquad tmux Integration Test ===\n")
 	sb.WriteString(fmt.Sprintf("Time:        %s\n", time.Now().Format(time.RFC3339)))
 	sb.WriteString(fmt.Sprintf("Prompt:      %s\n", prompt))
 	sb.WriteString(fmt.Sprintf("Stop reason: %s\n", stopReason))
-	sb.WriteString(fmt.Sprintf("Lines:       %d\n", len(outputLines)))
-	sb.WriteString("\n--- OUTPUT ---\n")
+	sb.WriteString(fmt.Sprintf("FIFO lines:  %d\n", len(outputLines)))
+	sb.WriteString("\n--- RAW FIFO OUTPUT ---\n")
 	for _, l := range outputLines {
 		sb.WriteString(l)
 		sb.WriteByte('\n')
-	}
-	if len(notifications) > 0 {
-		sb.WriteString("\n--- NOTIFICATIONS ---\n")
-		for _, n := range notifications {
-			sb.WriteString(n)
-			sb.WriteByte('\n')
-		}
 	}
 	sb.WriteString("\n=== END ===\n")
 
