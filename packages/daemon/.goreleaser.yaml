@@ -39,7 +39,7 @@ changelog:
 brews:
   - name: tsq
     repository:
-      owner: tasksquad
+      owner: xajik
       name: homebrew-tap
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     directory: Formula
