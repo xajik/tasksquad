@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { signOut } from 'firebase/auth'
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { auth, getToken } from '../lib/firebase'
-import { api, type Agent, type Task, type Message } from '../lib/api'
+import { api, type Agent, type Task, type Message, type Team } from '../lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -45,6 +45,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Inbox,
   Settings,
   Bot,
@@ -82,10 +90,33 @@ function StatusBadge({ status }: { status: string }) {
 function useTeam() {
   const [teamId, setTeamId] = useState<string | null>(null)
   const [teamName, setTeamName] = useState('')
+  const [teams, setTeams] = useState<Team[]>([])
+  const [isLoadingTeams, setIsLoadingTeams] = useState(true)
 
   useEffect(() => {
     const stored = localStorage.getItem('tsq_team_id')
     if (stored) { setTeamId(stored); setTeamName(localStorage.getItem('tsq_team_name') ?? '') }
+  }, [])
+
+  useEffect(() => {
+    async function loadTeams() {
+      try {
+        const data = await api.teams.list()
+        setTeams(data.teams ?? [])
+        if (data.teams.length > 0 && !teamId) {
+          const firstTeam = data.teams[0]
+          setTeamId(firstTeam.id)
+          setTeamName(firstTeam.name)
+          localStorage.setItem('tsq_team_id', firstTeam.id)
+          localStorage.setItem('tsq_team_name', firstTeam.name)
+        }
+      } catch (e) {
+        console.error('Failed to load teams:', e)
+      } finally {
+        setIsLoadingTeams(false)
+      }
+    }
+    loadTeams()
   }, [])
 
   async function createTeam(name: string) {
@@ -94,9 +125,19 @@ function useTeam() {
     localStorage.setItem('tsq_team_name', t.name)
     setTeamId(t.id)
     setTeamName(t.name)
+    const data = await api.teams.list()
+    setTeams(data.teams ?? [])
   }
 
-  return { teamId, teamName, createTeam }
+  function switchTeam(team: Team) {
+    setTeamId(team.id)
+    setTeamName(team.name)
+    localStorage.setItem('tsq_team_id', team.id)
+    localStorage.setItem('tsq_team_name', team.name)
+    window.location.reload()
+  }
+
+  return { teamId, teamName, teams, isLoadingTeams, createTeam, switchTeam }
 }
 
 function InboxView({ teamId }: { teamId: string }) {
@@ -659,7 +700,7 @@ function CreateTeam({ onCreated }: { onCreated: (name: string) => void }) {
 }
 
 export default function Dashboard() {
-  const { teamId, teamName, createTeam } = useTeam()
+  const { teamId, teamName, teams, isLoadingTeams, createTeam, switchTeam } = useTeam()
   const location = useLocation()
   const nav = useNavigate()
 
@@ -698,6 +739,38 @@ export default function Dashboard() {
             Settings
           </Button>
         </nav>
+        <div className="p-2 border-t">
+          {isLoadingTeams ? (
+            <div className="px-2 py-2 text-sm text-muted-foreground">Loading...</div>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between font-normal">
+                  <span className="truncate">{teamName}</span>
+                  <ChevronDown className="h-4 w-4 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-48">
+                <DropdownMenuLabel>Switch team</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {teams.map(team => (
+                  <DropdownMenuItem
+                    key={team.id}
+                    onClick={() => switchTeam(team)}
+                    className={team.id === teamId ? 'bg-accent' : ''}
+                  >
+                    {team.name}
+                    {team.id === teamId && <span className="ml-auto text-xs">✓</span>}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-muted-foreground cursor-not-allowed" disabled>
+                  + Create new team (coming soon)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
         <div className="p-2">
           <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => signOut(auth)}>
             <LogOut className="mr-2 h-4 w-4" />

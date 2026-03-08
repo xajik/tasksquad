@@ -2,6 +2,20 @@ import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 
+export async function list(_req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const rows = await env.DB
+    .prepare(`
+      SELECT t.id, t.name, tm.role
+      FROM teams t JOIN team_members tm ON t.id = tm.team_id
+      WHERE tm.user_id = ?
+      ORDER BY t.created_at DESC
+    `)
+    .bind(auth.userId)
+    .all<{ id: string; name: string; role: string }>()
+
+  return json({ teams: rows.results })
+}
+
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const body = await req.json<{ name?: string }>().catch(() => ({} as { name?: string }))
   const name = body.name?.trim()

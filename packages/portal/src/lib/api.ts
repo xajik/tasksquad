@@ -18,6 +18,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   teams: {
+    list: () => request<{ teams: Team[] }>('/teams'),
     create: (name: string) =>
       request<{ id: string; name: string }>('/teams', {
         method: 'POST',
@@ -64,6 +65,12 @@ export interface Agent {
   status: string
   last_seen: number | null
   created_at: number
+}
+
+export interface Team {
+  id: string
+  name: string
+  role: string
 }
 
 export interface Task {

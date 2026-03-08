@@ -42,6 +42,7 @@ function daemonRoute(handler: DaemonHandler) {
 router.options('*', () => new Response(null, { status: 204, headers: CORS_HEADERS }))
 
 // ── Browser routes (Firebase JWT) ─────────────────────────────────────────────
+router.get('/teams', firebaseRoute(teams.list))
 router.post('/teams',                    firebaseRoute(teams.create))
 router.get ('/teams/:teamId/members',    firebaseRoute(teams.listMembers))
 router.get ('/teams/:teamId/agents',     firebaseRoute(agents.list))
