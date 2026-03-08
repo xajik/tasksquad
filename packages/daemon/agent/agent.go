@@ -37,6 +37,7 @@ type Agent struct {
 	completing  bool
 	proc        *exec.Cmd
 	stdinWrite  *io.PipeWriter // open while process is running (stdin-based providers only)
+	runLog      *os.File       // per-task log file, open while task runs
 }
 
 func New(cfg config.AgentConfig) *Agent {
@@ -137,6 +138,17 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 
 // ── Task lifecycle ─────────────────────────────────────────────────────────────
 
+// writeRunLog writes a timestamped line to the current per-task log file (if open).
+func (a *Agent) writeRunLog(msg string) {
+	a.mu.Lock()
+	f := a.runLog
+	a.mu.Unlock()
+	if f == nil {
+		return
+	}
+	fmt.Fprintf(f, "%s %s\n", time.Now().Format(time.RFC3339), msg)
+}
+
 // buildConversationPrompt constructs the prompt to send to the CLI provider.
 // For a fresh task (single message), it uses that message directly.
 // For a follow-up (multiple messages), it formats the full thread as a
@@ -184,7 +196,20 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.completing = false
 	a.mu.Unlock()
 
+	logger.Lifecycle(fmt.Sprintf("[%s] event=started task_id=%s subject=%q", a.Config.Name, taskID, subject))
 	logger.Info(fmt.Sprintf("[%s] Starting task %s: \"%s\"", a.Config.Name, taskID, subject))
+
+	// Open a per-task log file for the full run output.
+	runLog, err := logger.CreateRunLog(a.Config.Name, taskID)
+	if err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Could not create run log: %v", a.Config.Name, err))
+	} else {
+		fmt.Fprintf(runLog, "# TaskSquad run log\n# agent=%s  task_id=%s  subject=%s\n# started=%s\n\n",
+			a.Config.Name, taskID, subject, time.Now().Format(time.RFC3339))
+		a.mu.Lock()
+		a.runLog = runLog
+		a.mu.Unlock()
+	}
 
 	// Open session on the server.
 	sessResp, err := a.post(cfg, "/daemon/session/open", map[string]any{
@@ -272,6 +297,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	agentID := a.agentID
 	a.mu.Unlock()
 
+	logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s pid=%d", a.Config.Name, taskID, cmd.Process.Pid))
+	a.writeRunLog(fmt.Sprintf("[EVENT] event=running pid=%d", cmd.Process.Pid))
+
 	// Drain stderr silently.
 	go io.Copy(io.Discard, stderr)
 
@@ -297,6 +325,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.mu.Unlock()
 
 	logger.Info(fmt.Sprintf("[%s] Process exited (code %d)", a.Config.Name, code))
+	logger.Lifecycle(fmt.Sprintf("[%s] event=exit code=%d task_id=%s", a.Config.Name, code, taskID))
+	a.writeRunLog(fmt.Sprintf("[EVENT] event=exit code=%d", code))
 
 	status := "closed"
 	if code != 0 {
@@ -306,6 +336,10 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 }
 
 func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
+	a.mu.Lock()
+	runLog := a.runLog
+	a.mu.Unlock()
+
 	scanner := bufio.NewScanner(r)
 	var batch []string
 
@@ -317,6 +351,13 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 		a.outputLines = append(a.outputLines, batch...)
 		id := a.agentID
 		a.mu.Unlock()
+
+		// Write full output to the per-task run log.
+		if runLog != nil {
+			for _, line := range batch {
+				fmt.Fprintln(runLog, line)
+			}
+		}
 
 		if id != "" {
 			a.post(cfg, "/daemon/push/"+id, map[string]any{ //nolint:errcheck
@@ -347,9 +388,12 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	a.completing = true
 	sessionID := a.sessionID
 	agentID := a.agentID
+	taskID := a.taskID
 	lines := append([]string(nil), a.outputLines...)
 	pw := a.stdinWrite
 	a.stdinWrite = nil
+	runLog := a.runLog
+	a.runLog = nil
 	a.mu.Unlock()
 
 	// Signal EOF to the process stdin (if still open) so it can exit cleanly.
@@ -357,7 +401,23 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 		pw.Close()
 	}
 
-	logger.Info(fmt.Sprintf("[%s] Completing task %s — status=%s", a.Config.Name, a.taskID, status))
+	logger.Info(fmt.Sprintf("[%s] Completing task %s — status=%s", a.Config.Name, taskID, status))
+
+	// Emit lifecycle event based on final status.
+	if status == "closed" {
+		logger.Lifecycle(fmt.Sprintf("[%s] event=success task_id=%s", a.Config.Name, taskID))
+		if runLog != nil {
+			fmt.Fprintf(runLog, "\n[EVENT] event=success\n# ended=%s\n", time.Now().Format(time.RFC3339))
+		}
+	} else {
+		logger.Lifecycle(fmt.Sprintf("[%s] event=failure task_id=%s status=%s", a.Config.Name, taskID, status))
+		if runLog != nil {
+			fmt.Fprintf(runLog, "\n[EVENT] event=failure status=%s\n# ended=%s\n", status, time.Now().Format(time.RFC3339))
+		}
+	}
+	if runLog != nil {
+		runLog.Close()
+	}
 
 	all := strings.Join(lines, "\n")
 	finalText := strings.TrimSpace(all)

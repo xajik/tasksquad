@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -58,7 +59,36 @@ func write(level, msg string) {
 	out.Write([]byte(line)) //nolint:errcheck
 }
 
-func Info(msg string)  { write("INFO", msg) }
-func Debug(msg string) { write("DEBUG", msg) }
-func Warn(msg string)  { write("WARN", msg) }
-func Error(msg string) { write("ERROR", msg) }
+func Info(msg string)      { write("INFO", msg) }
+func Debug(msg string)     { write("DEBUG", msg) }
+func Warn(msg string)      { write("WARN", msg) }
+func Error(msg string)     { write("ERROR", msg) }
+func Lifecycle(msg string) { write("EVENT", msg) }
+
+// sanitizeName converts an agent name into a safe directory name.
+func sanitizeName(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
+}
+
+// CreateRunLog opens (or creates) a per-task log file at
+// ~/.tasksquad/logs/<agentName>/<taskID>.log.
+// Callers are responsible for closing the returned file.
+func CreateRunLog(agentName, taskID string) (*os.File, error) {
+	if logsDir == "" {
+		return nil, fmt.Errorf("logger not initialized")
+	}
+	dir := filepath.Join(logsDir, sanitizeName(agentName))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
+	}
+	filename := filepath.Join(dir, taskID+".log")
+	return os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+}
