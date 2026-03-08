@@ -7,6 +7,7 @@ import { auth } from './lib/firebase'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import Pricing from './pages/Pricing'
 import './index.css'
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/pricing" element={<Pricing />} />
         <Route path="/auth" element={authed ? <Navigate to="/dashboard" /> : <Login />} />
         <Route path="/dashboard/*" element={authed ? <Dashboard /> : <Navigate to="/auth" />} />
       </Routes>

@@ -61,6 +61,7 @@ import {
   Terminal,
   ExternalLink,
   CheckCircle,
+  Plus,
 } from 'lucide-react'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
@@ -915,14 +916,7 @@ function AgentsView({ teamId }: { teamId: string }) {
       </div>
 
       {newToken && (() => {
-        const snippet = `[server]
-url = "https://tasksquad-api.xajik0.workers.dev"
-poll_interval = 30
-
-[hooks]
-port = 7374
-
-[[agents]]
+        const snippet = `[[agents]]
 token = "${newToken.token}"
 name = "${name || 'my-agent'}"
 command = "${command}"
@@ -968,6 +962,11 @@ work_dir = "${workDir}"`
         </div>
         <div className="grid gap-2">
           <Label htmlFor="agent-command">Command</Label>
+          <p className="text-xs text-muted-foreground">
+            Only <span className="font-semibold">Claude Code</span> is supported at this time. Use{' '}
+            <code className="font-mono bg-muted px-1 rounded">claude</code> or{' '}
+            <code className="font-mono bg-muted px-1 rounded">claude --dangerously-skip-permissions</code>.
+          </p>
           <Input
             id="agent-command"
             value={command}
@@ -994,22 +993,13 @@ work_dir = "${workDir}"`
   )
 }
 
-function SettingsView({ teamId, teamName }: { teamId: string; teamName: string }) {
+function SettingsView({ teamName }: { teamName: string }) {
   return (
     <div className="animate-fade-in">
       <h2 className="text-2xl font-semibold mb-6">Settings</h2>
       <div className="max-w-md">
         <div className="text-sm text-muted-foreground mb-1">Team name</div>
         <div className="font-medium mb-4">{teamName}</div>
-
-        <div className="text-sm text-muted-foreground mb-1">Team ID</div>
-        <div className="flex items-center gap-2">
-          <code className="flex-1 bg-muted px-3 py-2 rounded-md text-sm font-mono break-all">{teamId}</code>
-          <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(teamId)}>
-            <Copy className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="text-xs text-muted-foreground mt-1">Used in daemon config and API calls</div>
       </div>
     </div>
   )
@@ -1045,15 +1035,39 @@ function CreateTeam({ onCreated }: { onCreated: (name: string) => void }) {
   )
 }
 
+const FREE_TEAM_LIMIT = 3
+
 export default function Dashboard() {
   const { teamId, teamName, teams, isLoadingTeams, createTeam, switchTeam } = useTeam()
   const location = useLocation()
   const nav = useNavigate()
 
+  const [showCreateTeam, setShowCreateTeam] = useState(false)
+  const [newTeamName, setNewTeamName] = useState('')
+  const [createTeamError, setCreateTeamError] = useState('')
+  const [creatingTeam, setCreatingTeam] = useState(false)
+
   const isAgents = location.pathname === '/dashboard/agents'
   const isSettings = location.pathname === '/dashboard/settings'
 
   if (!teamId) return <CreateTeam onCreated={createTeam} />
+
+  async function handleCreateTeam(e: React.FormEvent) {
+    e.preventDefault()
+    if (teams.length >= FREE_TEAM_LIMIT) {
+      setCreateTeamError(`Free plan allows up to ${FREE_TEAM_LIMIT} projects. Upgrade to Pro for unlimited projects.`)
+      return
+    }
+    setCreatingTeam(true)
+    try {
+      await createTeam(newTeamName)
+      setNewTeamName('')
+      setShowCreateTeam(false)
+      setCreateTeamError('')
+    } finally {
+      setCreatingTeam(false)
+    }
+  }
 
   return (
     <div className="flex h-screen">
@@ -1088,31 +1102,39 @@ export default function Dashboard() {
             Settings
           </Button>
         </nav>
-        <div className="p-2 border-t">
+        <div className="p-2 border-t space-y-1">
           {isLoadingTeams ? (
             <div className="px-2 py-2 text-sm text-muted-foreground">Loading...</div>
           ) : (
-            <Select
-              value={teamId}
-              onValueChange={(value) => {
-                const team = teams.find(t => t.id === value)
-                if (team) switchTeam(team)
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select team" />
-              </SelectTrigger>
-              <SelectContent>
-                {teams.map(team => (
-                  <SelectItem key={team.id} value={team.id}>
-                    {team.name}
-                  </SelectItem>
-                ))}
-                <SelectItem value="__create__" disabled className="text-muted-foreground">
-                  + Create new team (coming soon)
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            <>
+              <Select
+                value={teamId}
+                onValueChange={(value) => {
+                  const team = teams.find(t => t.id === value)
+                  if (team) switchTeam(team)
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select team" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teams.map(team => (
+                    <SelectItem key={team.id} value={team.id}>
+                      {team.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start text-xs text-muted-foreground"
+                onClick={() => { setCreateTeamError(''); setShowCreateTeam(true) }}
+              >
+                <Plus className="mr-1.5 h-3 w-3" />
+                New project
+              </Button>
+            </>
           )}
         </div>
         <div className="p-2">
@@ -1127,9 +1149,44 @@ export default function Dashboard() {
           <Route path="/" element={<InboxView teamId={teamId} />} />
           <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} />} />
-          <Route path="/settings" element={<SettingsView teamId={teamId} teamName={teamName} />} />
+          <Route path="/settings" element={<SettingsView teamName={teamName} />} />
         </Routes>
       </main>
+
+      <Dialog open={showCreateTeam} onOpenChange={setShowCreateTeam}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>New project</DialogTitle>
+            <DialogDescription>Create a new team project.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateTeam}>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="new-team-name">Project name</Label>
+                <Input
+                  id="new-team-name"
+                  value={newTeamName}
+                  onChange={e => setNewTeamName(e.target.value)}
+                  placeholder="My project"
+                  required
+                  autoFocus
+                />
+              </div>
+              {createTeamError && (
+                <p className="text-sm text-destructive">{createTeamError}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowCreateTeam(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={creatingTeam || teams.length >= FREE_TEAM_LIMIT}>
+                {creatingTeam ? '...' : 'Create'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

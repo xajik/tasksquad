@@ -4,11 +4,11 @@ import { Button } from '@/components/ui/button'
 export default function Landing() {
   const nav = useNavigate()
   return (
-    <div className="max-w-800 mx-auto px-6 py-16">
+    <div className="max-w-[800px] mx-auto px-6 py-16">
       <nav className="flex justify-between items-center mb-20">
         <strong className="text-xl">TaskSquad</strong>
         <div className="flex gap-6 items-center">
-          <a href="/pricing" className="text-foreground hover:underline">Pricing</a>
+          <button onClick={() => nav('/pricing')} className="text-foreground hover:underline">Pricing</button>
           <Button onClick={() => nav('/auth')}>Sign in</Button>
         </div>
       </nav>
@@ -26,7 +26,7 @@ export default function Landing() {
 
       <div className="bg-muted rounded-lg p-4 inline-block mb-20">
         <code className="text-sm">
-          curl -fsSL https://install.tasksquad.ai | sh
+          brew tap xajik/tap &amp;&amp; brew install tsq
         </code>
       </div>
 
