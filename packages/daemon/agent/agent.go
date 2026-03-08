@@ -734,20 +734,11 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 		}
 	}
 
-	// Read the raw transcript JSONL for R2 upload; best-effort (empty string on error).
-	var transcriptContent string
-	if transcriptPath != "" {
-		if data, rerr := os.ReadFile(transcriptPath); rerr == nil {
-			transcriptContent = string(data)
-		}
-	}
-
 	closeResp, err := a.post(cfg, "/daemon/session/close", map[string]any{
 		"session_id": sessionID,
 		"agent_id":   agentID,
 		"status":     status,
 		"final_text": finalText,
-		"transcript": transcriptContent,
 	})
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] Session close error: %v", a.Config.Name, err))
@@ -766,9 +757,22 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 		if uploadURL, ok := closeResp["upload_url"].(string); ok && uploadURL != "" {
 			data := []byte(all)
 			if err := api.PutBytes(uploadURL, data); err != nil {
-				logger.Warn(fmt.Sprintf("[%s] R2 upload failed: %v", a.Config.Name, err))
+				logger.Warn(fmt.Sprintf("[%s] R2 log upload failed: %v", a.Config.Name, err))
 			} else {
-				logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes to R2", a.Config.Name, len(data)))
+				logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes log to R2", a.Config.Name, len(data)))
+			}
+		}
+
+		// Upload Claude Code transcript JSONL directly to R2 via presigned PUT URL.
+		if transcriptUploadURL, ok := closeResp["transcript_upload_url"].(string); ok && transcriptUploadURL != "" && transcriptPath != "" {
+			if transcriptData, rerr := os.ReadFile(transcriptPath); rerr == nil {
+				if err := api.PutBytes(transcriptUploadURL, transcriptData); err != nil {
+					logger.Warn(fmt.Sprintf("[%s] R2 transcript upload failed: %v", a.Config.Name, err))
+				} else {
+					logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes transcript to R2", a.Config.Name, len(transcriptData)))
+				}
+			} else {
+				logger.Warn(fmt.Sprintf("[%s] Could not read transcript for upload: %v", a.Config.Name, rerr))
 			}
 		}
 	}

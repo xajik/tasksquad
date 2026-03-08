@@ -1,4 +1,5 @@
 import { ulid } from 'ulidx'
+import { AwsClient } from 'aws4fetch'
 import { json, err } from '../auth.js'
 import type { Env, DaemonContext } from '../types.js'
 
@@ -111,9 +112,8 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
     session_id?: string
     status?: string
     final_text?: string
-    transcript?: string
-  }>().catch(() => ({} as { session_id?: string; status?: string; final_text?: string; transcript?: string }))
-  const { session_id, status = 'closed', final_text, transcript } = body
+  }>().catch(() => ({} as { session_id?: string; status?: string; final_text?: string }))
+  const { session_id, status = 'closed', final_text } = body
   const agentId = daemon.agentId
   if (!session_id) return err('missing_fields', 400)
 
@@ -130,13 +130,31 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   const agentStatus = taskStatus === 'waiting_input' ? 'waiting_input' : 'idle'
   const now = Date.now()
 
-  // Upload transcript JSONL to R2 and record its key on the agent message.
-  let transcriptKey: string | null = null
-  if (transcript && env.LOGS) {
-    transcriptKey = `${agentId.substring(0, 16)}/${session_id}/transcript.jsonl`
-    await env.LOGS.put(transcriptKey, transcript, {
-      httpMetadata: { contentType: 'application/x-ndjson' },
-    })
+  // Pre-determine the transcript R2 key and generate a presigned PUT URL so
+  // the daemon can upload the JSONL directly to R2 without routing it through
+  // the Worker. The key is stored optimistically — if the daemon upload fails
+  // the portal simply gets a 404 when it tries to fetch the transcript.
+  const transcriptKey = `${agentId.substring(0, 16)}/${session_id}/transcript.jsonl`
+  let transcriptUploadUrl: string | null = null
+
+  if (env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY) {
+    try {
+      const r2 = new AwsClient({
+        accessKeyId: env.R2_ACCESS_KEY_ID,
+        secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+        service: 's3',
+      })
+      const endpoint = new URL(
+        `https://${env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${transcriptKey}`
+      )
+      endpoint.searchParams.set('X-Amz-Expires', '300') // 5-minute window
+      const signed = await r2.sign(new Request(endpoint, { method: 'PUT' }), {
+        aws: { signQuery: true },
+      })
+      transcriptUploadUrl = signed.url
+    } catch (_) {
+      // Credentials not configured — skip presigning; transcript won't be stored.
+    }
   }
 
   const ops = [
@@ -151,15 +169,18 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   ]
 
   if (final_text) {
+    // Only store the transcript_key when we actually have a presigned URL
+    // (i.e. credentials are configured and the upload is expected to succeed).
+    const key = transcriptUploadUrl ? transcriptKey : null
     ops.push(
       env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, transcript_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .bind(ulid(), session.task_id, null, 'agent', final_text, transcriptKey, now)
+        .bind(ulid(), session.task_id, null, 'agent', final_text, key, now)
     )
   }
 
   await env.DB.batch(ops)
 
-  return json({ ok: true })
+  return json({ ok: true, transcript_upload_url: transcriptUploadUrl })
 }
 
 export async function complete(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {

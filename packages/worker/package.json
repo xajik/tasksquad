@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "aws4fetch": "^1.0.20",
     "cloudfire-auth": "^0.4.0",
     "itty-router": "^5.0.18",
     "ulidx": "^2.3.0"
