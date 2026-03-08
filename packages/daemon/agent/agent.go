@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/creack/pty"
@@ -17,6 +18,15 @@ import (
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
 )
+
+// tmuxBin is the path to the tmux binary, or empty if tmux is not installed.
+var tmuxBin string
+
+func init() {
+	if p, err := exec.LookPath("tmux"); err == nil {
+		tmuxBin = p
+	}
+}
 
 // ansiEscape matches ANSI/VT100 escape sequences produced by terminal UIs.
 var ansiEscape = regexp.MustCompile(`\x1b(\[[0-9;?]*[A-Za-z]|\][^\x07]*(\x07|\x1b\\)|\(B|[0-9A-Za-z])`)
@@ -77,6 +87,8 @@ type Agent struct {
 	stdinWrite  io.WriteCloser // open while process is running (pipe or PTY master)
 	runLog      *os.File       // per-task log file, open while task runs
 	outputDone  chan struct{}   // closed when streamOutput finishes draining stdout
+	tmuxSession string         // tmux session name while task is running (tmux path only)
+	fifoPath    string         // FIFO path for tmux output streaming
 }
 
 func New(cfg config.AgentConfig) *Agent {
@@ -151,9 +163,18 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 	if currentMode == ModeWaitingInput {
 		if reply, ok := resp["reply"].(string); ok && reply != "" {
 			a.mu.Lock()
+			sess := a.tmuxSession
 			pw := a.stdinWrite
 			a.mu.Unlock()
-			if pw != nil {
+
+			if sess != "" {
+				// tmux path: deliver reply via send-keys
+				exec.Command(tmuxBin, "send-keys", "-t", sess, reply, "Enter").Run() //nolint:errcheck
+				a.mu.Lock()
+				a.mode = ModeRunning
+				a.mu.Unlock()
+				logger.Info(fmt.Sprintf("[%s] User replied — resuming via tmux", a.Config.Name))
+			} else if pw != nil {
 				if _, err := fmt.Fprintln(pw, reply); err != nil {
 					logger.Warn(fmt.Sprintf("[%s] Failed to write reply to stdin: %v", a.Config.Name, err))
 				} else {
@@ -306,24 +327,136 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.mu.Unlock()
 
 	var outputReader io.Reader
+	usingTmux := false
 
-	if stdinData != "" {
-		// Use a PTY so the provider thinks it's in a real terminal and produces
-		// full output: spinner, tool calls, diffs, colours — everything.
-		ptmx, err := pty.Start(cmd)
-		if err != nil {
-			logger.Warn(fmt.Sprintf("[%s] PTY start failed, falling back to pipe: %v", a.Config.Name, err))
-			// Fallback: plain pipe (no rich output, but still functional).
-			pr, pw := io.Pipe()
-			cmd.Stdin = pr
-			a.mu.Lock()
-			a.stdinWrite = pw
-			a.mu.Unlock()
-			go func() {
-				if _, werr := fmt.Fprintln(pw, stdinData); werr != nil {
-					logger.Warn(fmt.Sprintf("[%s] Failed to write prompt to stdin: %v", a.Config.Name, werr))
+	// ── tmux path (preferred when tmux is available) ──────────────────────────
+	if stdinData != "" && tmuxBin != "" {
+		sessionSuffix := taskID
+		if len(sessionSuffix) > 8 {
+			sessionSuffix = sessionSuffix[:8]
+		}
+		sessionName := fmt.Sprintf("ts-%s", sessionSuffix)
+		fifoPath := fmt.Sprintf("/tmp/ts-%s.fifo", sessionSuffix)
+		os.Remove(fifoPath)
+
+		if err := syscall.Mkfifo(fifoPath, 0644); err != nil {
+			logger.Warn(fmt.Sprintf("[%s] mkfifo failed: %v — falling back to PTY", a.Config.Name, err))
+		} else {
+			// Build tmux new-session: inherit workDir + provider env.
+			cmdParts := append([]string{parts[0]}, args...)
+			newSessionArgs := append([]string{"new-session", "-d", "-s", sessionName,
+				"-c", a.Config.WorkDir, "-x", "220", "-y", "50", "--"}, cmdParts...)
+			tmuxCmd := exec.Command(tmuxBin, newSessionArgs...)
+			if len(provEnv) > 0 {
+				tmuxCmd.Env = append(os.Environ(), provEnv...)
+			} else {
+				tmuxCmd.Env = os.Environ()
+			}
+
+			if err := tmuxCmd.Run(); err != nil {
+				logger.Warn(fmt.Sprintf("[%s] tmux new-session failed: %v — falling back to PTY", a.Config.Name, err))
+				os.Remove(fifoPath)
+			} else {
+				// Open FIFO for reading concurrently — blocks until writer opens it.
+				fifoCh := make(chan *os.File, 1)
+				go func() {
+					f, err := os.Open(fifoPath)
+					if err != nil {
+						return
+					}
+					fifoCh <- f
+				}()
+
+				// pipe-pane runs `cat > fifoPath` inside the session, which opens the
+				// FIFO for writing and unblocks the reader goroutine above.
+				exec.Command(tmuxBin, "pipe-pane", "-t", sessionName, "cat > "+fifoPath).Run() //nolint:errcheck
+
+				// Deliver the initial prompt.
+				exec.Command(tmuxBin, "send-keys", "-t", sessionName, stdinData, "Enter").Run() //nolint:errcheck
+
+				a.mu.Lock()
+				a.tmuxSession = sessionName
+				a.fifoPath = fifoPath
+				a.mu.Unlock()
+
+				logger.Info(fmt.Sprintf("[%s] tmux session started — attach: tmux attach-session -t %s", a.Config.Name, sessionName))
+
+				select {
+				case f := <-fifoCh:
+					outputReader = f
+					usingTmux = true
+				case <-time.After(5 * time.Second):
+					logger.Warn(fmt.Sprintf("[%s] FIFO open timed out — falling back to PTY", a.Config.Name))
+					exec.Command(tmuxBin, "kill-session", "-t", sessionName).Run() //nolint:errcheck
+					os.Remove(fifoPath)
+					a.mu.Lock()
+					a.tmuxSession = ""
+					a.fifoPath = ""
+					a.mu.Unlock()
 				}
-			}()
+			}
+		}
+	}
+
+	// ── PTY / pipe path (fallback when tmux unavailable or failed) ────────────
+	if !usingTmux {
+		if stdinData != "" {
+			// Use a PTY so the provider thinks it's in a real terminal and produces
+			// full output: spinner, tool calls, diffs, colours — everything.
+			ptmx, err := pty.Start(cmd)
+			if err != nil {
+				logger.Warn(fmt.Sprintf("[%s] PTY start failed, falling back to pipe: %v", a.Config.Name, err))
+				// Fallback: plain pipe (no rich output, but still functional).
+				pr, pw := io.Pipe()
+				cmd.Stdin = pr
+				a.mu.Lock()
+				a.stdinWrite = pw
+				a.mu.Unlock()
+				go func() {
+					if _, werr := fmt.Fprintln(pw, stdinData); werr != nil {
+						logger.Warn(fmt.Sprintf("[%s] Failed to write prompt to stdin: %v", a.Config.Name, werr))
+					}
+				}()
+				stdout, serr := cmd.StdoutPipe()
+				if serr != nil {
+					logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))
+					a.mu.Lock()
+					a.mode = ModeIdle
+					a.mu.Unlock()
+					close(outputDone)
+					return
+				}
+				stderr, _ := cmd.StderrPipe()
+				if serr = cmd.Start(); serr != nil {
+					logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, serr))
+					a.mu.Lock()
+					a.mode = ModeIdle
+					a.mu.Unlock()
+					close(outputDone)
+					return
+				}
+				go io.Copy(io.Discard, stderr)
+				outputReader = stdout
+			} else {
+				// PTY started successfully.
+				// Set a wide terminal so progress bars / tables don't wrap.
+				_ = pty.Setsize(ptmx, &pty.Winsize{Rows: 50, Cols: 220})
+
+				a.mu.Lock()
+				a.stdinWrite = ptmx // PTY master is both stdin and stdout
+				a.mu.Unlock()
+
+				// Write the initial prompt into the PTY; keep it open for future replies.
+				go func() {
+					if _, werr := fmt.Fprintln(ptmx, stdinData); werr != nil {
+						logger.Warn(fmt.Sprintf("[%s] Failed to write prompt to PTY: %v", a.Config.Name, werr))
+					}
+				}()
+
+				outputReader = ptmx
+			}
+		} else {
+			// Non-stdin providers (e.g. codex): use regular stdout pipe with -p flag.
 			stdout, serr := cmd.StdoutPipe()
 			if serr != nil {
 				logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))
@@ -344,55 +477,27 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 			}
 			go io.Copy(io.Discard, stderr)
 			outputReader = stdout
-		} else {
-			// PTY started successfully.
-			// Set a wide terminal so progress bars / tables don't wrap.
-			_ = pty.Setsize(ptmx, &pty.Winsize{Rows: 50, Cols: 220})
-
-			a.mu.Lock()
-			a.stdinWrite = ptmx // PTY master is both stdin and stdout
-			a.mu.Unlock()
-
-			// Write the initial prompt into the PTY; keep it open for future replies.
-			go func() {
-				if _, werr := fmt.Fprintln(ptmx, stdinData); werr != nil {
-					logger.Warn(fmt.Sprintf("[%s] Failed to write prompt to PTY: %v", a.Config.Name, werr))
-				}
-			}()
-
-			outputReader = ptmx
 		}
-	} else {
-		// Non-stdin providers (e.g. codex): use regular stdout pipe with -p flag.
-		stdout, serr := cmd.StdoutPipe()
-		if serr != nil {
-			logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))
-			a.mu.Lock()
-			a.mode = ModeIdle
-			a.mu.Unlock()
-			close(outputDone)
-			return
-		}
-		stderr, _ := cmd.StderrPipe()
-		if serr = cmd.Start(); serr != nil {
-			logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, serr))
-			a.mu.Lock()
-			a.mode = ModeIdle
-			a.mu.Unlock()
-			close(outputDone)
-			return
-		}
-		go io.Copy(io.Discard, stderr)
-		outputReader = stdout
 	}
 
 	a.mu.Lock()
-	a.proc = cmd
+	if !usingTmux {
+		a.proc = cmd
+	}
 	agentID := a.agentID
 	a.mu.Unlock()
 
-	logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s pid=%d", a.Config.Name, taskID, cmd.Process.Pid))
-	a.writeRunLog(fmt.Sprintf("[EVENT] event=running pid=%d", cmd.Process.Pid))
+	if usingTmux {
+		sessionSuffix := taskID
+		if len(sessionSuffix) > 8 {
+			sessionSuffix = sessionSuffix[:8]
+		}
+		logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s via=tmux session=ts-%s", a.Config.Name, taskID, sessionSuffix))
+		a.writeRunLog("[EVENT] event=running via=tmux")
+	} else {
+		logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s pid=%d", a.Config.Name, taskID, cmd.Process.Pid))
+		a.writeRunLog(fmt.Sprintf("[EVENT] event=running pid=%d", cmd.Process.Pid))
+	}
 
 	// Stream output lines to the server and log file.
 	go func() {
@@ -400,7 +505,17 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		close(outputDone)
 	}()
 
-	// Wait for process exit.
+	if usingTmux {
+		// Block until the FIFO closes — happens when the tmux session ends
+		// (naturally or killed by Complete() via the Stop hook).
+		<-outputDone
+		// complete() may have already been called by Complete() if the Stop hook
+		// fired first. The completing flag makes double-calls a safe no-op.
+		a.complete(cfg, "closed")
+		return
+	}
+
+	// ── PTY / pipe path: wait for process exit ────────────────────────────────
 	// For hook-based providers the hook usually fires first; the completing
 	// guard makes the process-exit path a safe no-op in that case.
 	code := 0
@@ -496,10 +611,18 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	runLog := a.runLog
 	a.runLog = nil
 	outputDone := a.outputDone
+	sess := a.tmuxSession
+	fifo := a.fifoPath
+	a.tmuxSession = ""
+	a.fifoPath = ""
 	a.mu.Unlock()
 
-	// Signal EOF to the process stdin (if still open) so it can exit cleanly.
-	if pw != nil {
+	// For tmux path: kill the session so the FIFO writer (cat) closes, which
+	// causes streamOutput's scanner to get EOF and outputDone to be closed.
+	// For PTY path: close stdin so the process can exit cleanly.
+	if sess != "" {
+		exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
+	} else if pw != nil {
 		pw.Close()
 	}
 
@@ -573,6 +696,11 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 		}
 	}
 
+	// Remove the FIFO now that all output has been drained.
+	if fifo != "" {
+		os.Remove(fifo)
+	}
+
 	a.mu.Lock()
 	a.mode = ModeIdle
 	a.sessionID = ""
@@ -584,21 +712,37 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 }
 
 // Complete is called by the hook server when the provider emits a Stop event.
-// We only close stdin here so the process can exit cleanly; the actual
-// completion status is determined by the exit code in startTask — this
-// ensures a non-zero exit (e.g. "credit balance too low") is surfaced as
-// failed rather than silently marked done.
-func (a *Agent) Complete(cfg *config.Config) {
+// For the tmux path it kills the tmux session (which closes the FIFO writer,
+// draining the last output) and then calls complete() with the hook-supplied
+// status. For the PTY path it closes stdin and lets cmd.Wait() in startTask
+// determine the exit code and call complete() from there.
+func (a *Agent) Complete(cfg *config.Config, status string) {
 	a.mu.Lock()
 	mode := a.mode
 	pw := a.stdinWrite
+	sess := a.tmuxSession
 	a.mu.Unlock()
 
 	if mode == ModeIdle {
 		return
 	}
 
-	// Close stdin so the process knows to exit after finishing its current turn.
+	if sess != "" {
+		// tmux path: kill session → FIFO writer closes → streamOutput exits →
+		// outputDone closes → startTask unblocks and calls complete() (no-op).
+		// We also call complete() directly here with the hook-supplied status so
+		// the stop_reason from Claude Code is honoured even if startTask hasn't
+		// yet unblocked. The completing flag makes double-calls a safe no-op.
+		exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
+		a.mu.Lock()
+		a.tmuxSession = "" // prevent complete() from killing the already-dead session
+		a.mu.Unlock()
+		go a.complete(cfg, status)
+		return
+	}
+
+	// PTY path: close stdin so the process exits → cmd.Wait() returns →
+	// startTask calls complete() with the exit-code-derived status.
 	if pw != nil {
 		a.mu.Lock()
 		if a.stdinWrite != nil {

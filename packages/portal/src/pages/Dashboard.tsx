@@ -528,17 +528,19 @@ function AgentsView({ teamId }: { teamId: string }) {
       </div>
 
       {newToken && (() => {
-        const snippet = JSON.stringify({
-          apiUrl: 'https://tasksquad-api.xajik0.workers.dev',
-          pollInterval: 10,
-          hooksPort: 7374,
-          agents: [{
-            token: newToken.token,
-            name: 'local-dev',
-            command: 'claude --dangerously-skip-permissions',
-            workDir: '/path/to/your/project',
-          }],
-        }, null, 2)
+        const snippet = `[server]
+url = "https://tasksquad-api.xajik0.workers.dev"
+poll_interval = 30
+
+[hooks]
+port = 7374
+
+[[agents]]
+token = "${newToken.token}"
+name = "${name || 'my-agent'}"
+command = "${command}"
+work_dir = "${workDir}"`
+
         return (
           <Card className="border-green-500 bg-green-50 dark:bg-green-950 mb-6">
             <CardHeader>

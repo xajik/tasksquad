@@ -12,7 +12,7 @@ import (
 
 // Agent is the interface the hook server uses to notify agents.
 type Agent interface {
-	Complete(cfg *config.Config)
+	Complete(cfg *config.Config, status string)
 	SetWaitingInput(cfg *config.Config, message string)
 	GetMode() string
 }
@@ -39,9 +39,14 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 
 		logger.Info(fmt.Sprintf("[hooks] Stop received: stop_reason=%s", payload.StopReason))
 
+		status := "closed"
+		if payload.StopReason == "error" {
+			status = "crashed"
+		}
+
 		for _, a := range agents {
 			if a.GetMode() == "running" || a.GetMode() == "waiting_input" {
-				go a.Complete(cfg)
+				go a.Complete(cfg, status)
 				break
 			}
 		}
