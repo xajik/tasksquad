@@ -12,7 +12,7 @@ import (
 
 // Agent is the interface the hook server uses to notify agents.
 type Agent interface {
-	Complete(cfg *config.Config, status string)
+	Complete(cfg *config.Config, status string, transcriptPath string)
 	SetWaitingInput(cfg *config.Config, message string)
 	GetMode() string
 }
@@ -32,12 +32,13 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 	mux.HandleFunc("/hooks/stop", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		var payload struct {
-			StopReason string `json:"stop_reason"`
-			SessionID  string `json:"session_id"`
+			StopReason     string `json:"stop_reason"`
+			SessionID      string `json:"session_id"`
+			TranscriptPath string `json:"transcript_path"`
 		}
 		json.Unmarshal(body, &payload)
 
-		logger.Info(fmt.Sprintf("[hooks] Stop received: stop_reason=%s", payload.StopReason))
+		logger.Info(fmt.Sprintf("[hooks] Stop received: stop_reason=%s transcript_path=%s", payload.StopReason, payload.TranscriptPath))
 
 		status := "closed"
 		if payload.StopReason == "error" {
@@ -46,7 +47,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 
 		for _, a := range agents {
 			if a.GetMode() == "running" || a.GetMode() == "waiting_input" {
-				go a.Complete(cfg, status)
+				go a.Complete(cfg, status, payload.TranscriptPath)
 				break
 			}
 		}

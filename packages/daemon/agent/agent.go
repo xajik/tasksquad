@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -87,8 +88,9 @@ type Agent struct {
 	stdinWrite  io.WriteCloser // open while process is running (pipe or PTY master)
 	runLog      *os.File       // per-task log file, open while task runs
 	outputDone  chan struct{}   // closed when streamOutput finishes draining stdout
-	tmuxSession string         // tmux session name while task is running (tmux path only)
-	fifoPath    string         // FIFO path for tmux output streaming
+	tmuxSession    string // tmux session name while task is running (tmux path only)
+	fifoPath       string // FIFO path for tmux output streaming
+	transcriptPath string // Claude Code conversation transcript (from Stop hook payload)
 }
 
 func New(cfg config.AgentConfig) *Agent {
@@ -594,6 +596,54 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 	flushPush()
 }
 
+// extractTranscriptResponse reads Claude Code's JSONL conversation transcript
+// and returns the text of the last assistant message. Returns empty string on
+// any read or parse error so callers can fall back to terminal output.
+func extractTranscriptResponse(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	// Each line is a JSON object. Scan forward and keep overwriting lastText
+	// so we end up with the final assistant message.
+	var lastText string
+	for _, rawLine := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		rawLine = strings.TrimSpace(rawLine)
+		if rawLine == "" {
+			continue
+		}
+		var entry struct {
+			Type    string `json:"type"`
+			Message struct {
+				Role    string `json:"role"`
+				Content []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(rawLine), &entry); err != nil {
+			continue
+		}
+		isAssistant := entry.Type == "assistant" ||
+			(entry.Message.Role == "assistant")
+		if !isAssistant {
+			continue
+		}
+		var parts []string
+		for _, c := range entry.Message.Content {
+			if c.Type == "text" && c.Text != "" {
+				parts = append(parts, c.Text)
+			}
+		}
+		if len(parts) > 0 {
+			lastText = strings.Join(parts, "\n")
+		}
+	}
+	return strings.TrimSpace(lastText)
+}
+
 // complete finalises the current task. Safe to call from both the hook handler
 // and the process-exit path — the completing flag prevents double execution.
 func (a *Agent) complete(cfg *config.Config, status string) {
@@ -613,8 +663,10 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	outputDone := a.outputDone
 	sess := a.tmuxSession
 	fifo := a.fifoPath
+	transcriptPath := a.transcriptPath
 	a.tmuxSession = ""
 	a.fifoPath = ""
+	a.transcriptPath = ""
 	a.mu.Unlock()
 
 	// For tmux path: kill the session so the FIFO writer (cat) closes, which
@@ -661,9 +713,25 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	}
 
 	all := strings.Join(lines, "\n")
-	finalText := strings.TrimSpace(all)
-	if len(finalText) > 10000 {
-		finalText = finalText[len(finalText)-10000:]
+
+	// Prefer the transcript for final_text: Claude Code's TUI output captured via
+	// tmux pipe-pane contains raw VT100 sequences that cleanLine cannot fully
+	// reconstruct into readable text. The Stop hook provides transcript_path, a
+	// JSONL file with the clean conversation — we extract the last assistant turn.
+	finalText := ""
+	if transcriptPath != "" {
+		finalText = extractTranscriptResponse(transcriptPath)
+		if finalText != "" {
+			logger.Info(fmt.Sprintf("[%s] Final text from transcript (%d chars)", a.Config.Name, len(finalText)))
+		} else {
+			logger.Warn(fmt.Sprintf("[%s] Transcript read returned empty, falling back to terminal output", a.Config.Name))
+		}
+	}
+	if finalText == "" {
+		finalText = strings.TrimSpace(all)
+		if len(finalText) > 10000 {
+			finalText = finalText[len(finalText)-10000:]
+		}
 	}
 
 	closeResp, err := a.post(cfg, "/daemon/session/close", map[string]any{
@@ -716,11 +784,14 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 // draining the last output) and then calls complete() with the hook-supplied
 // status. For the PTY path it closes stdin and lets cmd.Wait() in startTask
 // determine the exit code and call complete() from there.
-func (a *Agent) Complete(cfg *config.Config, status string) {
+func (a *Agent) Complete(cfg *config.Config, status string, transcriptPath string) {
 	a.mu.Lock()
 	mode := a.mode
 	pw := a.stdinWrite
 	sess := a.tmuxSession
+	if transcriptPath != "" {
+		a.transcriptPath = transcriptPath
+	}
 	a.mu.Unlock()
 
 	if mode == ModeIdle {
