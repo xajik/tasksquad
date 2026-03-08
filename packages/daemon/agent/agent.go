@@ -43,26 +43,73 @@ func cleanLine(s string) string {
 	return strings.TrimRight(ansiEscape.ReplaceAllString(s, ""), " \t")
 }
 
-// buildNotifyMessage extracts Claude's actual question from recent PTY output.
+// buildNotifyMessage extracts Claude's actual question/response from the terminal.
 // The Notification hook only delivers a generic string ("Claude is waiting for
-// your input"); the real question text lives in the terminal output captured by
-// streamOutput. We take the last 15 non-empty output lines as the message so
-// the user sees meaningful context in the portal thread.
+// your input"); the real question text lives in the terminal output.
+//
+// For the tmux path: use `tmux capture-pane` to read the current *visible*
+// terminal content — far more reliable than the raw FIFO byte stream whose
+// full-screen TUI redraws collapse to empty strings after ANSI cleanup.
+// For the PTY path: fall back to the last 15 non-empty output lines from
+// streamOutput.
 func buildNotifyMessage(a *Agent, fallback string) string {
 	a.mu.Lock()
+	sess := a.tmuxSession
 	lines := append([]string(nil), a.outputLines...)
+	prompt := a.lastPrompt
 	a.mu.Unlock()
 
-	var recent []string
-	for i := len(lines) - 1; i >= 0 && len(recent) < 15; i-- {
-		if s := strings.TrimSpace(lines[i]); s != "" {
-			recent = append([]string{lines[i]}, recent...)
+	var visible []string
+
+	if sess != "" && tmuxBin != "" {
+		out, err := exec.Command(tmuxBin, "capture-pane", "-t", sess, "-p").Output()
+		if err == nil {
+			for _, raw := range strings.Split(string(out), "\n") {
+				if s := strings.TrimSpace(cleanLine(raw)); s != "" {
+					visible = append(visible, s)
+				}
+			}
+		}
+	} else {
+		// PTY / fallback path: use the captured output lines.
+		for _, raw := range lines {
+			if s := strings.TrimSpace(raw); s != "" {
+				visible = append(visible, s)
+			}
 		}
 	}
-	if len(recent) == 0 {
+
+	if len(visible) == 0 {
 		return fallback
 	}
-	return strings.Join(recent, "\n")
+
+	// Filter out lines that look like echoes of the prompt.
+	// We check if the line contains a significant portion of the prompt
+	// or vice versa, to handle cases where the terminal adds "> " or wraps it.
+	var filtered []string
+	cleanPrompt := strings.TrimSpace(prompt)
+	for _, line := range visible {
+		isPrompt := false
+		if cleanPrompt != "" {
+			if strings.Contains(line, cleanPrompt) || strings.Contains(cleanPrompt, line) {
+				isPrompt = true
+			}
+		}
+		if !isPrompt {
+			filtered = append(filtered, line)
+		}
+	}
+
+	if len(filtered) > 15 {
+		filtered = filtered[len(filtered)-15:]
+	}
+	if len(filtered) > 0 {
+		return strings.Join(filtered, "\n")
+	}
+
+	// If everything was filtered out, it means the agent hasn't produced
+	// anything yet except for echoing the prompt. Fall back to the original message.
+	return fallback
 }
 
 type Mode string
@@ -91,6 +138,7 @@ type Agent struct {
 	tmuxSession    string // tmux session name while task is running (tmux path only)
 	fifoPath       string // FIFO path for tmux output streaming
 	transcriptPath string // Claude Code conversation transcript (from Stop hook payload)
+	lastPrompt     string // the initial prompt or latest user reply sent to the process
 }
 
 func New(cfg config.AgentConfig) *Agent {
@@ -161,6 +209,15 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 	currentMode := a.mode
 	a.mu.Unlock()
 
+	// When running or waiting for input: check if the server signalled a cancel.
+	if currentMode == ModeRunning || currentMode == ModeWaitingInput {
+		if cancel, _ := resp["cancel"].(bool); cancel {
+			logger.Info(fmt.Sprintf("[%s] Task cancelled by server", a.Config.Name))
+			go a.Complete(cfg, "cancelled", "")
+			return
+		}
+	}
+
 	// When waiting for user input: check if the server has a reply ready.
 	if currentMode == ModeWaitingInput {
 		if reply, ok := resp["reply"].(string); ok && reply != "" {
@@ -171,9 +228,12 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 
 			if sess != "" {
 				// tmux path: deliver reply via send-keys
-				exec.Command(tmuxBin, "send-keys", "-t", sess, reply, "Enter").Run() //nolint:errcheck
+				// Small delay to ensure tmux session is ready to receive input.
+				time.Sleep(500 * time.Millisecond)
+				exec.Command(tmuxBin, "send-keys", "-t", sess, reply, "C-m").Run() //nolint:errcheck
 				a.mu.Lock()
 				a.mode = ModeRunning
+				a.lastPrompt = reply
 				a.mu.Unlock()
 				logger.Info(fmt.Sprintf("[%s] User replied — resuming via tmux", a.Config.Name))
 			} else if pw != nil {
@@ -182,6 +242,7 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 				} else {
 					a.mu.Lock()
 					a.mode = ModeRunning
+					a.lastPrompt = reply
 					a.mu.Unlock()
 					logger.Info(fmt.Sprintf("[%s] User replied — resuming", a.Config.Name))
 				}
@@ -297,6 +358,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 
 	// Build prompt from the full conversation history.
 	prompt := buildConversationPrompt(subject, task["messages"])
+	a.mu.Lock()
+	a.lastPrompt = prompt
+	a.mu.Unlock()
 
 	// Spawn the command.
 	// Providers that return a non-empty Stdin() receive the prompt via a pipe
@@ -374,7 +438,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 				exec.Command(tmuxBin, "pipe-pane", "-t", sessionName, "cat > "+fifoPath).Run() //nolint:errcheck
 
 				// Deliver the initial prompt.
-				exec.Command(tmuxBin, "send-keys", "-t", sessionName, stdinData, "Enter").Run() //nolint:errcheck
+				// Give the TUI time to boot before sending the first prompt.
+				time.Sleep(2 * time.Second)
+				exec.Command(tmuxBin, "send-keys", "-t", sessionName, stdinData, "C-m").Run() //nolint:errcheck
 
 				a.mu.Lock()
 				a.tmuxSession = sessionName
@@ -513,7 +579,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		<-outputDone
 		// complete() may have already been called by Complete() if the Stop hook
 		// fired first. The completing flag makes double-calls a safe no-op.
-		a.complete(cfg, "closed")
+		a.complete(cfg, "")
 		return
 	}
 
@@ -599,6 +665,95 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 // ExtractTranscriptResponse reads Claude Code's JSONL conversation transcript
 // and returns the text of the last assistant message. Returns empty string on
 // any read or parse error so callers can fall back to terminal output.
+func (a *Agent) uploadAndAttach(cfg *config.Config, sessionID, messageID, filename, filePath string) {
+	if messageID == "" || filePath == "" {
+		return
+	}
+
+	// 1. Get presigned URL
+	resp, err := a.post(cfg, "/daemon/r2/presign", map[string]any{
+		"session_id": sessionID,
+		"filename":   filename,
+	})
+	if err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Failed to get presigned URL for %s: %v", a.Config.Name, filename, err))
+		return
+	}
+
+	uploadURL, _ := resp["upload_url"].(string)
+	key, _ := resp["key"].(string)
+	if uploadURL == "" || key == "" {
+		logger.Warn(fmt.Sprintf("[%s] Presign response missing URL or key for %s", a.Config.Name, filename))
+		return
+	}
+
+	// 2. Upload file
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Could not read file for upload %s: %v", a.Config.Name, filePath, err))
+		return
+	}
+
+	if err := api.PutBytes(uploadURL, data); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] R2 upload failed for %s: %v", a.Config.Name, filename, err))
+		return
+	}
+	logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes to R2: %s", a.Config.Name, len(data), filename))
+
+	// 3. Attach to message
+	_, err = a.post(cfg, "/daemon/messages/"+messageID+"/attach", map[string]any{
+		"transcript_key": key,
+	})
+	if err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Failed to attach R2 key %s to message %s: %v", a.Config.Name, key, messageID, err))
+	} else {
+		logger.Debug(fmt.Sprintf("[%s] Attached R2 key %s to message %s", a.Config.Name, key, messageID))
+	}
+}
+
+func (a *Agent) uploadAndAttachLog(cfg *config.Config, sessionID, logContent string) {
+	if sessionID == "" || logContent == "" {
+		return
+	}
+
+	filename := "full.log"
+
+	// 1. Get presigned URL
+	resp, err := a.post(cfg, "/daemon/r2/presign", map[string]any{
+		"session_id": sessionID,
+		"filename":   filename,
+	})
+	if err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Failed to get presigned URL for log: %v", a.Config.Name, err))
+		return
+	}
+
+	uploadURL, _ := resp["upload_url"].(string)
+	key, _ := resp["key"].(string)
+	if uploadURL == "" || key == "" {
+		logger.Warn(fmt.Sprintf("[%s] Presign response missing URL or key for log", a.Config.Name))
+		return
+	}
+
+	// 2. Upload log
+	if err := api.PutBytes(uploadURL, []byte(logContent)); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] R2 log upload failed: %v", a.Config.Name, err))
+		return
+	}
+	logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes log to R2", a.Config.Name, len(logContent)))
+
+	// 3. Attach to session
+	_, err = a.post(cfg, "/daemon/sessions/"+sessionID+"/attach", map[string]any{
+		"r2_log_key": key,
+	})
+	if err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Failed to attach R2 log key to session: %v", a.Config.Name, err))
+	}
+}
+
+// ExtractTranscriptResponse reads Claude Code's JSONL conversation transcript
+// and returns the text of the last assistant message. Returns empty string on
+// any read or parse error so callers can fall back to terminal output.
 func ExtractTranscriptResponse(path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -669,6 +824,15 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	a.transcriptPath = ""
 	a.mu.Unlock()
 
+	a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath)
+}
+
+func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string) {
+	logger.Info(fmt.Sprintf("[%s] internalComplete called — status=%q taskID=%s transcriptPath=%q", a.Config.Name, status, taskID, transcriptPath))
+	if status == "" {
+		status = "closed"
+	}
+
 	// For tmux path: kill the session so the FIFO writer (cat) closes, which
 	// causes streamOutput's scanner to get EOF and outputDone to be closed.
 	// For PTY path: close stdin so the process can exit cleanly.
@@ -718,13 +882,21 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	// tmux pipe-pane contains raw VT100 sequences that cleanLine cannot fully
 	// reconstruct into readable text. The Stop hook provides transcript_path, a
 	// JSONL file with the clean conversation — we extract the last assistant turn.
+	// NOTE: Claude fires the Stop hook while still finishing the transcript write.
+	// We retry for up to 10 seconds to wait for the assistant response to appear.
 	finalText := ""
 	if transcriptPath != "" {
-		finalText = ExtractTranscriptResponse(transcriptPath)
-		if finalText != "" {
-			logger.Info(fmt.Sprintf("[%s] Final text from transcript (%d chars)", a.Config.Name, len(finalText)))
-		} else {
-			logger.Warn(fmt.Sprintf("[%s] Transcript read returned empty, falling back to terminal output", a.Config.Name))
+		retryDeadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(retryDeadline) {
+			finalText = ExtractTranscriptResponse(transcriptPath)
+			if finalText != "" {
+				logger.Info(fmt.Sprintf("[%s] Final text from transcript (%d chars)", a.Config.Name, len(finalText)))
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+		if finalText == "" {
+			logger.Warn(fmt.Sprintf("[%s] Transcript read returned empty after 10s, falling back to terminal output", a.Config.Name))
 		}
 	}
 	if finalText == "" {
@@ -742,6 +914,19 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	})
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] Session close error: %v", a.Config.Name, err))
+	} else {
+		logger.Debug(fmt.Sprintf("[%s] Session close response: %v", a.Config.Name, closeResp))
+		
+		// Asynchronously upload full log and transcript
+		msgID, _ := closeResp["message_id"].(string)
+		
+		// 1. Upload full terminal log
+		go a.uploadAndAttachLog(cfg, sessionID, all)
+		
+		// 2. Upload Claude Code transcript JSONL
+		if msgID != "" && transcriptPath != "" {
+			go a.uploadAndAttach(cfg, sessionID, msgID, "transcript.jsonl", transcriptPath)
+		}
 	}
 
 	// Push SSE "done" event to any portal viewers.
@@ -750,31 +935,6 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 			"type":  "done",
 			"lines": []string{finalText},
 		})
-	}
-
-	// Upload full log to R2 when the server provides a presigned URL.
-	if closeResp != nil {
-		if uploadURL, ok := closeResp["upload_url"].(string); ok && uploadURL != "" {
-			data := []byte(all)
-			if err := api.PutBytes(uploadURL, data); err != nil {
-				logger.Warn(fmt.Sprintf("[%s] R2 log upload failed: %v", a.Config.Name, err))
-			} else {
-				logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes log to R2", a.Config.Name, len(data)))
-			}
-		}
-
-		// Upload Claude Code transcript JSONL directly to R2 via presigned PUT URL.
-		if transcriptUploadURL, ok := closeResp["transcript_upload_url"].(string); ok && transcriptUploadURL != "" && transcriptPath != "" {
-			if transcriptData, rerr := os.ReadFile(transcriptPath); rerr == nil {
-				if err := api.PutBytes(transcriptUploadURL, transcriptData); err != nil {
-					logger.Warn(fmt.Sprintf("[%s] R2 transcript upload failed: %v", a.Config.Name, err))
-				} else {
-					logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes transcript to R2", a.Config.Name, len(transcriptData)))
-				}
-			} else {
-				logger.Warn(fmt.Sprintf("[%s] Could not read transcript for upload: %v", a.Config.Name, rerr))
-			}
-		}
 	}
 
 	// Remove the FIFO now that all output has been drained.
@@ -799,48 +959,37 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 // determine the exit code and call complete() from there.
 func (a *Agent) Complete(cfg *config.Config, status string, transcriptPath string) {
 	a.mu.Lock()
-	mode := a.mode
-	pw := a.stdinWrite
-	sess := a.tmuxSession
-	if transcriptPath != "" {
-		a.transcriptPath = transcriptPath
+	if a.completing || a.sessionID == "" {
+		a.mu.Unlock()
+		return
 	}
+	a.completing = true
+	sessionID := a.sessionID
+	agentID := a.agentID
+	taskID := a.taskID
+	pw := a.stdinWrite
+	a.stdinWrite = nil
+	runLog := a.runLog
+	a.runLog = nil
+	outputDone := a.outputDone
+	sess := a.tmuxSession
+	fifo := a.fifoPath
+	if transcriptPath == "" {
+		transcriptPath = a.transcriptPath
+	}
+	a.tmuxSession = ""
+	a.fifoPath = ""
+	a.transcriptPath = ""
 	a.mu.Unlock()
 
-	if mode == ModeIdle {
-		return
-	}
-
-	if sess != "" {
-		// tmux path: kill session → FIFO writer closes → streamOutput exits →
-		// outputDone closes → startTask unblocks and calls complete() (no-op).
-		// We also call complete() directly here with the hook-supplied status so
-		// the stop_reason from Claude Code is honoured even if startTask hasn't
-		// yet unblocked. The completing flag makes double-calls a safe no-op.
-		exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
-		a.mu.Lock()
-		a.tmuxSession = "" // prevent complete() from killing the already-dead session
-		a.mu.Unlock()
-		go a.complete(cfg, status)
-		return
-	}
-
-	// PTY path: close stdin so the process exits → cmd.Wait() returns →
-	// startTask calls complete() with the exit-code-derived status.
-	if pw != nil {
-		a.mu.Lock()
-		if a.stdinWrite != nil {
-			a.stdinWrite = nil
-		}
-		a.mu.Unlock()
-		pw.Close()
-	}
+	go a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath)
 }
 
 // SetWaitingInput is called by the hook server on a Notification event.
 // It does NOT close the session — the process keeps running so the user's
 // reply can be piped back via stdin.
-func (a *Agent) SetWaitingInput(cfg *config.Config, message string) {
+func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPath string) {
+	logger.Info(fmt.Sprintf("[%s] SetWaitingInput called — message=%q transcript_path=%q", a.Config.Name, message, transcriptPath))
 	a.mu.Lock()
 	mode := a.mode
 	completing := a.completing
@@ -851,6 +1000,7 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string) {
 	// Ignore if not running or if complete() is already in progress (e.g. Stop
 	// hook arrived just before this Notification hook was delivered).
 	if mode != ModeRunning || completing {
+		logger.Debug(fmt.Sprintf("[%s] SetWaitingInput ignored: mode=%s completing=%v", a.Config.Name, mode, completing))
 		return
 	}
 
@@ -861,7 +1011,21 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string) {
 	// Build the notification message from the last meaningful PTY output lines.
 	// The Notification hook only sends a generic string ("Claude is waiting for
 	// your input"); Claude's actual question is in the terminal output.
-	notifyMsg := buildNotifyMessage(a, message)
+	// We prefer the transcript if available and ready.
+	notifyMsg := ""
+	if transcriptPath != "" {
+		retryDeadline := time.Now().Add(3 * time.Second) // shorter timeout for notification
+		for time.Now().Before(retryDeadline) {
+			notifyMsg = ExtractTranscriptResponse(transcriptPath)
+			if notifyMsg != "" {
+				break
+			}
+			time.Sleep(300 * time.Millisecond)
+		}
+	}
+	if notifyMsg == "" {
+		notifyMsg = buildNotifyMessage(a, message)
+	}
 
 	logger.Info(fmt.Sprintf("[%s] Waiting for user input: %s", a.Config.Name, notifyMsg))
 
@@ -875,11 +1039,23 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string) {
 
 	// Tell the server to post the message as a thread reply and queue for user input.
 	// The server should return {"reply": "..."} on the next heartbeat once the user responds.
-	a.post(cfg, "/daemon/session/notify", map[string]any{ //nolint:errcheck
+	notifyResp, err := a.post(cfg, "/daemon/session/notify", map[string]any{
 		"session_id": sessionID,
 		"agent_id":   agentID,
 		"message":    notifyMsg,
 	})
+
+	if err != nil {
+		logger.Error(fmt.Sprintf("[%s] Session notify error: %v", a.Config.Name, err))
+	} else if notifyResp != nil {
+		logger.Debug(fmt.Sprintf("[%s] Session notify response: %v", a.Config.Name, notifyResp))
+		
+		msgID, _ := notifyResp["message_id"].(string)
+		if msgID != "" && transcriptPath != "" {
+			// Asynchronously upload transcript for this notification
+			go a.uploadAndAttach(cfg, sessionID, msgID, "notif-"+msgID+".jsonl", transcriptPath)
+		}
+	}
 
 	a.mu.Lock()
 	a.mode = ModeWaitingInput

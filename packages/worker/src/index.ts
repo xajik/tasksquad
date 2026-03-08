@@ -70,7 +70,9 @@ router.post('/daemon/session/close',     daemonRoute(daemon.sessionClose))
 router.post('/daemon/session/notify',    daemonRoute(daemon.sessionNotify))
 router.get ('/daemon/viewers/:agentId',  daemonRoute(daemon.viewers))
 router.post('/daemon/push/:agentId',     daemonRoute(daemon.push))
-router.get ('/daemon/r2/presign',        daemonRoute(daemon.presignUpload))
+router.post('/daemon/r2/presign',        daemonRoute(daemon.presignUpload))
+router.post('/daemon/messages/:msgId/attach', daemonRoute(daemon.messageAttach))
+router.post('/daemon/sessions/:sessionId/attach', daemonRoute(daemon.sessionAttach))
 
 router.all('*', () => err('not_found', 404))
 

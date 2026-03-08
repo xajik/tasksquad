@@ -244,7 +244,7 @@ func writeTestHooks(t *testing.T, workDir string, port int) func() {
 	existing["hooks"] = map[string]any{
 		"Stop": []any{
 			map[string]any{
-				"matcher": "",
+				"matcher": "*",
 				"hooks": []any{
 					map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/stop", port)},
 				},
@@ -252,7 +252,7 @@ func writeTestHooks(t *testing.T, workDir string, port int) func() {
 		},
 		"Notification": []any{
 			map[string]any{
-				"matcher": "",
+				"matcher": "*",
 				"hooks": []any{
 					map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/notification", port)},
 				},

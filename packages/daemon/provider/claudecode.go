@@ -52,7 +52,7 @@ func (p *ClaudeCode) Setup(workDir string, hooksPort int) error {
 				"hooks": []any{
 					map[string]any{
 						"type": "http",
-						"url":  fmt.Sprintf("http://localhost:%d/hooks/stop", hooksPort),
+						"url":  fmt.Sprintf("http://127.0.0.1:%d/hooks/stop", hooksPort),
 					},
 				},
 			},
@@ -63,7 +63,7 @@ func (p *ClaudeCode) Setup(workDir string, hooksPort int) error {
 				"hooks": []any{
 					map[string]any{
 						"type": "http",
-						"url":  fmt.Sprintf("http://localhost:%d/hooks/notification", hooksPort),
+						"url":  fmt.Sprintf("http://127.0.0.1:%d/hooks/notification", hooksPort),
 					},
 				},
 			},

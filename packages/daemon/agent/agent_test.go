@@ -67,11 +67,35 @@ func TestExtractTranscriptResponse_EmptyFile(t *testing.T) {
 	}
 }
 
-func TestExtractTranscriptResponse_NoAssistantTurn(t *testing.T) {
-	onlyUser := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}` + "\n"
-	path := writeTranscript(t, onlyUser)
-	got := ExtractTranscriptResponse(path)
-	if got != "" {
-		t.Errorf("expected empty string when no assistant turn, got %q", got)
+func TestBuildNotifyMessage_FiltersPrompt(t *testing.T) {
+	a := &Agent{
+		lastPrompt: "Translate into ukrainian: I love you my motherland",
+		outputLines: []string{
+			"> Translate into ukrainian: I love you my motherland",
+			"I will translate that for you. Is that okay?",
+		},
+	}
+
+	got := buildNotifyMessage(a, "fallback")
+	expected := "I will translate that for you. Is that okay?"
+
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestBuildNotifyMessage_FallbackWhenAllFiltered(t *testing.T) {
+	a := &Agent{
+		lastPrompt: "Hello",
+		outputLines: []string{
+			"Hello",
+		},
+	}
+
+	got := buildNotifyMessage(a, "fallback")
+	expected := "fallback"
+
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
 	}
 }

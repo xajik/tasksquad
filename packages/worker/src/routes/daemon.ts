@@ -1,5 +1,6 @@
 import { ulid } from 'ulidx'
-import { AwsClient } from 'aws4fetch'
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { json, err } from '../auth.js'
 import type { Env, DaemonContext } from '../types.js'
 
@@ -139,33 +140,7 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
 
   const agentStatus = taskStatus === 'waiting_input' ? 'waiting_input' : 'idle'
   const now = Date.now()
-
-  // Pre-determine the transcript R2 key and generate a presigned PUT URL so
-  // the daemon can upload the JSONL directly to R2 without routing it through
-  // the Worker. The key is stored optimistically — if the daemon upload fails
-  // the portal simply gets a 404 when it tries to fetch the transcript.
-  const transcriptKey = `${agentId.substring(0, 16)}/${session_id}/transcript.jsonl`
-  let transcriptUploadUrl: string | null = null
-
-  if (env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY) {
-    try {
-      const r2 = new AwsClient({
-        accessKeyId: env.R2_ACCESS_KEY_ID,
-        secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-        service: 's3',
-      })
-      const endpoint = new URL(
-        `https://${env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${transcriptKey}`
-      )
-      endpoint.searchParams.set('X-Amz-Expires', '300') // 5-minute window
-      const signed = await r2.sign(new Request(endpoint, { method: 'PUT' }), {
-        aws: { signQuery: true },
-      })
-      transcriptUploadUrl = signed.url
-    } catch (_) {
-      // Credentials not configured — skip presigning; transcript won't be stored.
-    }
-  }
+  const msgId = ulid()
 
   const ops = [
     env.DB.prepare('UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?')
@@ -179,18 +154,15 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   ]
 
   if (final_text) {
-    // Only store the transcript_key when we actually have a presigned URL
-    // (i.e. credentials are configured and the upload is expected to succeed).
-    const key = transcriptUploadUrl ? transcriptKey : null
     ops.push(
-      env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, transcript_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .bind(ulid(), session.task_id, null, 'agent', final_text, key, now)
+      env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(msgId, session.task_id, null, 'agent', final_text, now)
     )
   }
 
   await env.DB.batch(ops)
 
-  return json({ ok: true, transcript_upload_url: transcriptUploadUrl })
+  return json({ ok: true, session_id, message_id: final_text ? msgId : null })
 }
 
 export async function complete(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
@@ -206,16 +178,25 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
   if (!session) return err('not_found', 404)
 
   const now = Date.now()
-  await env.DB.batch([
+  const msgId = ulid()
+
+  const ops = [
     env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE id = ?").bind(now, session_id),
     env.DB.prepare("UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?").bind(now, session.task_id),
     env.DB.prepare("UPDATE agents SET status = 'idle' WHERE id = ?").bind(agentId),
     env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
-    ...(output ? [env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(ulid(), session.task_id, null, 'agent', output, now)] : []),
-  ])
+  ]
 
-  return json({ ok: true })
+  if (output) {
+    ops.push(
+      env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(msgId, session.task_id, null, 'agent', output, now)
+    )
+  }
+
+  await env.DB.batch(ops)
+
+  return json({ ok: true, session_id, message_id: output ? msgId : null })
 }
 
 export async function viewers(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {
@@ -247,8 +228,6 @@ export async function push(req: Request, env: Env, _ctx: unknown, _daemon: Daemo
   return json({ ok: true })
 }
 
-// Called when Claude Code fires a Notification hook — agent is waiting for user input.
-// Posts the question as an agent thread message and marks the task/agent as waiting_input.
 export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const body = await req.json<{ session_id?: string; agent_id?: string; message?: string }>()
     .catch(() => ({} as { session_id?: string; agent_id?: string; message?: string }))
@@ -263,31 +242,104 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
   if (!session) return err('not_found', 404)
 
   const now = Date.now()
+  const msgId = ulid()
+
   await env.DB.batch([
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(ulid(), session.task_id, null, 'agent', message, now),
+      .bind(msgId, session.task_id, null, 'agent', message, now),
     env.DB.prepare("UPDATE agents SET status = 'waiting_input' WHERE id = ?").bind(agentId),
     env.DB.prepare("UPDATE tasks SET status = 'waiting_input' WHERE id = ?").bind(session.task_id),
     env.DB.prepare("UPDATE agent_state SET mode = 'waiting_input', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
   ])
 
+  return json({ ok: true, session_id, message_id: msgId })
+}
+
+export async function presignUpload(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const body = await req.json<{ session_id: string; filename: string }>().catch(() => ({} as { session_id: string; filename: string }))
+  const { session_id, filename } = body
+  const agentId = daemon.agentId
+  if (!session_id || !filename) return err('missing_fields', 400)
+
+  const session = await env.DB
+    .prepare('SELECT id FROM sessions WHERE id = ? AND agent_id = ?')
+    .bind(session_id, agentId)
+    .first<{ id: string }>()
+  if (!session) return err('not_found', 404)
+
+  const key = `${agentId.substring(0, 16)}/${session_id}/${filename}`
+  let upload_url: string | null = null
+
+  console.log(`[presignUpload] session_id=${session_id} filename=${filename} hasR2ID=${!!env.R2_ACCESS_KEY_ID} hasR2Secret=${!!env.R2_SECRET_ACCESS_KEY} hasAccountID=${!!env.CLOUDFLARE_ACCOUNT_ID} hasBucket=${!!env.R2_BUCKET_NAME}`)
+
+  if (env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.CLOUDFLARE_ACCOUNT_ID && env.R2_BUCKET_NAME) {
+    try {
+      const s3 = new S3Client({
+        region: 'auto',
+        endpoint: `https://${env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId: env.R2_ACCESS_KEY_ID,
+          secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+        },
+      })
+
+      upload_url = await getSignedUrl(
+        s3,
+        new PutObjectCommand({
+          Bucket: env.R2_BUCKET_NAME,
+          Key: key,
+          ContentType: 'application/octet-stream',
+        }),
+        { expiresIn: 300 }
+      )
+      console.log(`[presignUpload] Success: ${upload_url.split('?')[0]}`)
+    } catch (e) {
+      console.error(`[presignUpload] failed: ${e}`)
+      return err('presign_failed', 500)
+    }
+  } else {
+    console.error(`[presignUpload] R2 NOT CONFIGURED: ID=${!!env.R2_ACCESS_KEY_ID} Secret=${!!env.R2_SECRET_ACCESS_KEY} Account=${!!env.CLOUDFLARE_ACCOUNT_ID} Bucket=${!!env.R2_BUCKET_NAME}`)
+    return err('r2_not_configured', 500)
+  }
+
+  return json({ ok: true, upload_url, key })
+}
+
+export async function messageAttach(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const url = new URL(req.url)
+  const msgId = url.pathname.split('/')[3]
+  const body = await req.json<{ transcript_key?: string }>().catch(() => ({} as { transcript_key?: string }))
+  if (!body.transcript_key) return err('missing_key', 400)
+
+  // Verify message belongs to a task in the agent's team
+  const msg = await env.DB
+    .prepare('SELECT m.id FROM messages m JOIN tasks t ON m.task_id = t.id WHERE m.id = ? AND t.team_id = ?')
+    .bind(msgId, daemon.teamId)
+    .first()
+  if (!msg) return err('not_found', 404)
+
+  await env.DB.prepare('UPDATE messages SET transcript_key = ? WHERE id = ?')
+    .bind(body.transcript_key, msgId)
+    .run()
+
   return json({ ok: true })
 }
 
-export async function presignUpload(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {
+export async function sessionAttach(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const url = new URL(req.url)
-  const sessionId = url.searchParams.get('session_id')
-  const filename = url.searchParams.get('filename') ?? 'partial.log'
-  if (!sessionId) return err('session_id_required', 400)
+  const sessionId = url.pathname.split('/')[3]
+  const body = await req.json<{ r2_log_key?: string }>().catch(() => ({} as { r2_log_key?: string }))
+  if (!body.r2_log_key) return err('missing_key', 400)
 
   const session = await env.DB
-    .prepare('SELECT agent_id FROM sessions WHERE id = ?')
-    .bind(sessionId)
-    .first<{ agent_id: string }>()
+    .prepare('SELECT id FROM sessions WHERE id = ? AND agent_id = ?')
+    .bind(sessionId, daemon.agentId)
+    .first()
   if (!session) return err('not_found', 404)
 
-  const key = `${session.agent_id.substring(0, 16)}/${sessionId}/${filename}`
-  // R2 doesn't support presigned URLs directly via Workers binding —
-  // return the key and let the daemon upload via the daemon/upload endpoint
-  return json({ key })
+  await env.DB.prepare('UPDATE sessions SET r2_log_key = ? WHERE id = ?')
+    .bind(body.r2_log_key, sessionId)
+    .run()
+
+  return json({ ok: true })
 }

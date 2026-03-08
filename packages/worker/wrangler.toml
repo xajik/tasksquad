@@ -33,7 +33,6 @@ enabled = true
 
 [vars]
 # Public vars (non-sensitive) — override per environment if needed.
-CLOUDFLARE_ACCOUNT_ID = "your-account-id"
 R2_BUCKET_NAME        = "tasksquad-logs"
 
 # Secrets — set via: npx wrangler secret put <KEY>
