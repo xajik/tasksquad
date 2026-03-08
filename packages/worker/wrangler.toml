@@ -30,14 +30,3 @@ new_classes = ["AgentRelay"]
 
 [observability]
 enabled = true
-
-[vars]
-# Public vars (non-sensitive) — override per environment if needed.
-R2_BUCKET_NAME        = "tasksquad-logs"
-
-# Secrets — set via: npx wrangler secret put <KEY>
-# FIREBASE_PROJECT_ID          tasksquad-e1442
-# FIREBASE_SERVICE_ACCOUNT_KEY base64-encoded Firebase service account JSON
-# DAEMON_SECRET                shared secret for X-TSQ-Token validation
-# R2_ACCESS_KEY_ID             R2 API token key ID  (for presigned PUT URLs)
-# R2_SECRET_ACCESS_KEY         R2 API token secret  (for presigned PUT URLs)
