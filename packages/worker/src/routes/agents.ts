@@ -121,16 +121,19 @@ export async function deleteAgent(req: Request, env: Env, _ctx: unknown, auth: A
     .all<{ id: string }>()
   const ids = taskIds.results.map(r => r.id)
 
+  // Clear agent_state FK refs to sessions/tasks first, then delete in dependency order:
+  // task_logs → sessions → messages → tasks → agent_state → daemon_tokens → agents
   const ops = [
-    env.DB.prepare('DELETE FROM daemon_tokens WHERE agent_id = ?').bind(agentId),
-    env.DB.prepare('DELETE FROM agent_state WHERE agent_id = ?').bind(agentId),
-    env.DB.prepare('DELETE FROM sessions WHERE agent_id = ?').bind(agentId),
+    env.DB.prepare('UPDATE agent_state SET current_task_id = NULL, current_session = NULL WHERE agent_id = ?').bind(agentId),
   ]
   for (const taskId of ids) {
-    ops.push(env.DB.prepare('DELETE FROM messages WHERE task_id = ?').bind(taskId))
     ops.push(env.DB.prepare('DELETE FROM task_logs WHERE task_id = ?').bind(taskId))
+    ops.push(env.DB.prepare('DELETE FROM messages WHERE task_id = ?').bind(taskId))
   }
+  ops.push(env.DB.prepare('DELETE FROM sessions WHERE agent_id = ?').bind(agentId))
   ops.push(env.DB.prepare('DELETE FROM tasks WHERE agent_id = ?').bind(agentId))
+  ops.push(env.DB.prepare('DELETE FROM agent_state WHERE agent_id = ?').bind(agentId))
+  ops.push(env.DB.prepare('DELETE FROM daemon_tokens WHERE agent_id = ?').bind(agentId))
   ops.push(env.DB.prepare('DELETE FROM agents WHERE id = ?').bind(agentId))
 
   await env.DB.batch(ops)

@@ -86,8 +86,10 @@ export async function deleteTask(req: Request, env: Env, _ctx: unknown, auth: Au
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('forbidden', 403)
 
   await env.DB.batch([
-    env.DB.prepare('DELETE FROM messages WHERE task_id = ?').bind(taskId),
+    // Clear agent_state FK refs before deleting sessions/tasks
+    env.DB.prepare('UPDATE agent_state SET current_task_id = NULL, current_session = NULL WHERE current_task_id = ?').bind(taskId),
     env.DB.prepare('DELETE FROM task_logs WHERE task_id = ?').bind(taskId),
+    env.DB.prepare('DELETE FROM messages WHERE task_id = ?').bind(taskId),
     env.DB.prepare('DELETE FROM sessions WHERE task_id = ?').bind(taskId),
     env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(taskId),
   ])
