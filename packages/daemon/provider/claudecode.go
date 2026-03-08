@@ -31,7 +31,7 @@ func (p *ClaudeCode) ExtraArgs() []string { return nil }
 
 // Setup writes .claude/settings.json into workDir with Stop and Notification hooks
 // pointing to the daemon's local hook server on hooksPort.
-func (p *ClaudeCode) Setup(workDir string, hooksPort int) error {
+func (p *ClaudeCode) Setup(workDir string, hooksPort int, agentName string) error {
 	claudeDir := filepath.Join(workDir, ".claude")
 	settingsPath := filepath.Join(claudeDir, "settings.json")
 
@@ -52,7 +52,7 @@ func (p *ClaudeCode) Setup(workDir string, hooksPort int) error {
 				"hooks": []any{
 					map[string]any{
 						"type": "http",
-						"url":  fmt.Sprintf("http://127.0.0.1:%d/hooks/stop", hooksPort),
+						"url":  fmt.Sprintf("http://127.0.0.1:%d/hooks/stop?agent=%s", hooksPort, agentName),
 					},
 				},
 			},
@@ -63,7 +63,7 @@ func (p *ClaudeCode) Setup(workDir string, hooksPort int) error {
 				"hooks": []any{
 					map[string]any{
 						"type": "http",
-						"url":  fmt.Sprintf("http://127.0.0.1:%d/hooks/notification", hooksPort),
+						"url":  fmt.Sprintf("http://127.0.0.1:%d/hooks/notification?agent=%s", hooksPort, agentName),
 					},
 				},
 			},

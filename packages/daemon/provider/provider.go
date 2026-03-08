@@ -19,7 +19,7 @@ import (
 // who cannot use -p (API credit mode).
 type Provider interface {
 	Name() string
-	Setup(workDir string, hooksPort int) error
+	Setup(workDir string, hooksPort int, agentName string) error
 	Env(hooksPort int) []string
 	UsesHooks() bool
 	// Stdin returns the content to pipe to the process stdin, or "" to use -p flag.

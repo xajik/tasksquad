@@ -97,6 +97,38 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   return json({ id: taskId, status: 'pending' }, 201)
 }
 
+export async function closeTask(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const taskId = url.pathname.split('/')[2]
+
+  const task = await env.DB
+    .prepare('SELECT team_id FROM tasks WHERE id = ?')
+    .bind(taskId)
+    .first<{ team_id: string }>()
+  if (!task) return err('not_found', 404)
+  if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('forbidden', 403)
+
+  const now = Date.now()
+
+  // Find the currently open session (still status='running' while task is waiting_input)
+  const session = await env.DB
+    .prepare("SELECT id FROM sessions WHERE task_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1")
+    .bind(taskId)
+    .first<{ id: string }>()
+
+  const ops = [
+    env.DB.prepare("UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?").bind(now, taskId),
+  ]
+  if (session) {
+    ops.push(
+      env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE id = ?").bind(now, session.id)
+    )
+  }
+
+  await env.DB.batch(ops)
+  return json({ ok: true })
+}
+
 export async function deleteTask(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const url = new URL(req.url)
   const taskId = url.pathname.split('/')[2]

@@ -209,11 +209,16 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 	currentMode := a.mode
 	a.mu.Unlock()
 
-	// When running or waiting for input: check if the server signalled a cancel.
+	// When running or waiting for input: check if the server signalled a cancel or close.
 	if currentMode == ModeRunning || currentMode == ModeWaitingInput {
 		if cancel, _ := resp["cancel"].(bool); cancel {
 			logger.Info(fmt.Sprintf("[%s] Task cancelled by server", a.Config.Name))
 			go a.Complete(cfg, "cancelled", "")
+			return
+		}
+		if close_, _ := resp["close"].(bool); close_ {
+			logger.Info(fmt.Sprintf("[%s] Session closed by server (user completed)", a.Config.Name))
+			go a.closeSession()
 			return
 		}
 	}
@@ -352,7 +357,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.mu.Unlock()
 
 	// Let the provider write any hook/config files it needs (e.g. .claude/settings.json).
-	if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port); err != nil {
+	if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port, a.Config.Name); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] Provider setup warning: %v", a.Config.Name, err))
 	}
 
@@ -662,9 +667,8 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 	flushPush()
 }
 
-// ExtractTranscriptResponse reads Claude Code's JSONL conversation transcript
-// and returns the text of the last assistant message. Returns empty string on
-// any read or parse error so callers can fall back to terminal output.
+// uploadAndAttach gets a presigned R2 PUT URL, uploads the local file, then
+// attaches the stored key to the message record.
 func (a *Agent) uploadAndAttach(cfg *config.Config, sessionID, messageID, filename, filePath string) {
 	if messageID == "" || filePath == "" {
 		return
@@ -687,20 +691,58 @@ func (a *Agent) uploadAndAttach(cfg *config.Config, sessionID, messageID, filena
 		return
 	}
 
-	// 2. Upload file
+	// 2. Upload file directly to R2
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		logger.Warn(fmt.Sprintf("[%s] Could not read file for upload %s: %v", a.Config.Name, filePath, err))
 		return
 	}
-
 	if err := api.PutBytes(uploadURL, data); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] R2 upload failed for %s: %v", a.Config.Name, filename, err))
 		return
 	}
 	logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes to R2: %s", a.Config.Name, len(data), filename))
 
-	// 3. Attach to message
+	// 3. Attach key to message
+	_, err = a.post(cfg, "/daemon/messages/"+messageID+"/attach", map[string]any{
+		"transcript_key": key,
+	})
+	if err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Failed to attach R2 key %s to message %s: %v", a.Config.Name, key, messageID, err))
+	} else {
+		logger.Debug(fmt.Sprintf("[%s] Attached R2 key %s to message %s", a.Config.Name, key, messageID))
+	}
+}
+
+// uploadAndAttachContent uploads raw bytes to R2 and attaches the key to a message.
+// Unlike uploadAndAttach (which reads from a file), this takes the content directly.
+func (a *Agent) uploadAndAttachContent(cfg *config.Config, sessionID, messageID, filename string, content []byte) {
+	if messageID == "" || len(content) == 0 {
+		return
+	}
+
+	resp, err := a.post(cfg, "/daemon/r2/presign", map[string]any{
+		"session_id": sessionID,
+		"filename":   filename,
+	})
+	if err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Failed to get presigned URL for %s: %v", a.Config.Name, filename, err))
+		return
+	}
+
+	uploadURL, _ := resp["upload_url"].(string)
+	key, _ := resp["key"].(string)
+	if uploadURL == "" || key == "" {
+		logger.Warn(fmt.Sprintf("[%s] Presign response missing URL or key for %s", a.Config.Name, filename))
+		return
+	}
+
+	if err := api.PutBytes(uploadURL, content); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] R2 upload failed for %s: %v", a.Config.Name, filename, err))
+		return
+	}
+	logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes to R2: %s", a.Config.Name, len(content), filename))
+
 	_, err = a.post(cfg, "/daemon/messages/"+messageID+"/attach", map[string]any{
 		"transcript_key": key,
 	})
@@ -716,12 +758,10 @@ func (a *Agent) uploadAndAttachLog(cfg *config.Config, sessionID, logContent str
 		return
 	}
 
-	filename := "full.log"
-
 	// 1. Get presigned URL
 	resp, err := a.post(cfg, "/daemon/r2/presign", map[string]any{
 		"session_id": sessionID,
-		"filename":   filename,
+		"filename":   "full.log",
 	})
 	if err != nil {
 		logger.Warn(fmt.Sprintf("[%s] Failed to get presigned URL for log: %v", a.Config.Name, err))
@@ -735,14 +775,14 @@ func (a *Agent) uploadAndAttachLog(cfg *config.Config, sessionID, logContent str
 		return
 	}
 
-	// 2. Upload log
+	// 2. Upload log directly to R2
 	if err := api.PutBytes(uploadURL, []byte(logContent)); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] R2 log upload failed: %v", a.Config.Name, err))
 		return
 	}
 	logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes log to R2", a.Config.Name, len(logContent)))
 
-	// 3. Attach to session
+	// 3. Attach key to session
 	_, err = a.post(cfg, "/daemon/sessions/"+sessionID+"/attach", map[string]any{
 		"r2_log_key": key,
 	})
@@ -833,6 +873,20 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		status = "closed"
 	}
 
+	// For tmux path: capture the full scrollback before killing the session.
+	// tmux capture-pane -S - reads from the beginning of the scrollback buffer,
+	// giving us everything Claude printed — loading, tool descriptions, final response.
+	// This must happen before kill-session which destroys the scrollback.
+	var tmuxCapture string
+	if sess != "" && tmuxBin != "" {
+		if out, err := exec.Command(tmuxBin, "capture-pane", "-t", sess, "-p", "-S", "-").Output(); err == nil {
+			tmuxCapture = strings.TrimSpace(string(out))
+			logger.Info(fmt.Sprintf("[%s] Captured %d chars from tmux scrollback", a.Config.Name, len(tmuxCapture)))
+		} else {
+			logger.Warn(fmt.Sprintf("[%s] tmux capture-pane failed: %v", a.Config.Name, err))
+		}
+	}
+
 	// For tmux path: kill the session so the FIFO writer (cat) closes, which
 	// causes streamOutput's scanner to get EOF and outputDone to be closed.
 	// For PTY path: close stdin so the process can exit cleanly.
@@ -919,13 +973,24 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		
 		// Asynchronously upload full log and transcript
 		msgID, _ := closeResp["message_id"].(string)
-		
-		// 1. Upload full terminal log
-		go a.uploadAndAttachLog(cfg, sessionID, all)
-		
-		// 2. Upload Claude Code transcript JSONL
-		if msgID != "" && transcriptPath != "" {
-			go a.uploadAndAttach(cfg, sessionID, msgID, "transcript.jsonl", transcriptPath)
+
+		// 1. Upload execution log — prefer tmux scrollback (complete terminal output
+		//    including tool descriptions), fall back to FIFO-captured cleaned lines.
+		logContent := all
+		if tmuxCapture != "" {
+			logContent = tmuxCapture
+		}
+		go a.uploadAndAttachLog(cfg, sessionID, logContent)
+
+		// 2. Upload execution transcript for the portal viewer.
+		//    Prefer tmux scrollback (plain text, shows everything the terminal showed).
+		//    Fall back to the Claude Code JSONL (only has the final API response).
+		if msgID != "" {
+			if tmuxCapture != "" {
+				go a.uploadAndAttachContent(cfg, sessionID, msgID, "transcript.txt", []byte(tmuxCapture))
+			} else if transcriptPath != "" {
+				go a.uploadAndAttach(cfg, sessionID, msgID, "transcript.jsonl", transcriptPath)
+			}
 		}
 	}
 
@@ -983,6 +1048,144 @@ func (a *Agent) Complete(cfg *config.Config, status string, transcriptPath strin
 	a.mu.Unlock()
 
 	go a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath)
+}
+
+// StopAndPause is called by the hook server when Claude Code's Stop hook fires
+// and the stop_reason is not "error". Instead of killing the tmux session and
+// closing the task, it posts the final response as an agent message and moves
+// to waiting_input — keeping the tmux session alive so the user can send a
+// follow-up or click "Complete session" to cleanly shut down.
+func (a *Agent) StopAndPause(cfg *config.Config, transcriptPath string) {
+	a.mu.Lock()
+	mode := a.mode
+	completing := a.completing
+	sessionID := a.sessionID
+	agentID := a.agentID
+	sess := a.tmuxSession
+	a.mu.Unlock()
+
+	if mode != ModeRunning || completing {
+		logger.Debug(fmt.Sprintf("[%s] StopAndPause ignored: mode=%s completing=%v", a.Config.Name, mode, completing))
+		return
+	}
+
+	// Wait briefly for FIFO output to drain.
+	time.Sleep(300 * time.Millisecond)
+
+	// Capture full tmux scrollback for the transcript upload.
+	var tmuxCapture string
+	if sess != "" && tmuxBin != "" {
+		if out, err := exec.Command(tmuxBin, "capture-pane", "-t", sess, "-p", "-S", "-").Output(); err == nil {
+			tmuxCapture = strings.TrimSpace(string(out))
+			logger.Info(fmt.Sprintf("[%s] Captured %d chars from tmux scrollback", a.Config.Name, len(tmuxCapture)))
+		} else {
+			logger.Warn(fmt.Sprintf("[%s] tmux capture-pane failed: %v", a.Config.Name, err))
+		}
+	}
+
+	// Extract final response text. Retry for up to 10 s because Claude Code
+	// may still be writing the transcript when the Stop hook fires.
+	finalText := ""
+	if transcriptPath != "" {
+		retryDeadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(retryDeadline) {
+			finalText = ExtractTranscriptResponse(transcriptPath)
+			if finalText != "" {
+				logger.Info(fmt.Sprintf("[%s] Final text from transcript (%d chars)", a.Config.Name, len(finalText)))
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+	if finalText == "" {
+		a.mu.Lock()
+		lines := append([]string(nil), a.outputLines...)
+		a.mu.Unlock()
+		finalText = strings.TrimSpace(strings.Join(lines, "\n"))
+		if len(finalText) > 10000 {
+			finalText = finalText[len(finalText)-10000:]
+		}
+	}
+
+	// Post the final response as an agent message and set task to waiting_input.
+	notifyResp, err := a.post(cfg, "/daemon/session/notify", map[string]any{
+		"session_id": sessionID,
+		"agent_id":   agentID,
+		"message":    finalText,
+	})
+	if err != nil {
+		logger.Error(fmt.Sprintf("[%s] StopAndPause notify error: %v", a.Config.Name, err))
+	} else if notifyResp != nil {
+		msgID, _ := notifyResp["message_id"].(string)
+		if msgID != "" {
+			if tmuxCapture != "" {
+				go a.uploadAndAttachContent(cfg, sessionID, msgID, "transcript.txt", []byte(tmuxCapture))
+			} else if transcriptPath != "" {
+				go a.uploadAndAttach(cfg, sessionID, msgID, "transcript.jsonl", transcriptPath)
+			}
+		}
+	}
+
+	// Upload execution log.
+	a.mu.Lock()
+	lines := append([]string(nil), a.outputLines...)
+	a.mu.Unlock()
+	logContent := strings.Join(lines, "\n")
+	if tmuxCapture != "" {
+		logContent = tmuxCapture
+	}
+	go a.uploadAndAttachLog(cfg, sessionID, logContent)
+
+	// Push SSE event so portal viewers see the new state.
+	if agentID != "" {
+		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
+			"type":  "waiting_input",
+			"lines": []string{finalText},
+		})
+	}
+
+	a.mu.Lock()
+	if transcriptPath != "" {
+		a.transcriptPath = transcriptPath
+	}
+	a.mode = ModeWaitingInput
+	a.mu.Unlock()
+
+	logger.Info(fmt.Sprintf("[%s] Paused after response — tmux session kept alive, waiting for reply or close", a.Config.Name))
+}
+
+// closeSession is called by heartbeat when the server sends a "close" signal,
+// meaning the user clicked "Complete session" in the portal. It kills the tmux
+// session and resets the agent to idle WITHOUT calling /daemon/session/close
+// (the server already closed the session and task).
+func (a *Agent) closeSession() {
+	a.mu.Lock()
+	sess := a.tmuxSession
+	fifo := a.fifoPath
+	runLog := a.runLog
+	// Clear all session state. complete() will be called by the startTask
+	// goroutine once outputDone closes, but will be a safe no-op because
+	// sessionID is empty.
+	a.tmuxSession = ""
+	a.fifoPath = ""
+	a.sessionID = ""
+	a.transcriptPath = ""
+	a.mode = ModeIdle
+	a.outputLines = nil
+	a.runLog = nil
+	a.mu.Unlock()
+
+	if runLog != nil {
+		fmt.Fprintf(runLog, "\n[EVENT] event=closed_by_user\n# ended=%s\n", time.Now().Format(time.RFC3339))
+		runLog.Close()
+	}
+	if sess != "" {
+		exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
+	}
+	if fifo != "" {
+		os.Remove(fifo)
+	}
+	logger.Info(fmt.Sprintf("[%s] Session closed by user — tmux killed, agent reset to idle", a.Config.Name))
 }
 
 // SetWaitingInput is called by the hook server on a Notification event.

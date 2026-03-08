@@ -31,4 +31,4 @@ func (p *OpenCode) Stdin(_ string) string        { return "" }
 func (p *OpenCode) ExtraArgs() []string          { return nil }
 
 // TODO: Write opencode.json with session hooks pointing to hooksPort.
-func (p *OpenCode) Setup(_ string, _ int) error { return nil }
+func (p *OpenCode) Setup(_ string, _ int, _ string) error { return nil }

@@ -69,7 +69,7 @@ interface TranscriptEntry {
   type: string
   message?: {
     role?: string
-    content?: Array<{
+    content?: string | Array<{
       type: string
       text?: string
       name?: string
@@ -128,12 +128,21 @@ function ToolExecution({ name, input, output }: { name: string; input: any; outp
 }
 
 function TranscriptViewer({ content }: { content: string }) {
+  // Plain-text mode: tmux capture-pane output (not JSONL).
+  // Detect by checking whether the first non-empty line parses as JSON.
+  const isJsonl = useMemo(() => {
+    const firstLine = content.trim().split('\n').find(l => l.trim())
+    if (!firstLine) return false
+    try { JSON.parse(firstLine); return true } catch { return false }
+  }, [content])
+
   const entries: TranscriptEntry[] = useMemo(() => {
+    if (!isJsonl) return []
     return content
       .trim()
       .split('\n')
       .flatMap(line => { try { return [JSON.parse(line)] } catch { return [] } })
-  }, [content])
+  }, [content, isJsonl])
 
   // Link outputs back to tool uses
   const toolOutputs = useMemo(() => {
@@ -146,11 +155,20 @@ function TranscriptViewer({ content }: { content: string }) {
     return outputs
   }, [entries])
 
+  if (!isJsonl) {
+    return (
+      <pre className="text-xs font-mono leading-relaxed whitespace-pre-wrap text-foreground/90 bg-muted/20 rounded-lg p-4 border border-border/40 overflow-x-auto">
+        {content}
+      </pre>
+    )
+  }
+
   return (
     <div className="space-y-6 pb-4">
       {entries.map((entry, i) => {
         if (entry.type === 'user') {
-          const text = entry.message?.content?.find(c => c.type === 'text')?.text
+          const raw = entry.message?.content
+          const text = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.find(c => c.type === 'text')?.text : undefined
           if (!text) return null
           return (
             <div key={i} className="space-y-1">
@@ -165,7 +183,7 @@ function TranscriptViewer({ content }: { content: string }) {
             <div key={i} className="space-y-3">
               <div className="text-[10px] uppercase tracking-widest font-bold text-emerald-600/80">Claude</div>
               <div className="space-y-2 pl-3 border-l-2 border-emerald-500/20">
-                {entry.message?.content?.map((c, j) => {
+                {Array.isArray(entry.message?.content) && entry.message.content.map((c, j) => {
                   if (c.type === 'text' && c.text) {
                     return <div key={j} className="text-sm leading-relaxed whitespace-pre-wrap">{c.text}</div>
                   }
@@ -651,7 +669,7 @@ function TaskThread({ teamId }: { teamId: string }) {
 
   async function closeTask() {
     if (!taskId) return
-    await api.tasks.update(taskId, { status: 'done' })
+    await api.tasks.close(taskId)
     nav('/dashboard')
   }
 

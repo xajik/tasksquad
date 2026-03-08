@@ -37,4 +37,4 @@ func (p *Codex) envWithPort(hooksPort int) []string {
 
 func (p *Codex) Stdin(_ string) string        { return "" }
 func (p *Codex) ExtraArgs() []string          { return nil }
-func (p *Codex) Setup(_ string, _ int) error { return nil }
+func (p *Codex) Setup(_ string, _ int, _ string) error { return nil }

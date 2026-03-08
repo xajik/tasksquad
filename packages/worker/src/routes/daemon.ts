@@ -30,9 +30,16 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
         .bind(state.current_task_id)
         .first<{ status: string }>()
 
-      // If the task is done/failed but the agent thinks it's still running, signal cancel.
-      if (task && (task.status === 'done' || task.status === 'failed' || task.status === 'cancelled')) {
-        return json({ ok: true, agent_id: agentId, cancel: true })
+      if (task) {
+        // User clicked "Complete session" from the portal while agent is waiting_input:
+        // signal a clean shutdown (keep tmux kill in daemon, server already closed session).
+        if (task.status === 'done' && agentStatus === 'waiting_input') {
+          return json({ ok: true, agent_id: agentId, close: true })
+        }
+        // Task was cancelled or failed while agent was running — signal cancel.
+        if (task.status === 'done' || task.status === 'failed' || task.status === 'cancelled') {
+          return json({ ok: true, agent_id: agentId, cancel: true })
+        }
       }
 
       if (agentStatus === 'waiting_input') {
@@ -268,38 +275,30 @@ export async function presignUpload(req: Request, env: Env, _ctx: unknown, daemo
   if (!session) return err('not_found', 404)
 
   const key = `${agentId.substring(0, 16)}/${session_id}/${filename}`
-  let upload_url: string | null = null
 
-  console.log(`[presignUpload] session_id=${session_id} filename=${filename} hasR2ID=${!!env.R2_ACCESS_KEY_ID} hasR2Secret=${!!env.R2_SECRET_ACCESS_KEY} hasAccountID=${!!env.CLOUDFLARE_ACCOUNT_ID} hasBucket=${!!env.R2_BUCKET_NAME}`)
+  const s3 = new S3Client({
+    region: 'auto',
+    endpoint: `https://${env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: env.R2_ACCESS_KEY_ID,
+      secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+    },
+  })
 
-  if (env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.CLOUDFLARE_ACCOUNT_ID && env.R2_BUCKET_NAME) {
-    try {
-      const s3 = new S3Client({
-        region: 'auto',
-        endpoint: `https://${env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-        credentials: {
-          accessKeyId: env.R2_ACCESS_KEY_ID,
-          secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-        },
-      })
-
-      upload_url = await getSignedUrl(
-        s3,
-        new PutObjectCommand({
-          Bucket: env.R2_BUCKET_NAME,
-          Key: key,
-          ContentType: 'application/octet-stream',
-        }),
-        { expiresIn: 300 }
-      )
-      console.log(`[presignUpload] Success: ${upload_url.split('?')[0]}`)
-    } catch (e) {
-      console.error(`[presignUpload] failed: ${e}`)
-      return err('presign_failed', 500)
-    }
-  } else {
-    console.error(`[presignUpload] R2 NOT CONFIGURED: ID=${!!env.R2_ACCESS_KEY_ID} Secret=${!!env.R2_SECRET_ACCESS_KEY} Account=${!!env.CLOUDFLARE_ACCOUNT_ID} Bucket=${!!env.R2_BUCKET_NAME}`)
-    return err('r2_not_configured', 500)
+  let upload_url: string
+  try {
+    upload_url = await getSignedUrl(
+      s3,
+      new PutObjectCommand({
+        Bucket: env.R2_BUCKET_NAME,
+        Key: key,
+        ContentType: 'application/octet-stream',
+      }),
+      { expiresIn: 300 }
+    )
+  } catch (e) {
+    console.error(`[presignUpload] failed: ${e}`)
+    return err('presign_failed', 500)
   }
 
   return json({ ok: true, upload_url, key })

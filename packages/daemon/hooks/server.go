@@ -15,6 +15,7 @@ import (
 type Agent interface {
 	Name() string
 	Complete(cfg *config.Config, status string, transcriptPath string)
+	StopAndPause(cfg *config.Config, transcriptPath string)
 	SetWaitingInput(cfg *config.Config, message string, transcriptPath string)
 	GetMode() string
 }
@@ -47,22 +48,28 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 		logger.Info(fmt.Sprintf("[hooks] Stop received: stop_reason=%s transcript_path=%s session_id=%s", 
 			payload.StopReason, payload.TranscriptPath, payload.SessionID))
 
-		status := "closed"
-		if payload.StopReason == "error" {
-			status = "crashed"
-		}
+		agentName := r.URL.Query().Get("agent")
+		crashed := payload.StopReason == "error"
 
 		found := false
 		for _, a := range agents {
+			if agentName != "" && a.Name() != agentName {
+				continue
+			}
 			if a.GetMode() == "running" || a.GetMode() == "waiting_input" {
-				logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete to agent %s", a.Name()))
-				go a.Complete(cfg, status, payload.TranscriptPath)
+				if crashed {
+					logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(crashed) to agent %s", a.Name()))
+					go a.Complete(cfg, "crashed", payload.TranscriptPath)
+				} else {
+					logger.Debug(fmt.Sprintf("[hooks] Dispatching StopAndPause to agent %s", a.Name()))
+					go a.StopAndPause(cfg, payload.TranscriptPath)
+				}
 				found = true
 				break
 			}
 		}
 		if !found {
-			logger.Warn("[hooks] Stop received but no active agent found to handle it")
+			logger.Warn(fmt.Sprintf("[hooks] Stop received but no matching active agent found (agent=%q)", agentName))
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -88,8 +95,13 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 		}
 		logger.Info(fmt.Sprintf("[hooks] Notification received: %s  transcript_path=%s", msg, payload.TranscriptPath))
 
+		agentName := r.URL.Query().Get("agent")
+
 		found := false
 		for _, a := range agents {
+			if agentName != "" && a.Name() != agentName {
+				continue
+			}
 			if a.GetMode() == "running" {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching SetWaitingInput to agent %s", a.Name()))
 				go a.SetWaitingInput(cfg, msg, payload.TranscriptPath)
@@ -98,7 +110,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			}
 		}
 		if !found {
-			logger.Warn(fmt.Sprintf("[hooks] Notification received but no agent in 'running' mode (current modes: %s)", getAgentModes(agents)))
+			logger.Warn(fmt.Sprintf("[hooks] Notification received but no matching active agent (agent=%q modes: %s)", agentName, getAgentModes(agents)))
 		}
 
 		w.WriteHeader(http.StatusOK)

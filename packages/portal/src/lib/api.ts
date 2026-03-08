@@ -45,6 +45,8 @@ export const api = {
       request<{ id: string; status: string }>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
     update: (taskId: string, body: { status: string }) =>
       request<{ ok: boolean }>(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify(body) }),
+    close: (taskId: string) =>
+      request<{ ok: boolean }>(`/tasks/${taskId}/close`, { method: 'POST' }),
     delete: (taskId: string) =>
       request<{ ok: boolean }>(`/tasks/${taskId}`, { method: 'DELETE' }),
     logs: (taskId: string) => request<{ logs: TaskLog[] }>(`/tasks/${taskId}/logs`),
