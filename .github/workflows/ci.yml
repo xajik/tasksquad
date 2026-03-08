@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.23'
       - run: make test
         working-directory: packages/daemon
 
@@ -23,9 +23,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install
+      - run: make install
         working-directory: packages/portal
-      - run: bun test
+      - run: make test
         working-directory: packages/portal
 
   test-worker:
@@ -35,7 +35,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install
+      - run: make install
         working-directory: packages/worker
-      - run: bun test
+      - run: make test
         working-directory: packages/worker

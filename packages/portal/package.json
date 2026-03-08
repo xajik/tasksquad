@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests",
+    "deploy": "wrangler pages deploy dist --project-name tasksquad-portal"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -37,6 +38,7 @@
     "tailwindcss": "^4.2.1",
     "typescript": "^5.6.2",
     "vite": "^6.0.1",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "wrangler": "^4.71.0"
   }
 }

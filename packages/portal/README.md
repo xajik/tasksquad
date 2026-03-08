@@ -4,7 +4,7 @@ The frontend interface for TaskSquad, built with React, Vite, and Cloudflare Pag
 
 ## Prerequisites
 
-- Node.js (>= 18)
+- Node.js (>= 20)
 - npm
 
 ## Installation
@@ -42,12 +42,29 @@ Run the test suite using Vitest:
 bun test
 ```
 
+## Lint
+
+```bash
+bun run lint
+```
+
 ## Deployment
 
-The portal is deployed to Cloudflare Pages automatically via GitHub Actions on push to `main`.
+The portal is deployed to Cloudflare Pages automatically via GitHub Actions on push to `main` when files under `packages/portal/` change.
 
 To deploy manually:
 
 ```bash
 npx wrangler pages deploy dist --project-name tasksquad-portal
 ```
+
+## Environment variables
+
+Set the following secrets in GitHub Actions (or in a `.env.local` for local dev):
+
+| Variable | Description |
+|---|---|
+| `VITE_FIREBASE_API_KEY` | Firebase Web API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Firebase auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | Firebase project ID |
+| `VITE_API_BASE_URL` | TaskSquad API base URL (e.g. `https://tasksquad-api.xajik0.workers.dev`) |

@@ -9,9 +9,12 @@ TaskSquad Server
       │
       │  poll /daemon/heartbeat every N seconds
       ▼
-   tsq daemon  ──── spawns ────▶  claude -p "<task>"
-      │                                  │
-      │◀── Stop / Notification hooks ────┘  (claude-code provider)
+   tsq daemon  ──── tmux new-session ────▶  claude (in named tmux pane)
+      │                                              │
+      │          tmux pipe-pane → FIFO               │ raw PTY bytes
+      │◀──── daemon reads FIFO (streaming) ──────────┘
+      │
+      │◀── HTTP Stop / Notification hooks ──────────── (claude-code provider)
       │
       │  POST /daemon/session/close
       ▼
@@ -19,18 +22,19 @@ TaskSquad Server  (task marked complete, log uploaded to R2)
 ```
 
 1. On each heartbeat the server returns a pending task (if any).
-2. The daemon opens a session, writes provider hook config, and spawns the CLI command.
-3. Stdout lines are batched and pushed to the server in real time via `/daemon/push/:agentId`.
-4. Completion is detected via **provider hooks** (preferred) or **process exit** (fallback). A `completing` guard prevents double-close regardless of which fires first.
+2. The daemon opens a session, writes provider hook config, and spawns the CLI command inside a named tmux session (`ts-<taskID8>`). If tmux is absent, falls back to a PTY.
+3. Output is streamed via a named FIFO (`/tmp/ts-<taskID8>.fifo`) connected to `tmux pipe-pane`. Lines are cleaned and pushed to the server in real time via `/daemon/push/:agentId`.
+4. Completion is detected via **HTTP provider hooks** (preferred) or **process exit** (fallback). A `completing` guard prevents double-close regardless of which fires first.
 5. The full session log is uploaded to R2 via a presigned URL returned by `/daemon/session/close`.
+6. Live session viewing: `tmux attach-session -t ts-<taskID8>` while the task is running.
 
 ---
 
 ## Requirements
 
-- Go 1.22+
-- `curl` on PATH (used by Claude Code hooks)
+- Go 1.23+
 - `claude` CLI on PATH (if using the `claude-code` provider)
+- `tmux` on PATH (optional; enables live session viewing via `tmux attach-session`; falls back to PTY if absent)
 
 ---
 
@@ -158,13 +162,13 @@ Providers tell the daemon how to integrate with a specific CLI tool. The provide
 
 ### Claude Code (fully implemented)
 
-Before spawning `claude`, the daemon writes hook commands into `<work_dir>/.claude/settings.json`:
+Before spawning `claude`, the daemon writes native HTTP hooks into `<work_dir>/.claude/settings.json`:
 
 ```json
 {
   "hooks": {
-    "Stop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "curl -s -X POST http://localhost:7374/hooks/stop ..." }] }],
-    "Notification": [{ "matcher": "", "hooks": [{ "type": "command", "command": "curl -s -X POST http://localhost:7374/hooks/notification ..." }] }]
+    "Stop": [{ "matcher": "*", "hooks": [{ "type": "http", "url": "http://localhost:7374/hooks/stop" }] }],
+    "Notification": [{ "matcher": "*", "hooks": [{ "type": "http", "url": "http://localhost:7374/hooks/notification" }] }]
   }
 }
 ```
@@ -294,4 +298,3 @@ All requests use header `X-TSQ-Token: <agent token>`.
 - [ ] Systray UI — `github.com/getlantern/systray` (requires CGo + platform deps)
 - [ ] Config hot-reload propagation to running agents
 - [ ] One-line install script (`install.sh`)
-- [ ] GitHub Actions release workflow (cross-compiled binaries attached to tags)
