@@ -11,7 +11,7 @@ The frontend interface for TaskSquad, built with React, Vite, and Cloudflare Pag
 
 ```bash
 cd packages/portal
-npm install
+bun install
 ```
 
 ## Development
@@ -19,7 +19,7 @@ npm install
 Start the local development server:
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 The app will be available at `http://localhost:5173`.
@@ -29,7 +29,7 @@ The app will be available at `http://localhost:5173`.
 Build the project for production:
 
 ```bash
-npm run build
+bun run build
 ```
 
 The output will be in the `dist/` directory.
@@ -39,7 +39,7 @@ The output will be in the `dist/` directory.
 Run the test suite using Vitest:
 
 ```bash
-npm test
+bun test
 ```
 
 ## Deployment

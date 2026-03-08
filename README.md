@@ -215,10 +215,10 @@ git clone https://github.com/tasksquad/tasksquad
 cd tasksquad
 
 # Worker
-cd packages/worker && npm install
+cd packages/worker && bun install
 
 # Portal
-cd ../portal && npm install
+cd ../portal && bun install
 
 # Daemon
 cd ../../daemon && go mod download
@@ -345,8 +345,8 @@ Uses Vitest with `@cloudflare/vitest-pool-workers`. Tests run against the real W
 
 ```bash
 cd packages/worker
-npm test              # run once
-npm run test:watch    # watch mode
+bun test              # run once
+bun run test:watch    # watch mode
 ```
 
 Test files live next to the source they test: `src/routes/tasks.test.ts`.
@@ -357,7 +357,7 @@ Vitest + React Testing Library for component tests. No E2E tests in the MVP.
 
 ```bash
 cd packages/portal
-npm test
+bun test
 ```
 
 ### Daemon
@@ -375,8 +375,8 @@ go test ./agent/... -v    # verbose, specific package
 GitHub Actions runs on every push to any branch and on every PR.
 
 ```
-portal.yml    →  npm test + vite build (validates bundle)
-worker.yml    →  npm test + tsc --noEmit
+portal.yml    →  bun test + vite build (validates bundle)
+worker.yml    →  bun test + tsc --noEmit
 daemon.yml    →  go test ./... + go build (all three platforms)
 ```
 

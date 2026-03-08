@@ -6,13 +6,13 @@ The API backend for TaskSquad, running on Cloudflare Workers. It handles task ro
 
 - Node.js (>= 18)
 - npm
-- Wrangler CLI (`npm install -g wrangler`)
+- Wrangler CLI (`bun install -g wrangler`)
 
 ## Installation
 
 ```bash
 cd packages/worker
-npm install
+bun install
 ```
 
 ## Development
@@ -20,7 +20,7 @@ npm install
 Start the local development server (simulates Cloudflare environment):
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 The API will be available at `http://localhost:8787`.
@@ -30,7 +30,7 @@ The API will be available at `http://localhost:8787`.
 Run the test suite using Vitest:
 
 ```bash
-npm test
+bun test
 ```
 
 ## Deployment
@@ -40,7 +40,7 @@ The worker is deployed to Cloudflare Workers automatically via GitHub Actions on
 To deploy manually:
 
 ```bash
-npm run deploy
+bun run deploy
 ```
 
 This command uses `wrangler deploy` under the hood.
