@@ -24,6 +24,8 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ name }),
       }),
+    delete: (teamId: string) =>
+      request<{ ok: boolean }>(`/teams/${teamId}`, { method: 'DELETE' }),
   },
   agents: {
     list: (teamId: string) =>

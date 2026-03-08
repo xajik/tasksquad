@@ -44,6 +44,7 @@ router.options('*', () => new Response(null, { status: 204, headers: CORS_HEADER
 // ── Browser routes (Firebase JWT) ─────────────────────────────────────────────
 router.get('/teams', firebaseRoute(teams.list))
 router.post('/teams',                    firebaseRoute(teams.create))
+router.delete('/teams/:teamId',          firebaseRoute(teams.deactivate))
 router.get ('/teams/:teamId/members',    firebaseRoute(teams.listMembers))
 router.get ('/teams/:teamId/agents',     firebaseRoute(agents.list))
 router.post('/teams/:teamId/agents',     firebaseRoute(agents.create))

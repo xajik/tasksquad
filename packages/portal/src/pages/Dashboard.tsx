@@ -993,13 +993,89 @@ work_dir = "${workDir}"`
   )
 }
 
-function SettingsView({ teamName }: { teamName: string }) {
+function SettingsView({ teamName, onDelete }: { teamName: string; onDelete: () => Promise<void> }) {
+  const [confirmName, setConfirmName] = useState('')
+  const [deleting, setDeleting] = useState(false)
+
   return (
     <div className="animate-fade-in">
       <h2 className="text-2xl font-semibold mb-6">Settings</h2>
-      <div className="max-w-md">
-        <div className="text-sm text-muted-foreground mb-1">Team name</div>
-        <div className="font-medium mb-4">{teamName}</div>
+      <div className="max-w-md space-y-8">
+        <div>
+          <div className="text-sm text-muted-foreground mb-1 font-medium">Project name</div>
+          <div className="text-lg font-semibold">{teamName}</div>
+        </div>
+
+        
+
+        <div className="space-y-4 pt-4 border-t border-destructive/20">
+          <h3 className="text-lg font-semibold text-destructive flex items-center gap-2">
+            <Trash2 className="h-5 w-5" />
+            Delete this project
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Once you delete a project, there is no going back. All active agent sessions will be killed and all pending chats will be closed.
+          </p>
+          
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" className="w-full sm:w-auto">
+                Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="sm:max-w-[450px]">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-destructive">Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription className="space-y-4">
+                  <p>
+                    This action will mark the project <span className="font-bold text-foreground">"{teamName}"</span> as deactivated. 
+                    It will no longer be visible to you or your team members.
+                  </p>
+                  <div className="bg-destructive/10 p-3 rounded-md text-destructive text-xs space-y-1">
+                    <p className="font-bold">Important consequences:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      <li>All running agent sessions will be terminated immediately.</li>
+                      <li>All pending tasks will be marked as failed.</li>
+                      <li>The project will be hidden from your dashboard.</li>
+                    </ul>
+                  </div>
+                  <div className="space-y-2 mt-4">
+                    <Label htmlFor="confirm-team-name space-y-2" className="text-foreground">
+                      Type <span className="font-bold select-none">{teamName}</span> to confirm:
+                    </Label>
+                    <Input
+                      id="confirm-team-name"
+                      value={confirmName}
+                      onChange={e => setConfirmName(e.target.value)}
+                      placeholder={teamName}
+                      className="border-destructive/30 focus-visible:ring-destructive"
+                      autoComplete="off"
+                    />
+                  </div>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setConfirmName('')}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={confirmName !== teamName || deleting}
+                  onClick={async (e) => {
+                    e.preventDefault()
+                    setDeleting(true)
+                    try {
+                      await onDelete()
+                    } catch (err) {
+                      console.error('Failed to deactivate project:', err)
+                      setDeleting(false)
+                    }
+                  }}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90 min-w-[100px]"
+                >
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Deactivate Project'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
     </div>
   )
@@ -1067,6 +1143,13 @@ export default function Dashboard() {
     } finally {
       setCreatingTeam(false)
     }
+  }
+
+  async function handleDeleteProject() {
+    if (!teamId) return
+    await api.teams.delete(teamId)
+    // Force reload to clear all states and re-fetch teams
+    window.location.href = '/dashboard'
   }
 
   return (
@@ -1149,7 +1232,7 @@ export default function Dashboard() {
           <Route path="/" element={<InboxView teamId={teamId} />} />
           <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} />} />
-          <Route path="/settings" element={<SettingsView teamName={teamName} />} />
+          <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} />} />
         </Routes>
       </main>
 
