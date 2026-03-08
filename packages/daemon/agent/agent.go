@@ -596,10 +596,10 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 	flushPush()
 }
 
-// extractTranscriptResponse reads Claude Code's JSONL conversation transcript
+// ExtractTranscriptResponse reads Claude Code's JSONL conversation transcript
 // and returns the text of the last assistant message. Returns empty string on
 // any read or parse error so callers can fall back to terminal output.
-func extractTranscriptResponse(path string) string {
+func ExtractTranscriptResponse(path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
@@ -720,7 +720,7 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	// JSONL file with the clean conversation — we extract the last assistant turn.
 	finalText := ""
 	if transcriptPath != "" {
-		finalText = extractTranscriptResponse(transcriptPath)
+		finalText = ExtractTranscriptResponse(transcriptPath)
 		if finalText != "" {
 			logger.Info(fmt.Sprintf("[%s] Final text from transcript (%d chars)", a.Config.Name, len(finalText)))
 		} else {

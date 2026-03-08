@@ -23,6 +23,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/tasksquad/daemon/agent"
 )
 
 // testPrompt is intentionally simple so the test runs fast.
@@ -45,15 +47,15 @@ func TestClaudeCodeSession(t *testing.T) {
 
 	// ── 4. Start inline hooks capture server ──────────────────────────────────
 	var (
-		stopOnce   sync.Once
-		stopCh     = make(chan string, 1) // receives stop_reason
-		notifLines []string
-		notifMu    sync.Mutex
+		stopOnce       sync.Once
+		stopCh         = make(chan stopEvent, 1)
+		notifLines     []string
+		notifMu        sync.Mutex
 	)
 
 	srv := startTestHooksServer(t, port,
-		func(stopReason string) { // /hooks/stop
-			stopOnce.Do(func() { stopCh <- stopReason })
+		func(ev stopEvent) { // /hooks/stop
+			stopOnce.Do(func() { stopCh <- ev })
 		},
 		func(message string) { // /hooks/notification
 			notifMu.Lock()
@@ -120,12 +122,11 @@ func TestClaudeCodeSession(t *testing.T) {
 		exitCh <- cmd.Wait()
 	}()
 
-	var stopReason string
+	var ev stopEvent
 	select {
-	case reason := <-stopCh:
-		stopReason = reason
-		t.Logf("Stop hook received — stop_reason=%q", stopReason)
-		// Give readers a moment to drain remaining output
+	case ev = <-stopCh:
+		t.Logf("Stop hook received — stop_reason=%q transcript_path=%q", ev.StopReason, ev.TranscriptPath)
+		// Give readers a moment to drain remaining output.
 		select {
 		case <-readerDone:
 		case <-time.After(3 * time.Second):
@@ -137,11 +138,12 @@ func TestClaudeCodeSession(t *testing.T) {
 		} else {
 			t.Logf("Process exited cleanly")
 		}
-		stopReason = "process_exit"
+		ev.StopReason = "process_exit"
 
 	case <-ctx.Done():
 		t.Fatal("Test timed out waiting for claude to finish")
 	}
+	stopReason := ev.StopReason
 
 	// ── 8. Build session record ───────────────────────────────────────────────
 	outputMu.Lock()
@@ -166,6 +168,27 @@ func TestClaudeCodeSession(t *testing.T) {
 		t.Error("Session output is empty")
 	}
 	t.Logf("Captured %d lines, %d bytes", len(captured), len(full))
+
+	// ── 11. Transcript assertions ─────────────────────────────────────────────
+	if ev.TranscriptPath == "" {
+		t.Log("transcript_path not provided in Stop hook payload — skipping transcript assertions")
+	} else {
+		agentResponse := agent.ExtractTranscriptResponse(ev.TranscriptPath)
+		t.Logf("Agent response from transcript: %q", agentResponse)
+
+		if agentResponse == "" {
+			t.Error("Agent response extracted from transcript is empty")
+		}
+		if agentResponse == testPrompt {
+			t.Errorf("Agent response equals the input prompt %q — expected a distinct reply", testPrompt)
+		}
+	}
+}
+
+// stopEvent carries the payload from the Claude Code Stop hook.
+type stopEvent struct {
+	StopReason     string
+	TranscriptPath string
 }
 
 // filterEnv returns os.Environ() with any vars matching the given keys removed.
@@ -213,8 +236,8 @@ func writeTestHooks(t *testing.T, workDir string, port int) {
 					"matcher": "",
 					"hooks": []any{
 						map[string]any{
-							"type":    "command",
-							"command": fmt.Sprintf(`curl -s -X POST http://localhost:%d/hooks/stop -H 'Content-Type: application/json' -d @-`, port),
+							"type": "http",
+							"url":  fmt.Sprintf("http://localhost:%d/hooks/stop", port),
 						},
 					},
 				},
@@ -224,8 +247,8 @@ func writeTestHooks(t *testing.T, workDir string, port int) {
 					"matcher": "",
 					"hooks": []any{
 						map[string]any{
-							"type":    "command",
-							"command": fmt.Sprintf(`curl -s -X POST http://localhost:%d/hooks/notification -H 'Content-Type: application/json' -d @-`, port),
+							"type": "http",
+							"url":  fmt.Sprintf("http://localhost:%d/hooks/notification", port),
 						},
 					},
 				},
@@ -242,20 +265,21 @@ func writeTestHooks(t *testing.T, workDir string, port int) {
 	}
 }
 
-func startTestHooksServer(t *testing.T, port int, onStop func(string), onNotif func(string)) *http.Server {
+func startTestHooksServer(t *testing.T, port int, onStop func(stopEvent), onNotif func(string)) *http.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/hooks/stop", func(w http.ResponseWriter, r *http.Request) {
 		var p struct {
-			StopReason string `json:"stop_reason"`
-			SessionID  string `json:"session_id"`
+			StopReason     string `json:"stop_reason"`
+			SessionID      string `json:"session_id"`
+			TranscriptPath string `json:"transcript_path"`
 		}
 		json.NewDecoder(r.Body).Decode(&p) //nolint:errcheck
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok")) //nolint:errcheck
-		onStop(p.StopReason)
+		onStop(stopEvent{StopReason: p.StopReason, TranscriptPath: p.TranscriptPath})
 	})
 
 	mux.HandleFunc("/hooks/notification", func(w http.ResponseWriter, r *http.Request) {
