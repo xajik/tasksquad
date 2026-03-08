@@ -185,11 +185,28 @@ func TestClaudeCodeTmuxSession(t *testing.T) {
 		t.Fatal("transcript_path was not provided in the Stop hook payload")
 	}
 
-	agentResponse := agent.ExtractTranscriptResponse(ev.TranscriptPath)
+	// Claude Code fires the Stop hook while still finishing the transcript write
+	// (visible as "Embellishing… (running stop hook)" in the TUI). Retry until
+	// the assistant turn appears or the deadline is reached.
+	var agentResponse string
+	retryDeadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(retryDeadline) {
+		agentResponse = agent.ExtractTranscriptResponse(ev.TranscriptPath)
+		if agentResponse != "" {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 	t.Logf("Agent response (from transcript): %q", agentResponse)
 
 	if agentResponse == "" {
-		t.Error("Agent response extracted from transcript is empty")
+		// Log the raw transcript to help diagnose format mismatches.
+		if raw, err := os.ReadFile(ev.TranscriptPath); err == nil {
+			t.Logf("Raw transcript (%d bytes):\n%s", len(raw), raw)
+		} else {
+			t.Logf("Could not read transcript: %v", err)
+		}
+		t.Error("Agent response extracted from transcript is empty after 10s")
 	}
 	if agentResponse == testPrompt {
 		t.Errorf("Agent response equals the input prompt %q — no distinct reply produced", testPrompt)
