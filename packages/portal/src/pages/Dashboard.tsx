@@ -260,7 +260,7 @@ function TranscriptButton({ taskId, msgId }: { taskId: string; msgId: string }) 
           <div className="bg-muted/30 px-6 py-4 border-b border-border flex items-center justify-between">
             <div>
               <DialogTitle className="text-lg font-bold">Execution Transcript</DialogTitle>
-              <DialogDescription className="text-xs">Detailed step-by-step logs from Claude Code</DialogDescription>
+              <DialogDescription className="text-xs">Detailed step-by-step logs CLI</DialogDescription>
             </div>
           </div>
           <ScrollArea className="flex-1 bg-background">
