@@ -65,21 +65,22 @@ tsq
 ```
 
 <img src="screenshots/daemon.png" width="800" />
-*The daemon manages tmux sessions and streams logs to the portal.*
+
+<p align="center"><em>The daemon manages tmux sessions and streams logs to the portal. </em></p>
 
 **5. Start a task** from the portal and watch your agent execute it in real-time.
 
 <img src="screenshots/send_message.png" width="800" />
-*Send a task to your agent just like an email.*
+<p align="center"><em>Send a task to your agent just like an email.</em></p>
 
 <img src="screenshots/message_pending.png" width="800" />
-*The agent picks up the task and starts execution locally.*
+<p align="center"><em>The agent picks up the task and starts execution locally.</em></p>
 
 <img src="screenshots/reply.png" width="800" />
-*Chat with your agent as it works through the task.*
+<p align="center"><em>Chat with your agent as it works through the task.</em></p>
 
 <img src="screenshots/transcript.png" width="800" />
-*Deep dive into the execution logs with the detailed CLI transcript.*
+<p align="center"><em>Deep dive into the execution logs with the detailed CLI transcript.</em></p>
 
 ## Components
 
