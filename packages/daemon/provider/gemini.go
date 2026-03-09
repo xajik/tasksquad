@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/tasksquad/daemon/logger"
 )
@@ -19,15 +20,18 @@ import (
 // agent.Complete() / agent.SetWaitingInput() accordingly.
 type Gemini struct{}
 
-func (p *Gemini) Name() string       { return "gemini" }
-func (p *Gemini) UsesHooks() bool    { return true }
-func (p *Gemini) Env(_ int) []string { return nil }
+func (p *Gemini) Name() string    { return "gemini" }
+func (p *Gemini) UsesHooks() bool { return true }
+func (p *Gemini) Env(_ int) []string {
+	return []string{"GEMINI_TRUST_WORKSPACE=1"}
+}
 
 // Stdin pipes the prompt via stdin so account-login users (no API credits)
 // can run non-interactively without the -p flag.
 func (p *Gemini) Stdin(prompt string) string { return prompt }
 
-func (p *Gemini) ExtraArgs() []string { return nil }
+func (p *Gemini) ExtraArgs() []string        { return nil }
+func (p *Gemini) TmuxReadyIndicator() string { return "Ready" }
 
 // Setup writes .gemini/settings.json into workDir with SessionEnd and Notification hooks
 // pointing to the daemon's local hook server on hooksPort.
@@ -45,6 +49,10 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentName string) error {
 		_ = json.Unmarshal(data, &existing)
 	}
 
+	stopURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/stop?agent=%s&provider=gemini", hooksPort, agentName)
+	notifURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/notification?agent=%s&provider=gemini", hooksPort, agentName)
+	afterModelURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/after_model?agent=%s&provider=gemini", hooksPort, agentName)
+
 	// Gemini CLI hooks structure: {"hooks": {"EventName": [{"matcher": "*", "hooks": [...]}]}}
 	existing["hooks"] = map[string]any{
 		"SessionEnd": []any{
@@ -52,8 +60,10 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentName string) error {
 				"matcher": "*",
 				"hooks": []any{
 					map[string]any{
-						"type": "http",
-						"url":  fmt.Sprintf("http://127.0.0.1:%d/hooks/stop?agent=%s&provider=gemini", hooksPort, agentName),
+						"name":    "tasksquad-stop",
+						"type":    "command",
+						"command": geminiHookCmd(stopURL),
+						"timeout": 5000,
 					},
 				},
 			},
@@ -63,8 +73,23 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentName string) error {
 				"matcher": "*",
 				"hooks": []any{
 					map[string]any{
-						"type": "http",
-						"url":  fmt.Sprintf("http://127.0.0.1:%d/hooks/notification?agent=%s&provider=gemini", hooksPort, agentName),
+						"name":    "tasksquad-notif",
+						"type":    "command",
+						"command": geminiHookCmd(notifURL),
+						"timeout": 5000,
+					},
+				},
+			},
+		},
+		"AfterModel": []any{
+			map[string]any{
+				"matcher": "*",
+				"hooks": []any{
+					map[string]any{
+						"name":    "tasksquad-after-model",
+						"type":    "command",
+						"command": geminiHookCmd(afterModelURL),
+						"timeout": 5000,
 					},
 				},
 			},
@@ -81,4 +106,18 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentName string) error {
 
 	logger.Debug(fmt.Sprintf("[provider/gemini] Wrote hooks to %s (port %d)", settingsPath, hooksPort))
 	return nil
+}
+
+// geminiHookCmd returns a shell command that POSTs stdin to url and outputs {}
+// so Gemini CLI receives valid JSON back (required by the command hook contract).
+// The command is tailored to the OS shell Gemini uses to execute hooks:
+//   - Unix (macOS/Linux): /bin/sh — curl + printf
+//   - Windows: cmd.exe — curl + echo
+func geminiHookCmd(url string) string {
+	if runtime.GOOS == "windows" {
+		// cmd.exe syntax: NUL instead of /dev/null, & to chain, echo for JSON output.
+		// We use -sS to keep curl quiet but still show errors in stderr if they occur.
+		return fmt.Sprintf(`curl -sS -X POST "%s" -H "Content-Type: application/json" -d @- > NUL 2>&1 & echo {}`, url)
+	}
+	return fmt.Sprintf(`curl -sS -X POST "%s" -H "Content-Type: application/json" -d @- > /dev/null 2>&1; printf '{}'`, url)
 }

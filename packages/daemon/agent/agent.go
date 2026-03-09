@@ -262,7 +262,9 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 				// tmux path: deliver reply via send-keys
 				// Small delay to ensure tmux session is ready to receive input.
 				time.Sleep(500 * time.Millisecond)
-				exec.Command(tmuxBin, "send-keys", "-t", sess, reply, "C-m").Run() //nolint:errcheck
+				exec.Command(tmuxBin, "send-keys", "-t", sess, reply).Run() //nolint:errcheck
+				time.Sleep(500 * time.Millisecond)
+				exec.Command(tmuxBin, "send-keys", "-t", sess, "C-m").Run() //nolint:errcheck
 				a.mu.Lock()
 				a.mode = ModeRunning
 				a.lastPrompt = reply
@@ -470,9 +472,11 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 				exec.Command(tmuxBin, "pipe-pane", "-t", sessionName, "cat > "+fifoPath).Run() //nolint:errcheck
 
 				// Deliver the initial prompt.
-				// Give the TUI time to boot before sending the first prompt.
-				time.Sleep(2 * time.Second)
-				exec.Command(tmuxBin, "send-keys", "-t", sessionName, stdinData, "C-m").Run() //nolint:errcheck
+				// Gemini requires extra time to initialize its internal state.
+				time.Sleep(15 * time.Second)
+				exec.Command(tmuxBin, "send-keys", "-t", sessionName, stdinData).Run() //nolint:errcheck
+				time.Sleep(500 * time.Millisecond)
+				exec.Command(tmuxBin, "send-keys", "-t", sessionName, "C-m").Run() //nolint:errcheck
 
 				a.mu.Lock()
 				a.tmuxSession = sessionName
@@ -851,7 +855,7 @@ func (a *Agent) uploadAndAttachLog(cfg *config.Config, sessionID, logContent str
 	}
 }
 
-// ExtractTranscriptResponse reads a JSONL conversation transcript (Claude or Gemini)
+// ExtractTranscriptResponse reads a JSONL or JSON conversation transcript (Claude or Gemini)
 // and returns the text of the last assistant message. Returns empty string on
 // any read or parse error so callers can fall back to terminal output.
 func ExtractTranscriptResponse(path string) string {
@@ -860,10 +864,47 @@ func ExtractTranscriptResponse(path string) string {
 		return ""
 	}
 
-	// Each line is a JSON object. Scan forward and keep overwriting lastText
-	// so we end up with the final assistant message.
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return ""
+	}
+
+	// Handle Gemini's single-JSON format: {"messages": [{"type": "gemini", "content": "..."}]}
+	if content[0] == '{' {
+		var transcript struct {
+			Messages []struct {
+				Type    string `json:"type"`
+				Content any    `json:"content"` // can be string or array
+			} `json:"messages"`
+		}
+		if err := json.Unmarshal([]byte(content), &transcript); err == nil && len(transcript.Messages) > 0 {
+			// Find the last assistant message
+			for i := len(transcript.Messages) - 1; i >= 0; i-- {
+				m := transcript.Messages[i]
+				if m.Type == "gemini" || m.Type == "assistant" {
+					if s, ok := m.Content.(string); ok {
+						return strings.TrimSpace(s)
+					}
+					// If it's a list of content blocks (like Claude's internal structure)
+					if list, ok := m.Content.([]any); ok {
+						var parts []string
+						for _, block := range list {
+							if b, ok := block.(map[string]any); ok {
+								if text, ok := b["text"].(string); ok {
+									parts = append(parts, text)
+								}
+							}
+						}
+						return strings.TrimSpace(strings.Join(parts, "\n"))
+					}
+				}
+			}
+		}
+	}
+
+	// Handle Claude's JSONL format
 	var lastText string
-	for _, rawLine := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+	for _, rawLine := range strings.Split(content, "\n") {
 		rawLine = strings.TrimSpace(rawLine)
 		if rawLine == "" {
 			continue

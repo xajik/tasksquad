@@ -97,14 +97,18 @@ func runTmuxIntegrationTest(t *testing.T, provider, binName string) {
 	// ── 5. Start tmux session running CLI in interactive mode ─────────────────
 	sessionName := fmt.Sprintf("ts-test-%s-%d", provider, os.Getpid())
 	env := filterEnv(os.Environ(), "CLAUDECODE", "GEMINI")
+	if provider == "gemini" {
+		env = append(env, "GEMINI_TRUST_WORKSPACE=1")
+	}
 
 	newSessArgs := []string{
 		"new-session", "-d", "-s", sessionName,
 		"-c", workDir, "-x", "220", "-y", "50",
 		"--", binName,
 	}
-	// For gemini, we might need to skip permissions or something if it's too interactive
-	// but for now we follow the same logic as Claude.
+	if provider == "gemini" {
+		newSessArgs = append(newSessArgs, "--prompt", testPrompt)
+	}
 
 	newSessCmd := exec.Command(tmuxBin, newSessArgs...)
 	newSessCmd.Env = env
@@ -162,9 +166,14 @@ func runTmuxIntegrationTest(t *testing.T, provider, binName string) {
 
 	// ── 8. Wait for interactive prompt, then send the task ────────────────────
 	// Give the TUI time to finish rendering its startup screen.
-	time.Sleep(3 * time.Second)
-	exec.Command(tmuxBin, "send-keys", "-t", sessionName, testPrompt, "Enter").Run() //nolint:errcheck
-	t.Logf("[%s] Prompt sent via send-keys: %q", provider, testPrompt)
+	if provider == "gemini" {
+		// Prompt already sent via --prompt flag, which makes it non-interactive.
+		t.Logf("[%s] Skipping send-keys (using --prompt flag)", provider)
+	} else {
+		time.Sleep(3 * time.Second)
+		exec.Command(tmuxBin, "send-keys", "-t", sessionName, testPrompt, "Enter").Run() //nolint:errcheck
+		t.Logf("[%s] Prompt sent via send-keys: %q", provider, testPrompt)
+	}
 
 	// ── 9. Wait for Stop/SessionEnd hook ──────────────────────────────────────
 	var ev stopEvent
@@ -257,12 +266,19 @@ func writeTestHooks(t *testing.T, workDir string, port int, provider string) fun
 	}
 
 	if provider == "gemini" {
+		stopURL := fmt.Sprintf("http://localhost:%d/hooks/stop", port)
+		notifURL := fmt.Sprintf("http://localhost:%d/hooks/notification", port)
 		existing["hooks"] = map[string]any{
 			"SessionEnd": []any{
 				map[string]any{
 					"matcher": "*",
 					"hooks": []any{
-						map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/stop", port)},
+						map[string]any{
+							"name":    "tasksquad-stop",
+							"type":    "command",
+							"command": fmt.Sprintf(`curl -s -X POST "%s" -H "Content-Type: application/json" -d @- > /dev/null 2>&1; printf '{}'`, stopURL),
+							"timeout": 5000,
+						},
 					},
 				},
 			},
@@ -270,7 +286,12 @@ func writeTestHooks(t *testing.T, workDir string, port int, provider string) fun
 				map[string]any{
 					"matcher": "*",
 					"hooks": []any{
-						map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/notification", port)},
+						map[string]any{
+							"name":    "tasksquad-notif",
+							"type":    "command",
+							"command": fmt.Sprintf(`curl -s -X POST "%s" -H "Content-Type: application/json" -d @- > /dev/null 2>&1; printf '{}'`, notifURL),
+							"timeout": 5000,
+						},
 					},
 				},
 			},
@@ -325,14 +346,12 @@ func startTestHooksServer(t *testing.T, port int, provider string, onStop func(s
 
 		if provider == "gemini" {
 			var p struct {
-				Data struct {
-					Reason         string `json:"reason"`
-					TranscriptPath string `json:"transcriptPath"`
-				} `json:"data"`
+				Reason         string `json:"reason"`
+				TranscriptPath string `json:"transcript_path"`
 			}
 			json.Unmarshal(body, &p) //nolint:errcheck
-			transcriptPath = p.Data.TranscriptPath
-			stopReason = p.Data.Reason
+			transcriptPath = p.TranscriptPath
+			stopReason = p.Reason
 		} else {
 			var p struct {
 				StopReason     string `json:"stop_reason"`
@@ -354,12 +373,10 @@ func startTestHooksServer(t *testing.T, port int, provider string, onStop func(s
 
 		if provider == "gemini" {
 			var p struct {
-				Data struct {
-					Message string `json:"message"`
-				} `json:"data"`
+				Message string `json:"message"`
 			}
 			json.Unmarshal(body, &p) //nolint:errcheck
-			msg = p.Data.Message
+			msg = p.Message
 		} else {
 			var p struct{ Message string `json:"message"` }
 			json.Unmarshal(body, &p) //nolint:errcheck
