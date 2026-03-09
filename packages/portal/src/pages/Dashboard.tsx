@@ -62,6 +62,8 @@ import {
   ExternalLink,
   CheckCircle,
   Plus,
+  Menu,
+  X,
 } from 'lucide-react'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
@@ -501,14 +503,14 @@ function InboxView({ teamId }: { teamId: string }) {
               className="cursor-pointer hover:bg-accent/50 transition-colors"
               onClick={() => nav(`/dashboard/tasks/${t.id}`)}
             >
-              <CardContent className="p-4 flex justify-between items-center">
-                <div>
-                  <div className="font-medium">{t.subject}</div>
-                  <div className="text-sm text-muted-foreground">{agentMap[t.agent_id]?.name ?? t.agent_id}</div>
+              <CardContent className="p-3 sm:p-4 flex items-center gap-2 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{t.subject}</div>
+                  <div className="text-sm text-muted-foreground truncate">{agentMap[t.agent_id]?.name ?? t.agent_id}</div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 shrink-0">
                   <StatusBadge status={taskStatus(t)} />
-                  <span className="text-muted-foreground text-sm">{relativeTime(t.created_at)}</span>
+                  <span className="text-muted-foreground text-sm hidden sm:inline">{relativeTime(t.created_at)}</span>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
@@ -692,9 +694,12 @@ function TaskThread({ teamId }: { teamId: string }) {
 
   return (
     <div className="max-w-3xl animate-fade-in mx-auto">
-      <div className="flex items-center gap-3 mb-8 pb-4 border-b border-border/50">
-        <div className="flex-1">
-          <h2 className="text-2xl font-bold tracking-tight">{task?.subject ?? '...'}</h2>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6 sm:mb-8 pb-4 border-b border-border/50">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">{task?.subject ?? '...'}</h2>
+            {task && <StatusBadge status={task.status} />}
+          </div>
           <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <Bot className="h-3.5 w-3.5" />
@@ -704,7 +709,6 @@ function TaskThread({ teamId }: { teamId: string }) {
             <span>Started {task ? relativeTime(task.created_at) : '...'}</span>
           </div>
         </div>
-        {task && <StatusBadge status={task.status} />}
         <div className="flex items-center gap-2">
           {task && (task.status === 'running') && !watching && (
             <Button onClick={startLive} size="sm" className="rounded-full">
@@ -725,7 +729,7 @@ function TaskThread({ teamId }: { teamId: string }) {
       </div>
 
       <div className="bg-background/50 rounded-xl border border-border/40 overflow-hidden shadow-sm">
-        <ScrollArea className="h-[600px] p-6">
+        <ScrollArea className="h-[50vh] sm:h-[600px] p-4 sm:p-6">
           <div className="flex flex-col pr-4">
             {messages.map(m => (
               <MessageBubble
@@ -864,16 +868,16 @@ function AgentsView({ teamId }: { teamId: string }) {
         ) : (
           agents.map(a => (
             <Card key={a.id}>
-              <CardContent className="p-4 flex justify-between items-start">
-                <div>
+              <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
+                <div className="min-w-0">
                   <div className="font-medium">{a.name}</div>
-                  <div className="text-sm text-muted-foreground">{a.command} · {a.work_dir}</div>
+                  <div className="text-sm text-muted-foreground truncate">{a.command} · {a.work_dir}</div>
                   <div className="text-xs text-muted-foreground font-mono mt-1">ID: {a.id}</div>
                   {a.last_seen && <div className="text-xs text-muted-foreground mt-1">Last seen {relativeTime(a.last_seen)}</div>}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-2 sm:items-end">
                   <StatusBadge status={a.status} />
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Input
                       value={tokenLabel}
                       onChange={e => setTokenLabel(e.target.value)}
@@ -1118,10 +1122,16 @@ export default function Dashboard() {
   const location = useLocation()
   const nav = useNavigate()
 
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showCreateTeam, setShowCreateTeam] = useState(false)
   const [newTeamName, setNewTeamName] = useState('')
   const [createTeamError, setCreateTeamError] = useState('')
   const [creatingTeam, setCreatingTeam] = useState(false)
+
+  function handleNav(path: string) {
+    nav(path)
+    setSidebarOpen(false)
+  }
 
   const isAgents = location.pathname === '/dashboard/agents'
   const isSettings = location.pathname === '/dashboard/settings'
@@ -1159,17 +1169,39 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex h-screen">
-      <aside className="w-52 border-r bg-background flex flex-col">
+    <div className="flex h-screen overflow-hidden relative">
+      {/* Mobile backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside className={[
+        'flex flex-col border-r bg-background shrink-0',
+        'fixed inset-y-0 left-0 z-50 w-64',
+        'md:relative md:z-auto md:w-52',
+        'transition-transform duration-200 ease-in-out',
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+      ].join(' ')}>
         <div className="flex items-center gap-2 font-bold text-lg px-4 py-5">
           <img src="/tasksquad-dark.svg" alt="TaskSquad" className="h-5 w-5" />
-          TaskSquad
+          <span>TaskSquad</span>
+          <button
+            className="ml-auto rounded-md p-1 hover:bg-muted transition-colors md:hidden"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close sidebar"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
         <nav className="flex-1 px-2">
           <Button
             variant={!isAgents && !isSettings ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
-            onClick={() => nav('/dashboard')}
+            onClick={() => handleNav('/dashboard')}
           >
             <Inbox className="mr-2 h-4 w-4" />
             Inbox
@@ -1177,7 +1209,7 @@ export default function Dashboard() {
           <Button
             variant={isAgents ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
-            onClick={() => nav('/dashboard/agents')}
+            onClick={() => handleNav('/dashboard/agents')}
           >
             <Bot className="mr-2 h-4 w-4" />
             Agents
@@ -1185,7 +1217,7 @@ export default function Dashboard() {
           <Button
             variant={isSettings ? 'secondary' : 'ghost'}
             className="w-full justify-start"
-            onClick={() => nav('/dashboard/settings')}
+            onClick={() => handleNav('/dashboard/settings')}
           >
             <Settings className="mr-2 h-4 w-4" />
             Settings
@@ -1233,7 +1265,22 @@ export default function Dashboard() {
           </Button>
         </div>
       </aside>
-      <main className="flex-1 overflow-auto p-8">
+
+      {/* Main content */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        {/* Mobile top bar */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b bg-background md:hidden shrink-0">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="rounded-md p-1.5 hover:bg-muted transition-colors"
+            aria-label="Open sidebar"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <img src="/tasksquad-dark.svg" alt="TaskSquad" className="h-5 w-5" />
+          <span className="font-bold">TaskSquad</span>
+        </div>
+        <main className="flex-1 overflow-auto p-4 sm:p-8">
         <Routes>
           <Route path="/" element={<InboxView teamId={teamId} />} />
           <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} />} />
@@ -1241,6 +1288,7 @@ export default function Dashboard() {
           <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} />} />
         </Routes>
       </main>
+      </div>
 
       <Dialog open={showCreateTeam} onOpenChange={setShowCreateTeam}>
         <DialogContent className="sm:max-w-[400px]">
