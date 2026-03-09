@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/creack/pty"
@@ -410,7 +409,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		fifoPath := fmt.Sprintf("/tmp/ts-%s.fifo", sessionSuffix)
 		os.Remove(fifoPath)
 
-		if err := syscall.Mkfifo(fifoPath, 0644); err != nil {
+		if err := mkfifo(fifoPath, 0644); err != nil {
 			logger.Warn(fmt.Sprintf("[%s] mkfifo failed: %v — falling back to PTY", a.Config.Name, err))
 		} else {
 			// Build tmux new-session: inherit workDir + provider env.
