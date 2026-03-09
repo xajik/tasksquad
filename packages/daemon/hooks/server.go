@@ -166,15 +166,50 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 		agentName := r.URL.Query().Get("agent")
 		provider := r.URL.Query().Get("provider")
 
-		// Gemini payload: {"message": "...", "transcript_path": "...", ...}
+		// Gemini payload: {"message": "...", "transcript_path": "...", "llm_response": {...}}
 		var payload struct {
 			TranscriptPath string `json:"transcript_path"`
+			LLMResponse    struct {
+				Candidates []struct {
+					FinishReason string `json:"finishReason"`
+					Content      struct {
+						Parts []map[string]any `json:"parts"`
+					} `json:"content"`
+				} `json:"candidates"`
+			} `json:"llm_response"`
 		}
 		if err := json.Unmarshal(body, &payload); err != nil {
 			logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal Gemini after_model hook: %v", err))
 		}
 
-		logger.Info(fmt.Sprintf("[hooks] AfterModel received: provider=%s transcript_path=%s",
+		// Check if this is a "terminal" response for the turn.
+		// We skip if:
+		// 1. No candidates (unlikely but possible).
+		// 2. finishReason is not "STOP" (might be thinking or intermediate).
+		// 3. There are tool calls (the agent will continue its loop).
+		isFinal := false
+		if len(payload.LLMResponse.Candidates) > 0 {
+			cand := payload.LLMResponse.Candidates[0]
+			hasToolCall := false
+			for _, part := range cand.Content.Parts {
+				if _, ok := part["toolCall"]; ok {
+					hasToolCall = true
+					break
+				}
+			}
+			if cand.FinishReason == "STOP" && !hasToolCall {
+				isFinal = true
+			}
+		}
+
+		if !isFinal {
+			logger.Debug("[hooks] AfterModel received but not final (thinking or tool call), skipping pause")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok")) //nolint:errcheck
+			return
+		}
+
+		logger.Info(fmt.Sprintf("[hooks] AfterModel (Final) received: provider=%s transcript_path=%s",
 			provider, payload.TranscriptPath))
 
 		found := false
@@ -190,7 +225,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			}
 		}
 		if !found {
-			logger.Warn(fmt.Sprintf("[hooks] AfterModel received but no matching active agent (agent=%q)", agentName))
+			logger.Debug(fmt.Sprintf("[hooks] AfterModel ignored: agent %q not in 'running' state", agentName))
 		}
 
 		w.WriteHeader(http.StatusOK)
