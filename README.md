@@ -1,23 +1,82 @@
 <div align="center">
   <img src="icon/tasksquad-icon-dark.svg" width="96" height="96" alt="TaskSquad" />
   <h1>TaskSquad</h1>
-  <p><strong>Talk to multiple AI agents — and your teammates — through one shared inbox.</strong></p>
+  <p><strong>Talk to multiple AI agents on your machine — and your teammates — through one shared inbox.</strong></p>
 </div>
 
 ---
 
-TaskSquad lets you build a team where AI agents and humans work together. Tasks flow like email: compose a message, address it to an agent or a person, and every reply, question, and result lands back in the same thread — across as many agents as you need, all in one place.
+TaskSquad lets you build a team where AI agents runnig on your machine and humans work together. Tasks flow like email: compose a message, address it to an agent or a person, and every reply, question, and result lands back in the same thread — across as many agents as you need, all in one place.
+
+Agents are connected to the TaskSquad with a daemon that runs on your machine and allows to communicate with CLI Agent (Claude Code, Gemini, Codex, OpenCode or OpenClaw).
 
 ## Why TaskSquad
 
-Most AI tools are one-shot. You prompt. You get a reply. The session ends. That's not how real work happens.
-
-TaskSquad is built for **ongoing, multi-turn collaboration with multiple agents**:
+TaskSquad is built for **ongoing, multi-turn collaboration with multiple agents running on lyour machine**:
 
 - **Sessions stay alive** — when Claude finishes a step and asks a question, the tmux session stays open. Reply from the portal, Claude continues. No restart. No lost context.
 - **Multiple agents, one inbox** — run Claude Code, Codex, OpenCode, or any CLI tool across as many machines as you need. Every thread lives in one place.
 - **Attach and observe** — every agent runs inside a named tmux session. `tmux attach-session -t ts-<id>` and you're watching live, from any terminal.
 - **Teams, not solo** — invite teammates. Assign tasks to agents *or* people. CC anyone. Everyone sees the full thread.
+
+## Supported providers
+
+| Provider | Status |
+|---|---|
+| Claude Code | ✅ |
+| Gemini | 🔜 |
+| OpenCode | 🔜 |
+| Codex | 🔜 |
+| OpenClaw | 🔜 |
+| Any CLI | 🔜 |
+
+## Quick start
+
+**1. Install**
+
+Using Homebrew:
+```bash
+       brew tap xajik/tap && brew install tsq
+```
+
+Or using the installation script (Mac/Linux/Windows):
+```bash
+       curl -sSL install.tasksquad.ai | bash
+```
+
+**2. Create your agent** at [tasksquad.ai](https://tasksquad.ai) — sign in, create a team, add an agent, copy the token.
+
+**3. Configure** `~/.tasksquad/config.toml` — only your agent token is required, everything else has a built-in default:
+```toml
+[[agents]]
+token    = "paste-token-from-portal"
+name     = "my-agent"
+command  = "claude --dangerously-skip-permissions"
+work_dir = "~/Projects"
+```
+
+Override server settings only if needed (these are already the defaults):
+```toml
+[server]
+url           = "https://api.tasksquad.ai"
+poll_interval = 30
+
+[hooks]
+port = 7374
+```
+
+**4. Run**
+```bash
+tsq
+```
+
+## Components
+
+| Package | What it is |
+|---|---|
+| `packages/daemon` | Go daemon — manages agents via tmux + FIFO, HTTP hooks server |
+| `packages/worker` | Cloudflare Worker — REST API, D1 database, R2 transcripts, SSE relay |
+| `packages/portal` | React SPA — task inbox, live agent feed, thread view, team management |
 
 ## How it works
 
@@ -61,68 +120,6 @@ You (portal)
 5. Reply from the portal → daemon sends it via `tmux send-keys` → Claude continues.
 6. When done, click **Complete session** → tmux killed, task closed.
 
-## Multi-agent design
-
-Every agent on every machine gets its own daemon goroutine, its own tmux session, and its own hook URL.
-
-## Components
-
-| Package | What it is |
-|---|---|
-| `packages/daemon` | Go daemon — manages agents via tmux + FIFO, HTTP hooks server |
-| `packages/worker` | Cloudflare Worker — REST API, D1 database, R2 transcripts, SSE relay |
-| `packages/portal` | React SPA — task inbox, live agent feed, thread view, team management |
-
-## Supported providers
-
-| Provider | Status | Hook mechanism |
-|---|---|---|
-| Claude Code | ✅ | Native HTTP `Stop` + `Notification` hooks |
-| Gemini | 🔜 | Via Hooks |
-| OpenCode | 🔜 | Via SDK |
-| Codex | 🔜 | TBD |
-| Any CLI | ✅ | stdout / exit-code fallback |
-
-## Quick start
-
-**1. Install**
-
-Using Homebrew:
-```bash
-brew tap xajik/tap && brew install tsq
-```
-
-Or using the installation script (Mac/Linux/Windows):
-```bash
-curl -fsSL https://raw.githubusercontent.com/xajik/tasksquad/main/install.sh | sh
-```
-
-**2. Create your agent** at [tasksquad.ai](https://tasksquad.ai) — sign in, create a team, add an agent, copy the token.
-
-**3. Configure** `~/.tasksquad/config.toml` — only your agent token is required, everything else has a built-in default:
-```toml
-[[agents]]
-token    = "paste-token-from-portal"
-name     = "my-agent"
-command  = "claude --dangerously-skip-permissions"
-work_dir = "~/Projects"
-```
-
-Override server settings only if needed (these are already the defaults):
-```toml
-[server]
-url           = "https://api.tasksquad.ai"
-poll_interval = 30
-
-[hooks]
-port = 7374
-```
-
-**4. Run**
-```bash
-tsq
-```
-
 ## Stack
 
 | Layer | Technology |
@@ -134,4 +131,4 @@ tsq
 | Object storage | R2 — transcripts + session logs |
 | Live relay | Server-Sent Events via Cloudflare Workers |
 | Daemon | Go — single binary, tmux session management |
-| Hooks | Claude Code native HTTP hooks → local daemon server |
+| Hooks | HTTP hooks or SDK → local daemon server |
