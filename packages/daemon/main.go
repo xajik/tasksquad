@@ -60,7 +60,7 @@ func main() {
 
 	for _, ac := range cfg.Agents {
 		p := provider.Detect(ac.Command, ac.Provider)
-		logger.Info(fmt.Sprintf("  - %s (command: %s, provider: %s)", ac.Name, ac.Command, p.Name()))
+		logger.Info(fmt.Sprintf("  - %s  command=%s  dir=%s  provider=%s", ac.Name, ac.Command, ac.WorkDir, p.Name()))
 		a := agent.New(ac)
 		rawAgents = append(rawAgents, a)
 		agentList = append(agentList, a)
