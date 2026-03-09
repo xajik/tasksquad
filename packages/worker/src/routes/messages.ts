@@ -1,6 +1,7 @@
 import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
+import { importMasterKey, unwrapDEK, decrypt } from '../crypto.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -41,15 +42,35 @@ export async function getTranscript(req: Request, env: Env, _ctx: unknown, auth:
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
 
   const msg = await env.DB
-    .prepare('SELECT transcript_key FROM messages WHERE id = ? AND task_id = ?')
+    .prepare('SELECT transcript_key, agent_id FROM messages m JOIN tasks t ON m.task_id = t.id WHERE m.id = ? AND m.task_id = ?')
     .bind(msgId, taskId)
-    .first<{ transcript_key: string | null }>()
+    .first<{ transcript_key: string | null; agent_id: string }>()
   if (!msg?.transcript_key) return err('not_found', 404)
 
   const obj = await env.LOGS.get(msg.transcript_key)
   if (!obj) return err('not_found', 404)
 
-  const text = await obj.text()
+  const encrypted = new Uint8Array(await obj.arrayBuffer())
+  let plaintext = encrypted
+
+  // If the agent has an encrypted DEK, we assume the log is encrypted
+  const agent = await env.DB
+    .prepare('SELECT encrypted_dek FROM agents WHERE id = ?')
+    .bind(msg.agent_id)
+    .first<{ encrypted_dek: string | null }>()
+  
+  if (agent?.encrypted_dek && env.R2_LOGS_MASTER_KEY) {
+    try {
+      const masterKey = await importMasterKey(env.R2_LOGS_MASTER_KEY)
+      const dek = await unwrapDEK(agent.encrypted_dek, masterKey)
+      plaintext = await decrypt(encrypted, dek)
+    } catch (e) {
+      console.error(`[messages/getTranscript] decryption failed: ${e}`)
+      // Fallback to serving raw bytes (might be unencrypted if upload failed or transition)
+    }
+  }
+
+  const text = new TextDecoder().decode(plaintext)
   return new Response(text, {
     headers: {
       'Content-Type': 'application/x-ndjson',

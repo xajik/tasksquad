@@ -3,6 +3,7 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { json, err } from '../auth.js'
 import type { Env, DaemonContext } from '../types.js'
+import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
 
 export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const body = await req.json<{ status?: string }>().catch(() => ({} as { status?: string }))
@@ -274,6 +275,25 @@ export async function presignUpload(req: Request, env: Env, _ctx: unknown, daemo
     .first<{ id: string }>()
   if (!session) return err('not_found', 404)
 
+  // Fetch and unwrap the agent's DEK
+  let dekB64: string | null = null
+  if (env.R2_LOGS_MASTER_KEY) {
+    try {
+      const agent = await env.DB
+        .prepare('SELECT encrypted_dek FROM agents WHERE id = ?')
+        .bind(agentId)
+        .first<{ encrypted_dek: string | null }>()
+      
+      if (agent?.encrypted_dek) {
+        const masterKey = await importMasterKey(env.R2_LOGS_MASTER_KEY)
+        const dek = await unwrapDEK(agent.encrypted_dek, masterKey)
+        dekB64 = await exportKey(dek)
+      }
+    } catch (e) {
+      console.error(`[presignUpload] dek unwrap failed: ${e}`)
+    }
+  }
+
   const key = `${agentId.substring(0, 16)}/${session_id}/${filename}`
 
   const s3 = new S3Client({
@@ -301,7 +321,7 @@ export async function presignUpload(req: Request, env: Env, _ctx: unknown, daemo
     return err('presign_failed', 500)
   }
 
-  return json({ ok: true, upload_url, key })
+  return json({ ok: true, upload_url, key, dek: dekB64 })
 }
 
 export async function messageAttach(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {

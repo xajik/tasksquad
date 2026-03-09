@@ -1,6 +1,7 @@
 import { ulid } from 'ulidx'
 import { json, err, sha256 } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
+import { generateDEK, wrapDEK, importMasterKey } from '../crypto.js'
 
 async function requireMaintainer(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -49,11 +50,24 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     .first<{ id: string }>()
   if (existing) return err('name_taken', 409)
 
+  // Generate and wrap a unique Data Encryption Key (DEK) for this agent
+  let encryptedDek: string | null = null
+  if (env.R2_LOGS_MASTER_KEY) {
+    try {
+      const dek = await generateDEK()
+      const masterKey = await importMasterKey(env.R2_LOGS_MASTER_KEY)
+      encryptedDek = await wrapDEK(dek, masterKey)
+    } catch (e) {
+      console.error(`[agents/create] encryption setup failed: ${e}`)
+      // Fall back to unencrypted for now if setup fails
+    }
+  }
+
   const id = ulid()
   const now = Date.now()
   await env.DB
-    .prepare('INSERT INTO agents (id, team_id, name, command, work_dir, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, teamId, name.trim(), command.trim(), work_dir.trim(), 'offline', now)
+    .prepare('INSERT INTO agents (id, team_id, name, command, work_dir, status, created_at, encrypted_dek) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, teamId, name.trim(), command.trim(), work_dir.trim(), 'offline', now, encryptedDek)
     .run()
 
   // Initialise agent_state row

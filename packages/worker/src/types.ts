@@ -13,6 +13,8 @@ export interface Env {
   // Set via: wrangler secret put CLOUDFLARE_ACCOUNT_ID / R2_BUCKET_NAME
   CLOUDFLARE_ACCOUNT_ID: string
   R2_BUCKET_NAME: string
+  // Master key for wrapping agent DEKs (256-bit base64)
+  R2_LOGS_MASTER_KEY: string
 }
 
 export interface AuthContext {

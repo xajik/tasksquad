@@ -686,6 +686,7 @@ func (a *Agent) uploadAndAttach(cfg *config.Config, sessionID, messageID, filena
 
 	uploadURL, _ := resp["upload_url"].(string)
 	key, _ := resp["key"].(string)
+	dek, _ := resp["dek"].(string)
 	if uploadURL == "" || key == "" {
 		logger.Warn(fmt.Sprintf("[%s] Presign response missing URL or key for %s", a.Config.Name, filename))
 		return
@@ -697,6 +698,16 @@ func (a *Agent) uploadAndAttach(cfg *config.Config, sessionID, messageID, filena
 		logger.Warn(fmt.Sprintf("[%s] Could not read file for upload %s: %v", a.Config.Name, filePath, err))
 		return
 	}
+
+	// Optional encryption
+	if dek != "" {
+		data, err = api.EncryptGCM(dek, data)
+		if err != nil {
+			logger.Warn(fmt.Sprintf("[%s] Encryption failed for %s: %v", a.Config.Name, filename, err))
+			return
+		}
+	}
+
 	if err := api.PutBytes(uploadURL, data); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] R2 upload failed for %s: %v", a.Config.Name, filename, err))
 		return
@@ -732,9 +743,20 @@ func (a *Agent) uploadAndAttachContent(cfg *config.Config, sessionID, messageID,
 
 	uploadURL, _ := resp["upload_url"].(string)
 	key, _ := resp["key"].(string)
+	dek, _ := resp["dek"].(string)
 	if uploadURL == "" || key == "" {
 		logger.Warn(fmt.Sprintf("[%s] Presign response missing URL or key for %s", a.Config.Name, filename))
 		return
+	}
+
+	// Optional encryption
+	if dek != "" {
+		var err error
+		content, err = api.EncryptGCM(dek, content)
+		if err != nil {
+			logger.Warn(fmt.Sprintf("[%s] Encryption failed for %s: %v", a.Config.Name, filename, err))
+			return
+		}
 	}
 
 	if err := api.PutBytes(uploadURL, content); err != nil {
@@ -770,13 +792,24 @@ func (a *Agent) uploadAndAttachLog(cfg *config.Config, sessionID, logContent str
 
 	uploadURL, _ := resp["upload_url"].(string)
 	key, _ := resp["key"].(string)
+	dek, _ := resp["dek"].(string)
 	if uploadURL == "" || key == "" {
 		logger.Warn(fmt.Sprintf("[%s] Presign response missing URL or key for log", a.Config.Name))
 		return
 	}
 
 	// 2. Upload log directly to R2
-	if err := api.PutBytes(uploadURL, []byte(logContent)); err != nil {
+	data := []byte(logContent)
+	if dek != "" {
+		var err error
+		data, err = api.EncryptGCM(dek, data)
+		if err != nil {
+			logger.Warn(fmt.Sprintf("[%s] Encryption failed for log: %v", a.Config.Name, err))
+			return
+		}
+	}
+
+	if err := api.PutBytes(uploadURL, data); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] R2 log upload failed: %v", a.Config.Name, err))
 		return
 	}
