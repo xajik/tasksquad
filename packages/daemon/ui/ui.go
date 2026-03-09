@@ -28,11 +28,8 @@
 package ui
 
 import (
-	"bytes"
+	_ "embed"
 	"fmt"
-	"image"
-	"image/color"
-	"image/png"
 	"os"
 	"os/exec"
 	"runtime"
@@ -41,6 +38,12 @@ import (
 	"github.com/getlantern/systray"
 	"github.com/tasksquad/daemon/logger"
 )
+
+//go:embed systray-on.png
+var iconActiveData []byte
+
+//go:embed systray-off.png
+var iconPausedData []byte
 
 const uiVersion = "0.1.0"
 
@@ -206,27 +209,8 @@ func openBrowser(url string) {
 	}
 }
 
-// iconActive returns a green circle PNG — systray icon when pulling is active.
-func iconActive() []byte { return makeCircleIcon(52, 199, 89) }
+// iconActive returns the embedded systray-on.png icon (pulling active).
+func iconActive() []byte { return iconActiveData }
 
-// iconPaused returns a red circle PNG — systray icon when pulling is paused.
-func iconPaused() []byte { return makeCircleIcon(255, 59, 48) }
-
-// makeCircleIcon generates a 22×22 PNG with a filled circle of the given RGB color.
-func makeCircleIcon(r, g, b uint8) []byte {
-	const size = 22
-	img := image.NewNRGBA(image.Rect(0, 0, size, size))
-	cx, cy, rad := float64(size)/2, float64(size)/2, float64(size)/2-1.5
-	for y := 0; y < size; y++ {
-		for x := 0; x < size; x++ {
-			dx := float64(x) - cx + 0.5
-			dy := float64(y) - cy + 0.5
-			if dx*dx+dy*dy <= rad*rad {
-				img.SetNRGBA(x, y, color.NRGBA{R: r, G: g, B: b, A: 255})
-			}
-		}
-	}
-	var buf bytes.Buffer
-	_ = png.Encode(&buf, img)
-	return buf.Bytes()
-}
+// iconPaused returns the embedded systray-off.png icon (pulling paused).
+func iconPaused() []byte { return iconPausedData }
