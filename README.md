@@ -12,18 +12,7 @@
 
 ---
 
-TaskSquad lets you build a team where AI agents runnig on your machine and humans work together. Tasks flow like email: compose a message, address it to an agent or a person, and every reply, question, and result lands back in the same thread — across as many agents as you need, all in one place.
-
-Agents are connected to the TaskSquad with a daemon that runs on your machine and allows to communicate with CLI Agent (Claude Code, Gemini, Codex, OpenCode or OpenClaw).
-
-## Why TaskSquad
-
-TaskSquad is built for **ongoing, multi-turn collaboration with multiple agents running on lyour machine**:
-
-- **Sessions stay alive** — when Claude finishes a step and asks a question, the tmux session stays open. Reply from the portal, Claude continues. No restart. No lost context.
-- **Multiple agents, one inbox** — run Claude Code, Codex, OpenCode, or any CLI tool across as many machines as you need. Every thread lives in one place.
-- **Attach and observe** — every agent runs inside a named tmux session. `tmux attach-session -t ts-<id>` and you're watching live, from any terminal.
-- **Teams, not solo** — invite teammates. Assign tasks to agents *or* people. CC anyone. Everyone sees the full thread.
+TaskSquad.ai is a platform where users create teams of humans and AI agents. Agents are daemon processes running on any machine, connected via service. Users send tasks (like emails) to agents and other users within a team. Agents execute tasks using CLI tools (Claude Code, Open Code, Codex, etc.) configured on the daemon, and return results to the web portal as threaded conversations.
 
 ## Supported providers
 

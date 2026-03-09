@@ -3,6 +3,7 @@ import { signOut } from 'firebase/auth'
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { auth, getToken } from '../lib/firebase'
 import { api, type Agent, type Task, type Message, type Team } from '../lib/api'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -23,6 +24,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog'
 import {
   AlertDialog,
@@ -64,6 +66,7 @@ import {
   Plus,
   Menu,
   X,
+  Key,
 } from 'lucide-react'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
@@ -811,12 +814,10 @@ function TaskThread({ teamId }: { teamId: string }) {
 function AgentsView({ teamId }: { teamId: string }) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [name, setName] = useState('')
-  const [command, setCommand] = useState('claude --dangerously-skip-permissions')
-  const [workDir, setWorkDir] = useState('~/projects')
   const [creating, setCreating] = useState(false)
-  const [newToken, setNewToken] = useState<{ agentId: string; token: string } | null>(null)
-  const [tokenLabel, setTokenLabel] = useState('')
+  const [newToken, setNewToken] = useState<{ agentId: string; token: string; agentName: string } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<'claude' | 'gemini'>('claude')
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -831,15 +832,15 @@ function AgentsView({ teamId }: { teamId: string }) {
     e.preventDefault()
     setCreating(true)
     try {
-      await api.agents.create(teamId, { name, command, work_dir: workDir })
+      // Default values are now handled by the UI guide
+      await api.agents.create(teamId, { name, command: 'claude --dangerously-skip-permissions', work_dir: '~/Projects' })
       setName(''); load()
     } finally { setCreating(false) }
   }
 
-  async function genToken(agentId: string) {
-    const label = tokenLabel || 'My Machine'
-    const d = await api.agents.createToken(teamId, agentId, label)
-    setNewToken({ agentId, token: d.token })
+  async function genToken(agentId: string, agentName: string) {
+    const d = await api.agents.createToken(teamId, agentId, 'Default')
+    setNewToken({ agentId, token: d.token, agentName })
   }
 
   async function deleteAgent(agentId: string) {
@@ -864,73 +865,123 @@ function AgentsView({ teamId }: { teamId: string }) {
             ))}
           </div>
         ) : agents.length === 0 ? (
-          <p className="text-muted-foreground">No agents yet.</p>
+          <div className="py-12 text-center border-2 border-dashed rounded-lg bg-muted/30">
+            <Bot className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+            <p className="text-muted-foreground">No agents yet. Create one to get started.</p>
+          </div>
         ) : (
-          agents.map(a => (
-            <Card key={a.id}>
-              <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
-                <div className="min-w-0">
-                  <div className="font-medium">{a.name}</div>
-                  <div className="text-sm text-muted-foreground truncate">{a.command} · {a.work_dir}</div>
-                  <div className="text-xs text-muted-foreground font-mono mt-1">ID: {a.id}</div>
-                  {a.last_seen && <div className="text-xs text-muted-foreground mt-1">Last seen {relativeTime(a.last_seen)}</div>}
-                </div>
-                <div className="flex flex-col gap-2 sm:items-end">
-                  <StatusBadge status={a.status} />
-                  <div className="flex flex-wrap gap-2">
-                    <Input
-                      value={tokenLabel}
-                      onChange={e => setTokenLabel(e.target.value)}
-                      placeholder="Token label"
-                      className="h-8 w-28 text-xs"
-                    />
-                    <Button variant="secondary" size="sm" onClick={() => genToken(a.id)}>
-                      Gen token
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <Trash2 className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete agent</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete "{a.name}"? This will also delete all tasks and messages associated with this agent. This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => deleteAgent(a.id)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {agents.map(a => (
+              <Card key={a.id} className="group overflow-hidden border-2 hover:border-primary/50 transition-all">
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={cn("h-2 w-2 rounded-full", a.status === 'active' ? "bg-green-500 animate-pulse" : "bg-muted-foreground")} />
+                      <CardTitle className="text-base font-medium">{a.name}</CardTitle>
+                    </div>
+                    <StatusBadge status={a.status} />
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
+                </CardHeader>
+                <CardContent className="p-4 pt-0">
+                  <div className="text-xs text-muted-foreground font-mono truncate mb-4">ID: {a.id}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex gap-2">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            <Key className="h-4 w-4 mr-1" />
+                            Get Token
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Generate connection token</DialogTitle>
+                            <DialogDescription>
+                              This will generate a new token for {a.name}. Any existing token for this agent will remain valid, but only one can be used at a time.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <DialogFooter>
+                            <DialogTrigger asChild>
+                              <Button onClick={() => genToken(a.id, a.name)}>Generate Token</Button>
+                            </DialogTrigger>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete agent?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete "{a.name}"? This will also delete all tasks and messages associated with this agent. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteAgent(a.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         )}
       </div>
 
       {newToken && (() => {
+        const config = activeTab === 'claude' 
+          ? { cmd: 'claude --dangerously-skip-permissions', dir: '~/Projects/my-tasksquad-project' }
+          : { cmd: 'gemini --yolo', dir: '~/Projects/my-tasksquad-project' }
+        
         const snippet = `[[agents]]
-token = "${newToken.token}"
-name = "${name || 'my-agent'}"
-command = "${command}"
-work_dir = "${workDir}"`
+name     = "${newToken.agentName}"
+token    = "${newToken.token}"
+command  = "${config.cmd}"
+work_dir = "${config.dir}"`
 
         return (
           <Card className="border-green-500 bg-green-50 dark:bg-green-950 mb-6">
             <CardHeader>
-              <CardTitle className="text-green-700 dark:text-green-400">Token generated</CardTitle>
-              <CardDescription>Copy config now, shown once</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-green-700 dark:text-green-400">Token generated</CardTitle>
+                  <CardDescription>Add this to your ~/.tasksquad/config.toml</CardDescription>
+                </div>
+                <div className="flex bg-muted p-1 rounded-md text-sm">
+                  <button 
+                    onClick={() => setActiveTab('claude')}
+                    className={cn(
+                      "px-3 py-1 rounded-sm transition-colors",
+                      activeTab === 'claude' ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Claude
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('gemini')}
+                    className={cn(
+                      "px-3 py-1 rounded-sm transition-colors",
+                      activeTab === 'gemini' ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Gemini
+                  </button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <pre className="bg-background border rounded-md p-3 text-xs font-mono whitespace-pre-wrap break-all">
@@ -953,44 +1004,17 @@ work_dir = "${workDir}"`
       <Separator className="my-6" />
 
       <h3 className="text-lg font-semibold mb-4">Add agent</h3>
-      <form onSubmit={createAgent} className="grid gap-4 max-w-md">
-        <div className="grid gap-2">
-          <Label htmlFor="agent-name">Name</Label>
-          <Input
-            id="agent-name"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="e.g. build-server-01"
-            required
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="agent-command">Command</Label>
-          <p className="text-xs text-muted-foreground">
-            Only <span className="font-semibold">Claude Code & Gemini</span> are supported at this time. Use{' '}
-            <code className="font-mono bg-muted px-1 rounded">gemini --yolo</code> or{' '}
-            <code className="font-mono bg-muted px-1 rounded">claude --dangerously-skip-permissions</code>.
-          </p>
-          <Input
-            id="agent-command"
-            value={command}
-            onChange={e => setCommand(e.target.value)}
-            placeholder="Command"
-            required
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="agent-workdir">Work directory</Label>
-          <Input
-            id="agent-workdir"
-            value={workDir}
-            onChange={e => setWorkDir(e.target.value)}
-            placeholder="Work dir"
-            required
-          />
-        </div>
+      <form onSubmit={createAgent} className="flex gap-2 max-w-md">
+        <Input
+          id="agent-name"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="Agent name (e.g. frontend-helper)"
+          required
+        />
         <Button type="submit" disabled={creating} className="w-fit">
-          {creating ? '...' : 'Create agent'}
+          {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+          Create agent
         </Button>
       </form>
     </div>
