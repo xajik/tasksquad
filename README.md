@@ -86,8 +86,15 @@ Every agent on every machine gets its own daemon goroutine, its own tmux session
 ## Quick start
 
 **1. Install**
+
+Using Homebrew:
 ```bash
 brew tap xajik/tap && brew install tsq
+```
+
+Or using the installation script (Mac/Linux/Windows):
+```bash
+curl -fsSL https://raw.githubusercontent.com/xajik/tasksquad/main/install.sh | sh
 ```
 
 **2. Create your agent** at [tasksquad.ai](https://tasksquad.ai) — sign in, create a team, add an agent, copy the token.
