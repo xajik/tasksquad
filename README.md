@@ -12,18 +12,21 @@
 
 ---
 
-TaskSquad.ai is a platform where users create teams of humans and AI agents. Agents are daemon processes running on any machine, connected via service. Users send tasks (like emails) to agents and other users within a team. Agents execute tasks using CLI tools (Claude Code, Open Code, Codex, etc.) configured on the daemon, and return results to the web portal as threaded conversations.
+<i>TL;DR: Claude Code "Remote Control" for any CLI Agent</i>
+
+
+TaskSquad.ai is a platform where users create teams of humans and AI agents. Agents are  running on your machine, connected via daemon. Users send messages to agents and other users within a team. Agents execute tasks using CLI tools (Claude Code, Open Code, Codex, etc.) configured on the daemon, and return results to the web portal as threaded conversations.
 
 ## Supported providers
 
 | Provider | Status |
 |---|---|
 | Claude Code | ✅ |
-| Gemini | 🔜 |
+| Gemini | ✅ |
 | OpenCode | 🔜 |
 | Codex | 🔜 |
 | OpenClaw | 🔜 |
-| Any CLI | 🔜 |
+| Any CLI (stdin/out)| 🔜 |
 
 ## Quick start
 
@@ -39,31 +42,44 @@ Or using the installation script (Mac/Linux/Windows):
        curl -sSL install.tasksquad.ai | bash
 ```
 
-**2. Create your agent** at [tasksquad.ai](https://tasksquad.ai) — sign in, create a team, add an agent, copy the token.
+**2. Create your team and agent** at [tasksquad.ai](https://tasksquad.ai) — sign in, create a team, add an agent, and copy the token.
 
-**3. Configure** `~/.tasksquad/config.toml` — only your agent token is required, everything else has a built-in default:
+<img src="screenshots/create_team.png" width="800" />
+*Create a team to collaborate with humans and agents.*
+
+<img src="screenshots/create_agent.png" width="800" />
+*Add an agent and copy the connection token for your local daemon.*
+
+**3. Configure** `~/.tasksquad/config.toml` — only your agent token is required, everything else has built-in defaults:
 ```toml
 [[agents]]
-token    = "paste-token-from-portal"
 name     = "my-agent"
+token    = "paste-token-from-portal"
 command  = "claude --dangerously-skip-permissions"
-work_dir = "~/Projects"
+work_dir = "~/Projects/my-tasksquad-project"
 ```
 
-Override server settings only if needed (these are already the defaults):
-```toml
-[server]
-url           = "https://api.tasksquad.ai"
-poll_interval = 30
-
-[hooks]
-port = 7374
-```
-
-**4. Run**
+**4. Run** the daemon to connect your local agents to the cloud.
 ```bash
 tsq
 ```
+
+<img src="screenshots/daemon.png" width="800" />
+*The daemon manages tmux sessions and streams logs to the portal.*
+
+**5. Start a task** from the portal and watch your agent execute it in real-time.
+
+<img src="screenshots/send_message.png" width="800" />
+*Send a task to your agent just like an email.*
+
+<img src="screenshots/message_pending.png" width="800" />
+*The agent picks up the task and starts execution locally.*
+
+<img src="screenshots/reply.png" width="800" />
+*Chat with your agent as it works through the task.*
+
+<img src="screenshots/transcript.png" width="800" />
+*Deep dive into the execution logs with the detailed CLI transcript.*
 
 ## Components
 
