@@ -967,8 +967,8 @@ work_dir = "${workDir}"`
         <div className="grid gap-2">
           <Label htmlFor="agent-command">Command</Label>
           <p className="text-xs text-muted-foreground">
-            Only <span className="font-semibold">Claude Code</span> is supported at this time. Use{' '}
-            <code className="font-mono bg-muted px-1 rounded">claude</code> or{' '}
+            Only <span className="font-semibold">Claude Code & Gemini</span> are supported at this time. Use{' '}
+            <code className="font-mono bg-muted px-1 rounded">gemini --yolo</code> or{' '}
             <code className="font-mono bg-muted px-1 rounded">claude --dangerously-skip-permissions</code>.
           </p>
           <Input
