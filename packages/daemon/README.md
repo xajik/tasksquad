@@ -84,7 +84,7 @@ Create `~/.tasksquad/config.toml`:
 
 ```toml
 [server]
-url = "https://tasksquad-api.xajik0.workers.dev"
+url = "https://api.tasksquad.ai"
 poll_interval = 30   # seconds between heartbeats (default: 30)
 
 [hooks]

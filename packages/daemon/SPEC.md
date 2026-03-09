@@ -117,7 +117,7 @@ Reads `~/.tasksquad/config.toml`. Supports hot-reload via fsnotify.
   - Run in a goroutine; caller owns the goroutine lifecycle
 
 - [ ] 2.8 Write `tsq init` subcommand (in `main.go` or `cmd/init.go`):
-  - Prompt: API URL (default `https://tasksquad-api.xajik0.workers.dev`)
+  - Prompt: API URL (default `https://api.tasksquad.ai`)
   - Prompt: Daemon token (paste from portal)
   - Prompt: Team ID (paste from portal Settings)
   - Write `~/.tasksquad/config.toml` with the provided values
@@ -423,7 +423,7 @@ macOS/Windows/Linux menubar icon. **Must run on the main OS thread** — this is
       for {
         select {
         case <-mDash.ClickedCh:
-          open.Run("https://tasksquad-api.xajik0.workers.dev") // or cfg.Server.URL
+          open.Run("https://api.tasksquad.ai") // or cfg.Server.URL
         case <-mQuit.ClickedCh:
           systray.Quit()
         }

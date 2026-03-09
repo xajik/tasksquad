@@ -67,4 +67,4 @@ Set the following secrets in GitHub Actions (or in a `.env.local` for local dev)
 | `VITE_FIREBASE_API_KEY` | Firebase Web API key |
 | `VITE_FIREBASE_AUTH_DOMAIN` | Firebase auth domain |
 | `VITE_FIREBASE_PROJECT_ID` | Firebase project ID |
-| `VITE_API_BASE_URL` | TaskSquad API base URL (e.g. `https://tasksquad-api.xajik0.workers.dev`) |
+| `VITE_API_BASE_URL` | TaskSquad API base URL (e.g. `https://api.tasksquad.ai`) |

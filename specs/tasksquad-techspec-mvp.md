@@ -316,7 +316,7 @@ export async function getToken(): Promise<string | null> {
 VITE_FIREBASE_API_KEY=...
 VITE_FIREBASE_AUTH_DOMAIN=<project>.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=<project>
-VITE_API_BASE_URL=https://tasksquad-api.<subdomain>.workers.dev
+VITE_API_BASE_URL=https://api.tasksquad.ai
 ```
 
 ---
@@ -830,7 +830,7 @@ The install script detects OS and architecture, downloads the correct binary fro
 ```bash
 tsq init
 # Prompts for:
-#   API URL (default: https://tasksquad-api.<subdomain>.workers.dev)
+#   API URL (default: https://api.tasksquad.ai)
 #   Daemon token (from web UI → Settings → Tokens → Generate)
 #   Team ID
 # Writes ~/.tasksquad/config.toml
@@ -841,7 +841,7 @@ tsq init
 
 ```toml
 [server]
-url           = "https://tasksquad-api.<subdomain>.workers.dev"
+url           = "https://api.tasksquad.ai"
 token         = "tsq_a1b2c3d4..."   # from web UI Settings → Tokens
 team_id       = "01HTEAM..."
 poll_interval = 30                  # seconds
@@ -1517,7 +1517,7 @@ npm install
 wrangler deploy
 
 # Verify
-curl https://tasksquad-api.<subdomain>.workers.dev/
+curl https://api.tasksquad.ai/
 # → 404 Not found (expected — no root route)
 ```
 
@@ -1530,7 +1530,7 @@ cd packages/portal
 VITE_FIREBASE_API_KEY=...
 VITE_FIREBASE_AUTH_DOMAIN=tasksquad-mvp.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=tasksquad-mvp
-VITE_API_BASE_URL=https://tasksquad-api.<subdomain>.workers.dev
+VITE_API_BASE_URL=https://api.tasksquad.ai
 
 npm install
 npm run build
@@ -1578,7 +1578,7 @@ release: build
 # 2. Configure daemon
 cat > ~/.tasksquad/config.toml << 'EOF'
 [server]
-url           = "https://tasksquad-api.<subdomain>.workers.dev"
+url           = "https://api.tasksquad.ai"
 token         = "tsq_..."
 team_id       = "01HTEAM..."
 poll_interval = 30

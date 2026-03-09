@@ -104,7 +104,7 @@ work_dir = "~/Projects"
 Override server settings only if needed (these are already the defaults):
 ```toml
 [server]
-url           = "https://tasksquad-api.xajik0.workers.dev"
+url           = "https://api.tasksquad.ai"
 poll_interval = 30
 
 [hooks]
