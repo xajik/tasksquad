@@ -2,14 +2,11 @@
 
 package ui
 
-// AgentStatus is the interface main passes to expose per-agent state.
-type AgentStatus interface {
-	Name() string
-	GetMode() string
-}
-
 // Run blocks the main OS thread. No system tray is shown on this platform
 // (CGO disabled or non-Darwin OS). Agents continue running in goroutines.
-func Run(_ []AgentStatus, _ string) {
+// A wakelock is acquired to prevent idle sleep while pulling is active.
+func Run(_ []AgentStatus, _ PullController, _ string) {
+	wl := acquireWakelock()
+	defer wl.Release()
 	select {}
 }

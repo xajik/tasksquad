@@ -10,23 +10,29 @@
 //	Linux:   libappindicator3-dev, libgtk-3-dev
 //	Windows: no extra deps
 //
-// Menu layout (mirrors prototype/tasksquad-demo.html):
+// Menu layout:
 //
-//	tsq                           ← menu bar title (text, no icon needed)
-//	├── ● TaskSquad v0.1.0        ← header, disabled
-//	├── N running · N idle · N waiting  ← live stats, disabled, refreshed every 5s
+//	tsq                               ← menu bar title
+//	├── ● TaskSquad v0.1.0            ← header, disabled
+//	├── N running · N idle · N waiting ← live stats, refreshed every 5s
 //	├── ─────────────────────────
-//	├── Open Dashboard            ← opens browser to dashboardURL
+//	├── ⏸ Pause Pulling               ← toggle; label flips to ▶ Resume Pulling
+//	├── Open Dashboard                ← opens browser to dashboardURL
 //	├── ─────────────────────────
-//	├── ── Agents ──              ← section label, disabled
-//	├──   ● agent-name: running   ← one per agent, disabled, refreshed every 5s
+//	├── ── Agents ──                  ← section label, disabled
+//	├──   ● agent-name: running       ← one per agent, refreshed every 5s
 //	├── ─────────────────────────
 //	└── Quit
+//
+// Icon: green circle = pulling active, red circle = paused.
 package ui
 
 import (
-	_ "embed"
+	"bytes"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"os/exec"
 	"runtime"
@@ -36,30 +42,24 @@ import (
 	"github.com/tasksquad/daemon/logger"
 )
 
-//go:embed systray.png
-var iconData []byte
-
 const uiVersion = "0.1.0"
-
-// AgentStatus is the interface main passes to expose per-agent state.
-type AgentStatus interface {
-	// Name returns the agent's display name from config.
-	Name() string
-	// GetMode returns the current mode string: "idle" | "running" | "waiting_input".
-	GetMode() string
-}
 
 // Run starts the system tray UI on the main OS thread (required by macOS AppKit).
 // It blocks until the user clicks Quit or the process is killed.
-func Run(agents []AgentStatus, dashboardURL string) {
+func Run(agents []AgentStatus, ctrl PullController, dashboardURL string) {
 	systray.Run(
-		func() { onReady(agents, dashboardURL) },
+		func() { onReady(agents, ctrl, dashboardURL) },
 		func() { os.Exit(0) },
 	)
 }
 
-func onReady(agents []AgentStatus, dashboardURL string) {
-	systray.SetIcon(iconData)
+func onReady(agents []AgentStatus, ctrl PullController, dashboardURL string) {
+	// Green icon = pulling active; red icon = paused.
+	if ctrl.IsPaused() {
+		systray.SetIcon(iconPaused())
+	} else {
+		systray.SetIcon(iconActive())
+	}
 	systray.SetTitle("")
 	systray.SetTooltip("TaskSquad Daemon " + uiVersion)
 
@@ -71,6 +71,9 @@ func onReady(agents []AgentStatus, dashboardURL string) {
 	mStats.Disable()
 
 	systray.AddSeparator()
+
+	// ── Pull toggle ────────────────────────────────────────────────────────
+	mToggle := systray.AddMenuItem(pullToggleLabel(ctrl.IsPaused()), "Toggle task pulling")
 
 	// ── Quick actions ──────────────────────────────────────────────────────
 	mDash := systray.AddMenuItem("Open Dashboard", dashboardURL)
@@ -91,7 +94,34 @@ func onReady(agents []AgentStatus, dashboardURL string) {
 
 	mQuit := systray.AddMenuItem("Quit", "Stop the tsq daemon")
 
-	// ── Click handlers ─────────────────────────────────────────────────────
+	// ── Acquire wakelock if pulling is active at startup ───────────────────
+	var wl *wakelock
+	if !ctrl.IsPaused() {
+		wl = acquireWakelock()
+	}
+
+	// ── Toggle click handler ───────────────────────────────────────────────
+	go func() {
+		for range mToggle.ClickedCh {
+			if ctrl.IsPaused() {
+				ctrl.Resume()
+				wl = acquireWakelock()
+				systray.SetIcon(iconActive())
+				mToggle.SetTitle(pullToggleLabel(false))
+				logger.Info("[ui] Pulling resumed")
+			} else {
+				ctrl.Pause()
+				if wl != nil {
+					wl.Release()
+					wl = nil
+				}
+				systray.SetIcon(iconPaused())
+				mToggle.SetTitle(pullToggleLabel(true))
+				logger.Info("[ui] Pulling paused")
+			}
+		}
+	}()
+
 	go func() {
 		for range mDash.ClickedCh {
 			openBrowser(dashboardURL)
@@ -119,6 +149,13 @@ func onReady(agents []AgentStatus, dashboardURL string) {
 	}()
 
 	logger.Info("[ui] Systray ready")
+}
+
+func pullToggleLabel(paused bool) string {
+	if paused {
+		return "▶ Resume Pulling"
+	}
+	return "⏸ Pause Pulling"
 }
 
 // statsLabel returns a summary string like "2 running · 1 idle · 0 waiting".
@@ -167,4 +204,29 @@ func openBrowser(url string) {
 	if err := exec.Command(cmd, url).Start(); err != nil {
 		logger.Warn(fmt.Sprintf("[ui] Failed to open browser: %v", err))
 	}
+}
+
+// iconActive returns a green circle PNG — systray icon when pulling is active.
+func iconActive() []byte { return makeCircleIcon(52, 199, 89) }
+
+// iconPaused returns a red circle PNG — systray icon when pulling is paused.
+func iconPaused() []byte { return makeCircleIcon(255, 59, 48) }
+
+// makeCircleIcon generates a 22×22 PNG with a filled circle of the given RGB color.
+func makeCircleIcon(r, g, b uint8) []byte {
+	const size = 22
+	img := image.NewNRGBA(image.Rect(0, 0, size, size))
+	cx, cy, rad := float64(size)/2, float64(size)/2, float64(size)/2-1.5
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			dx := float64(x) - cx + 0.5
+			dy := float64(y) - cy + 0.5
+			if dx*dx+dy*dy <= rad*rad {
+				img.SetNRGBA(x, y, color.NRGBA{R: r, G: g, B: b, A: 255})
+			}
+		}
+	}
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+	return buf.Bytes()
 }

@@ -54,6 +54,7 @@ func main() {
 	logger.Info(fmt.Sprintf("Hooks port: %d", cfg.Hooks.Port))
 
 	// Build agents and collect ui.AgentStatus handles.
+	rawAgents := make([]*agent.Agent, 0, len(cfg.Agents))
 	agentList := make([]hooks.Agent, 0, len(cfg.Agents))
 	uiAgents := make([]ui.AgentStatus, 0, len(cfg.Agents))
 
@@ -61,6 +62,7 @@ func main() {
 		p := provider.Detect(ac.Command, ac.Provider)
 		logger.Info(fmt.Sprintf("  - %s (command: %s, provider: %s)", ac.Name, ac.Command, p.Name()))
 		a := agent.New(ac)
+		rawAgents = append(rawAgents, a)
 		agentList = append(agentList, a)
 		uiAgents = append(uiAgents, a)
 	}
@@ -77,7 +79,31 @@ func main() {
 
 	// ui.Run blocks the main OS thread (required by macOS AppKit / systray).
 	// Agents run in goroutines above; the hook server runs in its own goroutine.
-	ui.Run(uiAgents, cfg.Server.URL)
+	ui.Run(uiAgents, &agentController{agents: rawAgents}, cfg.Server.URL)
+}
+
+// agentController implements ui.PullController for all configured agents.
+type agentController struct {
+	agents []*agent.Agent
+}
+
+func (c *agentController) Pause() {
+	for _, a := range c.agents {
+		a.Pause()
+	}
+}
+
+func (c *agentController) Resume() {
+	for _, a := range c.agents {
+		a.Resume()
+	}
+}
+
+func (c *agentController) IsPaused() bool {
+	if len(c.agents) == 0 {
+		return false
+	}
+	return c.agents[0].IsPaused()
 }
 
 // runInit is a guided wizard that writes ~/.tasksquad/config.toml.

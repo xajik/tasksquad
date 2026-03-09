@@ -125,6 +125,7 @@ type Agent struct {
 
 	mu          sync.Mutex
 	mode        Mode
+	paused      bool   // when true, heartbeat is skipped
 	agentID     string // resolved from server on first heartbeat
 	sessionID   string
 	taskID      string
@@ -158,6 +159,29 @@ func (a *Agent) GetMode() string {
 	return string(a.mode)
 }
 
+// Pause stops the heartbeat poll loop until Resume is called.
+func (a *Agent) Pause() {
+	a.mu.Lock()
+	a.paused = true
+	a.mu.Unlock()
+	logger.Info(fmt.Sprintf("[%s] Pulling paused", a.Config.Name))
+}
+
+// Resume re-enables the heartbeat poll loop.
+func (a *Agent) Resume() {
+	a.mu.Lock()
+	a.paused = false
+	a.mu.Unlock()
+	logger.Info(fmt.Sprintf("[%s] Pulling resumed", a.Config.Name))
+}
+
+// IsPaused reports whether the poll loop is currently paused.
+func (a *Agent) IsPaused() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.paused
+}
+
 // Run is the main poll loop for this agent.
 func (a *Agent) Run(cfg *config.Config) {
 	logger.Info(fmt.Sprintf("[%s] Starting — provider: %s, command: %s", a.Config.Name, a.prov.Name(), a.Config.Command))
@@ -166,10 +190,14 @@ func (a *Agent) Run(cfg *config.Config) {
 	defer ticker.Stop()
 
 	// run one heartbeat immediately on start
-	a.heartbeat(cfg)
+	if !a.IsPaused() {
+		a.heartbeat(cfg)
+	}
 
 	for range ticker.C {
-		a.heartbeat(cfg)
+		if !a.IsPaused() {
+			a.heartbeat(cfg)
+		}
 	}
 }
 
