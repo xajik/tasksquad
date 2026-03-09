@@ -49,3 +49,7 @@ tasksquad-firebase.json
 
 # Lock files (project uses bun — bun.lockb is committed instead)
 package-lock.json
+
+.gemini
+.cursor
+.opencode
