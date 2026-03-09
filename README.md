@@ -2,6 +2,12 @@
   <img src="icon/tasksquad-icon-dark.svg" width="96" height="96" alt="TaskSquad" />
   <h1>TaskSquad</h1>
   <p><strong>Talk to multiple AI agents on your machine — and your teammates — through one shared inbox.</strong></p>
+
+  [![Latest Release](https://img.shields.io/github/v/release/xajik/tasksquad?include_prereleases&style=flat-square&color=blue)](https://github.com/xajik/tasksquad/releases)
+  [![Daemon CI](https://img.shields.io/github/actions/workflow/status/xajik/tasksquad/daemon.yml?branch=main&label=daemon&style=flat-square)](https://github.com/xajik/tasksquad/actions)
+  [![Portal CI](https://img.shields.io/github/actions/workflow/status/xajik/tasksquad/portal.yml?branch=main&label=portal&style=flat-square)](https://github.com/xajik/tasksquad/actions)
+  [![Worker CI](https://img.shields.io/github/actions/workflow/status/xajik/tasksquad/deploy-worker.yml?branch=main&label=worker&style=flat-square)](https://github.com/xajik/tasksquad/actions)
+  [![License](https://img.shields.io/github/license/xajik/tasksquad?style=flat-square&color=gray)](LICENSE)
 </div>
 
 ---
