@@ -267,7 +267,7 @@ function TranscriptButton({ taskId, msgId }: { taskId: string; msgId: string }) 
             </div>
           </div>
           <ScrollArea className="flex-1 bg-background">
-            <div className="p-8">
+            <div className="p-4 sm:p-8">
               {loading && (
                 <div className="flex flex-col items-center justify-center py-20 gap-3">
                   <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
@@ -908,7 +908,7 @@ function AgentsView({ teamId }: { teamId: string }) {
                         </DialogContent>
                       </Dialog>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
@@ -1004,7 +1004,7 @@ work_dir = "${config.dir}"`
       <Separator className="my-6" />
 
       <h3 className="text-lg font-semibold mb-4">Add agent</h3>
-      <form onSubmit={createAgent} className="flex gap-2 max-w-md">
+      <form onSubmit={createAgent} className="flex flex-col sm:flex-row gap-2 max-w-md">
         <Input
           id="agent-name"
           value={name}
@@ -1012,7 +1012,7 @@ work_dir = "${config.dir}"`
           placeholder="Agent name (e.g. frontend-helper)"
           required
         />
-        <Button type="submit" disabled={creating} className="w-fit">
+        <Button type="submit" disabled={creating} className="w-full sm:w-fit shrink-0">
           {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
           Create agent
         </Button>

@@ -34,7 +34,7 @@ export default function Pricing() {
 
   return (
     <div className="min-h-screen bg-background">
-      <nav className="max-w-[800px] mx-auto px-6 py-5 flex justify-between items-center">
+      <nav className="max-w-[800px] mx-auto px-4 sm:px-6 py-5 flex justify-between items-center">
         <button onClick={() => nav('/')} className="font-bold text-xl">TaskSquad</button>
         <div className="flex gap-6 items-center">
           <Button variant="ghost" onClick={() => nav('/pricing')}>Pricing</Button>
@@ -42,7 +42,7 @@ export default function Pricing() {
         </div>
       </nav>
 
-      <div className="max-w-[800px] mx-auto px-6 py-16 text-center">
+      <div className="max-w-[800px] mx-auto px-4 sm:px-6 py-10 sm:py-16 text-center">
         <h1 className="text-4xl font-bold mb-4">Simple, honest pricing</h1>
         <p className="text-muted-foreground text-lg mb-16">Start free. Upgrade when you need more.</p>
 
@@ -94,7 +94,7 @@ export default function Pricing() {
         </div>
       </div>
 
-      <div className="max-w-[800px] mx-auto px-6 pb-12 border-t pt-10 text-muted-foreground text-sm">
+      <div className="max-w-[800px] mx-auto px-4 sm:px-6 pb-12 border-t pt-10 text-muted-foreground text-sm">
         © 2026 TaskSquad
       </div>
     </div>
