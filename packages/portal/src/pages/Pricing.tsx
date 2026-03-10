@@ -22,11 +22,10 @@ const FREE_FEATURES = [
 ]
 
 const PRO_FEATURES = [
-  'Everything in Free',
   'Unlimited projects',
   'Unlimited members per project',
   'Unlimited agents',
-  '5-second task polling (vs 60s on Free)',
+  '5-second task polling',
   'Browser push notifications for task updates',
   'Priority support',
 ]
@@ -90,11 +89,11 @@ export default function Pricing() {
               ))}
             </CardContent>
             <CardFooter className="flex-col gap-2 items-start">
-              <Button className="w-full" onClick={() => { trackEvent('pricing_plan_selected', { plan: 'pro' }); nav('/auth') }}>Get started</Button>
+              <Button className="w-full" onClick={() => { trackEvent('pricing_plan_selected', { plan: 'pro' }); nav('/auth') }}>Upgrade</Button>
               <p className="text-xs text-muted-foreground text-center w-full">
                 Contact us at{' '}
-                <a href="mailto:contact@tasksquad.ai" onClick={() => trackEvent('contact_email_clicked', { source: 'pricing_pro' })} className="underline">hello@tasksquad.ai</a>
-                {' '}to activate Pro
+                <a href="mailto:contact@tasksquad.ai" onClick={() => trackEvent('contact_email_clicked', { source: 'pricing_pro' })} className="underline">contact@tasksquad.ai</a>
+                {' '} to activate Pro
               </p>
             </CardFooter>
           </Card>

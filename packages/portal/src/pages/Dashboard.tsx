@@ -916,7 +916,7 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
   )
 }
 
-function AgentsView({ teamId }: { teamId: string }) {
+function AgentsView({ teamId, isMaintainer }: { teamId: string; isMaintainer: boolean }) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
@@ -987,7 +987,7 @@ function AgentsView({ teamId }: { teamId: string }) {
         ) : agents.length === 0 ? (
           <div className="py-12 text-center border-2 border-dashed rounded-lg bg-muted/30">
             <Bot className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
-            <p className="text-muted-foreground">No agents yet. Create one to get started.</p>
+            <p className="text-muted-foreground">No agents yet. {isMaintainer && 'Create one to get started.'}</p>
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -1012,126 +1012,130 @@ function AgentsView({ teamId }: { teamId: string }) {
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex gap-2">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button variant="outline" size="sm">
-                            <Key className="h-4 w-4 mr-1" />
-                            Get Token
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Generate connection token</DialogTitle>
-                            <DialogDescription>
-                              This will generate a new token for {a.name}. Any existing token for this agent will remain valid, but only one can be used at a time.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <DialogFooter>
-                            <DialogTrigger asChild>
-                              <Button onClick={() => genToken(a.id, a.name)}>Generate Token</Button>
-                            </DialogTrigger>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
+                      {isMaintainer && (
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              <Key className="h-4 w-4 mr-1" />
+                              Get Token
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Generate connection token</DialogTitle>
+                              <DialogDescription>
+                                This will generate a new token for {a.name}. Any existing token for this agent will remain valid, but only one can be used at a time.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter>
+                              <DialogTrigger asChild>
+                                <Button onClick={() => genToken(a.id, a.name)}>Generate Token</Button>
+                              </DialogTrigger>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className={cn("h-8 w-8", a.paused ? "text-amber-600 hover:text-amber-700" : "text-muted-foreground hover:text-foreground")}
-                            title={a.paused ? "Resume pulling" : "Stop pulling"}
-                          >
-                            {a.paused ? <PlayCircle className="h-4 w-4" /> : <PauseCircle className="h-4 w-4" />}
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle className="flex items-center gap-2">
-                              {a.paused ? (
-                                <>Resume pulling for "{a.name}"?</>
-                              ) : (
-                                <><AlertTriangle className="h-5 w-5 text-amber-500" /> Stop pulling for "{a.name}"?</>
-                              )}
-                            </AlertDialogTitle>
-                            <AlertDialogDescription asChild>
-                              {a.paused ? (
-                                <div>
-                                  The agent will resume picking up new tasks on its next heartbeat.
-                                </div>
-                              ) : (
-                                <div className="space-y-3">
-                                  <p>
-                                    The agent will stop picking up new tasks on its next heartbeat. Any task currently in progress will finish normally.
-                                  </p>
-                                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                                    <span>
-                                      To resume, you'll need physical access to the machine running this agent and use the <strong>Resume Pulling</strong> option in the systray icon — or click Resume here in the portal.
-                                    </span>
+                    {isMaintainer && (
+                      <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn("h-8 w-8", a.paused ? "text-amber-600 hover:text-amber-700" : "text-muted-foreground hover:text-foreground")}
+                              title={a.paused ? "Resume pulling" : "Stop pulling"}
+                            >
+                              {a.paused ? <PlayCircle className="h-4 w-4" /> : <PauseCircle className="h-4 w-4" />}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="flex items-center gap-2">
+                                {a.paused ? (
+                                  <>Resume pulling for "{a.name}"?</>
+                                ) : (
+                                  <><AlertTriangle className="h-5 w-5 text-amber-500" /> Stop pulling for "{a.name}"?</>
+                                )}
+                              </AlertDialogTitle>
+                              <AlertDialogDescription asChild>
+                                {a.paused ? (
+                                  <div>
+                                    The agent will resume picking up new tasks on its next heartbeat.
                                   </div>
-                                </div>
-                              )}
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => togglePause(a.id, !!a.paused)}
-                              className={a.paused ? '' : 'bg-amber-600 hover:bg-amber-700 text-white'}
-                            >
-                              {a.paused ? 'Resume Pulling' : 'Stop Pulling'}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Reset agent">
-                            <RotateCcw className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Reset agent?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              On its next heartbeat, "{a.name}" will kill all running tmux sessions and go idle. Any in-progress task will be reset to pending and picked up again automatically.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => resetAgent(a.id)}>
-                              Reset
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete agent?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete "{a.name}"? This will also delete all tasks and messages associated with this agent. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteAgent(a.id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
+                                ) : (
+                                  <div className="space-y-3">
+                                    <p>
+                                      The agent will stop picking up new tasks on its next heartbeat. Any task currently in progress will finish normally.
+                                    </p>
+                                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                                      <span>
+                                        To resume, you'll need physical access to the machine running this agent and use the <strong>Resume Pulling</strong> option in the systray icon — or click Resume here in the portal.
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => togglePause(a.id, !!a.paused)}
+                                className={a.paused ? '' : 'bg-amber-600 hover:bg-amber-700 text-white'}
+                              >
+                                {a.paused ? 'Resume Pulling' : 'Stop Pulling'}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Reset agent">
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Reset agent?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                On its next heartbeat, "{a.name}" will kill all running tmux sessions and go idle. Any in-progress task will be reset to pending and picked up again automatically.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => resetAgent(a.id)}>
+                                Reset
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete agent?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete "{a.name}"? This will also delete all tasks and messages associated with this agent. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteAgent(a.id)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1199,25 +1203,29 @@ work_dir = "${config.dir}"`
         )
       })()}
 
-      <Separator className="my-6" />
-
-      <h3 className="text-lg font-semibold mb-4">Add agent</h3>
-      <form onSubmit={createAgent} className="flex flex-col sm:flex-row gap-2 max-w-md">
-        <Input
-          id="agent-name"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="Agent name (e.g. frontend-helper)"
-          required
-        />
-        <Button type="submit" disabled={creating} className="w-full sm:w-fit shrink-0">
-          {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-          Create agent
-        </Button>
-      </form>
+      {isMaintainer && (
+        <>
+          <Separator className="my-6" />
+          <h3 className="text-lg font-semibold mb-4">Add agent</h3>
+          <form onSubmit={createAgent} className="flex flex-col sm:flex-row gap-2 max-w-md">
+            <Input
+              id="agent-name"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Agent name (e.g. frontend-helper)"
+              required
+            />
+            <Button type="submit" disabled={creating} className="w-full sm:w-fit shrink-0">
+              {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+              Create agent
+            </Button>
+          </form>
+        </>
+      )}
     </div>
   )
 }
+
 
 const FREE_MEMBER_LIMIT = 5
 
@@ -1258,9 +1266,14 @@ function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTea
   }
 
   async function removeMember(userId: string) {
+    const isSelf = userId === currentUserId
     await api.members.remove(teamId, userId)
-    trackEvent('member_removed', { team_id: teamId, member_id: userId });
-    load()
+    trackEvent(isSelf ? 'project_left' : 'member_removed', { team_id: teamId, member_id: userId });
+    if (isSelf) {
+      window.location.href = '/dashboard'
+    } else {
+      load()
+    }
   }
 
   return (
@@ -1335,7 +1348,7 @@ function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTea
             <Card key={m.id}>
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <div className="font-medium">{m.email}</div>
+                  <div className="font-medium">{m.email} {m.id === currentUserId && <span className="text-muted-foreground ml-1">(You)</span>}</div>
                   <div className="flex items-center gap-2 mt-1">
                     <Badge variant={m.role === 'owner' ? 'default' : 'secondary'}>
                       {m.role}
@@ -1345,7 +1358,7 @@ function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTea
                     </span>
                   </div>
                 </div>
-                {isOwner && m.id !== currentUserId && m.role !== 'maintainer' && (
+                {(isOwner && m.id !== currentUserId && m.role !== 'maintainer') ? (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
@@ -1370,7 +1383,32 @@ function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTea
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
-                )}
+                ) : (m.id === currentUserId && m.role !== 'owner') ? (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive transition-colors">
+                        Leave Project
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Leave Project?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to leave this project? You will no longer have access to it unless you are invited back.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => removeMember(m.id)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Leave
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                ) : null}
               </CardContent>
             </Card>
           ))}
@@ -1380,7 +1418,7 @@ function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTea
   )
 }
 
-function SettingsView({ teamName, onDelete, plan }: { teamName: string; onDelete: () => Promise<void>; plan: 'free' | 'pro' }) {
+function SettingsView({ teamName, onDelete, plan, isOwner }: { teamName: string; onDelete: () => Promise<void>; plan: 'free' | 'pro'; isOwner: boolean }) {
   const [confirmName, setConfirmName] = useState('')
   const [deleting, setDeleting] = useState(false)
 
@@ -1393,83 +1431,76 @@ function SettingsView({ teamName, onDelete, plan }: { teamName: string; onDelete
           <div className="text-lg font-semibold">{teamName}</div>
         </div>
 
-        <div className="space-y-3 pt-4 border-t">
-          <div className="flex items-center gap-2">
-            <div className="text-sm font-medium">Plan</div>
-            <Badge variant={plan === 'pro' ? 'default' : 'secondary'}>
-              {plan === 'pro' ? 'Pro' : 'Free'}
-            </Badge>
+        {isOwner && (
+          <div className="space-y-4 pt-4 border-t border-destructive/20">
+            <h3 className="text-lg font-semibold text-destructive flex items-center gap-2">
+              <Trash2 className="h-5 w-5" />
+              Delete this project
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Once you delete a project, there is no going back. All active agent sessions will be killed and all pending chats will be closed.
+            </p>
+            
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" className="w-full sm:w-auto">
+                  Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="sm:max-w-[450px]">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-destructive">Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription className="space-y-4">
+                    <p>
+                      This action will mark the project <span className="font-bold text-foreground">"{teamName}"</span> as deactivated. 
+                      It will no longer be visible to you or your team members.
+                    </p>
+                    <div className="bg-destructive/10 p-3 rounded-md text-destructive text-xs space-y-1">
+                      <p className="font-bold">Important consequences:</p>
+                      <ul className="list-disc list-inside space-y-0.5">
+                        <li>All running agent sessions will be terminated immediately.</li>
+                        <li>All pending tasks will be marked as failed.</li>
+                        <li>The project will be hidden from your dashboard.</li>
+                      </ul>
+                    </div>
+                    <div className="space-y-2 mt-4">
+                      <Label htmlFor="confirm-team-name space-y-2" className="text-foreground">
+                        Type <span className="font-bold select-none">{teamName}</span> to confirm:
+                      </Label>
+                      <Input
+                        id="confirm-team-name"
+                        value={confirmName}
+                        onChange={e => setConfirmName(e.target.value)}
+                        placeholder={teamName}
+                        className="border-destructive/30 focus-visible:ring-destructive"
+                        autoComplete="off"
+                      />
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={() => setConfirmName('')}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={confirmName !== teamName || deleting}
+                    onClick={async (e) => {
+                      e.preventDefault()
+                      setDeleting(true)
+                      try {
+                        await onDelete()
+                      } catch (err) {
+                        console.error('Failed to deactivate project:', err)
+                        setDeleting(false)
+                      }
+                    }}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90 min-w-[100px]"
+                  >
+                    {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Deactivate Project'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
-        </div>
-
-        <div className="space-y-4 pt-4 border-t border-destructive/20">
-          <h3 className="text-lg font-semibold text-destructive flex items-center gap-2">
-            <Trash2 className="h-5 w-5" />
-            Delete this project
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Once you delete a project, there is no going back. All active agent sessions will be killed and all pending chats will be closed.
-          </p>
-          
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" className="w-full sm:w-auto">
-                Delete
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent className="sm:max-w-[450px]">
-              <AlertDialogHeader>
-                <AlertDialogTitle className="text-destructive">Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription className="space-y-4">
-                  <p>
-                    This action will mark the project <span className="font-bold text-foreground">"{teamName}"</span> as deactivated. 
-                    It will no longer be visible to you or your team members.
-                  </p>
-                  <div className="bg-destructive/10 p-3 rounded-md text-destructive text-xs space-y-1">
-                    <p className="font-bold">Important consequences:</p>
-                    <ul className="list-disc list-inside space-y-0.5">
-                      <li>All running agent sessions will be terminated immediately.</li>
-                      <li>All pending tasks will be marked as failed.</li>
-                      <li>The project will be hidden from your dashboard.</li>
-                    </ul>
-                  </div>
-                  <div className="space-y-2 mt-4">
-                    <Label htmlFor="confirm-team-name space-y-2" className="text-foreground">
-                      Type <span className="font-bold select-none">{teamName}</span> to confirm:
-                    </Label>
-                    <Input
-                      id="confirm-team-name"
-                      value={confirmName}
-                      onChange={e => setConfirmName(e.target.value)}
-                      placeholder={teamName}
-                      className="border-destructive/30 focus-visible:ring-destructive"
-                      autoComplete="off"
-                    />
-                  </div>
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setConfirmName('')}>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  disabled={confirmName !== teamName || deleting}
-                  onClick={async (e) => {
-                    e.preventDefault()
-                    setDeleting(true)
-                    try {
-                      await onDelete()
-                    } catch (err) {
-                      console.error('Failed to deactivate project:', err)
-                      setDeleting(false)
-                    }
-                  }}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90 min-w-[100px]"
-                >
-                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Deactivate Project'}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
+        )}
       </div>
     </div>
   )
@@ -1574,6 +1605,10 @@ export default function Dashboard() {
     window.location.href = '/dashboard'
   }
 
+  const currentTeam = teams.find(t => t.id === teamId)
+  const isOwner = currentTeam?.role === 'owner'
+  const isMaintainer = isOwner || currentTeam?.role === 'maintainer'
+
   return (
     <div className="flex h-screen overflow-hidden relative">
       {/* Mobile backdrop */}
@@ -1673,9 +1708,20 @@ export default function Dashboard() {
           )}
         </div>
         <div className="px-4 pb-2">
-          <Badge variant={plan === 'pro' ? 'default' : 'secondary'} className="text-xs">
-            {plan === 'pro' ? 'Pro' : 'Free plan'}
-          </Badge>
+          {plan === 'pro' ? (
+            <Badge variant="default" className="text-xs">
+              Pro
+            </Badge>
+          ) : (
+            <button 
+              onClick={() => { trackEvent('pricing_viewed', { from: 'sidebar_badge' }); nav('/pricing'); }}
+              className="hover:opacity-80 transition-opacity"
+            >
+              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80">
+                Free plan
+              </Badge>
+            </button>
+          )}
         </div>
         <div className="p-2">
           <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { trackEvent('user_logged_out'); signOut(auth); }}>
@@ -1703,9 +1749,9 @@ export default function Dashboard() {
         <Routes>
           <Route path="/" element={<InboxView teamId={teamId} />} />
           <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} plan={plan} />} />
-          <Route path="/agents" element={<AgentsView teamId={teamId} />} />
-          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={teams.find(t => t.id === teamId)} plan={plan} />} />
-          <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} plan={plan} />} />
+          <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} />} />
+          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} />} />
+          <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} plan={plan} isOwner={isOwner} />} />
         </Routes>
       </main>
       </div>

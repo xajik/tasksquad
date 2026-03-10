@@ -162,15 +162,37 @@ export async function removeMember(req: Request, env: Env, _ctx: unknown, auth: 
   const teamId = parts[2]
   const userId = parts[4]
 
-  if (!(await requireOwner(env.DB, teamId, auth.userId))) return err('forbidden', 403)
-  if (userId === auth.userId) return err('Cannot remove yourself', 400)
+  const isSelf = userId === auth.userId
+
+  const caller = await env.DB
+    .prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?')
+    .bind(teamId, auth.userId)
+    .first<{ role: string }>()
+  
+  if (!caller) return err('unauthorized', 401)
+  const isOwner = caller.role === 'owner'
+
+  // Only owners can remove others. Anyone can remove themselves.
+  if (!isOwner && !isSelf) return err('forbidden', 403)
 
   const target = await env.DB
     .prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?')
     .bind(teamId, userId)
     .first<{ role: string }>()
   if (!target) return err('not_found', 404)
-  if (target.role === 'maintainer') return err('Cannot remove a maintainer', 400)
+
+  if (isSelf && target.role === 'owner') {
+    // If you are the owner, check if there are other owners
+    const others = await env.DB
+      .prepare("SELECT COUNT(*) as n FROM team_members WHERE team_id = ? AND role = 'owner' AND user_id != ?")
+      .bind(teamId, userId)
+      .first<{ n: number }>()
+    if ((others?.n ?? 0) === 0) {
+      return err('As the last owner, you must delete the project in Settings before leaving.', 400)
+    }
+  }
+
+  if (isOwner && !isSelf && target.role === 'maintainer') return err('Cannot remove a maintainer', 400)
 
   await env.DB
     .prepare('DELETE FROM team_members WHERE team_id = ? AND user_id = ?')
