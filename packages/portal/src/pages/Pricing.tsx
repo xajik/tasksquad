@@ -92,7 +92,7 @@ export default function Pricing() {
               <Button className="w-full" onClick={() => nav('/auth')}>Get started</Button>
               <p className="text-xs text-muted-foreground text-center w-full">
                 Contact us at{' '}
-                <a href="mailto:hello@tasksquad.ai" className="underline">hello@tasksquad.ai</a>
+                <a href="mailto:contact@tasksquad.ai" className="underline">hello@tasksquad.ai</a>
                 {' '}to activate Pro
               </p>
             </CardFooter>
