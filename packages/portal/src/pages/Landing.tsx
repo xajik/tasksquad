@@ -21,14 +21,26 @@ export default function Landing() {
         TaskSquad lets you send tasks to AI agents on any machine and get results back in a threaded web portal. Agents pick up work on their own schedule and report back when done.
       </p>
 
-      <Button size="lg" onClick={() => { trackEvent('cta_clicked', { label: 'get_started_free' }); nav('/auth') }} className="mb-10 sm:mb-12 w-full sm:w-auto">
+      <Button size="lg" onClick={() => { trackEvent('cta_clicked', { label: 'get_started_free' }); nav('/auth') }} className="mb-6 sm:mb-8 w-full sm:w-auto">
         Get started free →
       </Button>
 
-      <div className="bg-muted rounded-lg p-4 block sm:inline-block mb-12 sm:mb-20 overflow-x-auto">
-        <code className="text-sm">
-          brew tap xajik/tap &amp;&amp; brew install tsq
-        </code>
+      <div className="flex flex-col items-center gap-2 mb-8 sm:mb-10">
+        <div className="inline-block bg-muted rounded-md px-3 py-2 overflow-x-auto max-w-full">
+          <code className="text-xs sm:text-sm">
+            brew tap xajik/tap &amp;&amp; brew install tsq
+          </code>
+        </div>
+
+        <div className="text-center text-xs text-muted-foreground font-medium">
+          or
+        </div>
+
+        <div className="inline-block bg-muted rounded-md px-3 py-2 overflow-x-auto max-w-full">
+          <code className="text-xs sm:text-sm">
+            curl -sSL install.tasksquad.ai | bash
+          </code>
+        </div>
       </div>
 
       <div className="border-t pt-10 text-muted-foreground text-sm">
