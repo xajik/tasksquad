@@ -114,6 +114,39 @@ export async function createToken(req: Request, env: Env, _ctx: unknown, auth: A
   return json({ id, token: rawToken, label }, 201)
 }
 
+export async function resetAgent(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const parts = url.pathname.split('/')
+  const teamId = parts[2]
+  const agentId = parts[4]
+
+  if (!(await requireMaintainer(env.DB, teamId, auth.userId))) return err('forbidden', 403)
+
+  const agent = await env.DB
+    .prepare('SELECT id FROM agents WHERE id = ? AND team_id = ?')
+    .bind(agentId, teamId)
+    .first<{ id: string }>()
+  if (!agent) return err('not_found', 404)
+
+  const now = Date.now()
+
+  await env.DB.batch([
+    // Signal daemon to reset on next heartbeat
+    env.DB.prepare('UPDATE agents SET reset_pending = 1 WHERE id = ?').bind(agentId),
+    // Reset in-progress tasks back to pending so the agent picks them up again
+    env.DB.prepare("UPDATE tasks SET status = 'pending', started_at = NULL WHERE agent_id = ? AND status IN ('running', 'waiting_input')")
+      .bind(agentId),
+    // Close any open sessions
+    env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE agent_id = ? AND status IN ('running', 'waiting_input')")
+      .bind(now, agentId),
+    // Clear agent_state so it's ready to pick up the next task
+    env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = 'idle', updated_at = ? WHERE agent_id = ?")
+      .bind(now, agentId),
+  ])
+
+  return json({ ok: true })
+}
+
 export async function deleteAgent(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const url = new URL(req.url)
   const parts = url.pathname.split('/')

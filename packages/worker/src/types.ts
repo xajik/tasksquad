@@ -15,12 +15,15 @@ export interface Env {
   R2_BUCKET_NAME: string
   // Master key for wrapping agent DEKs (256-bit base64)
   R2_LOGS_MASTER_KEY: string
+  // Optional secret for admin endpoints (set via: wrangler secret put ADMIN_SECRET)
+  ADMIN_SECRET?: string
 }
 
 export interface AuthContext {
   uid: string
   email: string
   userId: string
+  plan: 'free' | 'pro'
 }
 
 export interface DaemonContext {

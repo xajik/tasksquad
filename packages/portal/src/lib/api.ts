@@ -2,6 +2,10 @@ import { getToken } from './firebase'
 
 const BASE = import.meta.env.VITE_API_BASE_URL
 
+function del(path: string) {
+  return request<{ ok: boolean }>(path, { method: 'DELETE' })
+}
+
 async function request<T>(path: string, init: RequestInit = {}, rawText = false): Promise<T> {
   const token = await getToken()
   const res = await fetch(BASE + path, {
@@ -17,6 +21,7 @@ async function request<T>(path: string, init: RequestInit = {}, rawText = false)
 }
 
 export const api = {
+  me: () => request<UserProfile>('/me'),
   teams: {
     list: () => request<{ teams: Team[] }>('/teams'),
     create: (name: string) =>
@@ -26,6 +31,17 @@ export const api = {
       }),
     delete: (teamId: string) =>
       request<{ ok: boolean }>(`/teams/${teamId}`, { method: 'DELETE' }),
+  },
+  members: {
+    list: (teamId: string) =>
+      request<{ members: Member[] }>(`/teams/${teamId}/members`),
+    add: (teamId: string, email: string) =>
+      request<{ ok: boolean }>(`/teams/${teamId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      }),
+    remove: (teamId: string, userId: string) =>
+      del(`/teams/${teamId}/members/${userId}`),
   },
   agents: {
     list: (teamId: string) =>
@@ -37,6 +53,8 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ label, agent_id: agentId }),
       }),
+    reset: (teamId: string, agentId: string) =>
+      request<{ ok: boolean }>(`/teams/${teamId}/agents/${agentId}/reset`, { method: 'POST' }),
     delete: (teamId: string, agentId: string) =>
       request<{ ok: boolean }>(`/teams/${teamId}/agents/${agentId}`, { method: 'DELETE' }),
   },
@@ -52,6 +70,11 @@ export const api = {
     delete: (taskId: string) =>
       request<{ ok: boolean }>(`/tasks/${taskId}`, { method: 'DELETE' }),
     logs: (taskId: string) => request<{ logs: TaskLog[] }>(`/tasks/${taskId}/logs`),
+    forward: (taskId: string, agentId: string) =>
+      request<{ task_id: string }>(`/tasks/${taskId}/forward`, {
+        method: 'POST',
+        body: JSON.stringify({ agent_id: agentId }),
+      }),
   },
   messages: {
     list: (taskId: string) => request<{ messages: Message[] }>(`/tasks/${taskId}/messages`),
@@ -63,6 +86,19 @@ export const api = {
         body: JSON.stringify({ body }),
       }),
   },
+}
+
+export interface UserProfile {
+  id: string
+  email: string
+  plan: 'free' | 'pro'
+}
+
+export interface Member {
+  id: string
+  email: string
+  role: string
+  joined_at: number
 }
 
 export interface Agent {

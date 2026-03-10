@@ -6,6 +6,7 @@ import * as tasks    from './routes/tasks.js'
 import * as messages from './routes/messages.js'
 import * as daemon   from './routes/daemon.js'
 import * as live     from './routes/live.js'
+import * as me       from './routes/me.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 export { AgentRelay } from './relay.js'
 
@@ -42,13 +43,19 @@ function daemonRoute(handler: DaemonHandler) {
 router.options('*', () => new Response(null, { status: 204, headers: CORS_HEADERS }))
 
 // ── Browser routes (Firebase JWT) ─────────────────────────────────────────────
+router.get('/me', firebaseRoute(me.getMe))
+router.post('/me/push/token', firebaseRoute(me.savePushToken))
+router.post('/admin/users/:userId/plan', (req: IRequest, env: Env) => me.setUserPlan(req as Request, env))
 router.get('/teams', firebaseRoute(teams.list))
 router.post('/teams',                    firebaseRoute(teams.create))
 router.delete('/teams/:teamId',          firebaseRoute(teams.deactivate))
-router.get ('/teams/:teamId/members',    firebaseRoute(teams.listMembers))
+router.get ('/teams/:teamId/members',              firebaseRoute(teams.listMembers))
+router.post('/teams/:teamId/members',              firebaseRoute(teams.addMember))
+router.delete('/teams/:teamId/members/:userId',    firebaseRoute(teams.removeMember))
 router.get ('/teams/:teamId/agents',     firebaseRoute(agents.list))
 router.post('/teams/:teamId/agents',     firebaseRoute(agents.create))
 router.post('/teams/:teamId/tokens',     firebaseRoute(agents.createToken))
+router.post('/teams/:teamId/agents/:agentId/reset', firebaseRoute(agents.resetAgent))
 router.delete('/teams/:teamId/agents/:agentId', firebaseRoute(agents.deleteAgent))
 
 router.get ('/tasks',                    firebaseRoute(tasks.list))
@@ -56,6 +63,7 @@ router.post('/tasks',                    firebaseRoute(tasks.create))
 router.get ('/tasks/:taskId',            firebaseRoute(tasks.get))
 router.put ('/tasks/:taskId',            firebaseRoute(tasks.update))
 router.post('/tasks/:taskId/close',      firebaseRoute(tasks.closeTask))
+router.post('/tasks/:taskId/forward',    firebaseRoute(tasks.forwardTask))
 router.delete('/tasks/:taskId',          firebaseRoute(tasks.deleteTask))
 router.get ('/tasks/:taskId/messages',                        firebaseRoute(messages.list))
 router.post('/tasks/:taskId/messages',                        firebaseRoute(messages.create))

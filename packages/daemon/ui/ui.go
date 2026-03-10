@@ -49,14 +49,14 @@ const uiVersion = "0.1.0"
 
 // Run starts the system tray UI on the main OS thread (required by macOS AppKit).
 // It blocks until the user clicks Quit or the process is killed.
-func Run(agents []AgentStatus, ctrl PullController, dashboardURL string) {
+func Run(agents []AgentStatus, ctrl PullController, dashboardURL string, configPath string) {
 	systray.Run(
-		func() { onReady(agents, ctrl, dashboardURL) },
+		func() { onReady(agents, ctrl, dashboardURL, configPath) },
 		func() { os.Exit(0) },
 	)
 }
 
-func onReady(agents []AgentStatus, ctrl PullController, dashboardURL string) {
+func onReady(agents []AgentStatus, ctrl PullController, dashboardURL string, configPath string) {
 	// Green icon = pulling active; red icon = paused.
 	if ctrl.IsPaused() {
 		systray.SetIcon(iconPaused())
@@ -83,18 +83,18 @@ func onReady(agents []AgentStatus, ctrl PullController, dashboardURL string) {
 
 	systray.AddSeparator()
 
-	// ── Per-agent rows (disabled, status-only) ─────────────────────────────
+	// ── Per-agent rows ─────────────────────────────────────────────────────
 	mAgentsLabel := systray.AddMenuItem("── Agents ──", "")
 	mAgentsLabel.Disable()
 
 	agentItems := make([]*systray.MenuItem, len(agents))
 	for i, a := range agents {
-		agentItems[i] = systray.AddMenuItem(agentLabel(a), "")
-		agentItems[i].Disable()
+		agentItems[i] = systray.AddMenuItem(agentLabel(a), a.LastLogPath())
 	}
 
 	systray.AddSeparator()
 
+	mConfig := systray.AddMenuItem("Open Config", "Edit config.toml")
 	mQuit := systray.AddMenuItem("Quit", "Stop the tsq daemon")
 
 	// ── Acquire wakelock if pulling is active at startup ───────────────────
@@ -131,11 +131,30 @@ func onReady(agents []AgentStatus, ctrl PullController, dashboardURL string) {
 		}
 	}()
 	go func() {
+		for range mConfig.ClickedCh {
+			openBrowser(configPath)
+		}
+	}()
+	go func() {
 		for range mQuit.ClickedCh {
 			logger.Info("[ui] Quit selected — stopping daemon")
 			systray.Quit()
 		}
 	}()
+
+	// ── Per-agent click handlers ───────────────────────────────────────────
+	for i, a := range agents {
+		i, a := i, a
+		go func() {
+			for range agentItems[i].ClickedCh {
+				if sess := a.TmuxSession(); sess != "" {
+					attachTmux(sess)
+				} else if logPath := a.LastLogPath(); logPath != "" {
+					openBrowser(logPath)
+				}
+			}
+		}()
+	}
 
 	// ── Live refresh every 5s ──────────────────────────────────────────────
 	go func() {
@@ -161,9 +180,10 @@ func pullToggleLabel(paused bool) string {
 	return "⏸ Pause Pulling"
 }
 
-// statsLabel returns a summary string like "2 running · 1 idle · 0 waiting".
+// statsLabel returns a summary string like "2 running · 1 idle · 0 waiting · Last pull: 2m ago".
 func statsLabel(agents []AgentStatus) string {
 	running, idle, waiting := 0, 0, 0
+	var lastPull time.Time
 	for _, a := range agents {
 		switch a.GetMode() {
 		case "running":
@@ -173,8 +193,37 @@ func statsLabel(agents []AgentStatus) string {
 		case "waiting_input":
 			waiting++
 		}
+		if t := a.LastPullTime(); !t.IsZero() && t.After(lastPull) {
+			lastPull = t
+		}
 	}
-	return fmt.Sprintf("%d running · %d idle · %d waiting", running, idle, waiting)
+	return fmt.Sprintf("%d running · %d idle · %d waiting · Last pull: %s",
+		running, idle, waiting, relTime(lastPull))
+}
+
+// relTime formats a time as a human-readable relative duration ("5s ago", "3m ago", "never").
+func relTime(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	d := time.Since(t).Round(time.Second)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds ago", int(d.Seconds()))
+	}
+	return fmt.Sprintf("%dm ago", int(d.Minutes()))
+}
+
+// attachTmux opens a terminal window and attaches to the given tmux session.
+func attachTmux(session string) {
+	switch runtime.GOOS {
+	case "darwin":
+		script := fmt.Sprintf(`tell application "Terminal" to do script "tmux attach-session -t %s"`, session)
+		exec.Command("osascript", "-e", script).Start() //nolint:errcheck
+	case "linux":
+		exec.Command("x-terminal-emulator", "-e", "tmux", "attach-session", "-t", session).Start() //nolint:errcheck
+	default:
+		logger.Warn("[ui] attachTmux: unsupported OS")
+	}
 }
 
 // agentLabel formats a single agent row with a unicode status dot.

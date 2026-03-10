@@ -79,7 +79,7 @@ func main() {
 
 	// ui.Run blocks the main OS thread (required by macOS AppKit / systray).
 	// Agents run in goroutines above; the hook server runs in its own goroutine.
-	ui.Run(uiAgents, &agentController{agents: rawAgents}, cfg.Server.URL)
+	ui.Run(uiAgents, &agentController{agents: rawAgents}, cfg.Server.URL, *cfgPath)
 }
 
 // agentController implements ui.PullController for all configured agents.

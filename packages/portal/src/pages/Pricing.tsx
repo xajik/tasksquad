@@ -22,10 +22,11 @@ const FREE_FEATURES = [
 
 const PRO_FEATURES = [
   'Everything in Free',
-  'WebSocket push notifications',
   'Unlimited projects',
-  'Unlimited members',
+  'Unlimited members per project',
   'Unlimited agents',
+  '2-second task polling (vs 5s on Free)',
+  'Browser push notifications for task updates',
   'Priority support',
 ]
 
@@ -68,27 +69,32 @@ export default function Pricing() {
             </CardFooter>
           </Card>
 
-          <Card className="border-2 relative opacity-70">
+          <Card className="border-2 border-primary relative">
             <div className="absolute top-4 right-4">
-              <Badge variant="secondary">Coming soon</Badge>
+              <Badge>Pro</Badge>
             </div>
             <CardHeader className="pb-4">
               <CardTitle className="text-2xl">Pro</CardTitle>
               <div className="text-4xl font-bold mt-2">
-                $—<span className="text-base font-normal text-muted-foreground">/mo</span>
+                $29<span className="text-base font-normal text-muted-foreground">/mo</span>
               </div>
               <CardDescription>For teams that move fast</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {PRO_FEATURES.map(f => (
                 <div key={f} className="flex items-center gap-2 text-sm">
-                  <Check className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <Check className="h-4 w-4 text-green-500 shrink-0" />
                   {f}
                 </div>
               ))}
             </CardContent>
-            <CardFooter>
-              <Button className="w-full" disabled>Coming soon</Button>
+            <CardFooter className="flex-col gap-2 items-start">
+              <Button className="w-full" onClick={() => nav('/auth')}>Get started</Button>
+              <p className="text-xs text-muted-foreground text-center w-full">
+                Contact us at{' '}
+                <a href="mailto:hello@tasksquad.ai" className="underline">hello@tasksquad.ai</a>
+                {' '}to activate Pro
+              </p>
             </CardFooter>
           </Card>
         </div>

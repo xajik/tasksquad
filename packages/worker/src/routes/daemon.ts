@@ -4,6 +4,30 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { json, err } from '../auth.js'
 import type { Env, DaemonContext } from '../types.js'
 import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
+import { sendFCMNotification } from '../fcm.js'
+
+async function notifyTaskSender(env: Env, taskId: string, title: string, body: string): Promise<void> {
+  try {
+    const task = await env.DB
+      .prepare('SELECT sender_id FROM tasks WHERE id = ?')
+      .bind(taskId)
+      .first<{ sender_id: string | null }>()
+    if (!task?.sender_id) return
+
+    const { results: tokens } = await env.DB
+      .prepare('SELECT token FROM push_tokens WHERE user_id = ?')
+      .bind(task.sender_id)
+      .all<{ token: string }>()
+    if (!tokens.length) return
+
+    await Promise.all(tokens.map(r =>
+      sendFCMNotification(env.FIREBASE_SERVICE_ACCOUNT_KEY, env.FIREBASE_PROJECT_ID, r.token, title, body, taskId)
+        .catch(e => console.error('[fcm] token push failed:', e))
+    ))
+  } catch (e) {
+    console.error('[fcm] notifyTaskSender failed:', e)
+  }
+}
 
 export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const body = await req.json<{ status?: string }>().catch(() => ({} as { status?: string }))
@@ -17,6 +41,20 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
     env.DB.prepare('UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?')
       .bind(agentStatus, now, agentId),
   ])
+
+  // Check if a portal-initiated reset is pending — handle before any task logic.
+  const agentRow = await env.DB
+    .prepare('SELECT reset_pending FROM agents WHERE id = ?')
+    .bind(agentId)
+    .first<{ reset_pending: number }>()
+
+  if (agentRow?.reset_pending) {
+    await env.DB.batch([
+      env.DB.prepare("UPDATE agents SET reset_pending = 0, status = 'offline' WHERE id = ?").bind(agentId),
+      env.DB.prepare("UPDATE agent_state SET mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
+    ])
+    return json({ ok: true, agent_id: agentId, reset: true })
+  }
 
   // When running or waiting for input: check if the task has been cancelled/completed elsewhere.
   if (agentStatus === 'running' || agentStatus === 'waiting_input') {
@@ -101,9 +139,9 @@ export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon:
   if (!task_id) return err('missing_fields', 400)
 
   const task = await env.DB
-    .prepare('SELECT id FROM tasks WHERE id = ? AND team_id = ? AND agent_id = ?')
+    .prepare('SELECT id, subject FROM tasks WHERE id = ? AND team_id = ? AND agent_id = ?')
     .bind(task_id, daemon.teamId, agentId)
-    .first<{ id: string }>()
+    .first<{ id: string; subject: string }>()
   if (!task) return err('not_found', 404)
 
   const sessionId = ulid()
@@ -123,6 +161,7 @@ export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon:
       .bind(ulid(), task_id, null, 'system', 'Task started.', now),
   ])
 
+  await notifyTaskSender(env, task_id, 'Agent started', `Working on: ${task.subject}`)
   return json({ session_id: sessionId }, 201)
 }
 
@@ -137,9 +176,9 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   if (!session_id) return err('missing_fields', 400)
 
   const session = await env.DB
-    .prepare('SELECT task_id FROM sessions WHERE id = ? AND agent_id = ?')
+    .prepare('SELECT s.task_id, t.subject FROM sessions s JOIN tasks t ON t.id = s.task_id WHERE s.id = ? AND s.agent_id = ?')
     .bind(session_id, agentId)
-    .first<{ task_id: string }>()
+    .first<{ task_id: string; subject: string }>()
   if (!session) return err('not_found', 404)
 
   const taskStatus = status === 'closed' ? 'done'
@@ -170,6 +209,14 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
 
   await env.DB.batch(ops)
 
+  const notifTitle = taskStatus === 'done' ? 'Task completed'
+    : taskStatus === 'waiting_input' ? 'Agent needs your input'
+    : 'Task failed'
+  const notifBody = taskStatus === 'done' ? `Completed: ${session.subject}`
+    : taskStatus === 'waiting_input' ? `Waiting for reply: ${session.subject}`
+    : `Failed: ${session.subject}`
+  await notifyTaskSender(env, session.task_id, notifTitle, notifBody)
+
   return json({ ok: true, session_id, message_id: final_text ? msgId : null })
 }
 
@@ -180,9 +227,9 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
   if (!session_id) return err('missing_fields', 400)
 
   const session = await env.DB
-    .prepare('SELECT task_id FROM sessions WHERE id = ? AND agent_id = ?')
+    .prepare('SELECT s.task_id, t.subject FROM sessions s JOIN tasks t ON t.id = s.task_id WHERE s.id = ? AND s.agent_id = ?')
     .bind(session_id, agentId)
-    .first<{ task_id: string }>()
+    .first<{ task_id: string; subject: string }>()
   if (!session) return err('not_found', 404)
 
   const now = Date.now()
@@ -203,6 +250,8 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
   }
 
   await env.DB.batch(ops)
+
+  await notifyTaskSender(env, session.task_id, 'Task completed', `Completed: ${session.subject}`)
 
   return json({ ok: true, session_id, message_id: output ? msgId : null })
 }
@@ -244,9 +293,9 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
   if (!session_id || !message) return err('missing_fields', 400)
 
   const session = await env.DB
-    .prepare('SELECT task_id FROM sessions WHERE id = ? AND agent_id = ?')
+    .prepare('SELECT s.task_id, t.subject FROM sessions s JOIN tasks t ON t.id = s.task_id WHERE s.id = ? AND s.agent_id = ?')
     .bind(session_id, agentId)
-    .first<{ task_id: string }>()
+    .first<{ task_id: string; subject: string }>()
   if (!session) return err('not_found', 404)
 
   const now = Date.now()
@@ -259,6 +308,8 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
     env.DB.prepare("UPDATE tasks SET status = 'waiting_input' WHERE id = ?").bind(session.task_id),
     env.DB.prepare("UPDATE agent_state SET mode = 'waiting_input', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
   ])
+
+  await notifyTaskSender(env, session.task_id, 'Agent needs your input', `Waiting for reply: ${session.subject}`)
 
   return json({ ok: true, session_id, message_id: msgId })
 }

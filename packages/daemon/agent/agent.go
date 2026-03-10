@@ -139,6 +139,8 @@ type Agent struct {
 	fifoPath       string // FIFO path for tmux output streaming
 	transcriptPath string // Claude Code conversation transcript (from Stop hook payload)
 	lastPrompt     string // the initial prompt or latest user reply sent to the process
+	lastPollAt     time.Time // time of the last successful heartbeat
+	lastLogPath    string    // path to the current per-task run log file
 }
 
 func New(cfg config.AgentConfig) *Agent {
@@ -182,6 +184,27 @@ func (a *Agent) IsPaused() bool {
 	return a.paused
 }
 
+// LastPullTime implements ui.AgentStatus — returns the time of the last successful heartbeat.
+func (a *Agent) LastPullTime() time.Time {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastPollAt
+}
+
+// LastLogPath implements ui.AgentStatus — returns the path to the current run log file.
+func (a *Agent) LastLogPath() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastLogPath
+}
+
+// TmuxSession implements ui.AgentStatus — returns the active tmux session name.
+func (a *Agent) TmuxSession() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.tmuxSession
+}
+
 // Run is the main poll loop for this agent.
 func (a *Agent) Run(cfg *config.Config) {
 	logger.Info(fmt.Sprintf("[%s] Starting — provider: %s, command: %s", a.Config.Name, a.prov.Name(), a.Config.Command))
@@ -222,6 +245,11 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 		return
 	}
 
+	// Record the time of this successful poll for the systray stats label.
+	a.mu.Lock()
+	a.lastPollAt = time.Now()
+	a.mu.Unlock()
+
 	// Resolve agentID from first heartbeat response.
 	if id, ok := resp["agent_id"].(string); ok && id != "" {
 		a.mu.Lock()
@@ -235,6 +263,13 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 	a.mu.Lock()
 	currentMode := a.mode
 	a.mu.Unlock()
+
+	// Reset requested from portal — kill tmux and go idle regardless of current mode.
+	if reset, _ := resp["reset"].(bool); reset {
+		logger.Info(fmt.Sprintf("[%s] Reset requested by server — killing tmux and going idle", a.Config.Name))
+		go a.handleReset()
+		return
+	}
 
 	// When running or waiting for input: check if the server signalled a cancel or close.
 	if currentMode == ModeRunning || currentMode == ModeWaitingInput {
@@ -365,6 +400,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 			a.Config.Name, taskID, subject, time.Now().Format(time.RFC3339))
 		a.mu.Lock()
 		a.runLog = runLog
+		a.lastLogPath = runLog.Name()
 		a.mu.Unlock()
 	}
 
@@ -966,6 +1002,33 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	a.mu.Unlock()
 
 	a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath)
+}
+
+// handleReset kills any running tmux session and returns the agent to idle.
+// The server has already reset in-progress tasks to pending; we must NOT call
+// complete/sessionClose here as that would fail the task rather than re-queue it.
+func (a *Agent) handleReset() {
+	a.mu.Lock()
+	sess := a.tmuxSession
+	pw := a.stdinWrite
+	a.stdinWrite = nil
+	a.tmuxSession = ""
+	a.fifoPath = ""
+	a.transcriptPath = ""
+	a.sessionID = ""
+	a.taskID = ""
+	a.completing = false
+	a.mode = ModeIdle
+	a.mu.Unlock()
+
+	if sess != "" && tmuxBin != "" {
+		exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
+		logger.Info(fmt.Sprintf("[%s] Reset: killed tmux session %s", a.Config.Name, sess))
+	} else if pw != nil {
+		pw.Close()
+	}
+
+	logger.Info(fmt.Sprintf("[%s] Reset complete — idle, pending tasks will be picked up on next heartbeat", a.Config.Name))
 }
 
 func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string) {

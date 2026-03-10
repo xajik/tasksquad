@@ -38,17 +38,17 @@ export async function withFirebaseAuth(
     headers: { 'Content-Type': 'application/json' },
   })
   const email = decoded.email ?? ''
-  const userId = await upsertUser(env.DB, firebaseUid, email)
-  return { uid: firebaseUid, email, userId }
+  const { id: userId, plan } = await upsertUser(env.DB, firebaseUid, email)
+  return { uid: firebaseUid, email, userId, plan }
 }
 
-async function upsertUser(db: D1Database, firebaseUid: string, email: string): Promise<string> {
+async function upsertUser(db: D1Database, firebaseUid: string, email: string): Promise<{ id: string; plan: 'free' | 'pro' }> {
   const existing = await db
-    .prepare('SELECT id FROM users WHERE firebase_uid = ?')
+    .prepare('SELECT id, plan FROM users WHERE firebase_uid = ?')
     .bind(firebaseUid)
-    .first<{ id: string }>()
+    .first<{ id: string; plan: string }>()
 
-  if (existing) return existing.id
+  if (existing) return { id: existing.id, plan: (existing.plan === 'pro' ? 'pro' : 'free') }
 
   const id = ulid()
   await db
@@ -56,7 +56,7 @@ async function upsertUser(db: D1Database, firebaseUid: string, email: string): P
     .bind(id, firebaseUid, email, Date.now())
     .run()
 
-  return id
+  return { id, plan: 'free' }
 }
 
 // Daemon routes: validate X-TSQ-Token against daemon_tokens table
@@ -108,8 +108,8 @@ export async function verifyTokenString(token: string, env: Env): Promise<AuthCo
     const firebaseUid = decoded.uid ?? decoded.sub ?? ''
     if (!firebaseUid) return null
     const email = decoded.email ?? ''
-    const userId = await upsertUser(env.DB, firebaseUid, email)
-    return { uid: firebaseUid, email, userId }
+    const { id: userId, plan } = await upsertUser(env.DB, firebaseUid, email)
+    return { uid: firebaseUid, email, userId, plan }
   } catch {
     return null
   }

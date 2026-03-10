@@ -2,6 +2,14 @@ import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 
+async function requireOwner(db: D1Database, teamId: string, userId: string): Promise<boolean> {
+  const row = await db
+    .prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?')
+    .bind(teamId, userId)
+    .first<{ role: string }>()
+  return row?.role === 'owner'
+}
+
 export async function list(_req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const rows = await env.DB
     .prepare(`
@@ -68,6 +76,16 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   const name = body.name?.trim()
   if (!name) return err('name_required', 400)
 
+  if (auth.plan === 'free') {
+    const count = await env.DB
+      .prepare("SELECT COUNT(*) as n FROM teams t JOIN team_members tm ON t.id = tm.team_id WHERE tm.user_id = ? AND tm.role = 'owner' AND t.is_deactivated = 0")
+      .bind(auth.userId)
+      .first<{ n: number }>()
+    if ((count?.n ?? 0) >= 3) {
+      return err('Free plan allows up to 3 projects. Upgrade to Pro for unlimited projects.', 403)
+    }
+  }
+
   const teamId = ulid()
   const now = Date.now()
 
@@ -102,4 +120,62 @@ export async function listMembers(req: Request, env: Env, _ctx: unknown, auth: A
     .all<{ id: string; email: string; role: string; joined_at: number }>()
 
   return json({ members: rows.results })
+}
+
+export async function addMember(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const teamId = url.pathname.split('/')[2]
+
+  if (!(await requireOwner(env.DB, teamId, auth.userId))) return err('forbidden', 403)
+
+  if (auth.plan === 'free') {
+    const count = await env.DB
+      .prepare('SELECT COUNT(*) as n FROM team_members WHERE team_id = ?')
+      .bind(teamId)
+      .first<{ n: number }>()
+    if ((count?.n ?? 0) >= 5) {
+      return err('Free plan allows up to 5 members per project. Upgrade to Pro for unlimited members.', 403)
+    }
+  }
+
+  const body = await req.json<{ email?: string }>().catch(() => ({} as { email?: string }))
+  const email = body.email?.trim().toLowerCase()
+  if (!email) return err('email_required', 400)
+
+  const user = await env.DB
+    .prepare('SELECT id FROM users WHERE email = ?')
+    .bind(email)
+    .first<{ id: string }>()
+  if (!user) return err('User not found — they must sign up first.', 404)
+
+  await env.DB
+    .prepare('INSERT OR IGNORE INTO team_members (team_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)')
+    .bind(teamId, user.id, 'member', Date.now())
+    .run()
+
+  return json({ ok: true })
+}
+
+export async function removeMember(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const parts = url.pathname.split('/')
+  const teamId = parts[2]
+  const userId = parts[4]
+
+  if (!(await requireOwner(env.DB, teamId, auth.userId))) return err('forbidden', 403)
+  if (userId === auth.userId) return err('Cannot remove yourself', 400)
+
+  const target = await env.DB
+    .prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?')
+    .bind(teamId, userId)
+    .first<{ role: string }>()
+  if (!target) return err('not_found', 404)
+  if (target.role === 'maintainer') return err('Cannot remove a maintainer', 400)
+
+  await env.DB
+    .prepare('DELETE FROM team_members WHERE team_id = ? AND user_id = ?')
+    .bind(teamId, userId)
+    .run()
+
+  return json({ ok: true })
 }

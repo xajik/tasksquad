@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { signOut } from 'firebase/auth'
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { auth, getToken } from '../lib/firebase'
-import { api, type Agent, type Task, type Message, type Team } from '../lib/api'
+import { api, type Agent, type Task, type Message, type Team, type Member } from '../lib/api'
+import { requestNotificationPermission, notify, STATUS_NOTIF, registerPushToken } from '../lib/notifications'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,6 +52,7 @@ import {
   Settings,
   Bot,
   User,
+  Users,
   LogOut,
   Trash2,
   Copy,
@@ -67,6 +69,8 @@ import {
   Menu,
   X,
   Key,
+  Forward,
+  RotateCcw,
 } from 'lucide-react'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
@@ -384,15 +388,36 @@ function InboxView({ teamId }: { teamId: string }) {
   const [isLoading, setIsLoading] = useState(true)
   const nav = useNavigate()
 
+  const prevTaskStatusesRef = useRef<Record<string, string>>({})
+
   const load = useCallback(async () => {
     setIsLoading(true)
     const [td, ad] = await Promise.all([api.tasks.list(teamId), api.agents.list(teamId)])
-    setTasks(td.tasks ?? [])
+    const newTasks = td.tasks ?? []
+    setTasks(newTasks)
     setAgents(ad.agents ?? [])
     setIsLoading(false)
+
+    // Fire notifications for tasks whose status changed since last poll
+    for (const t of newTasks) {
+      const prev = prevTaskStatusesRef.current[t.id]
+      if (prev && prev !== t.status) {
+        const notif = STATUS_NOTIF[t.status]
+        if (notif) notify(notif.title, notif.body(t.subject), t.id)
+      }
+    }
+    prevTaskStatusesRef.current = Object.fromEntries(newTasks.map(t => [t.id, t.status]))
   }, [teamId])
 
   useEffect(() => { load() }, [load])
+
+  // Poll inbox while any task is active
+  useEffect(() => {
+    const hasActive = tasks.some(t => ['pending', 'running', 'waiting_input'].includes(t.status))
+    if (!hasActive) return
+    const id = setInterval(load, 5000)
+    return () => clearInterval(id)
+  }, [tasks, load])
 
   async function compose(e: React.FormEvent) {
     e.preventDefault()
@@ -609,7 +634,7 @@ function MessageBubble({ message, agentName, taskId }: { message: Message; agent
   )
 }
 
-function TaskThread({ teamId }: { teamId: string }) {
+function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) {
   const { taskId } = useParams<{ taskId: string }>()
   const [task, setTask] = useState<Task | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -619,6 +644,9 @@ function TaskThread({ teamId }: { teamId: string }) {
   const [liveLines, setLiveLines] = useState<string[]>([])
   const [watching, setWatching] = useState(false)
   const [showLog, setShowLog] = useState(false)
+  const [showForward, setShowForward] = useState(false)
+  const [forwardAgentId, setForwardAgentId] = useState('')
+  const [forwarding, setForwarding] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
   const nav = useNavigate()
@@ -640,12 +668,25 @@ function TaskThread({ teamId }: { teamId: string }) {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, liveLines])
 
   // Auto-poll while the task is active so messages appear without manual refresh
+  // Pro users get 2s polling; free users get 5s
+  const pollInterval = plan === 'pro' ? 2000 : 5000
   useEffect(() => {
     if (!task || watching) return
     if (!['running', 'waiting_input', 'pending'].includes(task.status)) return
-    const t = setInterval(load, 5000)
+    const t = setInterval(load, pollInterval)
     return () => clearInterval(t)
-  }, [task?.status, watching, load])
+  }, [task?.status, watching, load, pollInterval])
+
+  // Notify on every status transition (running, waiting_input, done, failed)
+  const prevStatusRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!task) return
+    const prev = prevStatusRef.current
+    prevStatusRef.current = task.status
+    if (!prev || prev === task.status) return
+    const notif = STATUS_NOTIF[task.status]
+    if (notif) notify(notif.title, notif.body(task.subject), task.id)
+  }, [task?.status, task?.subject, task?.id])
 
   async function startLive() {
     if (!task || esRef.current) return
@@ -677,6 +718,16 @@ function TaskThread({ teamId }: { teamId: string }) {
     if (!taskId) return
     await api.tasks.close(taskId)
     nav('/dashboard')
+  }
+
+  async function forwardToAgent() {
+    if (!taskId || !forwardAgentId) return
+    setForwarding(true)
+    try {
+      const { task_id } = await api.tasks.forward(taskId, forwardAgentId)
+      setShowForward(false)
+      nav(`/dashboard/tasks/${task_id}`)
+    } finally { setForwarding(false) }
   }
 
   async function sendReply(e: React.FormEvent) {
@@ -724,6 +775,46 @@ function TaskThread({ teamId }: { teamId: string }) {
               <Loader2 className="h-4 w-4 mr-1 animate-spin" />
               Live
             </Button>
+          )}
+          {task && ['done', 'waiting_input'].includes(task.status) && (
+            <Dialog open={showForward} onOpenChange={setShowForward}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="rounded-full">
+                  <Forward className="h-4 w-4 mr-1" />
+                  Forward
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[400px]">
+                <DialogHeader>
+                  <DialogTitle>Forward to agent</DialogTitle>
+                  <DialogDescription>
+                    Creates a new task with the full conversation history as context.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label>Select agent</Label>
+                    <Select value={forwardAgentId} onValueChange={setForwardAgentId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose an agent…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {agents.map(a => (
+                          <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowForward(false)}>Cancel</Button>
+                  <Button onClick={forwardToAgent} disabled={!forwardAgentId || forwarding}>
+                    {forwarding ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                    Forward →
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           )}
           <Button variant="ghost" size="icon" onClick={deleteTask} className="rounded-full hover:bg-destructive/10 hover:text-destructive">
             <Trash2 className="h-4 w-4" />
@@ -843,6 +934,11 @@ function AgentsView({ teamId }: { teamId: string }) {
     setNewToken({ agentId, token: d.token, agentName })
   }
 
+  async function resetAgent(agentId: string) {
+    await api.agents.reset(teamId, agentId)
+    load()
+  }
+
   async function deleteAgent(agentId: string) {
     await api.agents.delete(teamId, agentId)
     load()
@@ -883,7 +979,10 @@ function AgentsView({ teamId }: { teamId: string }) {
                   </div>
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
-                  <div className="text-xs text-muted-foreground font-mono truncate mb-4">ID: {a.id}</div>
+                  <div className="text-xs text-muted-foreground font-mono truncate">ID: {a.id}</div>
+                  <div className="text-xs text-muted-foreground mb-4">
+                    Last seen: {a.last_seen ? new Date(a.last_seen).toLocaleString() : 'Never'}
+                  </div>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex gap-2">
                       <Dialog>
@@ -909,6 +1008,27 @@ function AgentsView({ teamId }: { teamId: string }) {
                       </Dialog>
                     </div>
                     <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Reset agent">
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Reset agent?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              On its next heartbeat, "{a.name}" will kill all running tmux sessions and go idle. Any in-progress task will be reset to pending and picked up again automatically.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => resetAgent(a.id)}>
+                              Reset
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
@@ -1021,7 +1141,166 @@ work_dir = "${config.dir}"`
   )
 }
 
-function SettingsView({ teamName, onDelete }: { teamName: string; onDelete: () => Promise<void> }) {
+const FREE_MEMBER_LIMIT = 5
+
+function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTeam: Team | undefined; plan: 'free' | 'pro' }) {
+  const [members, setMembers] = useState<Member[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [email, setEmail] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState('')
+  const [showAdd, setShowAdd] = useState(false)
+  const currentUserId = auth.currentUser?.uid
+
+  const isOwner = currentTeam?.role === 'owner'
+  const atMemberLimit = plan === 'free' && members.length >= FREE_MEMBER_LIMIT
+
+  const load = useCallback(async () => {
+    setIsLoading(true)
+    const d = await api.members.list(teamId)
+    setMembers(d.members ?? [])
+    setIsLoading(false)
+  }, [teamId])
+
+  useEffect(() => { load() }, [load])
+
+  async function addMember(e: React.FormEvent) {
+    e.preventDefault()
+    setAdding(true)
+    setAddError('')
+    try {
+      await api.members.add(teamId, email)
+      setEmail('')
+      setShowAdd(false)
+      load()
+    } catch (err: any) {
+      setAddError(err?.error ?? 'Failed to add member')
+    } finally { setAdding(false) }
+  }
+
+  async function removeMember(userId: string) {
+    await api.members.remove(teamId, userId)
+    load()
+  }
+
+  return (
+    <div className="animate-fade-in">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-semibold">Members</h2>
+        {isOwner && (
+          <Dialog open={showAdd} onOpenChange={setShowAdd}>
+            <DialogTrigger asChild>
+              <Button size="sm" disabled={atMemberLimit}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add Member
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[400px]">
+              <DialogHeader>
+                <DialogTitle>Add team member</DialogTitle>
+                <DialogDescription>
+                  The user must already have a TaskSquad account.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={addMember}>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="member-email">Email address</Label>
+                    <Input
+                      id="member-email"
+                      type="email"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      placeholder="user@example.com"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  {addError && <p className="text-sm text-destructive">{addError}</p>}
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
+                  <Button type="submit" disabled={adding}>
+                    {adding ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                    Add
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
+
+      {plan === 'free' && (
+        <p className="text-xs text-muted-foreground mb-4">
+          {members.length}/{FREE_MEMBER_LIMIT} members — free plan.{' '}
+          {atMemberLimit && <a href="/pricing" className="underline text-primary">Upgrade to Pro</a>}
+        </p>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map(i => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="p-4">
+                <div className="h-4 bg-muted rounded w-1/3 mb-2" />
+                <div className="h-3 bg-muted rounded w-1/2" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {members.map(m => (
+            <Card key={m.id}>
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="font-medium">{m.email}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant={m.role === 'owner' ? 'default' : 'secondary'}>
+                      {m.role}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      Joined {new Date(m.joined_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+                {isOwner && m.id !== currentUserId && m.role !== 'maintainer' && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Remove member?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Remove {m.email} from this team?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => removeMember(m.id)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Remove
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SettingsView({ teamName, onDelete, plan }: { teamName: string; onDelete: () => Promise<void>; plan: 'free' | 'pro' }) {
   const [confirmName, setConfirmName] = useState('')
   const [deleting, setDeleting] = useState(false)
 
@@ -1034,7 +1313,32 @@ function SettingsView({ teamName, onDelete }: { teamName: string; onDelete: () =
           <div className="text-lg font-semibold">{teamName}</div>
         </div>
 
-        
+        <div className="space-y-3 pt-4 border-t">
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-medium">Plan</div>
+            <Badge variant={plan === 'pro' ? 'default' : 'secondary'}>
+              {plan === 'pro' ? 'Pro' : 'Free'}
+            </Badge>
+          </div>
+          {plan === 'free' ? (
+            <div className="rounded-md border bg-muted/40 p-4 space-y-2">
+              <p className="text-sm font-medium">Free plan limits</p>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                <li>Up to 3 projects</li>
+                <li>Up to 5 members per project</li>
+                <li>5-second task polling</li>
+              </ul>
+              <p className="text-sm text-muted-foreground pt-1">
+                Upgrade to Pro for unlimited projects, unlimited members, and 2-second polling.
+              </p>
+              <a href="/pricing">
+                <Button size="sm" className="mt-1">View Pro plan</Button>
+              </a>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">You have access to all Pro features.</p>
+          )}
+        </div>
 
         <div className="space-y-4 pt-4 border-t border-destructive/20">
           <h3 className="text-lg font-semibold text-destructive flex items-center gap-2">
@@ -1146,11 +1450,21 @@ export default function Dashboard() {
   const location = useLocation()
   const nav = useNavigate()
 
+  const [plan, setPlan] = useState<'free' | 'pro'>('free')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showCreateTeam, setShowCreateTeam] = useState(false)
   const [newTeamName, setNewTeamName] = useState('')
   const [createTeamError, setCreateTeamError] = useState('')
   const [creatingTeam, setCreatingTeam] = useState(false)
+
+  useEffect(() => {
+    api.me().then(u => {
+      setPlan(u.plan)
+    }).catch(() => {})
+    requestNotificationPermission().then(perm => {
+      if (perm === 'granted') registerPushToken()
+    })
+  }, [])
 
   function handleNav(path: string) {
     nav(path)
@@ -1158,6 +1472,7 @@ export default function Dashboard() {
   }
 
   const isAgents = location.pathname === '/dashboard/agents'
+  const isMembers = location.pathname === '/dashboard/members'
   const isSettings = location.pathname === '/dashboard/settings'
 
   if (isLoadingTeams) return (
@@ -1168,9 +1483,11 @@ export default function Dashboard() {
 
   if (!teamId) return <CreateTeam onCreated={createTeam} />
 
+  const atTeamLimit = plan === 'free' && teams.length >= FREE_TEAM_LIMIT
+
   async function handleCreateTeam(e: React.FormEvent) {
     e.preventDefault()
-    if (teams.length >= FREE_TEAM_LIMIT) {
+    if (atTeamLimit) {
       setCreateTeamError(`Free plan allows up to ${FREE_TEAM_LIMIT} projects. Upgrade to Pro for unlimited projects.`)
       return
     }
@@ -1180,6 +1497,8 @@ export default function Dashboard() {
       setNewTeamName('')
       setShowCreateTeam(false)
       setCreateTeamError('')
+    } catch (err: any) {
+      setCreateTeamError(err?.error ?? 'Failed to create project')
     } finally {
       setCreatingTeam(false)
     }
@@ -1239,6 +1558,14 @@ export default function Dashboard() {
             Agents
           </Button>
           <Button
+            variant={isMembers ? 'secondary' : 'ghost'}
+            className="w-full justify-start mb-1"
+            onClick={() => handleNav('/dashboard/members')}
+          >
+            <Users className="mr-2 h-4 w-4" />
+            Members
+          </Button>
+          <Button
             variant={isSettings ? 'secondary' : 'ghost'}
             className="w-full justify-start"
             onClick={() => handleNav('/dashboard/settings')}
@@ -1282,6 +1609,11 @@ export default function Dashboard() {
             </>
           )}
         </div>
+        <div className="px-4 pb-2">
+          <Badge variant={plan === 'pro' ? 'default' : 'secondary'} className="text-xs">
+            {plan === 'pro' ? 'Pro' : 'Free plan'}
+          </Badge>
+        </div>
         <div className="p-2">
           <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => signOut(auth)}>
             <LogOut className="mr-2 h-4 w-4" />
@@ -1307,9 +1639,10 @@ export default function Dashboard() {
         <main className="flex-1 overflow-auto p-4 sm:p-8">
         <Routes>
           <Route path="/" element={<InboxView teamId={teamId} />} />
-          <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} />} />
+          <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} plan={plan} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} />} />
-          <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} />} />
+          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={teams.find(t => t.id === teamId)} plan={plan} />} />
+          <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} plan={plan} />} />
         </Routes>
       </main>
       </div>
@@ -1341,7 +1674,7 @@ export default function Dashboard() {
               <Button type="button" variant="outline" onClick={() => setShowCreateTeam(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={creatingTeam || teams.length >= FREE_TEAM_LIMIT}>
+              <Button type="submit" disabled={creatingTeam || atTeamLimit}>
                 {creatingTeam ? '...' : 'Create'}
               </Button>
             </DialogFooter>
