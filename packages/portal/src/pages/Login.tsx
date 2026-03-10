@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
 import { auth, signInWithGoogle } from '../lib/firebase'
+import { trackEvent } from '../lib/analytics'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,6 +22,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
 
   async function handleGoogleSignIn() {
+    trackEvent('google_sign_in_clicked');
     setError('')
     setLoading(true)
     try {
@@ -34,6 +36,7 @@ export default function Login() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    trackEvent('email_auth_submitted', { mode });
     setError('')
     setLoading(true)
     try {
@@ -119,7 +122,12 @@ export default function Login() {
               {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
               <button
                 type="button"
-                onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError('') }}
+                onClick={() => {
+                  const newMode = mode === 'login' ? 'signup' : 'login'
+                  trackEvent('auth_mode_switched', { to: newMode })
+                  setMode(newMode)
+                  setError('')
+                }}
                 className="text-primary hover:underline font-medium"
               >
                 {mode === 'login' ? 'Sign up' : 'Sign in'}

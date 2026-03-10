@@ -1,4 +1,5 @@
 import { getFCMToken } from './firebase'
+import { trackEvent } from './analytics'
 
 let tokenRegistered = false
 
@@ -22,6 +23,7 @@ export async function registerPushToken(): Promise<void> {
       },
       body: JSON.stringify({ token }),
     })
+    trackEvent('push_token_registered')
     tokenRegistered = true
   } catch (e) {
     console.error('[fcm] registerPushToken failed:', e)
@@ -59,6 +61,7 @@ export async function notify(title: string, body: string, taskId?: string): Prom
     try {
       const reg = await navigator.serviceWorker.ready
       await reg.showNotification(title, options)
+      trackEvent('notification_shown', { title, taskId })
       return
     } catch {
       // fall through to Notification API
@@ -66,6 +69,7 @@ export async function notify(title: string, body: string, taskId?: string): Prom
   }
 
   new Notification(title, options)
+  trackEvent('notification_shown', { title, taskId })
 }
 
 /** Human-readable label + body for each task status transition. */

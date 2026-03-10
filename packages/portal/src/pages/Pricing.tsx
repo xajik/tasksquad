@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { trackEvent } from '../lib/analytics'
 import {
   Card,
   CardContent,
@@ -25,7 +26,7 @@ const PRO_FEATURES = [
   'Unlimited projects',
   'Unlimited members per project',
   'Unlimited agents',
-  '2-second task polling (vs 5s on Free)',
+  '5-second task polling (vs 60s on Free)',
   'Browser push notifications for task updates',
   'Priority support',
 ]
@@ -65,7 +66,7 @@ export default function Pricing() {
               ))}
             </CardContent>
             <CardFooter>
-              <Button className="w-full" onClick={() => nav('/auth')}>Get started free</Button>
+              <Button className="w-full" onClick={() => { trackEvent('pricing_plan_selected', { plan: 'free' }); nav('/auth') }}>Get started free</Button>
             </CardFooter>
           </Card>
 
@@ -89,10 +90,10 @@ export default function Pricing() {
               ))}
             </CardContent>
             <CardFooter className="flex-col gap-2 items-start">
-              <Button className="w-full" onClick={() => nav('/auth')}>Get started</Button>
+              <Button className="w-full" onClick={() => { trackEvent('pricing_plan_selected', { plan: 'pro' }); nav('/auth') }}>Get started</Button>
               <p className="text-xs text-muted-foreground text-center w-full">
                 Contact us at{' '}
-                <a href="mailto:contact@tasksquad.ai" className="underline">hello@tasksquad.ai</a>
+                <a href="mailto:contact@tasksquad.ai" onClick={() => trackEvent('contact_email_clicked', { source: 'pricing_pro' })} className="underline">hello@tasksquad.ai</a>
                 {' '}to activate Pro
               </p>
             </CardFooter>
@@ -101,7 +102,7 @@ export default function Pricing() {
       </div>
 
       <div className="max-w-[800px] mx-auto px-4 sm:px-6 pb-12 border-t pt-10 text-muted-foreground text-sm">
-        © 2026 TaskSquad
+      <a href="mailto:contact@tasksquad.ai" className="underline">contact@tasksquad.ai</a> © 2026 TaskSquad
       </div>
     </div>
   )

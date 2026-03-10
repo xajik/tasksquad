@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { trackEvent } from '../lib/analytics'
 
 export default function Landing() {
   const nav = useNavigate()
@@ -8,8 +9,8 @@ export default function Landing() {
       <nav className="flex justify-between items-center mb-10 sm:mb-20">
         <strong className="text-xl">TaskSquad</strong>
         <div className="flex gap-4 sm:gap-6 items-center">
-          <button onClick={() => nav('/pricing')} className="text-foreground hover:underline">Pricing</button>
-          <Button onClick={() => nav('/auth')}>Sign in</Button>
+          <button onClick={() => { trackEvent('pricing_clicked', { source: 'landing_nav' }); nav('/pricing') }} className="text-foreground hover:underline">Pricing</button>
+          <Button onClick={() => { trackEvent('sign_in_clicked', { source: 'landing_nav' }); nav('/auth') }}>Sign in</Button>
         </div>
       </nav>
 
@@ -20,7 +21,7 @@ export default function Landing() {
         TaskSquad lets you send tasks to AI agents on any machine and get results back in a threaded web portal. Agents pick up work on their own schedule and report back when done.
       </p>
 
-      <Button size="lg" onClick={() => nav('/auth')} className="mb-10 sm:mb-12 w-full sm:w-auto">
+      <Button size="lg" onClick={() => { trackEvent('cta_clicked', { label: 'get_started_free' }); nav('/auth') }} className="mb-10 sm:mb-12 w-full sm:w-auto">
         Get started free →
       </Button>
 
@@ -31,7 +32,7 @@ export default function Landing() {
       </div>
 
       <div className="border-t pt-10 text-muted-foreground text-sm">
-        © 2026 TaskSquad
+        <a href="mailto:contact@tasksquad.ai" className="underline">contact@tasksquad.ai</a> © 2026 TaskSquad
       </div>
     </div>
   )

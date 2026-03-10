@@ -56,6 +56,7 @@ router.get ('/teams/:teamId/agents',     firebaseRoute(agents.list))
 router.post('/teams/:teamId/agents',     firebaseRoute(agents.create))
 router.post('/teams/:teamId/tokens',     firebaseRoute(agents.createToken))
 router.post('/teams/:teamId/agents/:agentId/reset', firebaseRoute(agents.resetAgent))
+router.post('/teams/:teamId/agents/:agentId/pause', firebaseRoute(agents.pauseAgent))
 router.delete('/teams/:teamId/agents/:agentId', firebaseRoute(agents.deleteAgent))
 
 router.get ('/tasks',                    firebaseRoute(tasks.list))

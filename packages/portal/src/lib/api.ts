@@ -1,4 +1,5 @@
 import { getToken } from './firebase'
+import { trackEvent } from './analytics'
 
 const BASE = import.meta.env.VITE_API_BASE_URL
 
@@ -16,7 +17,11 @@ async function request<T>(path: string, init: RequestInit = {}, rawText = false)
       ...init.headers,
     },
   })
-  if (!res.ok) throw await res.json()
+  if (!res.ok) {
+    const err = await res.json()
+    trackEvent('api_error', { path, status: res.status, error: err.error || err.message || 'Unknown' })
+    throw err
+  }
   return rawText ? res.text() as Promise<T> : res.json() as Promise<T>
 }
 
@@ -55,6 +60,11 @@ export const api = {
       }),
     reset: (teamId: string, agentId: string) =>
       request<{ ok: boolean }>(`/teams/${teamId}/agents/${agentId}/reset`, { method: 'POST' }),
+    pause: (teamId: string, agentId: string, paused: boolean) =>
+      request<{ ok: boolean; paused: boolean }>(`/teams/${teamId}/agents/${agentId}/pause`, {
+        method: 'POST',
+        body: JSON.stringify({ paused }),
+      }),
     delete: (teamId: string, agentId: string) =>
       request<{ ok: boolean }>(`/teams/${teamId}/agents/${agentId}`, { method: 'DELETE' }),
   },
@@ -109,6 +119,7 @@ export interface Agent {
   status: string
   last_seen: number | null
   created_at: number
+  paused: boolean
 }
 
 export interface Team {

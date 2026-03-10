@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { signOut } from 'firebase/auth'
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { auth, getToken } from '../lib/firebase'
+import { trackEvent } from '../lib/analytics'
 import { api, type Agent, type Task, type Message, type Team, type Member } from '../lib/api'
 import { requestNotificationPermission, notify, STATUS_NOTIF, registerPushToken } from '../lib/notifications'
 import { cn } from '@/lib/utils'
@@ -71,6 +72,9 @@ import {
   Key,
   Forward,
   RotateCcw,
+  PauseCircle,
+  PlayCircle,
+  AlertTriangle,
 } from 'lucide-react'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
@@ -241,6 +245,7 @@ function TranscriptButton({ taskId, msgId }: { taskId: string; msgId: string }) 
 
   async function handleOpen() {
     setOpen(true)
+    trackEvent('transcript_viewed', { taskId, msgId });
     if (content !== null) return
     setLoading(true)
     try {
@@ -358,6 +363,7 @@ function useTeam() {
 
   async function createTeam(name: string) {
     const t = await api.teams.create(name)
+    trackEvent('team_created', { team_id: t.id, name: t.name });
     localStorage.setItem('tsq_team_id', t.id)
     localStorage.setItem('tsq_team_name', t.name)
     setTeamId(t.id)
@@ -367,6 +373,7 @@ function useTeam() {
   }
 
   function switchTeam(team: Team) {
+    trackEvent('team_switched', { team_id: team.id, team_name: team.name });
     setTeamId(team.id)
     setTeamName(team.name)
     localStorage.setItem('tsq_team_id', team.id)
@@ -424,6 +431,7 @@ function InboxView({ teamId }: { teamId: string }) {
     setCreating(true)
     try {
       await api.tasks.create({ agent_id: agentId, subject, team_id: teamId, body: taskBody || undefined })
+      trackEvent('task_created', { agent_id: agentId, team_id: teamId });
       setShowCompose(false); setSubject(''); setTaskBody(''); setAgentId('')
       load()
     } finally { setCreating(false) }
@@ -431,6 +439,7 @@ function InboxView({ teamId }: { teamId: string }) {
 
   async function handleDeleteTask(taskId: string) {
     await api.tasks.delete(taskId)
+    trackEvent('task_deleted', { task_id: taskId });
     load()
   }
 
@@ -690,6 +699,7 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
 
   async function startLive() {
     if (!task || esRef.current) return
+    trackEvent('live_view_started', { task_id: task.id, agent_id: task.agent_id });
     const token = await getToken()
     const es = new EventSource(`${import.meta.env.VITE_API_BASE_URL}/live/${task.agent_id}?token=${token}`)
     esRef.current = es
@@ -711,12 +721,14 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
   async function deleteTask() {
     if (!taskId || !confirm('Delete this task and all its messages?')) return
     await api.tasks.delete(taskId)
+    trackEvent('task_deleted', { task_id: taskId });
     nav('/dashboard')
   }
 
   async function closeTask() {
     if (!taskId) return
     await api.tasks.close(taskId)
+    trackEvent('task_closed', { task_id: taskId });
     nav('/dashboard')
   }
 
@@ -725,6 +737,7 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
     setForwarding(true)
     try {
       const { task_id } = await api.tasks.forward(taskId, forwardAgentId)
+      trackEvent('task_forwarded', { from_task_id: taskId, to_agent_id: forwardAgentId, new_task_id: task_id });
       setShowForward(false)
       nav(`/dashboard/tasks/${task_id}`)
     } finally { setForwarding(false) }
@@ -736,6 +749,7 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
     setSending(true)
     try {
       await api.messages.create(taskId, reply)
+      trackEvent('message_sent', { task_id: taskId, role: 'user' });
       setReply('')
       load()
     } finally { setSending(false) }
@@ -925,22 +939,32 @@ function AgentsView({ teamId }: { teamId: string }) {
     try {
       // Default values are now handled by the UI guide
       await api.agents.create(teamId, { name, command: 'claude --dangerously-skip-permissions', work_dir: '~/Projects' })
+      trackEvent('agent_created', { team_id: teamId, name });
       setName(''); load()
     } finally { setCreating(false) }
   }
 
   async function genToken(agentId: string, agentName: string) {
     const d = await api.agents.createToken(teamId, agentId, 'Default')
+    trackEvent('agent_token_generated', { agent_id: agentId, team_id: teamId });
     setNewToken({ agentId, token: d.token, agentName })
   }
 
   async function resetAgent(agentId: string) {
     await api.agents.reset(teamId, agentId)
+    trackEvent('agent_reset', { agent_id: agentId, team_id: teamId });
+    load()
+  }
+
+  async function togglePause(agentId: string, currentlyPaused: boolean) {
+    await api.agents.pause(teamId, agentId, !currentlyPaused)
+    trackEvent(currentlyPaused ? 'agent_resumed' : 'agent_paused', { agent_id: agentId, team_id: teamId });
     load()
   }
 
   async function deleteAgent(agentId: string) {
     await api.agents.delete(teamId, agentId)
+    trackEvent('agent_deleted', { agent_id: agentId, team_id: teamId });
     load()
   }
 
@@ -974,6 +998,9 @@ function AgentsView({ teamId }: { teamId: string }) {
                     <div className="flex items-center gap-2">
                       <div className={cn("h-2 w-2 rounded-full", a.status === 'active' ? "bg-green-500 animate-pulse" : "bg-muted-foreground")} />
                       <CardTitle className="text-base font-medium">{a.name}</CardTitle>
+                      {a.paused && (
+                        <span className="text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Paused</span>
+                      )}
                     </div>
                     <StatusBadge status={a.status} />
                   </div>
@@ -1008,6 +1035,57 @@ function AgentsView({ teamId }: { teamId: string }) {
                       </Dialog>
                     </div>
                     <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn("h-8 w-8", a.paused ? "text-amber-600 hover:text-amber-700" : "text-muted-foreground hover:text-foreground")}
+                            title={a.paused ? "Resume pulling" : "Stop pulling"}
+                          >
+                            {a.paused ? <PlayCircle className="h-4 w-4" /> : <PauseCircle className="h-4 w-4" />}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="flex items-center gap-2">
+                              {a.paused ? (
+                                <>Resume pulling for "{a.name}"?</>
+                              ) : (
+                                <><AlertTriangle className="h-5 w-5 text-amber-500" /> Stop pulling for "{a.name}"?</>
+                              )}
+                            </AlertDialogTitle>
+                            <AlertDialogDescription asChild>
+                              {a.paused ? (
+                                <div>
+                                  The agent will resume picking up new tasks on its next heartbeat.
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  <p>
+                                    The agent will stop picking up new tasks on its next heartbeat. Any task currently in progress will finish normally.
+                                  </p>
+                                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                                    <span>
+                                      To resume, you'll need physical access to the machine running this agent and use the <strong>Resume Pulling</strong> option in the systray icon — or click Resume here in the portal.
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => togglePause(a.id, !!a.paused)}
+                              className={a.paused ? '' : 'bg-amber-600 hover:bg-amber-700 text-white'}
+                            >
+                              {a.paused ? 'Resume Pulling' : 'Stop Pulling'}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Reset agent">
@@ -1170,6 +1248,7 @@ function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTea
     setAddError('')
     try {
       await api.members.add(teamId, email)
+      trackEvent('member_added', { team_id: teamId, member_email: email });
       setEmail('')
       setShowAdd(false)
       load()
@@ -1180,6 +1259,7 @@ function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTea
 
   async function removeMember(userId: string) {
     await api.members.remove(teamId, userId)
+    trackEvent('member_removed', { team_id: teamId, member_id: userId });
     load()
   }
 
@@ -1320,24 +1400,6 @@ function SettingsView({ teamName, onDelete, plan }: { teamName: string; onDelete
               {plan === 'pro' ? 'Pro' : 'Free'}
             </Badge>
           </div>
-          {plan === 'free' ? (
-            <div className="rounded-md border bg-muted/40 p-4 space-y-2">
-              <p className="text-sm font-medium">Free plan limits</p>
-              <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                <li>Up to 3 projects</li>
-                <li>Up to 5 members per project</li>
-                <li>5-second task polling</li>
-              </ul>
-              <p className="text-sm text-muted-foreground pt-1">
-                Upgrade to Pro for unlimited projects, unlimited members, and 2-second polling.
-              </p>
-              <a href="/pricing">
-                <Button size="sm" className="mt-1">View Pro plan</Button>
-              </a>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">You have access to all Pro features.</p>
-          )}
         </div>
 
         <div className="space-y-4 pt-4 border-t border-destructive/20">
@@ -1507,6 +1569,7 @@ export default function Dashboard() {
   async function handleDeleteProject() {
     if (!teamId) return
     await api.teams.delete(teamId)
+    trackEvent('project_deleted', { team_id: teamId });
     // Force reload to clear all states and re-fetch teams
     window.location.href = '/dashboard'
   }
@@ -1615,7 +1678,7 @@ export default function Dashboard() {
           </Badge>
         </div>
         <div className="p-2">
-          <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => signOut(auth)}>
+          <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { trackEvent('user_logged_out'); signOut(auth); }}>
             <LogOut className="mr-2 h-4 w-4" />
             Sign out
           </Button>

@@ -42,11 +42,11 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
       .bind(agentStatus, now, agentId),
   ])
 
-  // Check if a portal-initiated reset is pending — handle before any task logic.
+  // Check if a portal-initiated reset or pause is pending — handle before any task logic.
   const agentRow = await env.DB
-    .prepare('SELECT reset_pending FROM agents WHERE id = ?')
+    .prepare('SELECT reset_pending, paused FROM agents WHERE id = ?')
     .bind(agentId)
-    .first<{ reset_pending: number }>()
+    .first<{ reset_pending: number; paused: number }>()
 
   if (agentRow?.reset_pending) {
     await env.DB.batch([
@@ -54,6 +54,10 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
       env.DB.prepare("UPDATE agent_state SET mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
     ])
     return json({ ok: true, agent_id: agentId, reset: true })
+  }
+
+  if (agentRow?.paused) {
+    return json({ ok: true, agent_id: agentId, stop_pulling: true })
   }
 
   // When running or waiting for input: check if the task has been cancelled/completed elsewhere.

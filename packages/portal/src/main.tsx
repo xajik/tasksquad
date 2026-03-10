@@ -4,17 +4,27 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { onAuthStateChanged } from 'firebase/auth'
 import { useState, useEffect } from 'react'
 import { auth } from './lib/firebase'
+import { identifyUser, trackEvent, initAnalytics } from './lib/analytics'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Pricing from './pages/Pricing'
 import './index.css'
 
+initAnalytics();
+
 function App() {
   const [authed, setAuthed] = useState<boolean | null>(null)
 
   useEffect(() => {
-    return onAuthStateChanged(auth, (user) => setAuthed(!!user))
+    return onAuthStateChanged(auth, (user) => {
+      if (user) {
+        identifyUser(user.uid, { email: user.email });
+      } else {
+        identifyUser(null);
+      }
+      setAuthed(!!user);
+    })
   }, [])
 
   if (authed === null) return null

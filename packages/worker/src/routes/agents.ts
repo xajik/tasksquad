@@ -26,9 +26,9 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
   const rows = await env.DB
-    .prepare('SELECT id, name, command, work_dir, status, last_seen, created_at FROM agents WHERE team_id = ? ORDER BY created_at ASC')
+    .prepare('SELECT id, name, command, work_dir, status, last_seen, created_at, paused FROM agents WHERE team_id = ? ORDER BY created_at ASC')
     .bind(teamId)
-    .all<{ id: string; name: string; command: string; work_dir: string; status: string; last_seen: number | null; created_at: number }>()
+    .all<{ id: string; name: string; command: string; work_dir: string; status: string; last_seen: number | null; created_at: number; paused: number }>()
 
   return json({ agents: rows.results })
 }
@@ -145,6 +145,28 @@ export async function resetAgent(req: Request, env: Env, _ctx: unknown, auth: Au
   ])
 
   return json({ ok: true })
+}
+
+export async function pauseAgent(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const parts = url.pathname.split('/')
+  const teamId = parts[2]
+  const agentId = parts[4]
+
+  if (!(await requireMaintainer(env.DB, teamId, auth.userId))) return err('forbidden', 403)
+
+  const agent = await env.DB
+    .prepare('SELECT id FROM agents WHERE id = ? AND team_id = ?')
+    .bind(agentId, teamId)
+    .first<{ id: string }>()
+  if (!agent) return err('not_found', 404)
+
+  const body = await req.json<{ paused?: boolean }>().catch(() => ({} as { paused?: boolean }))
+  const paused = body.paused === true ? 1 : 0
+
+  await env.DB.prepare('UPDATE agents SET paused = ? WHERE id = ?').bind(paused, agentId).run()
+
+  return json({ ok: true, paused: !!paused })
 }
 
 export async function deleteAgent(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
