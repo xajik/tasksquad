@@ -76,11 +76,9 @@ export async function sendFCMNotification(
     body: JSON.stringify({
       message: {
         token,
-        // Use data-only webpush so the service worker handles display
-        // (allows custom icon, badge, click routing).
-        webpush: {
-          data: { title, body, taskId },
-        },
+        // Use top-level data field. For Web Push, this is delivered as the 'data' 
+        // field in the push message, which our service worker can parse as JSON.
+        data: { title, body, taskId },
       },
     }),
   })

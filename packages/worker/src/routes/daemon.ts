@@ -7,18 +7,25 @@ import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
 import { sendFCMNotification } from '../fcm.js'
 import { getInboxVersion } from '../inbox_version.js'
 
-async function notifyTaskSender(env: Env, taskId: string, title: string, body: string): Promise<void> {
+async function notifyTeamMembers(env: Env, taskId: string, title: string, body: string): Promise<void> {
   try {
     const task = await env.DB
-      .prepare('SELECT sender_id FROM tasks WHERE id = ?')
+      .prepare('SELECT team_id FROM tasks WHERE id = ?')
       .bind(taskId)
-      .first<{ sender_id: string | null }>()
-    if (!task?.sender_id) return
+      .first<{ team_id: string | null }>()
+    if (!task?.team_id) return
 
+    // Notify all members of the team who have registered push tokens
     const { results: tokens } = await env.DB
-      .prepare('SELECT token FROM push_tokens WHERE user_id = ?')
-      .bind(task.sender_id)
+      .prepare(`
+        SELECT t.token
+        FROM push_tokens t
+        JOIN team_members m ON m.user_id = t.user_id
+        WHERE m.team_id = ?
+      `)
+      .bind(task.team_id)
       .all<{ token: string }>()
+    
     if (!tokens.length) return
 
     await Promise.all(tokens.map(r =>
@@ -26,7 +33,7 @@ async function notifyTaskSender(env: Env, taskId: string, title: string, body: s
         .catch(e => console.error('[fcm] token push failed:', e))
     ))
   } catch (e) {
-    console.error('[fcm] notifyTaskSender failed:', e)
+    console.error('[fcm] notifyTeamMembers failed:', e)
   }
 }
 
@@ -219,7 +226,7 @@ export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon:
       .bind(ulid(), task_id, null, 'system', 'Task started.', now),
   ])
 
-  await notifyTaskSender(env, task_id, 'Agent started', `Working on: ${task.subject}`)
+  await notifyTeamMembers(env, task_id, 'Agent started', `Working on: ${task.subject}`)
   return json({ session_id: sessionId }, 201)
 }
 
@@ -273,7 +280,7 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   const notifBody = taskStatus === 'done' ? `Completed: ${session.subject}`
     : taskStatus === 'waiting_input' ? `Waiting for reply: ${session.subject}`
     : `Failed: ${session.subject}`
-  await notifyTaskSender(env, session.task_id, notifTitle, notifBody)
+  await notifyTeamMembers(env, session.task_id, notifTitle, notifBody)
 
   return json({ ok: true, session_id, message_id: final_text ? msgId : null })
 }
@@ -309,7 +316,7 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
 
   await env.DB.batch(ops)
 
-  await notifyTaskSender(env, session.task_id, 'Task completed', `Completed: ${session.subject}`)
+  await notifyTeamMembers(env, session.task_id, 'Task completed', `Completed: ${session.subject}`)
 
   return json({ ok: true, session_id, message_id: output ? msgId : null })
 }
@@ -367,7 +374,7 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
     env.DB.prepare("UPDATE agent_state SET mode = 'waiting_input', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
   ])
 
-  await notifyTaskSender(env, session.task_id, 'Agent needs your input', `Waiting for reply: ${session.subject}`)
+  await notifyTeamMembers(env, session.task_id, 'Agent needs your input', `Waiting for reply: ${session.subject}`)
 
   return json({ ok: true, session_id, message_id: msgId })
 }

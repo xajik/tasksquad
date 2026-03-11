@@ -28,7 +28,15 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('push', (event) => {
   if (!event.data) return
   let payload: { title?: string; body?: string; taskId?: string } = {}
-  try { payload = event.data.json() } catch { return }
+  try { 
+    const data = event.data.json()
+    // FCM v1 'data' payload might be at the top level or under a 'data' key depending on 
+    // how the browser/FCM SDK processes it.
+    payload = data.data ? data.data : data
+  } catch { 
+    // Fallback if not JSON
+    payload = { body: event.data.text() }
+  }
 
   event.waitUntil(
     self.registration.showNotification(payload.title ?? 'TaskSquad', {
