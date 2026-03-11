@@ -51,7 +51,7 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentName string) error {
 
 	stopURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/stop?agent=%s&provider=gemini", hooksPort, agentName)
 	notifURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/notification?agent=%s&provider=gemini", hooksPort, agentName)
-	afterModelURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/after_model?agent=%s&provider=gemini", hooksPort, agentName)
+	afterAgentURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/after_agent?agent=%s&provider=gemini", hooksPort, agentName)
 
 	// Gemini CLI hooks structure: {"hooks": {"EventName": [{"matcher": "*", "hooks": [...]}]}}
 	existing["hooks"] = map[string]any{
@@ -81,14 +81,14 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentName string) error {
 				},
 			},
 		},
-		"AfterModel": []any{
+		"AfterAgent": []any{
 			map[string]any{
 				"matcher": "*",
 				"hooks": []any{
 					map[string]any{
-						"name":    "tasksquad-after-model",
+						"name":    "tasksquad-after-agent",
 						"type":    "command",
-						"command": geminiHookCmd(afterModelURL),
+						"command": geminiHookCmd(afterAgentURL),
 						"timeout": 5000,
 					},
 				},
