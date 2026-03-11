@@ -171,7 +171,7 @@ function TranscriptViewer({ content }: { content: string }) {
 
   if (!isJsonl) {
     return (
-      <pre className="text-xs font-mono leading-relaxed whitespace-pre-wrap text-foreground/90 bg-muted/20 rounded-lg p-4 border border-border/40 overflow-x-auto">
+      <pre className="text-xs font-mono leading-relaxed whitespace-pre text-foreground/90 bg-muted/20 rounded-lg p-4 border border-border/40">
         {content}
       </pre>
     )
@@ -199,7 +199,7 @@ function TranscriptViewer({ content }: { content: string }) {
               <div className="space-y-2 pl-3 border-l-2 border-emerald-500/20">
                 {Array.isArray(entry.message?.content) && entry.message.content.map((c, j) => {
                   if (c.type === 'text' && c.text) {
-                    return <div key={j} className="text-sm leading-relaxed whitespace-pre-wrap">{c.text}</div>
+                    return <div key={j} className="text-sm leading-relaxed whitespace-pre">{c.text}</div>
                   }
                   if (c.type === 'tool_use' && c.name && c.input && c.tool_use_id) {
                     return (
@@ -268,14 +268,14 @@ function TranscriptButton({ taskId, msgId }: { taskId: string; msgId: string }) 
         CLI Transcript
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-4xl w-[90vw] max-h-[90vh] flex flex-col p-0 overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-4xl w-[90vw] h-[90vh] flex flex-col p-0 overflow-hidden border-none shadow-2xl">
           <div className="bg-muted/30 px-6 py-4 border-b border-border flex items-center justify-between">
             <div>
               <DialogTitle className="text-lg font-bold">Execution Transcript</DialogTitle>
               <DialogDescription className="text-xs">Detailed step-by-step logs CLI</DialogDescription>
             </div>
           </div>
-          <ScrollArea className="flex-1 bg-background">
+          <ScrollArea className="flex-1 min-h-0 bg-background">
             <div className="p-4 sm:p-8">
               {loading && (
                 <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -618,10 +618,10 @@ function MessageBubble({ message, agentName, taskId }: { message: Message; agent
       </div>
 
       <div className={`
-        relative px-4 py-3 rounded-2xl max-w-[85%] shadow-sm transition-all break-words
+        relative px-4 py-3 rounded-2xl shadow-sm transition-all
         ${isUser
-          ? 'bg-primary text-primary-foreground rounded-tr-none shadow-md'
-          : 'bg-card border border-border text-card-foreground rounded-tl-none font-mono whitespace-pre-wrap'
+          ? 'bg-primary text-primary-foreground rounded-tr-none shadow-md max-w-[85%] break-words'
+          : 'bg-card border border-border text-card-foreground rounded-tl-none font-mono whitespace-pre max-w-none'
         }
       `}>
         <div className="text-[14px] leading-relaxed select-text">{message.body}</div>
@@ -860,11 +860,10 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
                   {showLog ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </button>
                 {showLog && (
-                  <div className="bg-zinc-950 text-emerald-400 p-4 font-mono text-xs whitespace-pre-wrap max-h-96 overflow-auto scrollbar-thin scrollbar-thumb-zinc-800">
+                  <div className="bg-zinc-950 text-emerald-400 p-4 font-mono text-xs whitespace-pre max-h-96 overflow-auto scrollbar-thin scrollbar-thumb-zinc-800">
                     {liveLines.join('\n')}
                   </div>
-                )}
-              </div>
+                )}              </div>
             )}
             <div ref={bottomRef} className="h-4" />
           </div>
@@ -1186,7 +1185,7 @@ work_dir = "${config.dir}"`
               </div>
             </CardHeader>
             <CardContent>
-              <pre className="bg-background border rounded-md p-3 text-xs font-mono whitespace-pre-wrap break-all">
+              <pre className="bg-background border rounded-md p-3 text-xs font-mono whitespace-pre overflow-x-auto">
                 {snippet}
               </pre>
             </CardContent>
