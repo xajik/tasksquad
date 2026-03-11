@@ -19,6 +19,12 @@ bucket_name = "tasksquad-logs"
 binding = "JWKS_CACHE"
 id      = "2fd5d9c6fb734e07940c1d825c7d1411"
 
+# KV — inbox version counter for ETag/cache-control on daemon polling
+# Provision with: wrangler kv namespace create POLL_CACHE
+[[kv_namespaces]]
+binding = "POLL_CACHE"
+id      = "REPLACE_WITH_POLL_CACHE_NAMESPACE_ID"
+
 # Durable Objects
 [[durable_objects.bindings]]
 name       = "AGENT_RELAY"

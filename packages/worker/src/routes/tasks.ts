@@ -1,6 +1,7 @@
 import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
+import { bumpInboxVersion } from '../inbox_version.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -93,6 +94,8 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now),
   ])
+
+  await bumpInboxVersion(env, agent_id)
 
   return json({ id: taskId, status: 'pending' }, 201)
 }
@@ -212,6 +215,8 @@ export async function forwardTask(req: Request, env: Env, _ctx: unknown, auth: A
       'INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?,?,?,?,?,?)'
     ).bind(ulid(), newId, auth.userId, 'user', `[Forwarded thread]\n\n${history}`, now),
   ])
+
+  await bumpInboxVersion(env, body.agent_id)
 
   return json({ task_id: newId }, 201)
 }

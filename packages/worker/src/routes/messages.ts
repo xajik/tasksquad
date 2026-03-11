@@ -2,6 +2,7 @@ import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { importMasterKey, unwrapDEK, decrypt } from '../crypto.js'
+import { bumpInboxVersion } from '../inbox_version.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -108,6 +109,9 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
       .bind(taskId)
       .run()
   }
+
+  // Notify the assigned agent that its inbox has a new message.
+  await bumpInboxVersion(env, task.agent_id)
 
   return json({ id, role: 'user', body: text, created_at: now }, 201)
 }

@@ -5,6 +5,7 @@ import { json, err } from '../auth.js'
 import type { Env, DaemonContext } from '../types.js'
 import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
 import { sendFCMNotification } from '../fcm.js'
+import { getInboxVersion } from '../inbox_version.js'
 
 async function notifyTaskSender(env: Env, taskId: string, title: string, body: string): Promise<void> {
   try {
@@ -30,12 +31,40 @@ async function notifyTaskSender(env: Env, taskId: string, title: string, body: s
 }
 
 const HEARTBEAT_MIN_INTERVAL_MS = 5_000
+// Base poll interval + up to 2 s of random jitter to spread agent traffic.
+const POLL_BASE_MS = 5_000
+const POLL_JITTER_MS = 2_000
+
+/** Response with Cache-Control + ETag headers for the polling endpoint. */
+function hbJson(data: unknown, version: string, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=2, stale-while-revalidate=10',
+      'ETag': `"${version}"`,
+    },
+  })
+}
+
+/** 304 Not Modified — inbox version unchanged, daemon reuses cached response. */
+function hb304(version: string): Response {
+  return new Response(null, {
+    status: 304,
+    headers: {
+      'Cache-Control': 'public, max-age=2, stale-while-revalidate=10',
+      'ETag': `"${version}"`,
+    },
+  })
+}
 
 export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const body = await req.json<{ status?: string }>().catch(() => ({} as { status?: string }))
   const agentId = daemon.agentId
   const agentStatus = body.status ?? 'idle'
   const now = Date.now()
+  // Jitter: suggest how long the daemon should wait before its next poll.
+  const nextPollMs = POLL_BASE_MS + Math.floor(Math.random() * POLL_JITTER_MS)
 
   // Read current state first: last_seen for rate limiting + control flags.
   const agentRow = await env.DB
@@ -68,6 +97,7 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
   }
 
   // When running or waiting for input: check if the task has been cancelled/completed elsewhere.
+  // Control signals are time-sensitive — skip ETag optimisation for these states.
   if (agentStatus === 'running' || agentStatus === 'waiting_input') {
     const state = await env.DB
       .prepare('SELECT current_task_id FROM agent_state WHERE agent_id = ?')
@@ -113,13 +143,25 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
             env.DB.prepare("UPDATE agent_state SET mode = 'running', updated_at = ? WHERE agent_id = ?").bind(Date.now(), agentId),
             env.DB.prepare("UPDATE tasks SET status = 'running' WHERE id = ?").bind(state.current_task_id),
           ])
-          return json({ ok: true, agent_id: agentId, reply: reply.body })
+          return json({ ok: true, agent_id: agentId, reply: reply.body, next_poll_ms: nextPollMs })
         }
       }
     }
+
+    return json({ ok: true, agent_id: agentId, next_poll_ms: nextPollMs })
   }
 
+  // Idle: use ETag/KV to skip the D1 pending-task query when inbox hasn't changed.
   if (agentStatus === 'idle') {
+    const currentVersion = await getInboxVersion(env, agentId)
+    const clientEtag = req.headers.get('If-None-Match')
+
+    // Version '0' means no writes have been recorded yet — always do a full check.
+    if (currentVersion !== '0' && clientEtag === `"${currentVersion}"`) {
+      return hb304(currentVersion)
+    }
+
+    // Version changed (or first poll): query D1 for pending tasks.
     const task = await env.DB
       .prepare(`
         SELECT id, subject FROM tasks
@@ -131,16 +173,21 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
       .first<{ id: string; subject: string }>()
 
     if (task) {
-      // Return full conversation history so the agent can build context for follow-ups
+      // Return full conversation history so the agent can build context for follow-ups.
       const msgRows = await env.DB
         .prepare("SELECT role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') ORDER BY created_at ASC")
         .bind(task.id)
         .all<{ role: string; body: string }>()
-      return json({ ok: true, agent_id: agentId, task: { id: task.id, subject: task.subject, messages: msgRows.results } })
+      return hbJson(
+        { ok: true, agent_id: agentId, task: { id: task.id, subject: task.subject, messages: msgRows.results }, next_poll_ms: nextPollMs },
+        currentVersion,
+      )
     }
+
+    return hbJson({ ok: true, agent_id: agentId, next_poll_ms: nextPollMs }, currentVersion)
   }
 
-  return json({ ok: true, agent_id: agentId })
+  return json({ ok: true, agent_id: agentId, next_poll_ms: nextPollMs })
 }
 
 export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
