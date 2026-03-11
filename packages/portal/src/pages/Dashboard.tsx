@@ -674,7 +674,7 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
 
   useEffect(() => { load() }, [load])
   useEffect(() => { if (watching) setShowLog(true) }, [watching])
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, liveLines])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages.length, liveLines.length])
 
   // Auto-poll while the task is active so messages appear without manual refresh
   // Pro users get 2s polling; free users get 5s
