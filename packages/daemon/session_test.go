@@ -169,9 +169,9 @@ func runTmuxIntegrationTest(t *testing.T, provider, binName string) {
 
 	// ── 8. Wait for interactive prompt, then send the task ────────────────────
 	// Give the TUI time to finish rendering its startup screen.
-	time.Sleep(3 * time.Second)
+	time.Sleep(5 * time.Second)
 	exec.Command(tmuxBin, "send-keys", "-t", sessionName, testPrompt).Run() //nolint:errcheck
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 	exec.Command(tmuxBin, "send-keys", "-t", sessionName, "Enter").Run() //nolint:errcheck
 	t.Logf("[%s] Prompt sent via send-keys: %q", provider, testPrompt)
 
