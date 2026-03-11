@@ -231,6 +231,16 @@ func (a *Agent) post(cfg *config.Config, path string, body any) (map[string]any,
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
 
 func (a *Agent) heartbeat(cfg *config.Config) {
+	if minHeartbeatInterval > 0 {
+		a.mu.Lock()
+		since := time.Since(a.lastPollAt)
+		a.mu.Unlock()
+		if !a.lastPollAt.IsZero() && since < minHeartbeatInterval {
+			logger.Debug(fmt.Sprintf("[%s] Heartbeat skipped — rate limit (%s remaining)", a.Config.Name, (minHeartbeatInterval - since).Round(time.Millisecond)))
+			return
+		}
+	}
+
 	a.mu.Lock()
 	mode := a.mode
 	a.mu.Unlock()

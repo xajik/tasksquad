@@ -29,11 +29,24 @@ async function notifyTaskSender(env: Env, taskId: string, title: string, body: s
   }
 }
 
+const HEARTBEAT_MIN_INTERVAL_MS = 5_000
+
 export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const body = await req.json<{ status?: string }>().catch(() => ({} as { status?: string }))
   const agentId = daemon.agentId
   const agentStatus = body.status ?? 'idle'
   const now = Date.now()
+
+  // Read current state first: last_seen for rate limiting + control flags.
+  const agentRow = await env.DB
+    .prepare('SELECT last_seen, reset_pending, paused FROM agents WHERE id = ?')
+    .bind(agentId)
+    .first<{ last_seen: number | null; reset_pending: number; paused: number }>()
+
+  // Enforce minimum 5s between heartbeats.
+  if (agentRow?.last_seen != null && (now - agentRow.last_seen) < HEARTBEAT_MIN_INTERVAL_MS) {
+    return err('too_many_requests', 429)
+  }
 
   await env.DB.batch([
     env.DB.prepare('UPDATE agents SET status = ?, last_seen = ? WHERE id = ?')
@@ -41,12 +54,6 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
     env.DB.prepare('UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?')
       .bind(agentStatus, now, agentId),
   ])
-
-  // Check if a portal-initiated reset or pause is pending — handle before any task logic.
-  const agentRow = await env.DB
-    .prepare('SELECT reset_pending, paused FROM agents WHERE id = ?')
-    .bind(agentId)
-    .first<{ reset_pending: number; paused: number }>()
 
   if (agentRow?.reset_pending) {
     await env.DB.batch([

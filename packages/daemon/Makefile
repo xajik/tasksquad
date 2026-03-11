@@ -7,6 +7,9 @@ dev:
 build:
 	go build -o tsq .
 
+build-debug:
+	go build -tags debug -o tsq .
+
 build-all:
 	mkdir -p dist
 	GOOS=darwin  GOARCH=arm64 go build -o dist/tsq-darwin-arm64 .
