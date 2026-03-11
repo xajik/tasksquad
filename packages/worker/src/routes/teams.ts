@@ -160,9 +160,12 @@ export async function removeMember(req: Request, env: Env, _ctx: unknown, auth: 
   const url = new URL(req.url)
   const parts = url.pathname.split('/')
   const teamId = parts[2]
-  const userId = parts[4]
+  let userId = parts[4]
 
-  const isSelf = userId === auth.userId
+  const isSelf = userId === auth.userId || userId === auth.uid
+  if (isSelf) {
+    userId = auth.userId // Always use internal ULID for DB ops
+  }
 
   const caller = await env.DB
     .prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?')

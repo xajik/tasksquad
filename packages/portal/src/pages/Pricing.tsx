@@ -17,19 +17,16 @@ const FREE_FEATURES = [
   'Up to 5 members per project',
   'Up to 3 agents per project',
   '60 sec polling',
-  'Integrate with all popular CLI agents: Gemini, Claude, OpenCode, Codex',
+  'Integrate with Gemini, Claude, OpenCode, Codex',
   'Support for Mac, Windows, Linux',
+  'PWA push notifications',
 ]
 
 const PRO_FEATURES = [
-  'Unlimited projects',
-  'Unlimited members per project',
-  'Unlimited agents',
-  '5-second task polling',
-  'Task inbox with threaded replies',
-  'Live session streaming',
-  'Browser push notifications',
-  'Priority support',
+  'Up to 10 projects', 
+  'Up to 10 members per project',
+  'Up to 10 agents per project',
+  '5-second task polling'
 ]
 
 export default function Pricing() {
@@ -37,7 +34,7 @@ export default function Pricing() {
 
   return (
     <div className="min-h-screen bg-background">
-      <nav className="max-w-[800px] mx-auto px-4 sm:px-6 py-5 flex justify-between items-center">
+      <nav className="max-w-[800px] mx-auto px-4 sm:px-6 pt-[calc(1.25rem+env(safe-area-inset-top,0px))] pb-5 flex justify-between items-center sm:py-5">
         <button onClick={() => nav('/')} className="font-bold text-xl">TaskSquad</button>
         <div className="flex gap-6 items-center">
           <Button variant="ghost" onClick={() => nav('/pricing')}>Pricing</Button>
@@ -90,19 +87,19 @@ export default function Pricing() {
                 </div>
               ))}
             </CardContent>
+            
             <CardFooter className="flex-col gap-2 items-start">
-              <Button className="w-full" onClick={() => { trackEvent('pricing_plan_selected', { plan: 'pro' }); nav('/auth') }}>Upgrade</Button>
               <p className="text-xs text-muted-foreground text-center w-full">
                 Contact us at{' '}
                 <a href="mailto:contact@tasksquad.ai" onClick={() => trackEvent('contact_email_clicked', { source: 'pricing_pro' })} className="underline">contact@tasksquad.ai</a>
-                {' '} to activate Pro
+                {' '} to activate
               </p>
             </CardFooter>
           </Card>
         </div>
       </div>
 
-      <div className="max-w-[800px] mx-auto px-4 sm:px-6 pb-12 border-t pt-10 text-muted-foreground text-sm">
+      <div className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] border-t pt-10 text-muted-foreground text-sm sm:pb-12">
       <a href="mailto:contact@tasksquad.ai" className="underline">contact@tasksquad.ai</a> © 2026 TaskSquad
       </div>
     </div>

@@ -915,13 +915,14 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
   )
 }
 
-function AgentsView({ teamId, isMaintainer }: { teamId: string; isMaintainer: boolean }) {
+function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintainer: boolean; plan: 'free' | 'pro' }) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
   const [newToken, setNewToken] = useState<{ agentId: string; token: string; agentName: string } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'claude' | 'gemini'>('claude')
+  const nav = useNavigate()
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -932,8 +933,11 @@ function AgentsView({ teamId, isMaintainer }: { teamId: string; isMaintainer: bo
 
   useEffect(() => { load() }, [load])
 
+  const atAgentLimit = plan === 'free' && agents.length >= 3
+
   async function createAgent(e: React.FormEvent) {
     e.preventDefault()
+    if (atAgentLimit) return
     setCreating(true)
     try {
       // Default values are now handled by the UI guide
@@ -969,7 +973,21 @@ function AgentsView({ teamId, isMaintainer }: { teamId: string; isMaintainer: bo
 
   return (
     <div className="animate-fade-in">
-      <h2 className="text-2xl font-semibold mb-6">Agents</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-semibold">Agents</h2>
+        {plan === 'free' && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-medium">{agents.length}/3 agents</span>
+            <Badge 
+              variant="secondary" 
+              className="cursor-pointer hover:bg-secondary/80 transition-colors uppercase tracking-wider text-[10px] font-bold"
+              onClick={() => { trackEvent('upgrade_clicked', { source: 'agents_tab' }); nav('/pricing'); }}
+            >
+              Upgrade
+            </Badge>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col gap-3 mb-8">
         {isLoading ? (
@@ -1214,11 +1232,16 @@ work_dir = "${config.dir}"`
               placeholder="Agent name (e.g. frontend-helper)"
               required
             />
-            <Button type="submit" disabled={creating} className="w-full sm:w-fit shrink-0">
+            <Button type="submit" disabled={creating || atAgentLimit} className="w-full sm:w-fit shrink-0">
               {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
               Create agent
             </Button>
           </form>
+          {atAgentLimit && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Free plan limit reached. <button onClick={() => { trackEvent('upgrade_clicked', { source: 'agents_create' }); nav('/pricing'); }} className="underline text-primary">Upgrade to Pro</button> for more agents.
+            </p>
+          )}
         </>
       )}
     </div>
@@ -1228,14 +1251,14 @@ work_dir = "${config.dir}"`
 
 const FREE_MEMBER_LIMIT = 5
 
-function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTeam: Team | undefined; plan: 'free' | 'pro' }) {
+function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: string; currentTeam: Team | undefined; plan: 'free' | 'pro'; internalUserId: string | null }) {
   const [members, setMembers] = useState<Member[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [email, setEmail] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
-  const [showAdd, setShowAdd] = useState(false)
-  const currentUserId = auth.currentUser?.uid
+  const currentUserId = internalUserId || auth.currentUser?.uid
+  const nav = useNavigate()
 
   const isOwner = currentTeam?.role === 'owner'
   const atMemberLimit = plan === 'free' && members.length >= FREE_MEMBER_LIMIT
@@ -1251,13 +1274,13 @@ function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTea
 
   async function addMember(e: React.FormEvent) {
     e.preventDefault()
+    if (atMemberLimit) return
     setAdding(true)
     setAddError('')
     try {
       await api.members.add(teamId, email)
       trackEvent('member_added', { team_id: teamId, member_email: email });
       setEmail('')
-      setShowAdd(false)
       load()
     } catch (err: any) {
       setAddError(err?.error ?? 'Failed to add member')
@@ -1277,149 +1300,153 @@ function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTea
 
   return (
     <div className="animate-fade-in">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-semibold">Members</h2>
-        {isOwner && (
-          <Dialog open={showAdd} onOpenChange={setShowAdd}>
-            <DialogTrigger asChild>
-              <Button size="sm" disabled={atMemberLimit}>
-                <Plus className="h-4 w-4 mr-1" />
-                Add Member
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[400px]">
-              <DialogHeader>
-                <DialogTitle>Add team member</DialogTitle>
-                <DialogDescription>
-                  The user must already have a TaskSquad account.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={addMember}>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="member-email">Email address</Label>
-                    <Input
-                      id="member-email"
-                      type="email"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      placeholder="user@example.com"
-                      required
-                      autoFocus
-                    />
-                  </div>
-                  {addError && <p className="text-sm text-destructive">{addError}</p>}
-                </div>
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
-                  <Button type="submit" disabled={adding}>
-                    {adding ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                    Add
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+        {plan === 'free' && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-medium">{members.length}/{FREE_MEMBER_LIMIT} members</span>
+            <Badge 
+              variant="secondary" 
+              className="cursor-pointer hover:bg-secondary/80 transition-colors uppercase tracking-wider text-[10px] font-bold"
+              onClick={() => { trackEvent('upgrade_clicked', { source: 'members_tab' }); nav('/pricing'); }}
+            >
+              Upgrade
+            </Badge>
+          </div>
         )}
       </div>
 
-      {plan === 'free' && (
-        <p className="text-xs text-muted-foreground mb-4">
-          {members.length}/{FREE_MEMBER_LIMIT} members — free plan.{' '}
-          {atMemberLimit && <a href="/pricing" className="underline text-primary">Upgrade to Pro</a>}
-        </p>
-      )}
-
-      {isLoading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map(i => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-4">
-                <div className="h-4 bg-muted rounded w-1/3 mb-2" />
-                <div className="h-3 bg-muted rounded w-1/2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {members.map(m => (
-            <Card key={m.id}>
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <div className="font-medium">{m.email} {m.id === currentUserId && <span className="text-muted-foreground ml-1">(You)</span>}</div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant={m.role === 'owner' ? 'default' : 'secondary'}>
-                      {m.role}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      Joined {new Date(m.joined_at).toLocaleDateString()}
-                    </span>
+      <div className="flex flex-col gap-2 mb-8">
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="p-3 sm:p-4 flex items-center gap-4">
+                  <div className="h-10 w-10 rounded-full bg-muted shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-muted rounded w-1/4" />
+                    <div className="h-3 bg-muted rounded w-1/3" />
                   </div>
-                </div>
-                {(isOwner && m.id !== currentUserId && m.role !== 'maintainer') ? (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Remove member?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Remove {m.email} from this team?
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => removeMember(m.id)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        >
-                          Remove
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                ) : (m.id === currentUserId && m.role !== 'owner') ? (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive transition-colors">
-                        Leave Project
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Leave Project?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Are you sure you want to leave this project? You will no longer have access to it unless you are invited back.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => removeMember(m.id)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        >
-                          Leave
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                ) : null}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {members.map(m => (
+              <Card key={m.id} className="group border shadow-none hover:bg-accent/50 transition-colors">
+                <CardContent className="p-3 sm:p-4 flex items-center gap-4">
+                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0">
+                    {(m.email[0] || '?').toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate" title={m.email}>{m.email}</span>
+                      {m.id === currentUserId && <Badge variant="secondary" className="text-[10px] h-4 px-1">You</Badge>}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                      <span className="capitalize">{m.role}</span>
+                      <span>•</span>
+                      <span>Joined {new Date(m.joined_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <div className="shrink-0 flex items-center gap-2">
+                    {(isOwner && m.id !== currentUserId && m.role !== 'maintainer') ? (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Remove member?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Remove {m.email} from this team?
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => removeMember(m.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Remove
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    ) : (m.id === currentUserId && m.role !== 'owner') ? (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 text-muted-foreground hover:text-destructive">
+                            Leave
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Leave Project?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to leave this project? You will no longer have access to it unless you are invited back.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => removeMember(m.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Leave
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    ) : null}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {isOwner && (
+        <>
+          <Separator className="my-6" />
+          <h3 className="text-lg font-semibold mb-1">Add member</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            The user must already have a TaskSquad account.
+          </p>
+          <form onSubmit={addMember} className="flex flex-col sm:flex-row gap-2 max-w-md">
+            <Input
+              id="member-email"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="user@example.com"
+              required
+            />
+            <Button type="submit" disabled={adding || atMemberLimit} className="w-full sm:w-fit shrink-0">
+              {adding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+              Add member
+            </Button>
+          </form>
+          {addError && <p className="text-sm text-destructive mt-2">{addError}</p>}
+          {atMemberLimit && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Limit reached. <button onClick={() => { trackEvent('upgrade_clicked', { source: 'members_limit_text' }); nav('/pricing'); }} className="underline text-primary">Upgrade to Pro</button> for more members.
+            </p>
+          )}
+        </>
       )}
     </div>
   )
 }
 
-function SettingsView({ teamName, onDelete, plan: _plan, isOwner }: { teamName: string; onDelete: () => Promise<void>; plan: 'free' | 'pro'; isOwner: boolean }) {
+export function SettingsView({ teamName, onDelete, onLeave, plan: _plan, isOwner }: { teamName: string; onDelete: () => Promise<void>; onLeave: () => Promise<void>; plan: 'free' | 'pro'; isOwner: boolean }) {
   const [confirmName, setConfirmName] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [leaving, setLeaving] = useState(false)
 
   return (
     <div className="animate-fade-in">
@@ -1429,6 +1456,53 @@ function SettingsView({ teamName, onDelete, plan: _plan, isOwner }: { teamName: 
           <div className="text-sm text-muted-foreground mb-1 font-medium">Project name</div>
           <div className="text-lg font-semibold">{teamName}</div>
         </div>
+
+        {!isOwner && (
+          <div className="space-y-4 pt-4 border-t">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <LogOut className="h-5 w-5" />
+              Leave this project
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              You will no longer have access to this project. You'll need to be invited back by an owner to regain access.
+            </p>
+            
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" className="w-full sm:w-auto text-destructive border-destructive/20 hover:bg-destructive/10 hover:text-destructive">
+                  Leave Project
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Leave Project?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to leave <span className="font-bold text-foreground">"{teamName}"</span>?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={leaving}
+                    onClick={async (e) => {
+                      e.preventDefault()
+                      setLeaving(true)
+                      try {
+                        await onLeave()
+                      } catch (err) {
+                        console.error('Failed to leave project:', err)
+                        setLeaving(false)
+                      }
+                    }}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {leaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Leave Project'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )}
 
         {isOwner && (
           <div className="space-y-4 pt-4 border-t border-destructive/20">
@@ -1543,6 +1617,7 @@ export default function Dashboard() {
   const nav = useNavigate()
 
   const [plan, setPlan] = useState<'free' | 'pro'>('free')
+  const [internalUserId, setInternalUserId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showCreateTeam, setShowCreateTeam] = useState(false)
   const [newTeamName, setNewTeamName] = useState('')
@@ -1552,6 +1627,7 @@ export default function Dashboard() {
   useEffect(() => {
     api.me().then(u => {
       setPlan(u.plan)
+      setInternalUserId(u.id)
     }).catch(() => {})
     requestNotificationPermission().then(perm => {
       if (perm === 'granted') registerPushToken()
@@ -1604,6 +1680,16 @@ export default function Dashboard() {
     window.location.href = '/dashboard'
   }
 
+  async function handleLeaveProject() {
+    if (!teamId) return
+    const id = internalUserId || auth.currentUser?.uid
+    if (!id) return
+    await api.members.remove(teamId, id)
+    trackEvent('project_left', { team_id: teamId, member_id: id });
+    // Force reload to clear all states and re-fetch teams
+    window.location.href = '/dashboard'
+  }
+
   const currentTeam = teams.find(t => t.id === teamId)
   const isOwner = currentTeam?.role === 'owner'
   const isMaintainer = isOwner || currentTeam?.role === 'maintainer'
@@ -1624,6 +1710,7 @@ export default function Dashboard() {
         'fixed inset-y-0 left-0 z-50 w-64',
         'md:relative md:z-auto md:w-52',
         'transition-transform duration-200 ease-in-out',
+        'pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] md:pt-0 md:pb-0',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
       ].join(' ')}>
         <div className="flex items-center gap-2 font-bold text-lg px-4 py-5">
@@ -1733,7 +1820,7 @@ export default function Dashboard() {
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* Mobile top bar */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b bg-background md:hidden shrink-0">
+        <div className="flex items-center gap-3 px-4 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] pb-3 border-b bg-background md:hidden shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
             className="rounded-md p-1.5 hover:bg-muted transition-colors"
@@ -1744,13 +1831,13 @@ export default function Dashboard() {
           <img src="/tasksquad-dark.svg" alt="TaskSquad" className="h-5 w-5" />
           <span className="font-bold">TaskSquad</span>
         </div>
-        <main className="flex-1 overflow-auto p-4 sm:p-8">
+        <main className="flex-1 overflow-auto p-4 sm:p-8 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
         <Routes>
           <Route path="/" element={<InboxView teamId={teamId} />} />
           <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} plan={plan} />} />
-          <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} />} />
-          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} />} />
-          <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} plan={plan} isOwner={isOwner} />} />
+          <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />
+          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />
+          <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} onLeave={handleLeaveProject} plan={plan} isOwner={isOwner} />} />
         </Routes>
       </main>
       </div>

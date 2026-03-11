@@ -5,7 +5,7 @@ import { trackEvent } from '../lib/analytics'
 export default function Landing() {
   const nav = useNavigate()
   return (
-    <div className="max-w-[800px] mx-auto px-4 sm:px-6 py-10 sm:py-16">
+    <div className="max-w-[800px] mx-auto px-4 sm:px-6 pt-[calc(2.5rem+env(safe-area-inset-top,0px))] pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] sm:py-16">
       <nav className="flex justify-between items-center mb-10 sm:mb-20">
         <strong className="text-xl">TaskSquad</strong>
         <div className="flex gap-4 sm:gap-6 items-center">
