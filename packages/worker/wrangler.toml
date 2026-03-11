@@ -23,7 +23,7 @@ id      = "2fd5d9c6fb734e07940c1d825c7d1411"
 # Provision with: wrangler kv namespace create POLL_CACHE
 [[kv_namespaces]]
 binding = "POLL_CACHE"
-id      = "REPLACE_WITH_POLL_CACHE_NAMESPACE_ID"
+id      = "60e989c16f6d4ce4946df7393a6031ce"
 
 # Durable Objects
 [[durable_objects.bindings]]
