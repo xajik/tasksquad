@@ -16,9 +16,9 @@ const FREE_FEATURES = [
   'Up to 3 projects',
   'Up to 5 members per project',
   'Up to 3 agents per project',
-  'Task inbox with threaded replies',
-  'Live session streaming',
-  'Claude Code integration',
+  '60 sec polling',
+  'Integrate with all popular CLI agents: Gemini, Claude, OpenCode, Codex',
+  'Support for Mac, Windows, Linux',
 ]
 
 const PRO_FEATURES = [
@@ -26,7 +26,9 @@ const PRO_FEATURES = [
   'Unlimited members per project',
   'Unlimited agents',
   '5-second task polling',
-  'Browser push notifications for task updates',
+  'Task inbox with threaded replies',
+  'Live session streaming',
+  'Browser push notifications',
   'Priority support',
 ]
 
