@@ -123,24 +123,24 @@ type Agent struct {
 	Config config.AgentConfig
 	prov   provider.Provider
 
-	mu          sync.Mutex
-	mode        Mode
-	paused      bool   // when true, heartbeat is skipped
-	agentID     string // resolved from server on first heartbeat
-	sessionID   string
-	taskID      string
-	outputLines []string
-	completing  bool
-	proc        *exec.Cmd
-	stdinWrite  io.WriteCloser // open while process is running (pipe or PTY master)
-	runLog      *os.File       // per-task log file, open while task runs
-	outputDone  chan struct{}   // closed when streamOutput finishes draining stdout
-	tmuxSession    string // tmux session name while task is running (tmux path only)
-	fifoPath       string // FIFO path for tmux output streaming
-	transcriptPath string // Claude Code conversation transcript (from Stop hook payload)
-	lastPrompt     string // the initial prompt or latest user reply sent to the process
-	lastPollAt     time.Time // time of the last successful heartbeat
-	lastLogPath    string    // path to the current per-task run log file
+	mu             sync.Mutex
+	mode           Mode
+	paused         bool   // when true, heartbeat is skipped
+	agentID        string // resolved from server on first heartbeat
+	sessionID      string
+	taskID         string
+	outputLines    []string
+	completing     bool
+	proc           *exec.Cmd
+	stdinWrite     io.WriteCloser // open while process is running (pipe or PTY master)
+	runLog         *os.File       // per-task log file, open while task runs
+	outputDone     chan struct{}  // closed when streamOutput finishes draining stdout
+	tmuxSession    string         // tmux session name while task is running (tmux path only)
+	fifoPath       string         // FIFO path for tmux output streaming
+	transcriptPath string         // Claude Code conversation transcript (from Stop hook payload)
+	lastPrompt     string         // the initial prompt or latest user reply sent to the process
+	lastPollAt     time.Time      // time of the last successful heartbeat
+	lastLogPath    string         // path to the current per-task run log file
 }
 
 func New(cfg config.AgentConfig) *Agent {
@@ -1144,7 +1144,7 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		logger.Error(fmt.Sprintf("[%s] Session close error: %v", a.Config.Name, err))
 	} else {
 		logger.Debug(fmt.Sprintf("[%s] Session close response: %v", a.Config.Name, closeResp))
-		
+
 		// Asynchronously upload full log and transcript
 		msgID, _ := closeResp["message_id"].(string)
 
@@ -1426,7 +1426,7 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 		logger.Error(fmt.Sprintf("[%s] Session notify error: %v", a.Config.Name, err))
 	} else if notifyResp != nil {
 		logger.Debug(fmt.Sprintf("[%s] Session notify response: %v", a.Config.Name, notifyResp))
-		
+
 		msgID, _ := notifyResp["message_id"].(string)
 		if msgID != "" && transcriptPath != "" {
 			// Asynchronously upload transcript for this notification
