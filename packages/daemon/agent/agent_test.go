@@ -67,6 +67,21 @@ func TestExtractTranscriptResponse_EmptyFile(t *testing.T) {
 	}
 }
 
+// openCodeTranscript matches the Gemini-compatible JSON format written by the
+// OpenCode plugin's message.updated handler in provider/opencode.go.
+const openCodeTranscript = `{"messages":[{"type":"assistant","content":"DONE"}]}`
+
+func TestExtractTranscriptResponse_OpenCode(t *testing.T) {
+	path := writeTranscript(t, openCodeTranscript)
+	got := ExtractTranscriptResponse(path)
+	if got == "" {
+		t.Fatal("response is empty — opencode transcript format not handled")
+	}
+	if got != "DONE" {
+		t.Errorf("expected %q, got %q", "DONE", got)
+	}
+}
+
 func TestBuildNotifyMessage_FiltersPrompt(t *testing.T) {
 	a := &Agent{
 		lastPrompt: "Translate into ukrainian: I love you my motherland",

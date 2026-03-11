@@ -1418,7 +1418,7 @@ function MembersView({ teamId, currentTeam, plan }: { teamId: string; currentTea
   )
 }
 
-function SettingsView({ teamName, onDelete, plan, isOwner }: { teamName: string; onDelete: () => Promise<void>; plan: 'free' | 'pro'; isOwner: boolean }) {
+function SettingsView({ teamName, onDelete, plan: _plan, isOwner }: { teamName: string; onDelete: () => Promise<void>; plan: 'free' | 'pro'; isOwner: boolean }) {
   const [confirmName, setConfirmName] = useState('')
   const [deleting, setDeleting] = useState(false)
 

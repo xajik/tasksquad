@@ -55,6 +55,19 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			transcriptPath = payload.TranscriptPath
 			stopReason = payload.Reason
 			crashed = stopReason == "error"
+		} else if provider == "opencode" {
+			// OpenCode payload: {"stop_reason": "...", "message": "...", "transcript_path": "..."}
+			var payload struct {
+				StopReason     string `json:"stop_reason"`
+				Message        string `json:"message"`
+				TranscriptPath string `json:"transcript_path"`
+			}
+			if err := json.Unmarshal(body, &payload); err != nil {
+				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal OpenCode Stop hook: %v", err))
+			}
+			transcriptPath = payload.TranscriptPath
+			stopReason = payload.StopReason
+			crashed = stopReason == "error"
 		} else {
 			// Claude payload: {"stop_reason": "...", "transcript_path": "..."}
 			var payload struct {
@@ -116,6 +129,17 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			}
 			if err := json.Unmarshal(body, &payload); err != nil {
 				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal Gemini Notification hook: %v", err))
+			}
+			msg = payload.Message
+			transcriptPath = payload.TranscriptPath
+		} else if provider == "opencode" {
+			// OpenCode payload: {"message": "...", "transcript_path": "...", ...}
+			var payload struct {
+				Message        string `json:"message"`
+				TranscriptPath string `json:"transcript_path"`
+			}
+			if err := json.Unmarshal(body, &payload); err != nil {
+				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal OpenCode Notification hook: %v", err))
 			}
 			msg = payload.Message
 			transcriptPath = payload.TranscriptPath
@@ -228,6 +252,21 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			logger.Debug(fmt.Sprintf("[hooks] AfterModel ignored: agent %q not in 'running' state", agentName))
 		}
 
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok")) //nolint:errcheck
+	})
+
+	// ── opencode: lifecycle events ───────────────────────────────────────────
+	mux.HandleFunc("/hooks/opencode", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		agentName := r.URL.Query().Get("agent")
+
+		var payload struct {
+			Type string `json:"type"`
+		}
+		json.Unmarshal(body, &payload) //nolint:errcheck
+
+		logger.Info(fmt.Sprintf("[hooks] OpenCode event: %s (agent=%s)", payload.Type, agentName))
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok")) //nolint:errcheck
 	})
