@@ -34,7 +34,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 	// ── Hook Handlers: Stop / SessionEnd ──────────────────────────────────────
 	mux.HandleFunc("/hooks/stop", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		logger.Debug(fmt.Sprintf("[hooks] POST /hooks/stop from %s raw body: %s", r.RemoteAddr, string(body)))
+		logger.Info(fmt.Sprintf("[hooks] ★ POST /hooks/stop from %s body: %s", r.RemoteAddr, string(body)))
 
 		agentName := r.URL.Query().Get("agent")
 		provider := r.URL.Query().Get("provider")
@@ -65,9 +65,14 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			if err := json.Unmarshal(body, &payload); err != nil {
 				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal OpenCode Stop hook: %v", err))
 			}
+			logger.Debug(fmt.Sprintf("[hooks] OpenCode stop parsed: stop_reason=%q msg=%q transcript_path=%q",
+				payload.StopReason, payload.Message, payload.TranscriptPath))
 			transcriptPath = payload.TranscriptPath
 			stopReason = payload.StopReason
 			crashed = stopReason == "error"
+			if transcriptPath == "" {
+				logger.Warn("[hooks] OpenCode stop missing transcript_path - will fallback to tmux capture")
+			}
 		} else {
 			// Claude payload: {"stop_reason": "...", "transcript_path": "..."}
 			var payload struct {
@@ -113,7 +118,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 	// ── Hook Handlers: Notification (waiting for input) ────────────────────────
 	mux.HandleFunc("/hooks/notification", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		logger.Debug(fmt.Sprintf("[hooks] POST /hooks/notification from %s raw body: %s", r.RemoteAddr, string(body)))
+		logger.Info(fmt.Sprintf("[hooks] ★ POST /hooks/notification from %s body: %s", r.RemoteAddr, string(body)))
 
 		agentName := r.URL.Query().Get("agent")
 		provider := r.URL.Query().Get("provider")
@@ -141,8 +146,12 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			if err := json.Unmarshal(body, &payload); err != nil {
 				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal OpenCode Notification hook: %v", err))
 			}
+			logger.Debug(fmt.Sprintf("[hooks] OpenCode notification parsed: msg=%q transcript_path=%q", payload.Message, payload.TranscriptPath))
 			msg = payload.Message
 			transcriptPath = payload.TranscriptPath
+			if transcriptPath == "" {
+				logger.Warn("[hooks] OpenCode notification missing transcript_path - message may not be captured correctly")
+			}
 		} else {
 			// Claude payload: {"message": "...", "transcript_path": "..."}
 			var payload struct {
@@ -283,6 +292,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 
 	addr := fmt.Sprintf(":%d", cfg.Hooks.Port)
 	logger.Info(fmt.Sprintf("[hooks] Server listening on http://localhost%s", addr))
+	logger.Info(fmt.Sprintf("[hooks] Registered endpoints: /hooks/stop, /hooks/notification, /hooks/after_model, /hooks/opencode"))
 	go http.ListenAndServe(addr, mux) //nolint:errcheck
 }
 
