@@ -15,7 +15,7 @@ import (
 type Agent interface {
 	Name() string
 	Complete(cfg *config.Config, status string, transcriptPath string)
-	StopAndPause(cfg *config.Config, transcriptPath string)
+	StopAndPause(cfg *config.Config, hookMessage, transcriptPath string)
 	SetWaitingInput(cfg *config.Config, message string, transcriptPath string)
 	GetMode() string
 }
@@ -90,6 +90,18 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 		logger.Info(fmt.Sprintf("[hooks] Stop received: provider=%s stop_reason=%s transcript_path=%s",
 			provider, stopReason, transcriptPath))
 
+		// For OpenCode the plugin delivers the clean assistant text in the message
+		// field; pass it through so StopAndPause can use it directly as finalText
+		// instead of relying on the FIFO/outputLines which may not be populated yet.
+		var hookMessage string
+		if provider == "opencode" {
+			var ocMsg struct {
+				Message string `json:"message"`
+			}
+			json.Unmarshal(body, &ocMsg) //nolint:errcheck
+			hookMessage = ocMsg.Message
+		}
+
 		found := false
 		for _, a := range agents {
 			if agentName != "" && a.Name() != agentName {
@@ -101,7 +113,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 					go a.Complete(cfg, "crashed", transcriptPath)
 				} else {
 					logger.Debug(fmt.Sprintf("[hooks] Dispatching StopAndPause to agent %s", a.Name()))
-					go a.StopAndPause(cfg, transcriptPath)
+					go a.StopAndPause(cfg, hookMessage, transcriptPath)
 				}
 				found = true
 				break
@@ -225,7 +237,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			}
 			if a.GetMode() == "running" {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching StopAndPause to agent %s", a.Name()))
-				go a.StopAndPause(cfg, payload.TranscriptPath)
+				go a.StopAndPause(cfg, "", payload.TranscriptPath)
 				found = true
 				break
 			}

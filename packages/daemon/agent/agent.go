@@ -307,9 +307,9 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 			if sess != "" {
 				// tmux path: deliver reply via send-keys
 				// Small delay to ensure tmux session is ready to receive input.
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(1 * time.Second)
 				exec.Command(tmuxBin, "send-keys", "-t", sess, reply).Run() //nolint:errcheck
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(1 * time.Second)
 				exec.Command(tmuxBin, "send-keys", "-t", sess, "C-m").Run() //nolint:errcheck
 				a.mu.Lock()
 				a.mode = ModeRunning
@@ -433,9 +433,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.mu.Unlock()
 
 	// Let the provider write any hook/config files it needs (e.g. .claude/settings.json).
-	// if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port, a.Config.Name); err != nil {
-	// 	logger.Warn(fmt.Sprintf("[%s] Provider setup warning: %v", a.Config.Name, err))
-	// }
+	if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port, a.Config.Name); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Provider setup warning: %v", a.Config.Name, err))
+	}
 
 	// Build prompt from the full conversation history.
 	prompt := buildConversationPrompt(subject, task["messages"])
@@ -522,8 +522,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 				// Gemini requires extra time to initialize its internal state.
 				time.Sleep(15 * time.Second)
 				exec.Command(tmuxBin, "send-keys", "-t", sessionName, stdinData).Run() //nolint:errcheck
-				time.Sleep(500 * time.Millisecond)
-				// exec.Command(tmuxBin, "send-keys", "-t", sessionName, "C-m").Run() //nolint:errcheck
+				time.Sleep(1 * time.Second)
+				exec.Command(tmuxBin, "send-keys", "-t", sessionName, "C-m").Run() //nolint:errcheck
 
 				a.mu.Lock()
 				a.tmuxSession = sessionName
@@ -1235,7 +1235,7 @@ func (a *Agent) Complete(cfg *config.Config, status string, transcriptPath strin
 // closing the task, it posts the final response as an agent message and moves
 // to waiting_input — keeping the tmux session alive so the user can send a
 // follow-up or click "Complete session" to cleanly shut down.
-func (a *Agent) StopAndPause(cfg *config.Config, transcriptPath string) {
+func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath string) {
 	a.mu.Lock()
 	mode := a.mode
 	completing := a.completing
@@ -1263,10 +1263,11 @@ func (a *Agent) StopAndPause(cfg *config.Config, transcriptPath string) {
 		}
 	}
 
-	// Extract final response text. Retry for up to 10 s because Claude Code
-	// may still be writing the transcript when the Stop hook fires.
-	finalText := ""
-	if transcriptPath != "" {
+	// Extract final response text.
+	// Priority: hookMessage (OpenCode plugin delivers clean text) → transcript → tmux scrollback → outputLines.
+	finalText := hookMessage
+	if finalText == "" && transcriptPath != "" {
+		// Retry for up to 10 s because Claude Code may still be writing the transcript.
 		retryDeadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(retryDeadline) {
 			finalText = ExtractTranscriptResponse(transcriptPath)
@@ -1275,6 +1276,12 @@ func (a *Agent) StopAndPause(cfg *config.Config, transcriptPath string) {
 				break
 			}
 			time.Sleep(500 * time.Millisecond)
+		}
+	}
+	if finalText == "" && tmuxCapture != "" {
+		finalText = tmuxCapture
+		if len(finalText) > 10000 {
+			finalText = finalText[len(finalText)-10000:]
 		}
 	}
 	if finalText == "" {

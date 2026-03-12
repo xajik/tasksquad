@@ -9,13 +9,9 @@ import (
 // OpenCode is the provider for sst/opencode CLI.
 //
 // OpenCode uses JavaScript plugins (`.mjs` files in `.opencode/plugins/`).
-// Setup() writes a plugin that calls back to the daemon hook server when the
-// session finishes or errors, mirroring the Claude Code Stop hook flow.
-//
-// The plugin tracks the last assistant response across `message.updated` events,
-// writes it as a Gemini-compatible JSON transcript file in the system temp dir,
-// then passes that file's path to the /hooks/stop endpoint so the daemon can
-// extract the final text via ExtractTranscriptResponse.
+// Setup() writes a plugin that accumulates assistant message text parts via
+// message.part.updated events, marks them complete via message.updated, then
+// on session.idle combines all parts and POSTs to /hooks/stop with the full text.
 type OpenCode struct{}
 
 func (p *OpenCode) Name() string { return "opencode" }
@@ -46,34 +42,55 @@ export const TaskSquadPlugin = async ({ client }) => {
     }
   }
 
-  let lastMessage = ""
-
-  const getContent = (msg) => {
-    if (typeof msg.content === "string") return msg.content
-    if (Array.isArray(msg.content)) return msg.content.filter(p => p.type === "text").map(p => p.text || "").join("")
-    return ""
-  }
+  // messageID -> { sessionID, textParts: [{id, text}], completed }
+  const messageCache = new Map()
 
   return {
-    "message.updated": async (input, output) => {
-        lastMessage = getContent(input.message)
-        await client.app.log({ body: { service: "tasksquad", level: "debug", message: "assistant message: " + lastMessage.slice(0, 50) } })
-        await post("/hooks/notification?agent=%s&provider=opencode", { message: lastMessage })
-    },
+    "event": async (input) => {
+      const { event } = input
 
-    "session.idle": async (input, output) => {
-      await client.app.log({ body: { service: "tasksquad", level: "info", message: "session.idle" } })
-      await post("/hooks/stop?agent=%s&provider=opencode", { stop_reason: "idle", message: lastMessage })
-    },
+      if (event.type === "message.part.updated" && event.properties?.part) {
+        const part = event.properties.part
+        if (part.type === "text" && part.messageID) {
+          if (!messageCache.has(part.messageID)) {
+            messageCache.set(part.messageID, { sessionID: part.sessionID, textParts: [], completed: false })
+          }
+          const cached = messageCache.get(part.messageID)
+          const existing = cached.textParts.find(p => p.id === part.id)
+          if (existing) {
+            existing.text = part.text || ""
+          } else {
+            cached.textParts.push({ id: part.id, text: part.text || "" })
+          }
+        }
+      }
 
-    "session.error": async (input, output) => {
-      await client.app.log({ body: { service: "tasksquad", level: "error", message: "session.error: " + (input.error?.message || "unknown") } })
-      await post("/hooks/stop?agent=%s&provider=opencode", { stop_reason: "error", message: input.error?.message || "Unknown error" })
+      if (event.type === "message.updated" && event.properties?.info) {
+        const info = event.properties.info
+        if (info.role === "assistant" && info.time?.completed && messageCache.has(info.id)) {
+          messageCache.get(info.id).completed = true
+        }
+      }
+
+      if (event.type === "session.idle") {
+        await client.app.log({ body: { service: "tasksquad", level: "info", message: "session.idle" } })
+        let lastCompleted = null
+        for (const [, cached] of messageCache.entries()) {
+          if (cached.completed) lastCompleted = cached
+        }
+        const message = lastCompleted ? lastCompleted.textParts.map(p => p.text).join("") : ""
+        await post("/hooks/stop?agent=%s&provider=opencode", { stop_reason: "idle", message })
+      }
+
+      if (event.type === "session.error") {
+        await client.app.log({ body: { service: "tasksquad", level: "error", message: "session.error" } })
+        await post("/hooks/stop?agent=%s&provider=opencode", { stop_reason: "error", message: event.properties?.error?.message || "Unknown error" })
+      }
     },
   }
 }
-`, hooksPort, agentName)
-	return os.WriteFile(filepath.Join(pluginDir, "tasksquad.mjs"), []byte(plugin), 0644)
+`, hooksPort, agentName, agentName)
+	return os.WriteFile(filepath.Join(pluginDir, "tasksquad.ts"), []byte(plugin), 0644)
 }
 
 func (p *OpenCode) UsesHooks() bool            { return true }

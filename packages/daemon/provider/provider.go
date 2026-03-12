@@ -46,14 +46,6 @@ func Detect(command, override string) Provider {
 		}
 	}
 
-	// Auto-detect from the command content.
-	// If it contains "gemini", use Gemini provider.
-	// Otherwise check binary name, defaulting to Claude.
-	cmdLower := strings.ToLower(command)
-	if strings.Contains(cmdLower, "gemini") {
-		return &Gemini{}
-	}
-
 	bin := command
 	if fields := strings.Fields(command); len(fields) > 0 {
 		bin = filepath.Base(fields[0])
@@ -63,6 +55,8 @@ func Detect(command, override string) Provider {
 		return &ClaudeCode{}
 	case "opencode":
 		return &OpenCode{}
+	case "gemini":
+		return &Gemini{}
 	case "codex":
 		return &Codex{}
 	default:
