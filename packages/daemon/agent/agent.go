@@ -275,8 +275,9 @@ func (a *Agent) heartbeat(cfg *config.Config) {
 	a.mu.Unlock()
 
 	// Reset requested from portal — kill tmux and go idle regardless of current mode.
+	// In-progress tasks have already been completed server-side.
 	if reset, _ := resp["reset"].(bool); reset {
-		logger.Info(fmt.Sprintf("[%s] Reset requested by server — killing tmux and going idle", a.Config.Name))
+		logger.Info(fmt.Sprintf("[%s] Reset requested by server — killing tmux sessions and going idle", a.Config.Name))
 		go a.handleReset()
 		return
 	}
@@ -432,9 +433,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.mu.Unlock()
 
 	// Let the provider write any hook/config files it needs (e.g. .claude/settings.json).
-	if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port, a.Config.Name); err != nil {
-		logger.Warn(fmt.Sprintf("[%s] Provider setup warning: %v", a.Config.Name, err))
-	}
+	// if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port, a.Config.Name); err != nil {
+	// 	logger.Warn(fmt.Sprintf("[%s] Provider setup warning: %v", a.Config.Name, err))
+	// }
 
 	// Build prompt from the full conversation history.
 	prompt := buildConversationPrompt(subject, task["messages"])
@@ -491,7 +492,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 			// Build tmux new-session: inherit workDir + provider env.
 			cmdParts := append([]string{parts[0]}, args...)
 			newSessionArgs := append([]string{"new-session", "-d", "-s", sessionName,
-				"-c", a.Config.WorkDir, "-x", "220", "-y", "50", "--"}, cmdParts...)
+				"-c", a.Config.WorkDir, "--"}, cmdParts...)
 			tmuxCmd := exec.Command(tmuxBin, newSessionArgs...)
 			if len(provEnv) > 0 {
 				tmuxCmd.Env = append(os.Environ(), provEnv...)
@@ -522,7 +523,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 				time.Sleep(15 * time.Second)
 				exec.Command(tmuxBin, "send-keys", "-t", sessionName, stdinData).Run() //nolint:errcheck
 				time.Sleep(500 * time.Millisecond)
-				exec.Command(tmuxBin, "send-keys", "-t", sessionName, "C-m").Run() //nolint:errcheck
+				// exec.Command(tmuxBin, "send-keys", "-t", sessionName, "C-m").Run() //nolint:errcheck
 
 				a.mu.Lock()
 				a.tmuxSession = sessionName
@@ -1015,11 +1016,13 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 }
 
 // handleReset kills any running tmux session and returns the agent to idle.
-// The server has already reset in-progress tasks to pending; we must NOT call
-// complete/sessionClose here as that would fail the task rather than re-queue it.
+// The server has already marked in-progress tasks as done; we must NOT call
+// complete/sessionClose here as the server-side state is already settled.
+// The agent becomes idle and will start pulling new tasks on its next heartbeat.
 func (a *Agent) handleReset() {
 	a.mu.Lock()
 	sess := a.tmuxSession
+	fifo := a.fifoPath
 	pw := a.stdinWrite
 	a.stdinWrite = nil
 	a.tmuxSession = ""
@@ -1037,8 +1040,11 @@ func (a *Agent) handleReset() {
 	} else if pw != nil {
 		pw.Close()
 	}
+	if fifo != "" {
+		os.Remove(fifo) //nolint:errcheck
+	}
 
-	logger.Info(fmt.Sprintf("[%s] Reset complete — idle, pending tasks will be picked up on next heartbeat", a.Config.Name))
+	logger.Info(fmt.Sprintf("[%s] Reset complete — idle, ready to pull new tasks on next heartbeat", a.Config.Name))
 }
 
 func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string) {

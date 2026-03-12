@@ -26,9 +26,9 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
   const rows = await env.DB
-    .prepare('SELECT id, name, command, work_dir, status, last_seen, created_at, paused FROM agents WHERE team_id = ? ORDER BY created_at ASC')
+    .prepare('SELECT id, name, command, work_dir, status, last_seen, created_at, paused, reset_pending FROM agents WHERE team_id = ? ORDER BY created_at ASC')
     .bind(teamId)
-    .all<{ id: string; name: string; command: string; work_dir: string; status: string; last_seen: number | null; created_at: number; paused: number }>()
+    .all<{ id: string; name: string; command: string; work_dir: string; status: string; last_seen: number | null; created_at: number; paused: number; reset_pending: number }>()
 
   return json({ agents: rows.results })
 }
@@ -133,14 +133,14 @@ export async function resetAgent(req: Request, env: Env, _ctx: unknown, auth: Au
   await env.DB.batch([
     // Signal daemon to reset on next heartbeat
     env.DB.prepare('UPDATE agents SET reset_pending = 1 WHERE id = ?').bind(agentId),
-    // Reset in-progress tasks back to pending so the agent picks them up again
-    env.DB.prepare("UPDATE tasks SET status = 'pending', started_at = NULL WHERE agent_id = ? AND status IN ('running', 'waiting_input')")
-      .bind(agentId),
+    // Complete in-progress tasks (not re-queued — they are done)
+    env.DB.prepare("UPDATE tasks SET status = 'done', completed_at = ? WHERE agent_id = ? AND status IN ('running', 'waiting_input')")
+      .bind(now, agentId),
     // Close any open sessions
     env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE agent_id = ? AND status IN ('running', 'waiting_input')")
       .bind(now, agentId),
-    // Clear agent_state so it's ready to pick up the next task
-    env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = 'idle', updated_at = ? WHERE agent_id = ?")
+    // Clear agent_state current task/session; daemon will update mode to idle on its next heartbeat
+    env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, updated_at = ? WHERE agent_id = ?")
       .bind(now, agentId),
   ])
 

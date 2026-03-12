@@ -120,6 +120,7 @@ export interface Agent {
   last_seen: number | null
   created_at: number
   paused: boolean
+  reset_pending: boolean
 }
 
 export interface Team {

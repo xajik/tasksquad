@@ -1015,7 +1015,10 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
                     <div className="flex items-center gap-2">
                       <div className={cn("h-2 w-2 rounded-full", a.status === 'active' ? "bg-green-500 animate-pulse" : "bg-muted-foreground")} />
                       <CardTitle className="text-base font-medium">{a.name}</CardTitle>
-                      {a.paused && (
+                      {a.reset_pending && (
+                        <span className="text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">Resetting…</span>
+                      )}
+                      {!a.reset_pending && a.paused && (
                         <span className="text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Paused</span>
                       )}
                     </div>
@@ -1116,7 +1119,7 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
                             <AlertDialogHeader>
                               <AlertDialogTitle>Reset agent?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                On its next heartbeat, "{a.name}" will kill all running tmux sessions and go idle. Any in-progress task will be reset to pending and picked up again automatically.
+                                Any in-progress tasks for "{a.name}" will be marked as done immediately. On its next heartbeat, the agent will kill all running tmux sessions and go idle, ready to pick up new tasks.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
