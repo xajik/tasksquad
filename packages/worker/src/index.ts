@@ -74,7 +74,7 @@ router.get ('/tasks/:taskId/logs',       firebaseRoute(tasks.logs))
 router.get ('/live/:agentId',            (req: IRequest, env: Env) => live.connect(req as Request, env))
 
 // ── Daemon routes (X-TSQ-Token) ───────────────────────────────────────────────
-router.post('/daemon/heartbeat',         daemonRoute(daemon.heartbeat))
+router.post('/daemon/heartbeat/batch',   (req: IRequest, env: Env, ctx: ExecutionContext) => daemon.batchHeartbeat(req as Request, env, ctx))
 router.post('/daemon/complete',          daemonRoute(daemon.complete))
 router.post('/daemon/session/open',      daemonRoute(daemon.sessionOpen))
 router.post('/daemon/session/close',     daemonRoute(daemon.sessionClose))

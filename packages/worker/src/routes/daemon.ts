@@ -1,11 +1,11 @@
 import { ulid } from 'ulidx'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { json, err } from '../auth.js'
+import { json, err, withDaemonBatchAuth } from '../auth.js'
 import type { Env, DaemonContext } from '../types.js'
 import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
 import { sendFCMNotification } from '../fcm.js'
-import { getInboxVersion } from '../inbox_version.js'
+import { getCombinedInboxVersion } from '../inbox_version.js'
 
 async function notifyTeamMembers(env: Env, taskId: string, title: string, body: string): Promise<void> {
   try {
@@ -65,46 +65,27 @@ function hb304(version: string): Response {
   })
 }
 
-export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
-  const body = await req.json<{ status?: string }>().catch(() => ({} as { status?: string }))
-  const agentId = daemon.agentId
-  const agentStatus = body.status ?? 'idle'
-  const now = Date.now()
-  // Jitter: suggest how long the daemon should wait before its next poll.
-  const nextPollMs = POLL_BASE_MS + Math.floor(Math.random() * POLL_JITTER_MS)
-
-  // Read current state first: last_seen for rate limiting + control flags.
-  const agentRow = await env.DB
-    .prepare('SELECT last_seen, reset_pending, paused FROM agents WHERE id = ?')
-    .bind(agentId)
-    .first<{ last_seen: number | null; reset_pending: number; paused: number }>()
-
-  // Enforce minimum 5s between heartbeats.
-  if (agentRow?.last_seen != null && (now - agentRow.last_seen) < HEARTBEAT_MIN_INTERVAL_MS) {
-    return err('too_many_requests', 429)
-  }
-
-  await env.DB.batch([
-    env.DB.prepare('UPDATE agents SET status = ?, last_seen = ? WHERE id = ?')
-      .bind(agentStatus, now, agentId),
-    env.DB.prepare('UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?')
-      .bind(agentStatus, now, agentId),
-  ])
-
+/** Per-agent heartbeat logic for the batch handler. */
+async function processAgentHeartbeat(
+  env: Env,
+  agentId: string,
+  agentStatus: string,
+  agentRow: { last_seen: number | null; reset_pending: number; paused: number } | undefined,
+  now: number,
+  nextPollMs: number
+): Promise<Record<string, unknown>> {
   if (agentRow?.reset_pending) {
     await env.DB.batch([
       env.DB.prepare("UPDATE agents SET reset_pending = 0, status = 'offline' WHERE id = ?").bind(agentId),
       env.DB.prepare("UPDATE agent_state SET mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
     ])
-    return json({ ok: true, agent_id: agentId, reset: true })
+    return { agent_id: agentId, ok: true, reset: true }
   }
 
   if (agentRow?.paused) {
-    return json({ ok: true, agent_id: agentId, stop_pulling: true })
+    return { agent_id: agentId, ok: true, stop_pulling: true }
   }
 
-  // When running or waiting for input: check if the task has been cancelled/completed elsewhere.
-  // Control signals are time-sensitive — skip ETag optimisation for these states.
   if (agentStatus === 'running' || agentStatus === 'waiting_input') {
     const state = await env.DB
       .prepare('SELECT current_task_id FROM agent_state WHERE agent_id = ?')
@@ -118,14 +99,11 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
         .first<{ status: string }>()
 
       if (task) {
-        // User clicked "Complete session" from the portal while agent is waiting_input:
-        // signal a clean shutdown (keep tmux kill in daemon, server already closed session).
         if (task.status === 'done' && agentStatus === 'waiting_input') {
-          return json({ ok: true, agent_id: agentId, close: true })
+          return { agent_id: agentId, ok: true, close: true, next_poll_ms: nextPollMs }
         }
-        // Task was cancelled or failed while agent was running — signal cancel.
         if (task.status === 'done' || task.status === 'failed' || task.status === 'cancelled') {
-          return json({ ok: true, agent_id: agentId, cancel: true })
+          return { agent_id: agentId, ok: true, cancel: true, next_poll_ms: nextPollMs }
         }
       }
 
@@ -144,57 +122,117 @@ export async function heartbeat(req: Request, env: Env, _ctx: unknown, daemon: D
           .first<{ body: string }>()
 
         if (reply) {
-          // Resume the agent — set status back to running
           await env.DB.batch([
             env.DB.prepare("UPDATE agents SET status = 'running' WHERE id = ?").bind(agentId),
-            env.DB.prepare("UPDATE agent_state SET mode = 'running', updated_at = ? WHERE agent_id = ?").bind(Date.now(), agentId),
+            env.DB.prepare("UPDATE agent_state SET mode = 'running', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
             env.DB.prepare("UPDATE tasks SET status = 'running' WHERE id = ?").bind(state.current_task_id),
           ])
-          return json({ ok: true, agent_id: agentId, reply: reply.body, next_poll_ms: nextPollMs })
+          return { agent_id: agentId, ok: true, reply: reply.body, next_poll_ms: nextPollMs }
         }
       }
     }
 
-    return json({ ok: true, agent_id: agentId, next_poll_ms: nextPollMs })
+    return { agent_id: agentId, ok: true, next_poll_ms: nextPollMs }
   }
 
-  // Idle: use ETag/KV to skip the D1 pending-task query when inbox hasn't changed.
-  if (agentStatus === 'idle') {
-    const currentVersion = await getInboxVersion(env, agentId)
+  // Idle: query for pending task
+  const task = await env.DB
+    .prepare("SELECT id, subject FROM tasks WHERE agent_id = ? AND status = 'pending' ORDER BY created_at ASC LIMIT 1")
+    .bind(agentId)
+    .first<{ id: string; subject: string }>()
+
+  if (task) {
+    const msgRows = await env.DB
+      .prepare("SELECT role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') ORDER BY created_at ASC")
+      .bind(task.id)
+      .all<{ role: string; body: string }>()
+    return {
+      agent_id: agentId,
+      ok: true,
+      task: { id: task.id, subject: task.subject, messages: msgRows.results },
+      next_poll_ms: nextPollMs,
+    }
+  }
+
+  return { agent_id: agentId, ok: true, next_poll_ms: nextPollMs }
+}
+
+/**
+ * POST /daemon/heartbeat/batch
+ *
+ * Single request carrying all agent tokens + statuses for a daemon process.
+ * Returns per-agent responses; uses a combined ETag so a 304 can short-circuit
+ * the entire batch when all agents are idle and nothing has changed.
+ */
+export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Promise<Response> {
+  const body = await req
+    .json<{ agents?: Array<{ token: string; status: string }> }>()
+    .catch(() => ({} as { agents?: Array<{ token: string; status: string }> }))
+
+  const agentEntries = body.agents
+  if (!agentEntries?.length) return err('missing_fields', 400)
+
+  const tokens = agentEntries.map(e => e.token)
+  const statuses = agentEntries.map(e => e.status ?? 'idle')
+
+  // Authenticate all tokens in one batch round-trip
+  const authResult = await withDaemonBatchAuth(tokens, env)
+  if (authResult instanceof Response) return authResult
+  const contexts = authResult
+  const agentIds = contexts.map(c => c.agentId)
+
+  const now = Date.now()
+  const nextPollMs = POLL_BASE_MS + Math.floor(Math.random() * POLL_JITTER_MS)
+  const allIdle = statuses.every(s => s === 'idle')
+
+  // Fetch agent rows for rate-limit check + control flags (single D1 batch)
+  const agentRowResults = await env.DB.batch(
+    agentIds.map(id =>
+      env.DB.prepare('SELECT last_seen, reset_pending, paused FROM agents WHERE id = ?').bind(id)
+    )
+  )
+  const agentRows = agentRowResults.map(
+    r => r.results[0] as { last_seen: number | null; reset_pending: number; paused: number } | undefined
+  )
+
+  // Enforce per-agent rate limit; reject the whole batch if any agent fires too fast
+  for (let i = 0; i < agentIds.length; i++) {
+    const row = agentRows[i]
+    if (row?.last_seen != null && now - row.last_seen < HEARTBEAT_MIN_INTERVAL_MS) {
+      return err('too_many_requests', 429)
+    }
+  }
+
+  // Update status + last_seen for all agents in one batch write
+  await env.DB.batch(
+    agentIds.flatMap((id, i) => [
+      env.DB.prepare('UPDATE agents SET status = ?, last_seen = ? WHERE id = ?').bind(statuses[i], now, id),
+      env.DB.prepare('UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?').bind(statuses[i], now, id),
+    ])
+  )
+
+  // Combined ETag short-circuit — only valid when ALL agents are idle
+  let combinedVersion: string | undefined
+  if (allIdle) {
+    combinedVersion = await getCombinedInboxVersion(env, agentIds)
     const clientEtag = req.headers.get('If-None-Match')
-
-    // Version '0' means no writes have been recorded yet — always do a full check.
-    if (currentVersion !== '0' && clientEtag === `"${currentVersion}"`) {
-      return hb304(currentVersion)
+    if (clientEtag === `"${combinedVersion}"`) {
+      return hb304(combinedVersion)
     }
-
-    // Version changed (or first poll): query D1 for pending tasks.
-    const task = await env.DB
-      .prepare(`
-        SELECT id, subject FROM tasks
-        WHERE agent_id = ? AND status = 'pending'
-        ORDER BY created_at ASC
-        LIMIT 1
-      `)
-      .bind(agentId)
-      .first<{ id: string; subject: string }>()
-
-    if (task) {
-      // Return full conversation history so the agent can build context for follow-ups.
-      const msgRows = await env.DB
-        .prepare("SELECT role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') ORDER BY created_at ASC")
-        .bind(task.id)
-        .all<{ role: string; body: string }>()
-      return hbJson(
-        { ok: true, agent_id: agentId, task: { id: task.id, subject: task.subject, messages: msgRows.results }, next_poll_ms: nextPollMs },
-        currentVersion,
-      )
-    }
-
-    return hbJson({ ok: true, agent_id: agentId, next_poll_ms: nextPollMs }, currentVersion)
   }
 
-  return json({ ok: true, agent_id: agentId, next_poll_ms: nextPollMs })
+  // Process each agent independently (in parallel)
+  const agentResponses = await Promise.all(
+    agentIds.map((agentId, i) =>
+      processAgentHeartbeat(env, agentId, statuses[i], agentRows[i], now, nextPollMs)
+    )
+  )
+
+  if (!combinedVersion) {
+    combinedVersion = await getCombinedInboxVersion(env, agentIds)
+  }
+
+  return hbJson({ agents: agentResponses }, combinedVersion)
 }
 
 export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {

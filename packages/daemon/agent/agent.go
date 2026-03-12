@@ -205,61 +205,14 @@ func (a *Agent) TmuxSession() string {
 	return a.tmuxSession
 }
 
-// Run is the main poll loop for this agent.
-func (a *Agent) Run(cfg *config.Config) {
-	logger.Info(fmt.Sprintf("[%s] Starting — provider: %s, command: %s", a.Config.Name, a.prov.Name(), a.Config.Command))
-
-	ticker := time.NewTicker(time.Duration(cfg.Server.PollInterval) * time.Second)
-	defer ticker.Stop()
-
-	// run one heartbeat immediately on start
-	if !a.IsPaused() {
-		a.heartbeat(cfg)
-	}
-
-	for range ticker.C {
-		if !a.IsPaused() {
-			a.heartbeat(cfg)
-		}
-	}
-}
-
 func (a *Agent) post(cfg *config.Config, path string, body any) (map[string]any, error) {
 	return api.Post(cfg, a.Config.Token, path, body)
 }
 
-// ── Heartbeat ─────────────────────────────────────────────────────────────────
-
-func (a *Agent) heartbeat(cfg *config.Config) {
-	if minHeartbeatInterval > 0 {
-		a.mu.Lock()
-		since := time.Since(a.lastPollAt)
-		a.mu.Unlock()
-		if !a.lastPollAt.IsZero() && since < minHeartbeatInterval {
-			logger.Debug(fmt.Sprintf("[%s] Heartbeat skipped — rate limit (%s remaining)", a.Config.Name, (minHeartbeatInterval - since).Round(time.Millisecond)))
-			return
-		}
-	}
-
-	a.mu.Lock()
-	mode := a.mode
-	a.mu.Unlock()
-
-	logger.Debug(fmt.Sprintf("[%s] Heartbeat → status=%s", a.Config.Name, mode))
-
-	resp, err := a.post(cfg, "/daemon/heartbeat", map[string]any{
-		"status": string(mode),
-	})
-	if err != nil {
-		logger.Error(fmt.Sprintf("[%s] Heartbeat failed: %v", a.Config.Name, err))
-		return
-	}
-
-	// Record the time of this successful poll for the systray stats label.
-	a.mu.Lock()
-	a.lastPollAt = time.Now()
-	a.mu.Unlock()
-
+// processResponse dispatches a single heartbeat response: resolves the agent ID,
+// handles control signals (reset/cancel/close/reply), and starts pending tasks.
+// Called by both heartbeat() and RunBatch().
+func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 	// Resolve agentID from first heartbeat response.
 	if id, ok := resp["agent_id"].(string); ok && id != "" {
 		a.mu.Lock()

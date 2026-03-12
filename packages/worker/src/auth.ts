@@ -59,6 +59,47 @@ async function upsertUser(db: D1Database, firebaseUid: string, email: string): P
   return { id, plan: 'free' }
 }
 
+// Daemon batch routes: validate an array of raw tokens, return array of DaemonContext.
+// Returns a 403 Response if any token is invalid.
+export async function withDaemonBatchAuth(
+  tokens: string[],
+  env: Env
+): Promise<DaemonContext[] | Response> {
+  if (!tokens.length) {
+    return new Response(JSON.stringify({ error: 'forbidden' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const hashes = await Promise.all(tokens.map(t => sha256(t)))
+  const batchResults = await env.DB.batch(
+    hashes.map(h =>
+      env.DB.prepare('SELECT id, team_id, agent_id FROM daemon_tokens WHERE token_hash = ?').bind(h)
+    )
+  )
+  const rows = batchResults.map(r =>
+    (r.results[0] as { id: string; team_id: string; agent_id: string } | undefined)
+  )
+
+  if (rows.some(r => !r)) {
+    return new Response(JSON.stringify({ error: 'forbidden' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const validRows = rows as { id: string; team_id: string; agent_id: string }[]
+  const now = Date.now()
+  await env.DB.batch(
+    validRows.map(r =>
+      env.DB.prepare('UPDATE daemon_tokens SET last_used = ? WHERE id = ?').bind(now, r.id)
+    )
+  )
+
+  return validRows.map(r => ({ teamId: r.team_id, agentId: r.agent_id, tokenId: r.id }))
+}
+
 // Daemon routes: validate X-TSQ-Token against daemon_tokens table
 export async function withDaemonAuth(
   req: Request,

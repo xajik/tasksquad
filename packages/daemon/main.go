@@ -70,10 +70,8 @@ func main() {
 	// Start hook server (receives Stop / Notification events from CLI providers).
 	hooks.StartHookServer(cfg, agentList)
 
-	// Start each agent's poll loop in its own goroutine.
-	for _, a := range agentList {
-		go a.(*agent.Agent).Run(cfg)
-	}
+	// Run all agents in a single shared poll loop (one HTTP request per interval).
+	go agent.RunBatch(cfg, rawAgents)
 
 	logger.Info("Running — waiting for tasks...")
 
