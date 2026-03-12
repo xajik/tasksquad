@@ -70,6 +70,7 @@ import {
   Menu,
   X,
   Key,
+  ArrowLeft,
   Forward,
   RotateCcw,
   PauseCircle,
@@ -315,6 +316,7 @@ function StatusBadge({ status }: { status: string }) {
     </Badge>
   )
 }
+
 
 function useTeam() {
   const [teamId, setTeamId] = useState<string | null>(null)
@@ -592,48 +594,49 @@ function MessageBubble({ message, agentName, taskId }: { message: Message; agent
 
   if (isSystem) {
     return (
-      <div className="flex justify-center my-4">
-        <div className="bg-muted/50 text-muted-foreground text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded-full border border-border/50">
+      <div className="flex justify-center my-3">
+        <div className="bg-muted/50 text-muted-foreground text-[10px] uppercase tracking-wider font-semibold px-3 py-1 rounded-full border border-border/50">
           {message.body}
         </div>
       </div>
     )
   }
 
-  const time = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const time = new Date(message.created_at).toLocaleString([], {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
 
   return (
-    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-6 group`}>
-      <div className={`flex items-center gap-2 mb-1 px-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isUser ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'} shrink-0`}>
+    <div className={cn(
+      'rounded-xl border mb-3 overflow-hidden transition-shadow hover:shadow-sm',
+      isUser
+        ? 'border-primary/20 bg-primary/[0.04]'
+        : 'border-border/60 bg-card'
+    )}>
+      {/* Message header */}
+      <div className={cn(
+        'flex items-center gap-2.5 px-4 py-2.5 border-b',
+        isUser ? 'border-primary/10' : 'border-border/40'
+      )}>
+        <div className={cn(
+          'w-7 h-7 rounded-full flex items-center justify-center shrink-0',
+          isUser ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+        )}>
           {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
         </div>
-        <span className="text-xs font-semibold text-foreground/70">
+        <span className="text-sm font-semibold flex-1 text-foreground">
           {isUser ? 'You' : (agentName || 'Agent')}
         </span>
-        <span className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-          {time}
-        </span>
+        <span className="text-xs text-muted-foreground">{time}</span>
       </div>
 
-      <div className={`
-        relative px-4 py-3 rounded-2xl shadow-sm transition-all
-        ${isUser
-          ? 'bg-primary text-primary-foreground rounded-tr-none shadow-md max-w-[85%] break-words'
-          : 'bg-card border border-border text-card-foreground rounded-tl-none font-mono whitespace-pre max-w-none'
-        }
-      `}>
-        <div className="text-[14px] leading-relaxed select-text">{message.body}</div>
-
-        <div className={`
-          text-[10px] mt-1.5 flex justify-end font-medium
-          ${isUser ? 'text-primary-foreground/80' : 'text-muted-foreground/80'}
-        `}>
-          {time}
+      {/* Message body */}
+      <div className="px-4 py-3.5">
+        <div className="text-sm leading-relaxed whitespace-pre-wrap select-text text-foreground/90">
+          {message.body}
         </div>
-
         {isAgent && message.transcript_key && taskId && (
-          <div className="mt-3 pt-2 border-t border-border/10">
+          <div className="mt-3 pt-2.5 border-t border-border/30">
             <TranscriptButton taskId={taskId} msgId={message.id} />
           </div>
         )}
@@ -760,41 +763,70 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
   }, [task, agents])
 
   return (
-    <div className="max-w-3xl animate-fade-in mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6 sm:mb-8 pb-4 border-b border-border/50">
+    <div className="animate-fade-in w-full">
+
+      {/* ── Gmail-style thread header ── */}
+      <div className="flex items-start gap-2 mb-6 pb-5 border-b border-border/50">
+        <Button
+          variant="ghost" size="icon"
+          onClick={() => nav('/dashboard')}
+          className="shrink-0 mt-0.5 -ml-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">{task?.subject ?? '...'}</h2>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight leading-snug break-words">
+            {task?.subject ?? '…'}
+          </h1>
+          <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground flex-wrap">
             {task && <StatusBadge status={task.status} />}
-          </div>
-          <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <Bot className="h-3.5 w-3.5" />
               {agentName}
             </span>
             <span>·</span>
-            <span>Started {task ? relativeTime(task.created_at) : '...'}</span>
+            <span>{task ? relativeTime(task.created_at) : '…'}</span>
+            {messages.length > 0 && (
+              <>
+                <span>·</span>
+                <span>{messages.length} message{messages.length !== 1 ? 's' : ''}</span>
+              </>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {task && (task.status === 'running') && !watching && (
-            <Button onClick={startLive} size="sm" className="rounded-full">
-              <Play className="h-4 w-4 mr-1" />
+
+        {/* Action buttons — right side */}
+        <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+          {task && task.status === 'running' && !watching && (
+            <Button onClick={startLive} size="sm" variant="outline" className="hidden sm:flex">
+              <Play className="h-3.5 w-3.5 mr-1.5" />
               Watch live
             </Button>
           )}
+          {task && task.status === 'running' && !watching && (
+            <Button onClick={startLive} size="icon" variant="outline" className="sm:hidden h-8 w-8">
+              <Play className="h-3.5 w-3.5" />
+            </Button>
+          )}
           {watching && (
-            <Button variant="secondary" size="sm" disabled className="rounded-full">
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            <Button variant="secondary" size="sm" disabled>
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
               Live
             </Button>
           )}
+
           {task && ['done', 'waiting_input'].includes(task.status) && (
             <Dialog open={showForward} onOpenChange={setShowForward}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="rounded-full">
-                  <Forward className="h-4 w-4 mr-1" />
+                <Button variant="outline" size="sm" className="hidden sm:flex">
+                  <Forward className="h-3.5 w-3.5 mr-1.5" />
                   Forward
+                </Button>
+              </DialogTrigger>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="icon" className="sm:hidden h-8 w-8">
+                  <Forward className="h-3.5 w-3.5" />
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[400px]">
@@ -822,94 +854,110 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setShowForward(false)}>Cancel</Button>
                   <Button onClick={forwardToAgent} disabled={!forwardAgentId || forwarding}>
-                    {forwarding ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                    {forwarding ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                     Forward →
                   </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
           )}
-          <Button variant="ghost" size="icon" onClick={deleteTask} className="rounded-full hover:bg-destructive/10 hover:text-destructive">
-            <Trash2 className="h-4 w-4" />
+
+          {task && !['done', 'failed'].includes(task.status) && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" className="hidden sm:flex text-emerald-700 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800">
+                  <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
+                  Close
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="icon" className="sm:hidden h-8 w-8 text-emerald-700 border-emerald-200">
+                  <CheckCircle className="h-3.5 w-3.5" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Close Session?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will mark the task as done. You can always follow up later if needed.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep open</AlertDialogCancel>
+                  <AlertDialogAction onClick={closeTask} className="bg-emerald-600 hover:bg-emerald-700">
+                    Close Session
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+
+          <Button variant="ghost" size="icon" onClick={deleteTask} className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive">
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
 
-      <div className="bg-background/50 rounded-xl border border-border/40 overflow-hidden shadow-sm">
-        <ScrollArea className="h-[50vh] sm:h-[600px] p-4 sm:p-6">
-          <div className="flex flex-col pr-4">
-            {messages.map(m => (
-              <MessageBubble
-                key={m.id}
-                message={m}
-                agentName={agentName}
-                taskId={taskId}
-              />
-            ))}
-            {liveLines.length > 0 && (
-              <div className="mt-4 border rounded-xl overflow-hidden shadow-md">
-                <button
-                  onClick={() => setShowLog(x => !x)}
-                  className="w-full text-left px-4 py-3 bg-zinc-900 text-zinc-100 text-sm flex justify-between items-center hover:bg-zinc-800 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${watching ? 'bg-green-500 animate-pulse' : 'bg-zinc-500'}`} />
-                    <span className="font-medium">Session log ({liveLines.length} lines)</span>
-                  </div>
-                  {showLog ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </button>
-                {showLog && (
-                  <div className="bg-zinc-950 text-emerald-400 p-4 font-mono text-xs whitespace-pre max-h-96 overflow-auto scrollbar-thin scrollbar-thumb-zinc-800">
-                    {liveLines.join('\n')}
-                  </div>
-                )}              </div>
-            )}
-            <div ref={bottomRef} className="h-4" />
-          </div>
-        </ScrollArea>
+      {/* ── Messages — natural page scroll ── */}
+      <div className="space-y-1 mb-4">
+        {messages.map(m => (
+          <MessageBubble
+            key={m.id}
+            message={m}
+            agentName={agentName}
+            taskId={taskId}
+          />
+        ))}
 
-        {task && task.status === 'waiting_input' && (
-          <div className="p-4 bg-muted/20 border-t border-border/40">
-            <form onSubmit={sendReply} className="flex gap-2">
-              <Input
-                value={reply} onChange={e => setReply(e.target.value)}
-                placeholder="Reply to agent…"
-                className="flex-1 bg-background border-border/60 focus:ring-primary rounded-full px-5"
-              />
-              <Button type="submit" disabled={sending} className="rounded-full px-6">
-                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send'}
-              </Button>
-            </form>
+        {liveLines.length > 0 && (
+          <div className="mt-3 border rounded-xl overflow-hidden shadow-sm">
+            <button
+              onClick={() => setShowLog(x => !x)}
+              className="w-full text-left px-4 py-3 bg-zinc-900 text-zinc-100 text-sm flex justify-between items-center hover:bg-zinc-800 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${watching ? 'bg-green-500 animate-pulse' : 'bg-zinc-500'}`} />
+                <span className="font-medium">Session log ({liveLines.length} lines)</span>
+              </div>
+              {showLog ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            {showLog && (
+              <div className="bg-zinc-950 text-emerald-400 p-4 font-mono text-xs whitespace-pre max-h-96 overflow-auto">
+                {liveLines.join('\n')}
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {task && !['done', 'failed'].includes(task.status) && (
-        <div className="mt-4 flex justify-center">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-emerald-600 transition-colors">
-                <CheckCircle className="h-4 w-4 mr-1.5" />
-                Close Session
+      {/* ── Gmail-style compose reply box ── */}
+      {task && task.status === 'waiting_input' && (
+        <div className="border border-border/60 rounded-xl overflow-hidden shadow-sm bg-background">
+          <div className="px-4 py-2.5 border-b border-border/40 flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Reply</span>
+            <span className="text-xs text-muted-foreground">to {agentName}</span>
+          </div>
+          <form onSubmit={sendReply}>
+            <Textarea
+              value={reply}
+              onChange={e => setReply(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendReply(e as any) }}
+              placeholder="Write your reply…"
+              rows={4}
+              className="border-0 rounded-none resize-none focus-visible:ring-0 text-sm px-4 py-3 bg-transparent"
+            />
+            <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/30 bg-muted/10">
+              <span className="text-xs text-muted-foreground hidden sm:block">⌘ Enter to send</span>
+              <Button type="submit" disabled={sending || !reply.trim()} size="sm">
+                {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                Send
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Close Session?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will mark the task as done. You can always follow up later if needed.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Keep open</AlertDialogCancel>
-                <AlertDialogAction onClick={closeTask} className="bg-emerald-600 hover:bg-emerald-700">
-                  Close Session
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+            </div>
+          </form>
         </div>
       )}
+
+      <div ref={bottomRef} className="h-6" />
     </div>
   )
 }
@@ -920,7 +968,7 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
   const [creating, setCreating] = useState(false)
   const [newToken, setNewToken] = useState<{ agentId: string; token: string; agentName: string } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'claude' | 'gemini'>('claude')
+  const [activeTab, setActiveTab] = useState<'claude' | 'gemini' | 'opencode' | 'codex'>('claude')
   const nav = useNavigate()
 
   const load = useCallback(async () => {
@@ -1166,7 +1214,11 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
       {newToken && (() => {
         const config = activeTab === 'claude' 
           ? { cmd: 'claude --dangerously-skip-permissions', dir: '~/Projects/my-tasksquad-project' }
-          : { cmd: 'gemini --yolo', dir: '~/Projects/my-tasksquad-project' }
+          : activeTab === 'gemini'
+          ? { cmd: 'gemini --yolo', dir: '~/Projects/my-tasksquad-project' }
+          : activeTab === 'opencode'
+          ? { cmd: 'opencode', dir: '~/Projects/my-tasksquad-project' }
+          : { cmd: 'codex', dir: '~/Projects/my-tasksquad-project' }
         
         const snippet = `[[agents]]
 name     = "${newToken.agentName}"
@@ -1177,31 +1229,45 @@ work_dir = "${config.dir}"`
         return (
           <Card className="border-green-500 bg-green-50 dark:bg-green-950 mb-6">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-green-700 dark:text-green-400">Token generated</CardTitle>
-                  <CardDescription>Add this to your ~/.tasksquad/config.toml</CardDescription>
-                </div>
-                <div className="flex bg-muted p-1 rounded-md text-sm">
-                  <button 
-                    onClick={() => setActiveTab('claude')}
-                    className={cn(
-                      "px-3 py-1 rounded-sm transition-colors",
-                      activeTab === 'claude' ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    Claude
-                  </button>
-                  <button 
-                    onClick={() => setActiveTab('gemini')}
-                    className={cn(
-                      "px-3 py-1 rounded-sm transition-colors",
-                      activeTab === 'gemini' ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    Gemini
-                  </button>
-                </div>
+              <CardTitle className="text-green-700 dark:text-green-400">Token generated</CardTitle>
+              <CardDescription className="mb-4">Choose your agent and copy the config</CardDescription>
+              <div className="flex bg-muted p-1 rounded-lg text-sm gap-1 w-fit">
+                <button 
+                  onClick={() => setActiveTab('claude')}
+                  className={cn(
+                    "px-4 py-1.5 rounded-md transition-all font-medium",
+                    activeTab === 'claude' ? "bg-blue-600 text-white shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                  )}
+                >
+                  Claude
+                </button>
+                <button 
+                  onClick={() => setActiveTab('gemini')}
+                  className={cn(
+                    "px-4 py-1.5 rounded-md transition-all font-medium",
+                    activeTab === 'gemini' ? "bg-purple-600 text-white shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                  )}
+                >
+                  Gemini
+                </button>
+                <button 
+                  onClick={() => setActiveTab('opencode')}
+                  className={cn(
+                    "px-4 py-1.5 rounded-md transition-all font-medium",
+                    activeTab === 'opencode' ? "bg-orange-600 text-white shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                  )}
+                >
+                  OpenCode
+                </button>
+                <button 
+                  onClick={() => setActiveTab('codex')}
+                  className={cn(
+                    "px-4 py-1.5 rounded-md transition-all font-medium",
+                    activeTab === 'codex' ? "bg-green-600 text-white shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                  )}
+                >
+                  Codex
+                </button>
               </div>
             </CardHeader>
             <CardContent>
