@@ -14,6 +14,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/tasksquad/daemon/api"
+	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
@@ -145,9 +146,10 @@ type Agent struct {
 
 func New(cfg config.AgentConfig) *Agent {
 	return &Agent{
-		Config: cfg,
-		mode:   ModeIdle,
-		prov:   provider.Detect(cfg.Command, cfg.Provider),
+		Config:  cfg,
+		agentID: cfg.ID, // known upfront from config (set during tsq init)
+		mode:    ModeIdle,
+		prov:    provider.Detect(cfg.Command, cfg.Provider),
 	}
 }
 
@@ -206,7 +208,11 @@ func (a *Agent) TmuxSession() string {
 }
 
 func (a *Agent) post(cfg *config.Config, path string, body any) (map[string]any, error) {
-	return api.Post(cfg, a.Config.Token, path, body)
+	token, err := auth.GetToken(cfg.Firebase.APIKey)
+	if err != nil {
+		return nil, fmt.Errorf("auth: %w", err)
+	}
+	return api.Post(cfg, token, a.Config.ID, path, body)
 }
 
 // processResponse dispatches a single heartbeat response: resolves the agent ID,

@@ -22,3 +22,11 @@ type PullController interface {
 	Resume()
 	IsPaused() bool
 }
+
+// AuthController lets the UI display auth status and trigger logout.
+type AuthController interface {
+	// Email returns the currently logged-in user's email, or "" if not logged in.
+	Email() string
+	// Logout removes stored credentials and exits so the user can re-login.
+	Logout() error
+}

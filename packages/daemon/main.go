@@ -1,14 +1,17 @@
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/tasksquad/daemon/agent"
+	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
@@ -19,9 +22,18 @@ import (
 const version = "0.1.0"
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "init" {
-		runInit()
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "init":
+			runInit()
+			return
+		case "login":
+			runLogin()
+			return
+		case "logout":
+			runLogout()
+			return
+		}
 	}
 
 	cfgPath := flag.String("config", config.DefaultPath(), "path to config.toml")
@@ -48,10 +60,22 @@ func main() {
 		cfg.Server.URL = *apiURL
 	}
 
+	if !auth.IsLoggedIn() {
+		fmt.Println("Not logged in — starting login flow...")
+		dashURL := dashboardURL(cfg.Server.URL)
+		email, err := auth.Login(dashURL)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "login failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Logged in as %s\n\n", email)
+	}
+
 	logger.Info("TaskSquad daemon starting — tsq " + version)
 	logger.Info(fmt.Sprintf("API: %s", cfg.Server.URL))
 	logger.Info(fmt.Sprintf("Poll interval: %ds", cfg.Server.PollInterval))
 	logger.Info(fmt.Sprintf("Hooks port: %d", cfg.Hooks.Port))
+	logger.Info(fmt.Sprintf("User: %s", auth.GetEmail()))
 
 	// Build agents and collect ui.AgentStatus handles.
 	rawAgents := make([]*agent.Agent, 0, len(cfg.Agents))
@@ -60,7 +84,7 @@ func main() {
 
 	for _, ac := range cfg.Agents {
 		p := provider.Detect(ac.Command, ac.Provider)
-		logger.Info(fmt.Sprintf("  - %s  command=%s  dir=%s  provider=%s", ac.Name, ac.Command, ac.WorkDir, p.Name()))
+		logger.Info(fmt.Sprintf("  - %s  id=%s  command=%s  dir=%s  provider=%s", ac.Name, ac.ID, ac.Command, ac.WorkDir, p.Name()))
 		a := agent.New(ac)
 		rawAgents = append(rawAgents, a)
 		agentList = append(agentList, a)
@@ -77,8 +101,15 @@ func main() {
 
 	// ui.Run blocks the main OS thread (required by macOS AppKit / systray).
 	// Agents run in goroutines above; the hook server runs in its own goroutine.
-	ui.Run(uiAgents, &agentController{agents: rawAgents}, cfg.Server.URL, *cfgPath)
+	authCtrl := &mainAuthController{}
+	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, cfg.Server.URL, *cfgPath)
 }
+
+// mainAuthController implements ui.AuthController using the auth package.
+type mainAuthController struct{}
+
+func (c *mainAuthController) Email() string { return auth.GetEmail() }
+func (c *mainAuthController) Logout() error { return auth.Logout() }
 
 // agentController implements ui.PullController for all configured agents.
 type agentController struct {
@@ -104,54 +135,182 @@ func (c *agentController) IsPaused() bool {
 	return c.agents[0].IsPaused()
 }
 
-// runInit is a guided wizard that writes ~/.tasksquad/config.toml.
-func runInit() {
-	scanner := bufio.NewScanner(os.Stdin)
+// dashboardURL returns the portal base URL to use for login.
+// TSQ_DASHBOARD_URL env var overrides (useful for local dev via make dev + .env).
+func dashboardURL(cfgServerURL string) string {
+	if u := os.Getenv("TSQ_DASHBOARD_URL"); u != "" {
+		return u
+	}
+	dashURL := strings.TrimSuffix(cfgServerURL, "/api")
+	if strings.HasSuffix(cfgServerURL, ".api.tasksquad.ai") ||
+		cfgServerURL == "https://api.tasksquad.ai" {
+		return "https://tasksquad.ai"
+	}
+	return dashURL
+}
 
-	read := func(prompt, def string) string {
+// runLogin opens a browser for Firebase OAuth and stores credentials in the keychain.
+func runLogin() {
+	// Load config to get the dashboard URL and Firebase settings.
+	cfg, err := config.Load(config.DefaultPath())
+	if err != nil {
+		// Use default dashboard URL if config not yet set up.
+		cfg = &config.Config{}
+		cfg.Server.URL = "https://tasksquad.ai"
+	}
+
+	dashURL := dashboardURL(cfg.Server.URL)
+
+	email, err := auth.Login(dashURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "login failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Logged in as %s\n", email)
+}
+
+// runLogout removes stored credentials from the keychain.
+func runLogout() {
+	if err := auth.Logout(); err != nil {
+		fmt.Fprintf(os.Stderr, "logout error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Logged out.")
+}
+
+// runInit is a guided wizard that:
+//  1. Runs Firebase OAuth to authenticate the user.
+//  2. Fetches the user's agents from the server.
+//  3. Writes ~/.tasksquad/config.toml with the matched agents.
+func runInit() {
+	scanner := strings.NewReader("") // placeholder — we use fmt.Scan below
+	_ = scanner
+
+	fmt.Println("TaskSquad daemon setup")
+	fmt.Println("----------------------")
+	fmt.Println()
+
+	// Step 1: Firebase login.
+	fmt.Println("Step 1: Log in to TaskSquad")
+	cfg := &config.Config{}
+	cfg.Server.URL = "https://api.tasksquad.ai"
+
+	dashURL := dashboardURL(cfg.Server.URL)
+
+	email, err := auth.Login(dashURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "login failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Logged in as %s\n\n", email)
+
+	// Step 2: Fetch user's agents from server.
+	fmt.Println("Step 2: Fetching your agents from the server...")
+	token, err := auth.GetToken(cfg.Firebase.APIKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "auth error: %v\n", err)
+		os.Exit(1)
+	}
+
+	agentsData, err := fetchUserAgents(cfg.Server.URL, token)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to fetch agents: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(agentsData) == 0 {
+		fmt.Println("No agents found. Create agents in the TaskSquad portal first.")
+		fmt.Printf("  %s/dashboard\n", dashURL)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Found %d agent(s):\n", len(agentsData))
+	for _, a := range agentsData {
+		fmt.Printf("  - %s (id: %s)\n", a.Name, a.ID)
+	}
+	fmt.Println()
+
+	// Step 3: Prompt for CLI command and work directory per agent.
+	readLine := func(prompt, def string) string {
 		if def != "" {
 			fmt.Printf("%s [%s]: ", prompt, def)
 		} else {
 			fmt.Printf("%s: ", prompt)
 		}
-		scanner.Scan()
-		v := strings.TrimSpace(scanner.Text())
+		var v string
+		fmt.Scanln(&v)
+		v = strings.TrimSpace(v)
 		if v == "" {
 			return def
 		}
 		return v
 	}
 
-	fmt.Println("TaskSquad daemon setup")
-	fmt.Println("----------------------")
-	fmt.Println("Get your agent token from https://tasksquad.ai")
-	fmt.Println()
+	var agentBlocks []string
+	for _, a := range agentsData {
+		fmt.Printf("Configure agent: %s\n", a.Name)
+		command := readLine("  CLI command", "claude")
+		workDir := readLine("  Work directory", "~/Projects")
+		providerName := provider.Detect(command, "").Name()
 
-	token := read("Agent token (paste from portal)", "")
-	name := read("Agent name", "my-agent")
-	command := read("CLI command", "claude")
-	providerName := provider.Detect(command, "").Name()
-	workDir := read("Work directory", "~/Projects")
-
-	cfg := fmt.Sprintf(`[[agents]]
-token   = %q
-name    = %q
-command = %q
+		block := fmt.Sprintf(`[[agents]]
+id       = %q
+name     = %q
+command  = %q
 # provider = %q  # auto-detected from command; uncomment to override
 work_dir = %q
-`, token, name, command, providerName, workDir)
+`, a.ID, a.Name, command, providerName, workDir)
+		agentBlocks = append(agentBlocks, block)
+		fmt.Println()
+	}
+
+	// Step 4: Write config.
+	cfgContent := strings.Join(agentBlocks, "\n")
 
 	home, _ := os.UserHomeDir()
 	dir := filepath.Join(home, ".tasksquad")
 	os.MkdirAll(dir, 0755)
 	path := filepath.Join(dir, "config.toml")
 
-	if err := os.WriteFile(path, []byte(cfg), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(cfgContent), 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "error writing config: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("\nConfig written to %s\n", path)
-	fmt.Printf("Detected provider: %s\n", providerName)
+	fmt.Printf("Config written to %s\n", path)
 	fmt.Println("Run: tsq")
+}
+
+// serverAgent is the API response shape from GET /daemon/user/agents.
+type serverAgent struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// fetchUserAgents calls GET /daemon/user/agents and returns the list of agents.
+func fetchUserAgents(apiURL, token string) ([]serverAgent, error) {
+	req, err := http.NewRequest("GET", apiURL+"/daemon/user/agents", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, b)
+	}
+
+	var body struct {
+		Agents []serverAgent `json:"agents"`
+	}
+	if err := json.Unmarshal(b, &body); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+	return body.Agents, nil
 }

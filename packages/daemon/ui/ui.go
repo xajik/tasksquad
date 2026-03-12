@@ -49,14 +49,14 @@ const uiVersion = "0.1.0"
 
 // Run starts the system tray UI on the main OS thread (required by macOS AppKit).
 // It blocks until the user clicks Quit or the process is killed.
-func Run(agents []AgentStatus, ctrl PullController, dashboardURL string, configPath string) {
+func Run(agents []AgentStatus, ctrl PullController, authCtrl AuthController, dashboardURL string, configPath string) {
 	systray.Run(
-		func() { onReady(agents, ctrl, dashboardURL, configPath) },
+		func() { onReady(agents, ctrl, authCtrl, dashboardURL, configPath) },
 		func() { os.Exit(0) },
 	)
 }
 
-func onReady(agents []AgentStatus, ctrl PullController, dashboardURL string, configPath string) {
+func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController, dashboardURL string, configPath string) {
 	// Green icon = pulling active; red icon = paused.
 	if ctrl.IsPaused() {
 		systray.SetIcon(iconPaused())
@@ -70,8 +70,17 @@ func onReady(agents []AgentStatus, ctrl PullController, dashboardURL string, con
 	mHeader := systray.AddMenuItem("● TaskSquad "+uiVersion, "TaskSquad daemon")
 	mHeader.Disable()
 
+	// Auth status row — shows logged-in email.
+	mAuth := systray.AddMenuItem(authLabel(authCtrl.Email()), "Logged-in user")
+	mAuth.Disable()
+
 	mStats := systray.AddMenuItem(statsLabel(agents), "Live agent status")
 	mStats.Disable()
+
+	systray.AddSeparator()
+
+	// ── Auth actions ───────────────────────────────────────────────────────
+	mLogout := systray.AddMenuItem("Logout", "Log out and stop the daemon")
 
 	systray.AddSeparator()
 
@@ -122,6 +131,16 @@ func onReady(agents []AgentStatus, ctrl PullController, dashboardURL string, con
 				mToggle.SetTitle(pullToggleLabel(true))
 				logger.Info("[ui] Pulling paused")
 			}
+		}
+	}()
+
+	go func() {
+		for range mLogout.ClickedCh {
+			logger.Info("[ui] Logout selected — clearing credentials and stopping daemon")
+			if err := authCtrl.Logout(); err != nil {
+				logger.Warn(fmt.Sprintf("[ui] Logout error: %v", err))
+			}
+			systray.Quit()
 		}
 	}()
 
@@ -256,6 +275,14 @@ func openBrowser(url string) {
 	if err := exec.Command(cmd, url).Start(); err != nil {
 		logger.Warn(fmt.Sprintf("[ui] Failed to open browser: %v", err))
 	}
+}
+
+// authLabel formats the auth status row for the menu.
+func authLabel(email string) string {
+	if email == "" {
+		return "👤 Not logged in"
+	}
+	return "👤 " + email
 }
 
 // iconActive returns the embedded systray-on.png icon (pulling active).

@@ -1,7 +1,7 @@
 import { ulid } from 'ulidx'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { json, err, withDaemonBatchAuth } from '../auth.js'
+import { json, err, withDaemonBatchAuth, withFirebaseAuth } from '../auth.js'
 import type { Env, DaemonContext } from '../types.js'
 import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
 import { sendFCMNotification } from '../fcm.js'
@@ -166,20 +166,18 @@ async function processAgentHeartbeat(
  */
 export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Promise<Response> {
   const body = await req
-    .json<{ agents?: Array<{ token: string; status: string }> }>()
-    .catch(() => ({} as { agents?: Array<{ token: string; status: string }> }))
+    .json<{ agents?: Array<{ id: string; status: string }> }>()
+    .catch(() => ({} as { agents?: Array<{ id: string; status: string }> }))
 
   const agentEntries = body.agents
   if (!agentEntries?.length) return err('missing_fields', 400)
 
-  const tokens = agentEntries.map(e => e.token)
+  const agentIds = agentEntries.map(e => e.id)
   const statuses = agentEntries.map(e => e.status ?? 'idle')
 
-  // Authenticate all tokens in one batch round-trip
-  const authResult = await withDaemonBatchAuth(tokens, env)
+  // Authenticate via Firebase token; verify all agent IDs belong to the user.
+  const authResult = await withDaemonBatchAuth(req, agentIds, env)
   if (authResult instanceof Response) return authResult
-  const contexts = authResult
-  const agentIds = contexts.map(c => c.agentId)
 
   const now = Date.now()
   const nextPollMs = POLL_BASE_MS + Math.floor(Math.random() * POLL_JITTER_MS)
@@ -515,4 +513,29 @@ export async function sessionAttach(req: Request, env: Env, _ctx: unknown, daemo
     .run()
 
   return json({ ok: true })
+}
+
+/**
+ * GET /daemon/user/agents
+ *
+ * Returns all teams and their agents for the authenticated user.
+ * Used by `tsq init` to discover which agents to configure on the machine.
+ */
+export async function userAgents(req: Request, env: Env, _ctx: unknown): Promise<Response> {
+  const firebaseResult = await withFirebaseAuth(req, env)
+  if (firebaseResult instanceof Response) return firebaseResult
+
+  const { results: agents } = await env.DB
+    .prepare(`
+      SELECT a.id, a.name, a.team_id, t.name AS team_name
+      FROM agents a
+      JOIN teams t ON t.id = a.team_id
+      JOIN team_members m ON m.team_id = a.team_id
+      WHERE m.user_id = ?
+      ORDER BY t.name, a.name
+    `)
+    .bind(firebaseResult.userId)
+    .all<{ id: string; name: string; team_id: string; team_name: string }>()
+
+  return json({ agents })
 }

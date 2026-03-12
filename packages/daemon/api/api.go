@@ -10,7 +10,10 @@ import (
 	"github.com/tasksquad/daemon/config"
 )
 
-func Post(cfg *config.Config, token, path string, body any) (map[string]any, error) {
+// Post sends a JSON POST to the worker API using Firebase ID token auth.
+// agentID is forwarded in the X-TSQ-Agent header so the server can scope the
+// request to the correct agent without a per-agent token.
+func Post(cfg *config.Config, token, agentID, path string, body any) (map[string]any, error) {
 	jsonBody, _ := json.Marshal(body)
 
 	req, err := http.NewRequest("POST", cfg.Server.URL+path, bytes.NewReader(jsonBody))
@@ -18,7 +21,10 @@ func Post(cfg *config.Config, token, path string, body any) (map[string]any, err
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-TSQ-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
+	if agentID != "" {
+		req.Header.Set("X-TSQ-Agent", agentID)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -32,16 +38,17 @@ func Post(cfg *config.Config, token, path string, body any) (map[string]any, err
 	}
 
 	var result map[string]any
-	json.Unmarshal(b, &result)
+	json.Unmarshal(b, &result) //nolint:errcheck
 	return result, nil
 }
 
+// Get sends a JSON GET to the worker API using Firebase ID token auth.
 func Get(cfg *config.Config, token, path string) (map[string]any, error) {
 	req, err := http.NewRequest("GET", cfg.Server.URL+path, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-TSQ-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -55,14 +62,15 @@ func Get(cfg *config.Config, token, path string) (map[string]any, error) {
 	}
 
 	var result map[string]any
-	json.Unmarshal(b, &result)
+	json.Unmarshal(b, &result) //nolint:errcheck
 	return result, nil
 }
 
 // PostBatch sends a batch heartbeat request and handles ETag-based 304 responses.
-// tokens are sent inside the request body; no X-TSQ-Token header is used.
+// The Firebase ID token is sent in the Authorization header; agent IDs and statuses
+// are sent in the request body (no per-agent tokens needed).
 // Returns the per-agent response slice, the new ETag, whether HTTP 304 was received, and any error.
-func PostBatch(cfg *config.Config, path string, entries []map[string]any, etag string) ([]map[string]any, string, bool, error) {
+func PostBatch(cfg *config.Config, token, path string, entries []map[string]any, etag string) ([]map[string]any, string, bool, error) {
 	body := map[string]any{"agents": entries}
 	jsonBody, _ := json.Marshal(body)
 
@@ -71,6 +79,7 @@ func PostBatch(cfg *config.Config, path string, entries []map[string]any, etag s
 		return nil, "", false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}
@@ -125,4 +134,3 @@ func PutBytes(url string, data []byte) error {
 	}
 	return nil
 }
-

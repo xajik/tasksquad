@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, GithubAuthProvider, signInWithPopup } from 'firebase/auth'
 import { getMessaging, getToken as getFCMTokenRaw } from 'firebase/messaging'
 
 const app = initializeApp({
@@ -13,9 +13,14 @@ const app = initializeApp({
 export const auth = getAuth(app)
 
 const googleProvider = new GoogleAuthProvider()
+const githubProvider = new GithubAuthProvider()
 
 export async function signInWithGoogle(): Promise<void> {
   await signInWithPopup(auth, googleProvider)
+}
+
+export async function signInWithGitHub(): Promise<void> {
+  await signInWithPopup(auth, githubProvider)
 }
 
 export async function getToken(): Promise<string | null> {

@@ -59,27 +59,75 @@ async function upsertUser(db: D1Database, firebaseUid: string, email: string): P
   return { id, plan: 'free' }
 }
 
-// Daemon batch routes: validate an array of raw tokens, return array of DaemonContext.
-// Returns a 403 Response if any token is invalid.
-export async function withDaemonBatchAuth(
-  tokens: string[],
+// withDaemonAgentAuth authenticates a daemon request using a Firebase ID token
+// (Authorization: Bearer) and validates that the agent in X-TSQ-Agent header
+// belongs to one of the authenticated user's teams.
+export async function withDaemonAgentAuth(
+  req: Request,
   env: Env
-): Promise<DaemonContext[] | Response> {
-  if (!tokens.length) {
+): Promise<DaemonContext | Response> {
+  const firebaseResult = await withFirebaseAuth(req, env)
+  if (firebaseResult instanceof Response) return firebaseResult
+
+  const agentId = req.headers.get('X-TSQ-Agent')
+  if (!agentId) {
+    return new Response(JSON.stringify({ error: 'missing_agent_id' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Verify the agent belongs to a team the user is a member of.
+  const row = await env.DB
+    .prepare(`
+      SELECT a.team_id
+      FROM agents a
+      JOIN team_members m ON m.team_id = a.team_id
+      WHERE a.id = ? AND m.user_id = ?
+    `)
+    .bind(agentId, firebaseResult.userId)
+    .first<{ team_id: string }>()
+
+  if (!row) {
     return new Response(JSON.stringify({ error: 'forbidden' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json' },
     })
   }
 
-  const hashes = await Promise.all(tokens.map(t => sha256(t)))
+  return { teamId: row.team_id, agentId, tokenId: '' }
+}
+
+// withDaemonBatchAuth authenticates a batch heartbeat using a Firebase ID token
+// and validates that all supplied agent IDs belong to the authenticated user's teams.
+export async function withDaemonBatchAuth(
+  req: Request,
+  agentIds: string[],
+  env: Env
+): Promise<DaemonContext[] | Response> {
+  const firebaseResult = await withFirebaseAuth(req, env)
+  if (firebaseResult instanceof Response) return firebaseResult
+
+  if (!agentIds.length) {
+    return new Response(JSON.stringify({ error: 'forbidden' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Verify all agents belong to teams the user is a member of (single batch query).
   const batchResults = await env.DB.batch(
-    hashes.map(h =>
-      env.DB.prepare('SELECT id, team_id, agent_id FROM daemon_tokens WHERE token_hash = ?').bind(h)
+    agentIds.map(id =>
+      env.DB.prepare(`
+        SELECT a.id, a.team_id
+        FROM agents a
+        JOIN team_members m ON m.team_id = a.team_id
+        WHERE a.id = ? AND m.user_id = ?
+      `).bind(id, firebaseResult.userId)
     )
   )
   const rows = batchResults.map(r =>
-    (r.results[0] as { id: string; team_id: string; agent_id: string } | undefined)
+    (r.results[0] as { id: string; team_id: string } | undefined)
   )
 
   if (rows.some(r => !r)) {
@@ -89,49 +137,11 @@ export async function withDaemonBatchAuth(
     })
   }
 
-  const validRows = rows as { id: string; team_id: string; agent_id: string }[]
-  const now = Date.now()
-  await env.DB.batch(
-    validRows.map(r =>
-      env.DB.prepare('UPDATE daemon_tokens SET last_used = ? WHERE id = ?').bind(now, r.id)
-    )
-  )
-
-  return validRows.map(r => ({ teamId: r.team_id, agentId: r.agent_id, tokenId: r.id }))
-}
-
-// Daemon routes: validate X-TSQ-Token against daemon_tokens table
-export async function withDaemonAuth(
-  req: Request,
-  env: Env
-): Promise<DaemonContext | Response> {
-  const raw = req.headers.get('X-TSQ-Token')
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'forbidden' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  const hash = await sha256(raw)
-  const row = await env.DB
-    .prepare('SELECT id, team_id, agent_id FROM daemon_tokens WHERE token_hash = ?')
-    .bind(hash)
-    .first<{ id: string; team_id: string; agent_id: string }>()
-
-  if (!row) {
-    return new Response(JSON.stringify({ error: 'forbidden' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  await env.DB
-    .prepare('UPDATE daemon_tokens SET last_used = ? WHERE id = ?')
-    .bind(Date.now(), row.id)
-    .run()
-
-  return { teamId: row.team_id, agentId: row.agent_id, tokenId: row.id }
+  return (rows as { id: string; team_id: string }[]).map(r => ({
+    teamId: r.team_id,
+    agentId: r.id,
+    tokenId: '',
+  }))
 }
 
 export async function sha256(text: string): Promise<string> {

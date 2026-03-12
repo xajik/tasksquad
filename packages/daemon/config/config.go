@@ -18,10 +18,10 @@ type ServerConfig struct {
 	PollInterval int    `toml:"poll_interval"`
 }
 
-// AgentConfig holds per-agent settings. The token uniquely identifies the agent
-// on the server — no separate agent_id or team_id needed.
+// AgentConfig holds per-agent settings. The ID is the server-side agent ID
+// (resolved during tsq init) and uniquely identifies the agent.
 type AgentConfig struct {
-	Token   string `toml:"token"`
+	ID      string `toml:"id"`
 	Name    string `toml:"name"`
 	Command string `toml:"command"`
 	WorkDir string `toml:"work_dir"`
@@ -35,10 +35,18 @@ type HooksConfig struct {
 	Port int `toml:"port"`
 }
 
+// FirebaseConfig holds Firebase project credentials for token refresh.
+// These are client-side (public) values — not secrets.
+type FirebaseConfig struct {
+	APIKey     string `toml:"api_key"`
+	AuthDomain string `toml:"auth_domain"`
+}
+
 type Config struct {
-	Server ServerConfig  `toml:"server"`
-	Agents []AgentConfig `toml:"agents"`
-	Hooks  HooksConfig   `toml:"hooks"`
+	Server   ServerConfig   `toml:"server"`
+	Agents   []AgentConfig  `toml:"agents"`
+	Hooks    HooksConfig    `toml:"hooks"`
+	Firebase FirebaseConfig `toml:"firebase"`
 }
 
 func expandHome(path string) string {
@@ -74,8 +82,8 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("at least one [[agents]] entry is required")
 	}
 	for i, a := range cfg.Agents {
-		if a.Token == "" {
-			return nil, fmt.Errorf("agents[%d].token is required", i)
+		if a.ID == "" {
+			return nil, fmt.Errorf("agents[%d].id is required", i)
 		}
 		cfg.Agents[i].WorkDir = expandHome(a.WorkDir)
 	}

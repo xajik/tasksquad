@@ -1,5 +1,8 @@
 .PHONY: build install clean build-all test dev
 
+-include .env
+export
+
 dev:
 	@which air > /dev/null 2>&1 || go install github.com/air-verse/air@latest
 	air

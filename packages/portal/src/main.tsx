@@ -7,6 +7,7 @@ import { auth } from './lib/firebase'
 import { identifyUser, initAnalytics } from './lib/analytics'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
+import CLIAuth from './pages/CLIAuth'
 import Dashboard from './pages/Dashboard'
 import Pricing from './pages/Pricing'
 import './index.css'
@@ -16,8 +17,12 @@ initAnalytics();
 function App() {
   const [authed, setAuthed] = useState<boolean | null>(null)
 
+  console.log('[App] render, authed=', authed, 'path=', window.location.pathname)
+
   useEffect(() => {
+    console.log('[App] subscribing to onAuthStateChanged')
     return onAuthStateChanged(auth, (user) => {
+      console.log('[App] onAuthStateChanged fired, user=', user?.email ?? null)
       if (user) {
         identifyUser(user.uid, { email: user.email });
       } else {
@@ -27,15 +32,18 @@ function App() {
     })
   }, [])
 
-  if (authed === null) return null
-
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/pricing" element={<Pricing />} />
-        <Route path="/auth" element={authed ? <Navigate to="/dashboard" /> : <Login />} />
-        <Route path="/dashboard/*" element={authed ? <Dashboard /> : <Navigate to="/auth" />} />
+        <Route path="/auth/cli" element={<CLIAuth />} />
+        {authed === null ? null : (
+          <>
+            <Route path="/auth" element={authed ? <Navigate to="/dashboard" /> : <Login />} />
+            <Route path="/dashboard/*" element={authed ? <Dashboard /> : <Navigate to="/auth" />} />
+          </>
+        )}
       </Routes>
     </BrowserRouter>
   )

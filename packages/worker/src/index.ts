@@ -1,5 +1,5 @@
 import { Router, IRequest } from 'itty-router'
-import { withFirebaseAuth, withDaemonAuth, err } from './auth.js'
+import { withFirebaseAuth, withDaemonAgentAuth, err } from './auth.js'
 import * as teams    from './routes/teams.js'
 import * as agents   from './routes/agents.js'
 import * as tasks    from './routes/tasks.js'
@@ -18,7 +18,7 @@ const router = Router()
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-TSQ-Token',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-TSQ-Agent',
 }
 
 // Wrap a route handler with Firebase auth middleware
@@ -30,10 +30,11 @@ function firebaseRoute(handler: FirebaseHandler) {
   }
 }
 
-// Wrap a route handler with daemon token auth middleware
+// Wrap a route handler with Firebase-based daemon auth middleware.
+// Reads the agent ID from X-TSQ-Agent header and verifies ownership.
 function daemonRoute(handler: DaemonHandler) {
   return async (req: IRequest, env: Env, ctx: ExecutionContext) => {
-    const d = await withDaemonAuth(req as Request, env)
+    const d = await withDaemonAgentAuth(req as Request, env)
     if (d instanceof Response) return d
     return handler(req as Request, env, ctx, d)
   }
@@ -73,7 +74,8 @@ router.get ('/tasks/:taskId/logs',       firebaseRoute(tasks.logs))
 
 router.get ('/live/:agentId',            (req: IRequest, env: Env) => live.connect(req as Request, env))
 
-// ── Daemon routes (X-TSQ-Token) ───────────────────────────────────────────────
+// ── Daemon routes (Firebase JWT) ──────────────────────────────────────────────
+router.get ('/daemon/user/agents',       (req: IRequest, env: Env, ctx: ExecutionContext) => daemon.userAgents(req as Request, env, ctx))
 router.post('/daemon/heartbeat/batch',   (req: IRequest, env: Env, ctx: ExecutionContext) => daemon.batchHeartbeat(req as Request, env, ctx))
 router.post('/daemon/complete',          daemonRoute(daemon.complete))
 router.post('/daemon/session/open',      daemonRoute(daemon.sessionOpen))
