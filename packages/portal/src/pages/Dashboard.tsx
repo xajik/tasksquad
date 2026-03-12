@@ -392,18 +392,17 @@ function InboxView({ teamId }: { teamId: string }) {
   const [taskBody, setTaskBody] = useState('')
   const [agentId, setAgentId] = useState('')
   const [creating, setCreating] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
   const nav = useNavigate()
 
   const prevTaskStatusesRef = useRef<Record<string, string>>({})
 
   const load = useCallback(async () => {
-    setIsLoading(true)
     const [td, ad] = await Promise.all([api.tasks.list(teamId), api.agents.list(teamId)])
     const newTasks = td.tasks ?? []
     setTasks(newTasks)
     setAgents(ad.agents ?? [])
-    setIsLoading(false)
+    if (isInitialLoad) setIsInitialLoad(false)
 
     // Fire notifications for tasks whose status changed since last poll
     for (const t of newTasks) {
@@ -520,7 +519,7 @@ function InboxView({ teamId }: { teamId: string }) {
       </Dialog>
 
       <div className="flex flex-col gap-2">
-        {isLoading ? (
+        {isInitialLoad ? (
           <div className="space-y-2">
             {[1, 2, 3].map(i => (
               <Card key={i} className="animate-pulse">

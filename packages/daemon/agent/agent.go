@@ -250,7 +250,7 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 		}
 		if close_, _ := resp["close"].(bool); close_ {
 			logger.Info(fmt.Sprintf("[%s] Session closed by server (user completed)", a.Config.Name))
-			go a.closeSession()
+			go a.closeSession(cfg)
 			return
 		}
 	}
@@ -1304,11 +1304,12 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 // meaning the user clicked "Complete session" in the portal. It kills the tmux
 // session and resets the agent to idle WITHOUT calling /daemon/session/close
 // (the server already closed the session and task).
-func (a *Agent) closeSession() {
+func (a *Agent) closeSession(cfg *config.Config) {
 	a.mu.Lock()
 	sess := a.tmuxSession
 	fifo := a.fifoPath
 	runLog := a.runLog
+	agentID := a.agentID
 	// Clear all session state. complete() will be called by the startTask
 	// goroutine once outputDone closes, but will be a safe no-op because
 	// sessionID is empty.
@@ -1332,6 +1333,13 @@ func (a *Agent) closeSession() {
 		os.Remove(fifo)
 	}
 	logger.Info(fmt.Sprintf("[%s] Session closed by user — tmux killed, agent reset to idle", a.Config.Name))
+
+	// Push SSE "done" event so the portal drops out of "waiting for input" state.
+	if agentID != "" {
+		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
+			"type": "done",
+		})
+	}
 }
 
 // SetWaitingInput is called by the hook server on a Notification event.
