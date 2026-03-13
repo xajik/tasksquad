@@ -73,7 +73,7 @@ Reads `~/.tasksquad/config.toml`. Supports hot-reload via fsnotify.
     URL          string `toml:"url"`
     Token        string `toml:"token"`
     TeamID       string `toml:"team_id"`
-    PollInterval int    `toml:"poll_interval"` // seconds, default 30
+    PollInterval int    `toml:"poll_interval"` // seconds, default 60
   }
   ```
 

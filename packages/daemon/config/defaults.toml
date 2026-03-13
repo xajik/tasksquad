@@ -1,6 +1,6 @@
 [server]
 url           = "https://api.tasksquad.ai"
-poll_interval = 30
+poll_interval = 60
 
 [hooks]
 port = 7374

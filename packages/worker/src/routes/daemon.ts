@@ -37,10 +37,10 @@ async function notifyTeamMembers(env: Env, taskId: string, title: string, body: 
   }
 }
 
-const HEARTBEAT_MIN_INTERVAL_MS = 5_000
-// Base poll interval + up to 2 s of random jitter to spread agent traffic.
-const POLL_BASE_MS = 5_000
-const POLL_JITTER_MS = 2_000
+const HEARTBEAT_MIN_INTERVAL_MS = 55_000
+// Base poll interval + up to 5 s of random jitter to spread agent traffic.
+const POLL_BASE_MS = 60_000
+const POLL_JITTER_MS = 5_000
 
 /** Response with Cache-Control + ETag headers for the polling endpoint. */
 function hbJson(data: unknown, version: string, status = 200): Response {
@@ -48,7 +48,7 @@ function hbJson(data: unknown, version: string, status = 200): Response {
     status,
     headers: {
       'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=2, stale-while-revalidate=10',
+      'Cache-Control': 'public, max-age=60, stale-while-revalidate=120',
       'ETag': `"${version}"`,
     },
   })
@@ -59,7 +59,7 @@ function hb304(version: string): Response {
   return new Response(null, {
     status: 304,
     headers: {
-      'Cache-Control': 'public, max-age=2, stale-while-revalidate=10',
+      'Cache-Control': 'public, max-age=60, stale-while-revalidate=120',
       'ETag': `"${version}"`,
     },
   })

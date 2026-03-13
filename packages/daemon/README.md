@@ -85,7 +85,7 @@ Create `~/.tasksquad/config.toml`:
 ```toml
 [server]
 url = "https://api.tasksquad.ai"
-poll_interval = 30   # seconds between heartbeats (default: 30)
+poll_interval = 60   # seconds between heartbeats (default: 60)
 
 [hooks]
 port = 7374          # local HTTP port for provider hooks (default: 7374)
@@ -122,7 +122,7 @@ work_dir = "~/Projects/backend"
 | Field | Required | Default | Description |
 |---|---|---|---|
 | `server.url` | Yes | — | TaskSquad API base URL |
-| `server.poll_interval` | No | `30` | Heartbeat interval in seconds |
+| `server.poll_interval` | No | `60` | Heartbeat interval in seconds |
 | `hooks.port` | No | `7374` | Local port for provider hook callbacks |
 | `agents[].id` | Yes | — | Unique agent ID from the portal |
 | `agents[].token` | Yes | — | Agent auth token from the portal |
