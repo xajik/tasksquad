@@ -37,8 +37,9 @@ export default function Pricing() {
       <nav className="max-w-[800px] mx-auto px-4 sm:px-6 pt-[calc(1.25rem+env(safe-area-inset-top,0px))] pb-5 flex justify-between items-center sm:py-5">
         <button onClick={() => nav('/')} className="font-bold text-xl">TaskSquad</button>
         <div className="flex gap-6 items-center">
-          <Button variant="ghost" onClick={() => nav('/pricing')}>Pricing</Button>
-          <Button onClick={() => nav('/auth')}>Sign in</Button>
+          <button onClick={() => { trackEvent('howto_clicked', { source: 'pricing_nav' }); nav('/howto') }} className="text-foreground hover:underline">How To</button>
+          <button onClick={() => { trackEvent('pricing_clicked', { source: 'pricing_nav' }); nav('/pricing') }} className="text-foreground hover:underline">Pricing</button>
+          <Button onClick={() => { trackEvent('sign_in_clicked', { source: 'pricing_nav' }); nav('/auth') }}>Sign in</Button>
         </div>
       </nav>
 

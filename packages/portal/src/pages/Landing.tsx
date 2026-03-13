@@ -9,16 +9,18 @@ export default function Landing() {
       <nav className="flex justify-between items-center mb-10 sm:mb-20">
         <strong className="text-xl">TaskSquad</strong>
         <div className="flex gap-4 sm:gap-6 items-center">
+          <button onClick={() => { trackEvent('howto_clicked', { source: 'landing_nav' }); nav('/howto') }} className="text-foreground hover:underline">How To</button>
           <button onClick={() => { trackEvent('pricing_clicked', { source: 'landing_nav' }); nav('/pricing') }} className="text-foreground hover:underline">Pricing</button>
           <Button onClick={() => { trackEvent('sign_in_clicked', { source: 'landing_nav' }); nav('/auth') }}>Sign in</Button>
         </div>
       </nav>
 
       <h1 className="text-3xl sm:text-5xl font-bold leading-tight mb-6">
-        Send tasks to AI agents.<br />Get results back in your browser.
+        Your machine has the best setup for AI.
       </h1>
       <p className="text-base sm:text-lg text-muted-foreground mb-8 sm:mb-10 max-w-xl">
-        TaskSquad lets you send tasks to AI agents on any machine and get results back in a threaded web portal. Agents pick up work on their own schedule and report back when done.
+        Connect to your AI setup anywhere, any time. Collaborate with friends and agents across the team.
+        Support for all major agents: Claude, Gemini, OpenCode. Codex and OpenClaw coming soon.
       </p>
 
       <Button size="lg" onClick={() => { trackEvent('cta_clicked', { label: 'get_started_free' }); nav('/auth') }} className="mb-6 sm:mb-8 w-full sm:w-auto">

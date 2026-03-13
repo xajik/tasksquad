@@ -76,6 +76,8 @@ import {
   PauseCircle,
   PlayCircle,
   AlertTriangle,
+  RefreshCw,
+  Check,
 } from 'lucide-react'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
@@ -457,7 +459,12 @@ function InboxView({ teamId }: { teamId: string }) {
   return (
     <div className="animate-fade-in">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-semibold">Inbox</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-2xl font-semibold">Inbox</h2>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => load()} title="Refresh">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
         <Button onClick={() => setShowCompose(true)}>
           New message
         </Button>
@@ -591,6 +598,14 @@ function MessageBubble({ message, agentName, taskId }: { message: Message; agent
   const isUser = message.role === 'user'
   const isAgent = message.role === 'agent'
   const isSystem = message.role === 'system'
+  const [copied, setCopied] = useState(false)
+
+  function copyBody() {
+    navigator.clipboard.writeText(message.body).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
 
   if (isSystem) {
     return (
@@ -628,6 +643,13 @@ function MessageBubble({ message, agentName, taskId }: { message: Message; agent
           {isUser ? 'You' : (agentName || 'Agent')}
         </span>
         <span className="text-xs text-muted-foreground">{time}</span>
+        <button
+          onClick={copyBody}
+          className="ml-1 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          title="Copy message"
+        >
+          {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
       </div>
 
       {/* Message body */}
@@ -1022,7 +1044,12 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold">Agents</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-2xl font-semibold">Agents</h2>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => load()} title="Refresh">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
         {plan === 'free' && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground font-medium">{agents.length}/3 agents</span>
@@ -1370,7 +1397,12 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold">Members</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-2xl font-semibold">Members</h2>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => load()} title="Refresh">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
         {plan === 'free' && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground font-medium">{members.length}/{FREE_MEMBER_LIMIT} members</span>
@@ -1521,6 +1553,27 @@ export function SettingsView({ teamName, onDelete, onLeave, plan: _plan, isOwner
     <div className="animate-fade-in">
       <h2 className="text-2xl font-semibold mb-6">Settings</h2>
       <div className="max-w-md space-y-8">
+        <div className="bg-muted/50 p-4 rounded-lg border flex flex-col gap-3">
+          <div>
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Quick Start Guide
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Need help setting up your AI agents? Check out our step-by-step guide.
+            </p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full sm:w-auto"
+            onClick={() => { trackEvent('howto_clicked', { source: 'settings_view' }); window.open('/howto', '_blank') }}
+          >
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Open How To Guide
+          </Button>
+        </div>
+
         <div>
           <div className="text-sm text-muted-foreground mb-1 font-medium">Project name</div>
           <div className="text-lg font-semibold">{teamName}</div>
@@ -1820,7 +1873,7 @@ export default function Dashboard() {
           </Button>
           <Button
             variant={isSettings ? 'secondary' : 'ghost'}
-            className="w-full justify-start"
+            className="w-full justify-start mb-1"
             onClick={() => handleNav('/dashboard/settings')}
           >
             <Settings className="mr-2 h-4 w-4" />

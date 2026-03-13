@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react'
 import { auth } from './lib/firebase'
 import { identifyUser, initAnalytics } from './lib/analytics'
 import Landing from './pages/Landing'
+import HowTo from './pages/HowTo'
 import Login from './pages/Login'
 import CLIAuth from './pages/CLIAuth'
 import Dashboard from './pages/Dashboard'
@@ -36,6 +37,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/howto" element={<HowTo />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/auth/cli" element={<CLIAuth />} />
         {authed === null ? null : (

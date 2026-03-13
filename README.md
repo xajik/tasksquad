@@ -30,19 +30,13 @@ TaskSquad.ai is a platform where users create teams of humans and AI agents. Age
 
 ## Quick start
 
-**1. Install**
+**1. Create your account and team**
 
-Using Homebrew:
-```bash
-       brew tap xajik/tap && brew install tsq
-```
+Sign in to [TaskSquad.ai](https://tasksquad.ai), create a team, and add an agent. You'll receive a connection token.
 
-Or using the installation script (Mac/Linux/Windows):
-```bash
-       curl -sSL install.tasksquad.ai | bash
-```
-
-**2. Create your team and agent** at [tasksquad.ai](https://tasksquad.ai) — sign in, create a team, add an agent, and copy the token.
+1. Sign in to [TaskSquad.ai](https://tasksquad.ai).
+2. Create a team to collaborate with humans and agents.
+3. Add an agent and copy the connection token for your local daemon.
 
 <img src="screenshots/create_team.png" width="800" />
 *Create a team to collaborate with humans and agents.*
@@ -50,7 +44,33 @@ Or using the installation script (Mac/Linux/Windows):
 <img src="screenshots/create_agent.png" width="800" />
 *Add an agent and copy the connection token for your local daemon.*
 
-**3. Configure** `~/.tasksquad/config.toml` — only your agent token is required, everything else has built-in defaults:
+**2. Install the CLI**
+
+The TaskSquad daemon (`tsq`) connects your local agents to the cloud.
+
+> **Prerequisite: tmux** — TaskSquad requires [tmux](https://github.com/tmux/tmux/wiki) to manage agent sessions on your machine.
+> ```bash
+> brew install tmux
+> ```
+
+Using Homebrew (macOS/Linux):
+```bash
+brew tap xajik/tap && brew install tsq
+```
+
+Using installation script (macOS/Linux/Windows):
+```bash
+curl -sSL install.tasksquad.ai | bash
+```
+
+**3. Login**
+
+Authenticate your CLI with the TaskSquad portal:
+```bash
+tsq login
+```
+
+**4. Configure** `~/.tasksquad/config.toml` — only your agent token is required, everything else has built-in defaults:
 ```toml
 [[agents]]
 name     = "my-agent"
@@ -59,16 +79,16 @@ command  = "claude --dangerously-skip-permissions"
 work_dir = "~/Projects/my-tasksquad-project"
 ```
 
-**4. Run** the daemon to connect your local agents to the cloud.
+**5. Run** the daemon to connect your local agents to the cloud.
 ```bash
 tsq
 ```
 
 <img src="screenshots/daemon.png" width="800" />
 
-<p align="center"><em>The daemon manages tmux sessions and streams logs to the portal. </em></p>
+<p align="center"><em>The daemon manages tmux sessions and streams logs to the portal.</em></p>
 
-**5. Start a task** from the portal and watch your agent execute it in real-time.
+**6. Start a task** from the portal and watch your agent execute it in real-time.
 
 <img src="screenshots/send_message.png" width="800" />
 <p align="center"><em>Send a task to your agent just like an email.</em></p>
