@@ -659,6 +659,7 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
   const [forwardAgentId, setForwardAgentId] = useState('')
   const [forwarding, setForwarding] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const replyFormRef = useRef<HTMLFormElement>(null)
   const esRef = useRef<EventSource | null>(null)
   const nav = useNavigate()
 
@@ -862,35 +863,6 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
             </Dialog>
           )}
 
-          {task && !['done', 'failed'].includes(task.status) && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm" className="hidden sm:flex text-emerald-700 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800">
-                  <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
-                  Close
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="icon" className="sm:hidden h-8 w-8 text-emerald-700 border-emerald-200">
-                  <CheckCircle className="h-3.5 w-3.5" />
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Close Session?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will mark the task as done. You can always follow up later if needed.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Keep open</AlertDialogCancel>
-                  <AlertDialogAction onClick={closeTask} className="bg-emerald-600 hover:bg-emerald-700">
-                    Close Session
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
 
           <Button variant="ghost" size="icon" onClick={deleteTask} className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive">
             <Trash2 className="h-3.5 w-3.5" />
@@ -937,7 +909,7 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Reply</span>
             <span className="text-xs text-muted-foreground">to {agentName}</span>
           </div>
-          <form onSubmit={sendReply}>
+          <form ref={replyFormRef} onSubmit={sendReply}>
             <Textarea
               value={reply}
               onChange={e => setReply(e.target.value)}
@@ -954,6 +926,35 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
               </Button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ── Sticky action bar ── */}
+      {task && !['done', 'failed'].includes(task.status) && (
+        <div className="sticky bottom-0 pt-3 pb-1 flex justify-start bg-gradient-to-t from-background via-background to-transparent">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
+                Close Session
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Close Session?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will mark the task as done. You can always follow up later if needed.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep open</AlertDialogCancel>
+                <AlertDialogAction onClick={closeTask} className="bg-emerald-600 hover:bg-emerald-700">
+                  Close Session
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
         </div>
       )}
 

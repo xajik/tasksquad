@@ -1,40 +1,90 @@
 package provider
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+
+	"github.com/tasksquad/daemon/logger"
+)
 
 // Codex is the provider for OpenAI's codex CLI.
 //
-// TODO: Implement Codex hook support.
+// Completion is signalled via the `notify` field in ~/.codex/config.toml.
+// When set, codex runs that shell command after each agent turn, piping a JSON
+// payload to stdin:
 //
-// The OpenAI Codex CLI supports hooks via the CODEX_HOOKS_SERVER_URL environment
-// variable. When set, codex POSTs lifecycle events to that URL.
+//	{"type":"agent-turn-complete","turn-id":"...","last-assistant-message":"..."}
 //
-// Expected env var (verify against codex docs):
+// Setup() writes the notify command pointing to the daemon's hook server so
+// hooks/server.go can call agent.StopAndPause() on completion.
 //
-//	CODEX_HOOKS_SERVER_URL=http://localhost:{port}/hooks/codex
+// Note: ~/.codex/config.toml is a global file; the agent name is embedded in
+// the URL so the hook server can route correctly even if multiple Codex agents
+// are configured on the same machine (sequential execution only — concurrent
+// Codex agents sharing the same hook server are not supported).
 //
-// Once implemented:
-//   - Env() returns ["CODEX_HOOKS_SERVER_URL=http://localhost:{port}/hooks/codex"]
-//   - UsesHooks() returns true
-//   - hooks/server.go needs a POST /hooks/codex handler that maps codex event
-//     shapes to agent.Complete() / agent.SetWaitingInput()
-
+// Codex has no notification/waiting-for-input hook, so SetWaitingInput is
+// never triggered from hooks; the daemon relies on process-exit detection for
+// that case.
 type Codex struct{}
 
-func (p *Codex) Name() string { return "codex" }
+func (p *Codex) Name() string            { return "codex" }
+func (p *Codex) UsesHooks() bool         { return true }
+func (p *Codex) Env(_ int) []string      { return nil }
+func (p *Codex) Stdin(_ string) string   { return "" }
+func (p *Codex) ExtraArgs() []string     { return nil }
 
-// TODO: return true once CODEX_HOOKS_SERVER_URL support is verified.
-func (p *Codex) UsesHooks() bool { return false }
+// Setup updates ~/.codex/config.toml with a notify command that POSTs the
+// codex turn-complete payload to the daemon's local hook server.
+func (p *Codex) Setup(_ string, hooksPort int, agentName string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("get home dir: %w", err)
+	}
 
-// TODO: return ["CODEX_HOOKS_SERVER_URL=http://localhost:{port}/hooks/codex"]
-func (p *Codex) Env(_ int) []string { return nil }
+	codexDir := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(codexDir, 0755); err != nil {
+		return fmt.Errorf("create .codex dir: %w", err)
+	}
 
-// Env with port — placeholder so it's easy to wire up.
-// nolint:unused
-func (p *Codex) envWithPort(hooksPort int) []string {
-	return []string{fmt.Sprintf("CODEX_HOOKS_SERVER_URL=http://localhost:%d/hooks/codex", hooksPort)}
+	configPath := filepath.Join(codexDir, "config.toml")
+	stopURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/codex?agent=%s", hooksPort, agentName)
+	notifyLine := fmt.Sprintf("notify = %q", codexNotifyCmd(stopURL))
+
+	// Read existing config and replace/append the notify line, preserving other settings.
+	var lines []string
+	if data, err := os.ReadFile(configPath); err == nil {
+		lines = strings.Split(string(data), "\n")
+	}
+
+	replaced := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "notify") {
+			lines[i] = notifyLine
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		lines = append(lines, notifyLine)
+	}
+
+	if err := os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+		return fmt.Errorf("write codex config: %w", err)
+	}
+
+	logger.Debug(fmt.Sprintf("[provider/codex] Wrote notify hook to %s (port %d, agent %s)", configPath, hooksPort, agentName))
+	return nil
 }
 
-func (p *Codex) Stdin(_ string) string        { return "" }
-func (p *Codex) ExtraArgs() []string          { return nil }
-func (p *Codex) Setup(_ string, _ int, _ string) error { return nil }
+// codexNotifyCmd returns a shell command that POSTs stdin (the codex JSON
+// payload) to url. Unlike Gemini, codex does not require a JSON response.
+func codexNotifyCmd(url string) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf(`curl -sS -X POST "%s" -H "Content-Type: application/json" -d @- > NUL 2>&1`, url)
+	}
+	return fmt.Sprintf(`curl -sS -X POST "%s" -H "Content-Type: application/json" -d @- > /dev/null 2>&1`, url)
+}
