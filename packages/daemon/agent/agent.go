@@ -208,7 +208,7 @@ func (a *Agent) TmuxSession() string {
 }
 
 func (a *Agent) post(cfg *config.Config, path string, body any) (map[string]any, error) {
-	token, err := auth.GetToken(cfg.Firebase.APIKey)
+	token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)
 	if err != nil {
 		return nil, fmt.Errorf("auth: %w", err)
 	}

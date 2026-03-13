@@ -1,5 +1,5 @@
 import { Router, IRequest } from 'itty-router'
-import { withFirebaseAuth, withDaemonAgentAuth, err } from './auth.js'
+import { withFirebaseAuth, withDaemonAgentAuth, mintCliToken, err, json } from './auth.js'
 import * as teams    from './routes/teams.js'
 import * as agents   from './routes/agents.js'
 import * as tasks    from './routes/tasks.js'
@@ -42,6 +42,14 @@ function daemonRoute(handler: DaemonHandler) {
 
 // CORS preflight
 router.options('*', () => new Response(null, { status: 204, headers: CORS_HEADERS }))
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+// Exchanges a Firebase ID token (from tsq login) for a long-lived CLI token (90 days).
+// The portal always uses short-lived Firebase ID tokens; only the daemon uses this.
+router.post('/auth/cli-token', firebaseRoute(async (_req, env, _ctx, auth) => {
+  const { token, expiresAt } = await mintCliToken(env, auth.userId)
+  return json({ token, expires_at: expiresAt, expires_in: 90 * 24 * 3600 })
+}))
 
 // ── Browser routes (Firebase JWT) ─────────────────────────────────────────────
 router.get('/me', firebaseRoute(me.getMe))

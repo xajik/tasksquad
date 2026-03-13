@@ -2,6 +2,9 @@ import { CloudFireAuth } from 'cloudfire-auth'
 import { ulid } from 'ulidx'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 
+const CLI_TOKEN_PREFIX = 'tsq_cli_'
+const CLI_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000 // 90 days
+
 function getAuth(env: Env): CloudFireAuth {
   const serviceAccount = JSON.parse(atob(env.FIREBASE_SERVICE_ACCOUNT_KEY))
   return new CloudFireAuth(serviceAccount, env.JWKS_CACHE)
@@ -20,12 +23,19 @@ export async function withFirebaseAuth(
   }
 
   const token = header.slice(7)
+
+  // Long-lived CLI tokens are handled by a dedicated path — no Firebase call needed.
+  if (token.startsWith(CLI_TOKEN_PREFIX)) {
+    return withUserTokenAuth(token, env)
+  }
+
   let decoded: { uid?: string; sub?: string; email?: string }
 
   try {
     const auth = getAuth(env)
     decoded = await auth.verifyIdToken(token)
   } catch {
+    console.warn('[auth] Firebase ID token verification failed')
     return new Response(JSON.stringify({ error: 'invalid_token' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
@@ -40,6 +50,71 @@ export async function withFirebaseAuth(
   const email = decoded.email ?? ''
   const { id: userId, plan } = await upsertUser(env.DB, firebaseUid, email)
   return { uid: firebaseUid, email, userId, plan }
+}
+
+// withUserTokenAuth validates a tsq_cli_* token stored in user_cli_tokens.
+async function withUserTokenAuth(token: string, env: Env): Promise<AuthContext | Response> {
+  const hash = await sha256(token)
+  const row = await env.DB.prepare(`
+    SELECT t.id, t.user_id, t.expires_at, u.firebase_uid, u.email, u.plan
+    FROM user_cli_tokens t
+    JOIN users u ON u.id = t.user_id
+    WHERE t.token_hash = ?
+  `).bind(hash).first<{ id: string; user_id: string; expires_at: number; firebase_uid: string; email: string; plan: string }>()
+
+  if (!row) {
+    console.warn('[auth] CLI token not found — invalid or revoked')
+    return new Response(JSON.stringify({ error: 'invalid_token' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (row.expires_at < Date.now()) {
+    const expiredAgo = Math.round((Date.now() - row.expires_at) / 86400000)
+    console.warn(`[auth] CLI token expired ${expiredAgo}d ago for user ${row.user_id}`)
+    return new Response(JSON.stringify({ error: 'token_expired' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const daysLeft = (row.expires_at - Date.now()) / 86400000
+  console.log(`[auth] CLI token OK for user ${row.user_id} (${daysLeft.toFixed(0)}d remaining)`)
+
+  // Update last_used without blocking the response.
+  env.DB.prepare('UPDATE user_cli_tokens SET last_used = ? WHERE id = ?')
+    .bind(Date.now(), row.id).run().catch(() => {})
+
+  return {
+    uid: row.firebase_uid,
+    email: row.email,
+    userId: row.user_id,
+    plan: row.plan === 'pro' ? 'pro' : 'free',
+  }
+}
+
+// mintCliToken creates a new long-lived CLI token for a user and returns the raw value.
+// The raw token is returned exactly once — only its hash is stored in the DB.
+export async function mintCliToken(
+  env: Env,
+  userId: string
+): Promise<{ token: string; expiresAt: number }> {
+  const randomBytes = new Uint8Array(32)
+  crypto.getRandomValues(randomBytes)
+  const raw = CLI_TOKEN_PREFIX + Array.from(randomBytes)
+    .map(b => b.toString(16).padStart(2, '0')).join('')
+
+  const hash = await sha256(raw)
+  const id = ulid()
+  const expiresAt = Date.now() + CLI_TOKEN_TTL_MS
+
+  await env.DB.prepare(
+    'INSERT INTO user_cli_tokens (id, user_id, token_hash, label, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(id, userId, hash, 'CLI', expiresAt, Date.now()).run()
+
+  console.log(`[auth] minted CLI token for user ${userId}, expires ${new Date(expiresAt).toISOString()}`)
+  return { token: raw, expiresAt }
 }
 
 async function upsertUser(db: D1Database, firebaseUid: string, email: string): Promise<{ id: string; plan: 'free' | 'pro' }> {

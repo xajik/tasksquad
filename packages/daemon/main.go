@@ -63,7 +63,7 @@ func main() {
 	if !auth.IsLoggedIn() {
 		fmt.Println("Not logged in — starting login flow...")
 		dashURL := dashboardURL(cfg.Server.URL)
-		email, err := auth.Login(dashURL)
+		email, err := auth.Login(dashURL, cfg.Server.URL)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "login failed: %v\n", err)
 			os.Exit(1)
@@ -161,7 +161,7 @@ func runLogin() {
 
 	dashURL := dashboardURL(cfg.Server.URL)
 
-	email, err := auth.Login(dashURL)
+	email, err := auth.Login(dashURL, cfg.Server.URL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "login failed: %v\n", err)
 		os.Exit(1)
@@ -197,7 +197,7 @@ func runInit() {
 
 	dashURL := dashboardURL(cfg.Server.URL)
 
-	email, err := auth.Login(dashURL)
+	email, err := auth.Login(dashURL, cfg.Server.URL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "login failed: %v\n", err)
 		os.Exit(1)
@@ -206,7 +206,7 @@ func runInit() {
 
 	// Step 2: Fetch user's agents from server.
 	fmt.Println("Step 2: Fetching your agents from the server...")
-	token, err := auth.GetToken(cfg.Firebase.APIKey)
+	token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "auth error: %v\n", err)
 		os.Exit(1)
