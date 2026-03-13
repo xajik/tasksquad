@@ -91,27 +91,30 @@ poll_interval = 30   # seconds between heartbeats (default: 30)
 port = 7374          # local HTTP port for provider hooks (default: 7374)
 
 [[agents]]
+id       = "agent_id_from_portal"    # unique agent ID from portal
 token    = "tsq_live_xxxxxxxxxxxx"   # paste from TaskSquad portal
 name     = "my-agent"
 command  = "claude"                  # CLI binary to run
 work_dir = "~/Projects/my-repo"
 # provider = "claude-code"           # auto-detected from command; uncomment to override
-```
 
 **Multiple agents** — add additional `[[agents]]` blocks, each with its own token:
 
 ```toml
 [[agents]]
+id       = "frontend-agent-id"
 token    = "tsq_live_aaa"
 name     = "frontend-agent"
 command  = "claude"
 work_dir = "~/Projects/frontend"
 
 [[agents]]
+id       = "backend-agent-id"
 token    = "tsq_live_bbb"
 name     = "backend-agent"
 command  = "claude"
 work_dir = "~/Projects/backend"
+```
 ```
 
 ### Config fields
@@ -121,6 +124,7 @@ work_dir = "~/Projects/backend"
 | `server.url` | Yes | — | TaskSquad API base URL |
 | `server.poll_interval` | No | `30` | Heartbeat interval in seconds |
 | `hooks.port` | No | `7374` | Local port for provider hook callbacks |
+| `agents[].id` | Yes | — | Unique agent ID from the portal |
 | `agents[].token` | Yes | — | Agent auth token from the portal |
 | `agents[].name` | Yes | — | Display name shown in portal |
 | `agents[].command` | Yes | — | CLI command to execute (e.g. `claude`, `codex`) |

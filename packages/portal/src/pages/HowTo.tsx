@@ -74,6 +74,7 @@ export default function HowTo() {
               <div className="bg-muted p-3 rounded-md overflow-x-auto">
                 <pre className="text-sm font-mono">
 {`[[agents]]
+id       = "agent-id-from-portal"
 name     = "my-agent"
 token    = "paste-token-from-portal"
 command  = "claude --dangerously-skip-permissions"

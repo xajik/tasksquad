@@ -79,9 +79,6 @@ async function withUserTokenAuth(token: string, env: Env): Promise<AuthContext |
     })
   }
 
-  const daysLeft = (row.expires_at - Date.now()) / 86400000
-  console.log(`[auth] CLI token OK for user ${row.user_id} (${daysLeft.toFixed(0)}d remaining)`)
-
   // Update last_used without blocking the response.
   env.DB.prepare('UPDATE user_cli_tokens SET last_used = ? WHERE id = ?')
     .bind(Date.now(), row.id).run().catch(() => {})

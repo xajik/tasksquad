@@ -1249,6 +1249,7 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
           : { cmd: 'codex', dir: '~/Projects/my-tasksquad-project' }
         
         const snippet = `[[agents]]
+id       = "${newToken.agentId}"
 name     = "${newToken.agentName}"
 token    = "${newToken.token}"
 command  = "${config.cmd}"
