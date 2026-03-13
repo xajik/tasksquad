@@ -16,11 +16,10 @@ export default function Landing() {
       </nav>
 
       <h1 className="text-3xl sm:text-5xl font-bold leading-tight mb-6">
-        Your machine has the best setup for AI.
+        Your machine has the best agentic setup.
       </h1>
       <p className="text-base sm:text-lg text-muted-foreground mb-8 sm:mb-10 max-w-xl">
-        Connect to your AI setup anywhere, any time. Collaborate with friends and agents across the team.
-        Support for all major agents: Claude, Gemini, OpenCode. Codex and OpenClaw coming soon.
+        Connect to your agentic AI setup on your local machine anywhere, any time. Collaborate with friends and agents across the team.
       </p>
 
       <Button size="lg" onClick={() => { trackEvent('cta_clicked', { label: 'get_started_free' }); nav('/auth') }} className="mb-6 sm:mb-8 w-full sm:w-auto">

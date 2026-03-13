@@ -34,12 +34,12 @@ import (
 )
 
 const (
-	keychainService  = "tasksquad-daemon"
-	keyIDToken       = "id-token"
-	keyRefreshToken  = "refresh-token"
-	keyExpiry        = "expiry"
-	keyEmail         = "email"
-	keyCLIToken      = "cli-token"
+	keychainService   = "tasksquad-daemon"
+	keyIDToken        = "id-token"
+	keyRefreshToken   = "refresh-token"
+	keyExpiry         = "expiry"
+	keyEmail          = "email"
+	keyCLIToken       = "cli-token"
 	keyCLITokenExpiry = "cli-token-expiry"
 )
 
@@ -191,8 +191,8 @@ func Login(dashboardURL, apiURL string) (email string, err error) {
 			// Non-fatal: daemon will fall back to Firebase refresh on next poll.
 			log.Printf("[auth] warning: could not mint CLI token: %v — will use Firebase refresh", mintErr)
 		} else {
-			keyring.Set(keychainService, keyCLIToken, cliToken)                                 //nolint:errcheck
-			keyring.Set(keychainService, keyCLITokenExpiry, cliExpiry.Format(time.RFC3339))     //nolint:errcheck
+			keyring.Set(keychainService, keyCLIToken, cliToken)                             //nolint:errcheck
+			keyring.Set(keychainService, keyCLITokenExpiry, cliExpiry.Format(time.RFC3339)) //nolint:errcheck
 			log.Printf("[auth] CLI token stored, valid until %s", cliExpiry.Format(time.RFC3339))
 		}
 
@@ -232,11 +232,9 @@ func GetToken(firebaseAPIKey, apiURL string) (string, error) {
 
 			switch {
 			case daysLeft > 7:
-				log.Printf("[auth] CLI token valid (%.0fd remaining)", daysLeft)
 				return cliToken, nil
 
 			case daysLeft > 0:
-				// Token still valid but approaching expiry — rotate silently.
 				log.Printf("[auth] CLI token expiring in %.0fd — rotating silently...", daysLeft)
 				newToken, rotErr := rotateCLIToken(firebaseAPIKey, apiURL)
 				if rotErr != nil {
@@ -266,8 +264,8 @@ func GetToken(firebaseAPIKey, apiURL string) (string, error) {
 		log.Printf("[auth] warning: could not mint CLI token: %v — using Firebase ID token for now", mintErr)
 		return idToken, nil
 	}
-	keyring.Set(keychainService, keyCLIToken, newCLI)                                 //nolint:errcheck
-	keyring.Set(keychainService, keyCLITokenExpiry, cliExpiry.Format(time.RFC3339))   //nolint:errcheck
+	keyring.Set(keychainService, keyCLIToken, newCLI)                               //nolint:errcheck
+	keyring.Set(keychainService, keyCLITokenExpiry, cliExpiry.Format(time.RFC3339)) //nolint:errcheck
 	log.Printf("[auth] new CLI token stored, valid until %s", cliExpiry.Format(time.RFC3339))
 	return newCLI, nil
 }
@@ -328,7 +326,7 @@ func rotateCLIToken(firebaseAPIKey, apiURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	keyring.Set(keychainService, keyCLIToken, token)                              //nolint:errcheck
+	keyring.Set(keychainService, keyCLIToken, token)                             //nolint:errcheck
 	keyring.Set(keychainService, keyCLITokenExpiry, expiry.Format(time.RFC3339)) //nolint:errcheck
 	return token, nil
 }
