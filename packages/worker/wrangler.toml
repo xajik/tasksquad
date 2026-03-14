@@ -5,9 +5,10 @@ compatibility_flags = ["nodejs_compat"]
 
 # D1
 [[d1_databases]]
-binding       = "DB"
-database_name = "tasksquad-db"
-database_id   = "172c2b3e-3547-45e5-8a58-fa5e73b4e63d"
+binding         = "DB"
+database_name   = "tasksquad-db"
+database_id     = "172c2b3e-3547-45e5-8a58-fa5e73b4e63d"
+migrations_dir  = "migrations"
 
 # R2
 [[r2_buckets]]
