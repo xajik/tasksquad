@@ -30,3 +30,13 @@ type AuthController interface {
 	// Logout removes stored credentials and exits so the user can re-login.
 	Logout() error
 }
+
+// AutostartController manages OS-boot registration for the daemon.
+type AutostartController interface {
+	// IsEnabled returns true if the daemon is registered to start on OS boot.
+	IsEnabled() bool
+	// Enable registers the daemon to start on OS boot.
+	Enable() error
+	// Disable removes the daemon's OS-boot registration.
+	Disable() error
+}

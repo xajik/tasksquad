@@ -156,11 +156,21 @@ func New(cfg config.AgentConfig) *Agent {
 // Name implements the ui.AgentStatus interface.
 func (a *Agent) Name() string { return a.Config.Name }
 
+// ID returns the server-assigned agent ID. Used to identify hooks uniquely
+// even when multiple agents share the same display name.
+func (a *Agent) ID() string { return a.Config.ID }
+
 // GetMode implements the hooks.Agent and ui.AgentStatus interfaces.
 func (a *Agent) GetMode() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return string(a.mode)
+}
+
+func (a *Agent) GetTaskID() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.taskID
 }
 
 // Pause stops the heartbeat poll loop until Resume is called.
@@ -392,7 +402,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.mu.Unlock()
 
 	// Let the provider write any hook/config files it needs (e.g. .claude/settings.json).
-	if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port, a.Config.Name); err != nil {
+	if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port, a.Config.ID, taskID); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] Provider setup warning: %v", a.Config.Name, err))
 	}
 

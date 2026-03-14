@@ -49,14 +49,14 @@ const uiVersion = "0.1.0"
 
 // Run starts the system tray UI on the main OS thread (required by macOS AppKit).
 // It blocks until the user clicks Quit or the process is killed.
-func Run(agents []AgentStatus, ctrl PullController, authCtrl AuthController, dashboardURL string, configPath string) {
+func Run(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, dashboardURL string, configPath string) {
 	systray.Run(
-		func() { onReady(agents, ctrl, authCtrl, dashboardURL, configPath) },
+		func() { onReady(agents, ctrl, authCtrl, autostartCtrl, dashboardURL, configPath) },
 		func() { os.Exit(0) },
 	)
 }
 
-func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController, dashboardURL string, configPath string) {
+func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, dashboardURL string, configPath string) {
 	// Green icon = pulling active; red icon = paused.
 	if ctrl.IsPaused() {
 		systray.SetIcon(iconPaused())
@@ -89,6 +89,7 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 
 	// ── Quick actions ──────────────────────────────────────────────────────
 	mDash := systray.AddMenuItem("Open Dashboard", dashboardURL)
+	mBoot := systray.AddMenuItem(bootLabel(autostartCtrl.IsEnabled()), "Toggle run on OS boot")
 
 	systray.AddSeparator()
 
@@ -150,6 +151,25 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 		}
 	}()
 	go func() {
+		for range mBoot.ClickedCh {
+			if autostartCtrl.IsEnabled() {
+				if err := autostartCtrl.Disable(); err != nil {
+					logger.Warn(fmt.Sprintf("[ui] autostart disable: %v", err))
+				} else {
+					mBoot.SetTitle(bootLabel(false))
+					logger.Info("[ui] Run on OS boot disabled")
+				}
+			} else {
+				if err := autostartCtrl.Enable(); err != nil {
+					logger.Warn(fmt.Sprintf("[ui] autostart enable: %v", err))
+				} else {
+					mBoot.SetTitle(bootLabel(true))
+					logger.Info("[ui] Run on OS boot enabled")
+				}
+			}
+		}
+	}()
+	go func() {
 		for range mConfig.ClickedCh {
 			openBrowser(configPath)
 		}
@@ -190,6 +210,13 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 	}()
 
 	logger.Info("[ui] Systray ready")
+}
+
+func bootLabel(enabled bool) string {
+	if enabled {
+		return "✓ Run on OS Boot"
+	}
+	return "  Run on OS Boot"
 }
 
 func pullToggleLabel(paused bool) string {

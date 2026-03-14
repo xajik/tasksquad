@@ -11,7 +11,7 @@ install_skill() {
     mkdir -p "$dest"
     rm -rf "$dest/$SKILL_NAME" 2>/dev/null || true
     cp -r "$SKILL_SOURCE" "$dest/"
-    echo "Installed to $dest/$SKILL_NAME"
+    echo "Installed to $dest/$SKILL_NAME"/simpo
 }
 
 uninstall_skill() {

@@ -90,6 +90,7 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     .first<{ team_id: string; status: string; agent_id: string }>()
   if (!task) return err('not_found', 404)
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
+  if (task.status === 'done' || task.status === 'failed') return err('task_closed', 403)
 
   const body = await req.json<{ body?: string; scheduled_at?: number }>().catch(() => ({} as { body?: string; scheduled_at?: number }))
   const text = body.body?.trim()
@@ -114,8 +115,8 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     .bind(id, taskId, auth.userId, 'user', text, now)
     .run()
 
-  // If task was waiting for input or already done/failed, reopen it as pending so daemon picks it up
-  if (task.status === 'waiting_input' || task.status === 'done' || task.status === 'failed') {
+  // If task was waiting for input, reopen it as pending so daemon picks it up
+  if (task.status === 'waiting_input') {
     await env.DB
       .prepare("UPDATE tasks SET status = 'pending', completed_at = NULL WHERE id = ?")
       .bind(taskId)

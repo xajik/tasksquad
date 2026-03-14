@@ -73,9 +73,9 @@ export async function notify(title: string, body: string, taskId?: string): Prom
 }
 
 /** Human-readable label + body for each task status transition. */
-export const STATUS_NOTIF: Record<string, { title: string; body: (subject: string) => string }> = {
-  running:       { title: 'Agent started',          body: s => `Working on: ${s}` },
-  waiting_input: { title: 'Agent needs your input', body: s => `Waiting for reply: ${s}` },
-  done:          { title: 'Task completed',          body: s => `Completed: ${s}` },
-  failed:        { title: 'Task failed',             body: s => `Failed: ${s}` },
+export const STATUS_NOTIF: Record<string, { title: (agentName: string) => string; body: (subject: string, preview?: string) => string }> = {
+  running:       { title: a => `${a} picked up a task`,  body: s => s },
+  waiting_input: { title: a => `${a} needs your input`,  body: (s, p) => p ? `${s} · ${p}` : s },
+  done:          { title: a => `${a} completed a task`,  body: s => s },
+  failed:        { title: a => `${a} failed`,            body: s => s },
 }

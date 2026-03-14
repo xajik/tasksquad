@@ -5,7 +5,7 @@ package ui
 // Run blocks the main OS thread. No system tray is shown on this platform
 // (CGO disabled or non-Darwin OS). Agents continue running in goroutines.
 // A wakelock is acquired to prevent idle sleep while pulling is active.
-func Run(_ []AgentStatus, _ PullController, _ AuthController, _ string, _ string) {
+func Run(_ []AgentStatus, _ PullController, _ AuthController, _ AutostartController, _ string, _ string) {
 	wl := acquireWakelock()
 	defer wl.Release()
 	select {}

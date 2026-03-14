@@ -35,7 +35,7 @@ func (p *Gemini) TmuxReadyIndicator() string { return "Ready" }
 
 // Setup writes .gemini/settings.json into workDir with SessionEnd and Notification hooks
 // pointing to the daemon's local hook server on hooksPort.
-func (p *Gemini) Setup(workDir string, hooksPort int, agentName string) error {
+func (p *Gemini) Setup(workDir string, hooksPort int, agentID string, taskID string) error {
 	geminiDir := filepath.Join(workDir, ".gemini")
 	settingsPath := filepath.Join(geminiDir, "settings.json")
 
@@ -49,9 +49,9 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentName string) error {
 		_ = json.Unmarshal(data, &existing)
 	}
 
-	stopURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/stop?agent=%s&provider=gemini", hooksPort, agentName)
-	notifURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/notification?agent=%s&provider=gemini", hooksPort, agentName)
-	afterAgentURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/after_agent?agent=%s&provider=gemini", hooksPort, agentName)
+	stopURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/stop?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
+	notifURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/notification?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
+	afterAgentURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/after_agent?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
 
 	// Gemini CLI hooks structure: {"hooks": {"EventName": [{"matcher": "*", "hooks": [...]}]}}
 	existing["hooks"] = map[string]any{

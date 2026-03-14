@@ -13,11 +13,17 @@ import (
 
 // Agent is the interface the hook server uses to notify agents.
 type Agent interface {
+	// ID returns the server-assigned agent ID, used to route incoming hooks
+	// uniquely even when multiple agents share the same display name.
+	ID() string
 	Name() string
 	Complete(cfg *config.Config, status string, transcriptPath string)
 	StopAndPause(cfg *config.Config, hookMessage, transcriptPath string)
 	SetWaitingInput(cfg *config.Config, message string, transcriptPath string)
 	GetMode() string
+	// GetTaskID returns the task ID the agent is currently working on.
+	// Used to reject stale hook events that fired after the task changed.
+	GetTaskID() string
 }
 
 // StartHookServer starts a local HTTP server that receives lifecycle events from
@@ -36,7 +42,8 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 		body, _ := io.ReadAll(r.Body)
 		logger.Info(fmt.Sprintf("[hooks] ★ POST /hooks/stop from %s body: %s", r.RemoteAddr, string(body)))
 
-		agentName := r.URL.Query().Get("agent")
+		agentID := r.URL.Query().Get("agent")
+		taskIDParam := r.URL.Query().Get("task_id")
 		provider := r.URL.Query().Get("provider")
 
 		var transcriptPath string
@@ -104,7 +111,11 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 
 		found := false
 		for _, a := range agents {
-			if agentName != "" && a.Name() != agentName {
+			if agentID != "" && a.ID() != agentID {
+				continue
+			}
+			if currentTaskID := a.GetTaskID(); taskIDParam != "" && currentTaskID != taskIDParam {
+				logger.Warn(fmt.Sprintf("[hooks] Stop hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
 				continue
 			}
 			if a.GetMode() == "running" || a.GetMode() == "waiting_input" {
@@ -120,7 +131,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			}
 		}
 		if !found {
-			logger.Warn(fmt.Sprintf("[hooks] Stop received but no matching active agent found (agent=%q)", agentName))
+			logger.Warn(fmt.Sprintf("[hooks] Stop received but no matching active agent found (agent=%q task_id=%q)", agentID, taskIDParam))
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -132,7 +143,8 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 		body, _ := io.ReadAll(r.Body)
 		logger.Info(fmt.Sprintf("[hooks] ★ POST /hooks/notification from %s body: %s", r.RemoteAddr, string(body)))
 
-		agentName := r.URL.Query().Get("agent")
+		agentID := r.URL.Query().Get("agent")
+		taskIDParam := r.URL.Query().Get("task_id")
 		provider := r.URL.Query().Get("provider")
 
 		var msg string
@@ -185,7 +197,11 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 
 		found := false
 		for _, a := range agents {
-			if agentName != "" && a.Name() != agentName {
+			if agentID != "" && a.ID() != agentID {
+				continue
+			}
+			if currentTaskID := a.GetTaskID(); taskIDParam != "" && currentTaskID != taskIDParam {
+				logger.Warn(fmt.Sprintf("[hooks] Notification hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
 				continue
 			}
 			if a.GetMode() == "running" {
@@ -196,7 +212,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			}
 		}
 		if !found {
-			logger.Warn(fmt.Sprintf("[hooks] Notification received but no matching active agent (agent=%q modes: %s)", agentName, getAgentModes(agents)))
+			logger.Warn(fmt.Sprintf("[hooks] Notification received but no matching active agent (agent=%q task_id=%q modes: %s)", agentID, taskIDParam, getAgentModes(agents)))
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -208,7 +224,8 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 		body, _ := io.ReadAll(r.Body)
 		logger.Debug(fmt.Sprintf("[hooks] POST /hooks/after_agent from %s raw body: %s", r.RemoteAddr, string(body)))
 
-		agentName := r.URL.Query().Get("agent")
+		agentID := r.URL.Query().Get("agent")
+		taskIDParam := r.URL.Query().Get("task_id")
 		provider := r.URL.Query().Get("provider")
 
 		// Gemini payload: {"message": "...", "transcript_path": "...", "llm_response": {...}}
@@ -232,7 +249,11 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 
 		found := false
 		for _, a := range agents {
-			if agentName != "" && a.Name() != agentName {
+			if agentID != "" && a.ID() != agentID {
+				continue
+			}
+			if currentTaskID := a.GetTaskID(); taskIDParam != "" && currentTaskID != taskIDParam {
+				logger.Debug(fmt.Sprintf("[hooks] AfterAgent hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
 				continue
 			}
 			if a.GetMode() == "running" {
@@ -243,7 +264,7 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 			}
 		}
 		if !found {
-			logger.Debug(fmt.Sprintf("[hooks] AfterAgent ignored: agent %q not in 'running' state", agentName))
+			logger.Debug(fmt.Sprintf("[hooks] AfterAgent ignored: agent %q task_id=%q not in 'running' state", agentID, taskIDParam))
 		}
 
 		w.WriteHeader(http.StatusOK)

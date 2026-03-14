@@ -21,7 +21,7 @@ func (p *OpenCode) Name() string { return "opencode" }
 // patterns (session.*, message.*).
 // It POSTs to the daemon's local hook server so the agent knows when to stop
 // or when a response (reply) is available.
-func (p *OpenCode) Setup(workDir string, hooksPort int, agentName string) error {
+func (p *OpenCode) Setup(workDir string, hooksPort int, agentID string, taskID string) error {
 	pluginDir := filepath.Join(workDir, ".opencode", "plugins")
 	if err := os.MkdirAll(pluginDir, 0755); err != nil {
 		return err
@@ -79,17 +79,17 @@ export const TaskSquadPlugin = async ({ client }) => {
           if (cached.completed) lastCompleted = cached
         }
         const message = lastCompleted ? lastCompleted.textParts.map(p => p.text).join("") : ""
-        await post("/hooks/stop?agent=%s&provider=opencode", { stop_reason: "idle", message })
+        await post("/hooks/stop?agent=%s&task_id=%s&provider=opencode", { stop_reason: "idle", message })
       }
 
       if (event.type === "session.error") {
         await client.app.log({ body: { service: "tasksquad", level: "error", message: "session.error" } })
-        await post("/hooks/stop?agent=%s&provider=opencode", { stop_reason: "error", message: event.properties?.error?.message || "Unknown error" })
+        await post("/hooks/stop?agent=%s&task_id=%s&provider=opencode", { stop_reason: "error", message: event.properties?.error?.message || "Unknown error" })
       }
     },
   }
 }
-`, hooksPort, agentName, agentName)
+`, hooksPort, agentID, taskID, agentID, taskID)
 	return os.WriteFile(filepath.Join(pluginDir, "tasksquad.ts"), []byte(plugin), 0644)
 }
 

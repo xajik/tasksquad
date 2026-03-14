@@ -19,7 +19,10 @@ import (
 // who cannot use -p (API credit mode).
 type Provider interface {
 	Name() string
-	Setup(workDir string, hooksPort int, agentName string) error
+	// Setup writes per-task hook configuration into workDir.
+	// agentID (server-assigned UUID) and taskID are embedded in hook URLs so the
+	// hook server can route to the correct agent and reject stale events.
+	Setup(workDir string, hooksPort int, agentID string, taskID string) error
 	Env(hooksPort int) []string
 	UsesHooks() bool
 	// Stdin returns the content to pipe to the process stdin, or "" to use -p flag.

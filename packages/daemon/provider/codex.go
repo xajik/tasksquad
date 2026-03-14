@@ -39,7 +39,7 @@ func (p *Codex) ExtraArgs() []string     { return nil }
 
 // Setup updates ~/.codex/config.toml with a notify command that POSTs the
 // codex turn-complete payload to the daemon's local hook server.
-func (p *Codex) Setup(_ string, hooksPort int, agentName string) error {
+func (p *Codex) Setup(_ string, hooksPort int, agentID string, taskID string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("get home dir: %w", err)
@@ -51,7 +51,7 @@ func (p *Codex) Setup(_ string, hooksPort int, agentName string) error {
 	}
 
 	configPath := filepath.Join(codexDir, "config.toml")
-	stopURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/codex?agent=%s", hooksPort, agentName)
+	stopURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/codex?agent=%s&task_id=%s", hooksPort, agentID, taskID)
 	notifyLine := fmt.Sprintf("notify = %q", codexNotifyCmd(stopURL))
 
 	// Read existing config and replace/append the notify line, preserving other settings.
@@ -76,7 +76,7 @@ func (p *Codex) Setup(_ string, hooksPort int, agentName string) error {
 		return fmt.Errorf("write codex config: %w", err)
 	}
 
-	logger.Debug(fmt.Sprintf("[provider/codex] Wrote notify hook to %s (port %d, agent %s)", configPath, hooksPort, agentName))
+	logger.Debug(fmt.Sprintf("[provider/codex] Wrote notify hook to %s (port %d, agent %s)", configPath, hooksPort, agentID))
 	return nil
 }
 

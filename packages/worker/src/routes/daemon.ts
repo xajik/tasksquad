@@ -7,6 +7,10 @@ import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
 import { sendFCMNotification } from '../fcm.js'
 import { getCombinedInboxVersion, bumpInboxVersion } from '../inbox_version.js'
 
+function truncate(text: string, maxLen = 80): string {
+  return text.slice(0, maxLen) + (text.length > maxLen ? '…' : '')
+}
+
 async function notifyTeamMembers(env: Env, taskId: string, title: string, body: string): Promise<void> {
   try {
     const task = await env.DB
@@ -136,6 +140,18 @@ async function processAgentHeartbeat(
     return { agent_id: agentId, ok: true, next_poll_ms: nextPollMs }
   }
 
+  // Idle: heal any task left in 'running' state by a daemon crash/restart.
+  // Reset the stale running task to pending and clear agent_state in one batch.
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE tasks SET status = 'pending', completed_at = NULL
+      WHERE id = (SELECT current_task_id FROM agent_state WHERE agent_id = ?)
+        AND status = 'running'
+    `).bind(agentId),
+    env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, updated_at = ? WHERE agent_id = ? AND current_task_id IS NOT NULL")
+      .bind(now, agentId),
+  ])
+
   // Idle: query for pending task
   const task = await env.DB
     .prepare("SELECT id, subject FROM tasks WHERE agent_id = ? AND status = 'pending' ORDER BY created_at ASC LIMIT 1")
@@ -201,10 +217,29 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
     .all<{ id: string; task_id: string; agent_id: string; task_status: string }>()
 
   for (const msg of dueMessages.results) {
+    const agentIdx = agentIds.indexOf(msg.agent_id)
+    const agentCurrentStatus = agentIdx >= 0 ? statuses[agentIdx] : 'idle'
+
+    // If the agent is mid-run on this exact task, leave the message scheduled so it
+    // is not lost.  It will be picked up on the next heartbeat after the agent
+    // finishes or transitions to waiting_input.
+    if (agentCurrentStatus === 'running' && msg.task_status === 'running') {
+      continue
+    }
+
+    // Don't deliver to terminal tasks — message stays in DB undelivered.
+    if (msg.task_status === 'done' || msg.task_status === 'failed') {
+      continue
+    }
+
     await env.DB
       .prepare('UPDATE messages SET scheduled_at = NULL WHERE id = ?')
       .bind(msg.id)
       .run()
+
+    // Reset task to pending so the agent picks it up on the next heartbeat.
+    // Skip if already pending (no-op), or if the agent is in waiting_input —
+    // in that case the reply-detection query will find the message directly.
     if (msg.task_status !== 'pending' && msg.task_status !== 'running') {
       await env.DB
         .prepare("UPDATE tasks SET status = 'pending', completed_at = NULL WHERE id = ?")
@@ -272,15 +307,15 @@ export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon:
   if (!task_id) return err('missing_fields', 400)
 
   const task = await env.DB
-    .prepare('SELECT id, subject FROM tasks WHERE id = ? AND team_id = ? AND agent_id = ?')
+    .prepare('SELECT t.id, t.subject, t.started_at, a.name as agent_name FROM tasks t JOIN agents a ON a.id = t.agent_id WHERE t.id = ? AND t.team_id = ? AND t.agent_id = ?')
     .bind(task_id, daemon.teamId, agentId)
-    .first<{ id: string; subject: string }>()
+    .first<{ id: string; subject: string; started_at: number | null; agent_name: string }>()
   if (!task) return err('not_found', 404)
 
   const sessionId = ulid()
   const now = Date.now()
 
-  await env.DB.batch([
+  const openOps: D1PreparedStatement[] = [
     env.DB.prepare('INSERT INTO sessions (id, task_id, agent_id, status, started_at) VALUES (?, ?, ?, ?, ?)')
       .bind(sessionId, task_id, agentId, 'running', now),
     env.DB.prepare("UPDATE tasks SET status = 'running', started_at = ? WHERE id = ?")
@@ -289,12 +324,19 @@ export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon:
       .bind(task_id, sessionId, 'accumulating', tmux_session ?? null, now, agentId),
     env.DB.prepare('UPDATE agents SET status = ? WHERE id = ?')
       .bind('running', agentId),
-    // System message
-    env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(ulid(), task_id, null, 'system', 'Task started.', now),
-  ])
+  ]
+  // Only insert "Task started." on the first session — not on re-opens triggered by
+  // scheduled messages (which create a second session for the same task).
+  if (!task.started_at) {
+    openOps.push(
+      env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(ulid(), task_id, null, 'system', 'Task started.', now)
+    )
+  }
 
-  await notifyTeamMembers(env, task_id, 'Agent started', `Working on: ${task.subject}`)
+  await env.DB.batch(openOps)
+
+  await notifyTeamMembers(env, task_id, `${task.agent_name} picked up a task`, task.subject)
   return json({ session_id: sessionId }, 201)
 }
 
@@ -309,9 +351,9 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   if (!session_id) return err('missing_fields', 400)
 
   const session = await env.DB
-    .prepare('SELECT s.task_id, t.subject FROM sessions s JOIN tasks t ON t.id = s.task_id WHERE s.id = ? AND s.agent_id = ?')
+    .prepare('SELECT s.task_id, t.subject, a.name as agent_name FROM sessions s JOIN tasks t ON t.id = s.task_id JOIN agents a ON a.id = s.agent_id WHERE s.id = ? AND s.agent_id = ?')
     .bind(session_id, agentId)
-    .first<{ task_id: string; subject: string }>()
+    .first<{ task_id: string; subject: string; agent_name: string }>()
   if (!session) return err('not_found', 404)
 
   const taskStatus = status === 'closed' ? 'done'
@@ -342,12 +384,13 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
 
   await env.DB.batch(ops)
 
-  const notifTitle = taskStatus === 'done' ? 'Task completed'
-    : taskStatus === 'waiting_input' ? 'Agent needs your input'
-    : 'Task failed'
-  const notifBody = taskStatus === 'done' ? `Completed: ${session.subject}`
-    : taskStatus === 'waiting_input' ? `Waiting for reply: ${session.subject}`
-    : `Failed: ${session.subject}`
+  const agentName = session.agent_name ?? 'Agent'
+  const notifTitle = taskStatus === 'done' ? `${agentName} completed a task`
+    : taskStatus === 'waiting_input' ? `${agentName} needs your input`
+    : `${agentName} failed`
+  const notifBody = taskStatus === 'waiting_input' && final_text
+    ? `${session.subject} · ${truncate(final_text)}`
+    : session.subject
   await notifyTeamMembers(env, session.task_id, notifTitle, notifBody)
 
   return json({ ok: true, session_id, message_id: final_text ? msgId : null })
@@ -424,9 +467,9 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
   if (!session_id || !message) return err('missing_fields', 400)
 
   const session = await env.DB
-    .prepare('SELECT s.task_id, t.subject FROM sessions s JOIN tasks t ON t.id = s.task_id WHERE s.id = ? AND s.agent_id = ?')
+    .prepare('SELECT s.task_id, t.subject, a.name as agent_name FROM sessions s JOIN tasks t ON t.id = s.task_id JOIN agents a ON a.id = s.agent_id WHERE s.id = ? AND s.agent_id = ?')
     .bind(session_id, agentId)
-    .first<{ task_id: string; subject: string }>()
+    .first<{ task_id: string; subject: string; agent_name: string }>()
   if (!session) return err('not_found', 404)
 
   const now = Date.now()
@@ -440,7 +483,8 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
     env.DB.prepare("UPDATE agent_state SET mode = 'waiting_input', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
   ])
 
-  await notifyTeamMembers(env, session.task_id, 'Agent needs your input', `Waiting for reply: ${session.subject}`)
+  const agentName = session.agent_name ?? 'Agent'
+  await notifyTeamMembers(env, session.task_id, `${agentName} needs your input`, `${session.subject} · ${truncate(message)}`)
 
   return json({ ok: true, session_id, message_id: msgId })
 }
@@ -644,8 +688,10 @@ export async function deliverScheduledMessages(_req: Request, env: Env, _ctx: un
       .bind(row.id)
       .run()
 
-    // Advance task to 'pending' so the daemon picks it up on next heartbeat
-    if (row.task_status !== 'pending' && row.task_status !== 'running') {
+    // Advance task to 'pending' so the daemon picks it up on next heartbeat.
+    // 'running' tasks are also reset — if this endpoint is called, the daemon is not
+    // actively running (it would use batchHeartbeat instead), so 'running' is stale.
+    if (row.task_status !== 'pending') {
       await env.DB
         .prepare("UPDATE tasks SET status = 'pending', completed_at = NULL WHERE id = ?")
         .bind(row.task_id)

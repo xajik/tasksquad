@@ -418,11 +418,13 @@ function InboxView({ teamId }: { teamId: string }) {
     if (isInitialLoad) setIsInitialLoad(false)
 
     // Fire notifications for tasks whose status changed since last poll
+    const agentMap = new Map((ad.agents ?? []).map(a => [a.id, a.name]))
     for (const t of newTasks) {
       const prev = prevTaskStatusesRef.current[t.id]
       if (prev && prev !== t.status) {
         const notif = STATUS_NOTIF[t.status]
-        if (notif) notify(notif.title, notif.body(t.subject), t.id)
+        const agentName = agentMap.get(t.agent_id) ?? 'Agent'
+        if (notif) notify(notif.title(agentName), notif.body(t.subject), t.id)
       }
     }
     prevTaskStatusesRef.current = Object.fromEntries(newTasks.map(t => [t.id, t.status]))
@@ -878,8 +880,9 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
     prevStatusRef.current = task.status
     if (!prev || prev === task.status) return
     const notif = STATUS_NOTIF[task.status]
-    if (notif) notify(notif.title, notif.body(task.subject), task.id)
-  }, [task?.status, task?.subject, task?.id])
+    const agentName = agentMap[task.agent_id]?.name ?? 'Agent'
+    if (notif) notify(notif.title(agentName), notif.body(task.subject), task.id)
+  }, [task?.status, task?.subject, task?.id, agentMap])
 
   async function startLive() {
     if (!task || esRef.current) return
@@ -1279,48 +1282,6 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
         </div>
       )}
 
-      {/* ── New message box for completed tasks (done/failed) ── */}
-      {task && ['done', 'failed'].includes(task.status) && !pendingScheduledReply && !editingMessage && (
-        <div className="border border-border/60 rounded-xl overflow-hidden shadow-sm bg-background">
-          <div className="px-4 py-2.5 border-b border-border/40 flex items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Send message</span>
-          </div>
-          <form onSubmit={sendReply}>
-            <Textarea
-              value={reply}
-              onChange={e => setReply(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendReply(e as any) }}
-              placeholder="Write a message to the agent…"
-              rows={3}
-              className="border-0 rounded-none resize-none focus-visible:ring-0 text-sm px-4 py-3 bg-transparent"
-            />
-            {showSchedulePicker && (
-              <div className="px-4 py-3 border-t border-border/20">
-                <DateTimePicker date={scheduledDate} setDate={setScheduledDate} />
-              </div>
-            )}
-            <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/30 bg-muted/10">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground"
-                onClick={() => setShowSchedulePicker(!showSchedulePicker)}
-              >
-                <Clock className="h-3.5 w-3.5 mr-1.5" />
-                {showSchedulePicker ? 'Cancel schedule' : 'Schedule'}
-              </Button>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground hidden sm:block">⌘ Enter to send</span>
-                <Button type="submit" disabled={sending || !reply.trim()} size="sm">
-                  {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                  {scheduledDate ? 'Schedule' : 'Send'}
-                </Button>
-              </div>
-            </div>
-          </form>
-        </div>
-      )}
 
       {/* ── Sticky action bar ── */}
       {task && !['done', 'failed'].includes(task.status) && (
