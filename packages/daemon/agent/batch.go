@@ -11,25 +11,28 @@ import (
 	"github.com/tasksquad/daemon/logger"
 )
 
-// RunBatch replaces N independent Run() goroutines with a single poll loop that
-// sends one POST /daemon/heartbeat/batch request per interval carrying all agent
-// IDs and statuses. A combined ETag lets the server return 304 when all agents
-// are idle and nothing has changed.
+// RunBatch polls the server in a loop driven by the server-returned next_poll_ms
+// value (from the response body). On the first poll and as fallback,
+// cfg.Server.PollInterval is used. A combined ETag lets the server return 304
+// when all agents are idle and nothing has changed.
 //
-// On a 401 response the loop automatically rotates the token once via
-// ForceRotate and retries. If rotation also fails, it logs the error and waits
-// for the next interval (user sees a log message to run: tsq login).
+// On 429 the daemon simply waits the normal interval and retries — rate limiting
+// is enforced server-side; no client-side backoff is applied.
+//
+// On 401 the loop rotates the token once via ForceRotate and retries.
 func RunBatch(cfg *config.Config, agents []*Agent) {
-	ticker := time.NewTicker(time.Duration(cfg.Server.PollInterval) * time.Second)
-	defer ticker.Stop()
+	nextInterval := time.Duration(cfg.Server.PollInterval) * time.Second
+	timer := time.NewTimer(0) // fire immediately for first poll
+	defer timer.Stop()
 
 	var combinedEtag string
 
-	do := func() {
+	for range timer.C {
 		token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)
 		if err != nil {
 			logger.Error(fmt.Sprintf("[batch] auth error: %v", err))
-			return
+			timer.Reset(nextInterval)
+			continue
 		}
 
 		// Build per-agent entry list.
@@ -43,14 +46,19 @@ func RunBatch(cfg *config.Config, agents []*Agent) {
 
 		agentMaps, newEtag, is304, err := api.PostBatch(cfg, token, "/daemon/heartbeat/batch", entries, combinedEtag)
 		if err != nil {
-			// On 401 (invalid/expired token) attempt a one-time force rotation and retry.
+			if isRateLimited(err) {
+				logger.Warn("[batch] rate limited (429) — retrying after normal interval")
+				timer.Reset(nextInterval)
+				continue
+			}
 			if isUnauthorized(err) {
 				logger.Warn("[batch] received 401 — rotating token and retrying once...")
 				newToken, rotErr := auth.ForceRotate(cfg.Firebase.APIKey, cfg.Server.URL)
 				if rotErr != nil {
 					logger.Error(fmt.Sprintf("[batch] token rotation failed: %v", rotErr))
 					logger.Error("[batch] run: tsq login to re-authenticate")
-					return
+					timer.Reset(nextInterval)
+					continue
 				}
 				agentMaps, newEtag, is304, err = api.PostBatch(cfg, newToken, "/daemon/heartbeat/batch", entries, combinedEtag)
 				if err != nil {
@@ -58,20 +66,30 @@ func RunBatch(cfg *config.Config, agents []*Agent) {
 					if isUnauthorized(err) {
 						logger.Error("[batch] run: tsq login to re-authenticate")
 					}
-					return
+					timer.Reset(nextInterval)
+					continue
 				}
 			} else {
 				logger.Error(fmt.Sprintf("[batch] heartbeat failed: %v", err))
-				return
+				timer.Reset(nextInterval)
+				continue
 			}
 		}
 
 		if is304 {
 			logger.Debug("[batch] 304 — inbox unchanged, all agents idle")
-			return
+			timer.Reset(nextInterval)
+			continue
 		}
 
 		combinedEtag = newEtag
+
+		// Update poll interval from server-provided hint (first agent carries it).
+		if len(agentMaps) > 0 {
+			if ms, ok := agentMaps[0]["next_poll_ms"].(float64); ok && ms > 0 {
+				nextInterval = time.Duration(ms) * time.Millisecond
+			}
+		}
 
 		// Match responses to agents by position (request order == response order).
 		for i, item := range agentMaps {
@@ -84,11 +102,8 @@ func RunBatch(cfg *config.Config, agents []*Agent) {
 			a.mu.Unlock()
 			a.processResponse(cfg, item)
 		}
-	}
 
-	do() // immediate first poll
-	for range ticker.C {
-		do()
+		timer.Reset(nextInterval)
 	}
 }
 
@@ -96,3 +111,9 @@ func RunBatch(cfg *config.Config, agents []*Agent) {
 func isUnauthorized(err error) bool {
 	return strings.Contains(err.Error(), "HTTP 401")
 }
+
+// isRateLimited returns true when the API error indicates a 429 response.
+func isRateLimited(err error) bool {
+	return strings.Contains(err.Error(), "HTTP 429")
+}
+

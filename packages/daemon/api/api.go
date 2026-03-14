@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/tasksquad/daemon/config"
 )
+
+var httpClient = &http.Client{Timeout: 60 * time.Second}
 
 // Post sends a JSON POST to the worker API using Firebase ID token auth.
 // agentID is forwarded in the X-TSQ-Agent header so the server can scope the
@@ -26,7 +29,7 @@ func Post(cfg *config.Config, token, agentID, path string, body any) (map[string
 		req.Header.Set("X-TSQ-Agent", agentID)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +53,7 @@ func Get(cfg *config.Config, token, path string) (map[string]any, error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +87,7 @@ func PostBatch(cfg *config.Config, token, path string, entries []map[string]any,
 		req.Header.Set("If-None-Match", etag)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, "", false, err
 	}
@@ -122,7 +125,7 @@ func PutBytes(url string, data []byte) error {
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
