@@ -12,6 +12,7 @@ import (
 
 	"github.com/tasksquad/daemon/agent"
 	"github.com/tasksquad/daemon/auth"
+	"github.com/tasksquad/daemon/autostart"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
@@ -99,10 +100,23 @@ func main() {
 
 	logger.Info("Running — waiting for tasks...")
 
+	// Enable autostart on first run (marker file prevents re-enabling after user disables it).
+	execPath, _ := os.Executable()
+	markerPath := filepath.Join(filepath.Dir(config.DefaultPath()), ".autostart-set")
+	if _, err := os.Stat(markerPath); os.IsNotExist(err) {
+		if err := autostart.Enable(execPath); err != nil {
+			logger.Warn(fmt.Sprintf("[autostart] first-run enable failed: %v", err))
+		} else {
+			logger.Info("[autostart] Enabled run-on-boot (first run)")
+			os.WriteFile(markerPath, []byte{}, 0600) //nolint:errcheck
+		}
+	}
+
 	// ui.Run blocks the main OS thread (required by macOS AppKit / systray).
 	// Agents run in goroutines above; the hook server runs in its own goroutine.
 	authCtrl := &mainAuthController{}
-	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, cfg.Server.URL, *cfgPath)
+	autostartCtrl := &mainAutostartController{execPath: execPath}
+	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, autostartCtrl, cfg.Server.URL, *cfgPath)
 }
 
 // mainAuthController implements ui.AuthController using the auth package.
@@ -110,6 +124,13 @@ type mainAuthController struct{}
 
 func (c *mainAuthController) Email() string { return auth.GetEmail() }
 func (c *mainAuthController) Logout() error { return auth.Logout() }
+
+// mainAutostartController implements ui.AutostartController using the autostart package.
+type mainAutostartController struct{ execPath string }
+
+func (c *mainAutostartController) IsEnabled() bool  { return autostart.IsEnabled() }
+func (c *mainAutostartController) Enable() error    { return autostart.Enable(c.execPath) }
+func (c *mainAutostartController) Disable() error   { return autostart.Disable() }
 
 // agentController implements ui.PullController for all configured agents.
 type agentController struct {
