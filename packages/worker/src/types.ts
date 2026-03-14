@@ -18,6 +18,8 @@ export interface Env {
   R2_LOGS_MASTER_KEY: string
   // Optional secret for admin endpoints (set via: wrangler secret put ADMIN_SECRET)
   ADMIN_SECRET?: string
+  // Comma-separated list of allowed CORS origins, e.g. "https://tasksquad.ai,http://localhost:5173"
+  ALLOWED_ORIGINS?: string
 }
 
 export interface AuthContext {

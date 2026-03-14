@@ -71,8 +71,8 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 }
 
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
-  const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string }))
-  const { agent_id, subject, team_id, body: taskBody } = body
+  const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number }))
+  const { agent_id, subject, team_id, body: taskBody, scheduled_at } = body
   if (!agent_id || !subject?.trim() || !team_id) return err('missing_fields', 400)
 
   if (!(await requireMember(env.DB, team_id, auth.userId))) return err('forbidden', 403)
@@ -86,6 +86,18 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   const taskId = ulid()
   const now = Date.now()
+  const isScheduled = scheduled_at && scheduled_at > now
+
+  if (isScheduled) {
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'pending', now),
+      // Insert initial user message with scheduled_at
+      env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now, scheduled_at),
+    ])
+    return json({ id: taskId, status: 'pending' }, 201)
+  }
 
   await env.DB.batch([
     env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -192,15 +204,15 @@ export async function forwardTask(req: Request, env: Env, _ctx: unknown, auth: A
 
   const { results: msgs } = await env.DB
     .prepare(`
-      SELECT m.role, m.body, u.email
-      FROM messages m LEFT JOIN users u ON u.id = m.sender_id
+      SELECT m.role, m.body
+      FROM messages m
       WHERE m.task_id = ? ORDER BY m.created_at ASC
     `)
     .bind(taskId)
-    .all<{ role: string; body: string; email: string | null }>()
+    .all<{ role: string; body: string }>()
 
   const history = msgs.map(m => {
-    const label = m.role === 'user' ? (m.email ?? 'User') : 'Agent'
+    const label = m.role === 'user' ? 'User' : 'Agent'
     return `[${label}]: ${m.body}`
   }).join('\n\n---\n\n')
 

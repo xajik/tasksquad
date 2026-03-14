@@ -36,3 +36,9 @@ new_classes = ["AgentRelay"]
 
 [observability]
 enabled = true
+
+# CORS — set to a comma-separated list of allowed origins
+# e.g. "https://tasksquad.ai,http://localhost:5173"
+# Configure via: wrangler secret put ALLOWED_ORIGINS
+# [vars]
+# ALLOWED_ORIGINS = ""

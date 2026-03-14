@@ -7,11 +7,8 @@ export async function connect(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url)
   const agentId = url.pathname.split('/')[2]
 
-  // Auth: prefer Authorization header, fall back to ?token= query param
-  const rawToken =
-    req.headers.get('Authorization')?.slice(7) ??
-    url.searchParams.get('token') ??
-    ''
+  // Auth: Authorization header only (EventSource should use a token endpoint or cookie)
+  const rawToken = req.headers.get('Authorization')?.slice(7) ?? ''
   if (!rawToken) return err('unauthorized', 401)
 
   const auth = await verifyTokenString(rawToken, env)

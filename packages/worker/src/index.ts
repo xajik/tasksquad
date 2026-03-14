@@ -15,10 +15,15 @@ type DaemonHandler  = (req: Request, env: Env, ctx: ExecutionContext, ctx2: Daem
 
 const router = Router()
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-TSQ-Agent',
+function getCorsHeaders(req: Request, env: Env): Record<string, string> {
+  const allowed = (env.ALLOWED_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  const origin = req.headers.get('Origin') ?? ''
+  const allowedOrigin = allowed.includes(origin) ? origin : (allowed[0] ?? '')
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-TSQ-Agent',
+  }
 }
 
 // Wrap a route handler with Firebase auth middleware
@@ -41,7 +46,7 @@ function daemonRoute(handler: DaemonHandler) {
 }
 
 // CORS preflight
-router.options('*', () => new Response(null, { status: 204, headers: CORS_HEADERS }))
+router.options('*', (req: IRequest, env: Env) => new Response(null, { status: 204, headers: getCorsHeaders(req as Request, env) }))
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 // Exchanges a Firebase ID token (from tsq login) for a long-lived CLI token (90 days).
@@ -77,6 +82,8 @@ router.post('/tasks/:taskId/forward',    firebaseRoute(tasks.forwardTask))
 router.delete('/tasks/:taskId',          firebaseRoute(tasks.deleteTask))
 router.get ('/tasks/:taskId/messages',                        firebaseRoute(messages.list))
 router.post('/tasks/:taskId/messages',                        firebaseRoute(messages.create))
+router.put ('/tasks/:taskId/messages/:msgId',                firebaseRoute(messages.update))
+router.delete('/tasks/:taskId/messages/:msgId',              firebaseRoute(messages.remove))
 router.get ('/tasks/:taskId/messages/:msgId/transcript',      firebaseRoute(messages.getTranscript))
 router.get ('/tasks/:taskId/logs',       firebaseRoute(tasks.logs))
 
@@ -94,12 +101,13 @@ router.post('/daemon/push/:agentId',     daemonRoute(daemon.push))
 router.post('/daemon/r2/presign',        daemonRoute(daemon.presignUpload))
 router.post('/daemon/messages/:msgId/attach', daemonRoute(daemon.messageAttach))
 router.post('/daemon/sessions/:sessionId/attach', daemonRoute(daemon.sessionAttach))
+router.post('/daemon/scheduled-messages/deliver', daemonRoute(daemon.deliverScheduledMessages))
 
 router.all('*', () => err('not_found', 404))
 
-function addCors(res: Response): Response {
+function addCors(res: Response, req: Request, env: Env): Response {
   const headers = new Headers(res.headers)
-  for (const [k, v] of Object.entries(CORS_HEADERS)) headers.set(k, v)
+  for (const [k, v] of Object.entries(getCorsHeaders(req, env))) headers.set(k, v)
   return new Response(res.body, { status: res.status, headers })
 }
 
@@ -107,13 +115,13 @@ export default {
   fetch: async (req: Request, env: Env, ctx: ExecutionContext): Promise<Response> => {
     try {
       const res = await router.fetch(req, env, ctx)
-      return addCors(res)
+      return addCors(res, req, env)
     } catch (e) {
       console.error('Unhandled worker error:', e)
       return addCors(new Response(JSON.stringify({ error: 'internal_error', detail: String(e) }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
-      }))
+      }), req, env)
     }
   },
 }

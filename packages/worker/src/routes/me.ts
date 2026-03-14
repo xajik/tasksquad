@@ -18,11 +18,19 @@ export async function savePushToken(req: Request, env: Env, _ctx: unknown, auth:
   return json({ ok: true })
 }
 
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder()
+  const bufA = enc.encode(a)
+  const bufB = enc.encode(b)
+  if (bufA.length !== bufB.length) return false
+  return crypto.subtle.timingSafeEqual(bufA, bufB)
+}
+
 // Admin-only: manually set a user's plan
 // Protected by X-Admin-Secret header matching ADMIN_SECRET env var
 export async function setUserPlan(req: Request, env: Env): Promise<Response> {
   const secret = req.headers.get('X-Admin-Secret')
-  if (!env.ADMIN_SECRET || !secret || secret !== env.ADMIN_SECRET) {
+  if (!env.ADMIN_SECRET || !secret || !timingSafeEqual(secret, env.ADMIN_SECRET)) {
     return err('forbidden', 403)
   }
 

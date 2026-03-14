@@ -275,8 +275,8 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 		w.Write([]byte("codex hooks not yet implemented")) //nolint:errcheck
 	})
 
-	addr := fmt.Sprintf(":%d", cfg.Hooks.Port)
-	logger.Info(fmt.Sprintf("[hooks] Server listening on http://localhost%s", addr))
+	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
+	logger.Info(fmt.Sprintf("[hooks] Server listening on http://%s", addr))
 	logger.Info(fmt.Sprintf("[hooks] Registered endpoints: /hooks/stop, /hooks/notification, /hooks/after_agent, /hooks/opencode"))
 	go http.ListenAndServe(addr, mux) //nolint:errcheck
 }

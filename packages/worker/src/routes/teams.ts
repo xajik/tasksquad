@@ -103,22 +103,36 @@ export async function listMembers(req: Request, env: Env, _ctx: unknown, auth: A
   const url = new URL(req.url)
   const teamId = url.pathname.split('/')[2]
 
-  const member = await env.DB
+  const caller = await env.DB
     .prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?')
     .bind(teamId, auth.userId)
     .first<{ role: string }>()
-  if (!member) return err('not_found', 404)
+  if (!caller) return err('not_found', 404)
+
+  const canViewEmail = caller.role === 'owner' || caller.role === 'maintainer'
+
+  if (canViewEmail) {
+    const rows = await env.DB
+      .prepare(`
+        SELECT u.id, u.email, tm.role, tm.joined_at
+        FROM team_members tm JOIN users u ON u.id = tm.user_id
+        WHERE tm.team_id = ?
+        ORDER BY tm.joined_at ASC
+      `)
+      .bind(teamId)
+      .all<{ id: string; email: string; role: string; joined_at: number }>()
+    return json({ members: rows.results })
+  }
 
   const rows = await env.DB
     .prepare(`
-      SELECT u.id, u.email, tm.role, tm.joined_at
+      SELECT u.id, tm.role, tm.joined_at
       FROM team_members tm JOIN users u ON u.id = tm.user_id
       WHERE tm.team_id = ?
       ORDER BY tm.joined_at ASC
     `)
     .bind(teamId)
-    .all<{ id: string; email: string; role: string; joined_at: number }>()
-
+    .all<{ id: string; role: string; joined_at: number }>()
   return json({ members: rows.results })
 }
 

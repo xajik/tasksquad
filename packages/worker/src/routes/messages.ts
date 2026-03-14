@@ -24,7 +24,7 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
 
   const rows = await env.DB
-    .prepare('SELECT id, task_id, sender_id, role, body, transcript_key, created_at FROM messages WHERE task_id = ? ORDER BY created_at ASC')
+    .prepare('SELECT id, task_id, role, body, transcript_key, created_at, scheduled_at FROM messages WHERE task_id = ? ORDER BY scheduled_at ASC NULLS LAST, created_at ASC')
     .bind(taskId)
     .all()
   return json({ messages: rows.results })
@@ -91,12 +91,24 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   if (!task) return err('not_found', 404)
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
 
-  const body = await req.json<{ body?: string }>().catch(() => ({} as { body?: string }))
+  const body = await req.json<{ body?: string; scheduled_at?: number }>().catch(() => ({} as { body?: string; scheduled_at?: number }))
   const text = body.body?.trim()
   if (!text) return err('body_required', 400)
 
   const id = ulid()
   const now = Date.now()
+  const scheduledAt = body.scheduled_at
+
+  // If scheduled for future, insert with scheduled_at but don't notify agent
+  if (scheduledAt && scheduledAt > now) {
+    await env.DB
+      .prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, taskId, auth.userId, 'user', text, now, scheduledAt)
+      .run()
+    return json({ id, role: 'user', body: text, created_at: now, scheduled_at: scheduledAt }, 201)
+  }
+
+  // Immediate delivery
   await env.DB
     .prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(id, taskId, auth.userId, 'user', text, now)
@@ -114,4 +126,84 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   await bumpInboxVersion(env, task.agent_id)
 
   return json({ id, role: 'user', body: text, created_at: now }, 201)
+}
+
+export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const parts = new URL(req.url).pathname.split('/')
+  const taskId = parts[2]
+  const msgId = parts[4]
+
+  const task = await env.DB
+    .prepare('SELECT team_id FROM tasks WHERE id = ?')
+    .bind(taskId)
+    .first<{ team_id: string }>()
+  if (!task) return err('not_found', 404)
+  if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
+
+  const msg = await env.DB
+    .prepare('SELECT id, sender_id, scheduled_at FROM messages WHERE id = ? AND task_id = ?')
+    .bind(msgId, taskId)
+    .first<{ id: string; sender_id: string; scheduled_at: number | null }>()
+  if (!msg) return err('not_found', 404)
+
+  // Only allow editing scheduled messages that haven't been delivered yet
+  if (!msg.scheduled_at || msg.sender_id !== auth.userId) return err('cannot_edit', 403)
+
+  const body = await req.json<{ body?: string; scheduled_at?: number }>().catch(() => ({} as { body?: string; scheduled_at?: number }))
+  const text = body.body?.trim()
+  const scheduledAt = body.scheduled_at
+
+  if (!text && !scheduledAt) return err('body_required', 400)
+
+  const now = Date.now()
+  if (text && scheduledAt && scheduledAt > now) {
+    await env.DB
+      .prepare('UPDATE messages SET body = ?, scheduled_at = ? WHERE id = ?')
+      .bind(text, scheduledAt, msgId)
+      .run()
+    return json({ id: msgId, body: text, scheduled_at: scheduledAt })
+  } else if (text) {
+    await env.DB
+      .prepare('UPDATE messages SET body = ?, scheduled_at = NULL WHERE id = ?')
+      .bind(text, msgId)
+      .run()
+    return json({ id: msgId, body: text })
+  } else if (scheduledAt && scheduledAt > now) {
+    await env.DB
+      .prepare('UPDATE messages SET scheduled_at = ? WHERE id = ?')
+      .bind(scheduledAt, msgId)
+      .run()
+    return json({ id: msgId, scheduled_at: scheduledAt })
+  }
+
+  return err('invalid_schedule', 400)
+}
+
+export async function remove(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const parts = new URL(req.url).pathname.split('/')
+  const taskId = parts[2]
+  const msgId = parts[4]
+
+  const task = await env.DB
+    .prepare('SELECT team_id FROM tasks WHERE id = ?')
+    .bind(taskId)
+    .first<{ team_id: string }>()
+  if (!task) return err('not_found', 404)
+  if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
+
+  const msg = await env.DB
+    .prepare('SELECT id, sender_id, scheduled_at FROM messages WHERE id = ? AND task_id = ?')
+    .bind(msgId, taskId)
+    .first<{ id: string; sender_id: string; scheduled_at: number | null }>()
+  if (!msg) return err('not_found', 404)
+
+  // Only allow deleting scheduled messages that haven't been delivered yet
+  if (!msg.scheduled_at || msg.sender_id !== auth.userId) return err('cannot_delete', 403)
+
+  await env.DB
+    .prepare('DELETE FROM messages WHERE id = ?')
+    .bind(msgId)
+    .run()
+
+  return new Response(null, { status: 204 })
 }

@@ -5,7 +5,7 @@ import { json, err, withDaemonBatchAuth, withFirebaseAuth } from '../auth.js'
 import type { Env, DaemonContext } from '../types.js'
 import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
 import { sendFCMNotification } from '../fcm.js'
-import { getCombinedInboxVersion } from '../inbox_version.js'
+import { getCombinedInboxVersion, bumpInboxVersion } from '../inbox_version.js'
 
 async function notifyTeamMembers(env: Env, taskId: string, title: string, body: string): Promise<void> {
   try {
@@ -357,9 +357,8 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
   return json({ ok: true, session_id, message_id: output ? msgId : null })
 }
 
-export async function viewers(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {
-  const url = new URL(req.url)
-  const agentId = url.pathname.split('/')[3]
+export async function viewers(_req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const agentId = daemon.agentId
 
   // Proxy to the AgentRelay DO which tracks live SSE connections
   const doId = env.AGENT_RELAY.idFromName(agentId)
@@ -367,9 +366,8 @@ export async function viewers(req: Request, env: Env, _ctx: unknown, _daemon: Da
   return stub.fetch(new Request('https://relay/viewers'))
 }
 
-export async function push(req: Request, env: Env, _ctx: unknown, _daemon: DaemonContext): Promise<Response> {
-  const url = new URL(req.url)
-  const agentId = url.pathname.split('/')[3]
+export async function push(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const agentId = daemon.agentId
 
   const body = await req.json<{ type?: string; lines?: string[] }>().catch(() => ({} as { type?: string; lines?: string[] }))
   if (!body.type || !body.lines) return err('missing_fields', 400)
@@ -422,8 +420,8 @@ export async function presignUpload(req: Request, env: Env, _ctx: unknown, daemo
   if (!session_id || !filename) return err('missing_fields', 400)
 
   const session = await env.DB
-    .prepare('SELECT id FROM sessions WHERE id = ? AND agent_id = ?')
-    .bind(session_id, agentId)
+    .prepare('SELECT s.id FROM sessions s JOIN agents a ON s.agent_id = a.id WHERE s.id = ? AND a.id = ? AND a.team_id = ?')
+    .bind(session_id, agentId, daemon.teamId)
     .first<{ id: string }>()
   if (!session) return err('not_found', 404)
 
@@ -482,10 +480,10 @@ export async function messageAttach(req: Request, env: Env, _ctx: unknown, daemo
   const body = await req.json<{ transcript_key?: string }>().catch(() => ({} as { transcript_key?: string }))
   if (!body.transcript_key) return err('missing_key', 400)
 
-  // Verify message belongs to a task in the agent's team
+  // Verify message belongs to a task assigned to this agent (within the agent's team)
   const msg = await env.DB
-    .prepare('SELECT m.id FROM messages m JOIN tasks t ON m.task_id = t.id WHERE m.id = ? AND t.team_id = ?')
-    .bind(msgId, daemon.teamId)
+    .prepare('SELECT m.id FROM messages m JOIN tasks t ON m.task_id = t.id WHERE m.id = ? AND t.team_id = ? AND t.agent_id = ?')
+    .bind(msgId, daemon.teamId, daemon.agentId)
     .first()
   if (!msg) return err('not_found', 404)
 
@@ -503,8 +501,8 @@ export async function sessionAttach(req: Request, env: Env, _ctx: unknown, daemo
   if (!body.r2_log_key) return err('missing_key', 400)
 
   const session = await env.DB
-    .prepare('SELECT id FROM sessions WHERE id = ? AND agent_id = ?')
-    .bind(sessionId, daemon.agentId)
+    .prepare('SELECT s.id FROM sessions s JOIN agents a ON s.agent_id = a.id WHERE s.id = ? AND a.id = ? AND a.team_id = ?')
+    .bind(sessionId, daemon.agentId, daemon.teamId)
     .first()
   if (!session) return err('not_found', 404)
 
@@ -538,4 +536,57 @@ export async function userAgents(req: Request, env: Env, _ctx: unknown): Promise
     .all<{ id: string; name: string; team_id: string; team_name: string }>()
 
   return json({ agents })
+}
+
+/**
+ * POST /daemon/scheduled-messages/deliver
+ *
+ * Called by daemon to deliver any scheduled messages that are now due.
+ * Returns messages that should be processed.
+ */
+export async function deliverScheduledMessages(_req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const now = Date.now()
+
+  // Get all scheduled messages for this agent that are due
+  const rows = await env.DB
+    .prepare(`
+      SELECT m.id, m.task_id, m.body, t.status AS task_status, t.id AS task_id
+      FROM messages m
+      JOIN tasks t ON m.task_id = t.id
+      WHERE m.scheduled_at IS NOT NULL
+        AND m.scheduled_at <= ?
+        AND t.agent_id = ?
+        AND m.role = 'user'
+    `)
+    .bind(now, daemon.agentId)
+    .all<{ id: string; task_id: string; body: string; task_status: string }>()
+
+  if (!rows.results?.length) {
+    return json({ messages: [] })
+  }
+
+  const deliveredIds: string[] = []
+
+  for (const row of rows.results) {
+    // Clear scheduled_at to mark as delivered
+    await env.DB
+      .prepare('UPDATE messages SET scheduled_at = NULL WHERE id = ?')
+      .bind(row.id)
+      .run()
+
+    // Reopen task if needed
+    if (row.task_status === 'waiting_input' || row.task_status === 'done' || row.task_status === 'failed') {
+      await env.DB
+        .prepare("UPDATE tasks SET status = 'pending', completed_at = NULL WHERE id = ?")
+        .bind(row.task_id)
+        .run()
+    }
+
+    deliveredIds.push(row.id)
+  }
+
+  // Bump inbox to wake up daemon
+  await bumpInboxVersion(env, daemon.agentId)
+
+  return json({ delivered: deliveredIds, count: deliveredIds.length })
 }

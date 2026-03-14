@@ -105,10 +105,11 @@ export async function createToken(req: Request, env: Env, _ctx: unknown, auth: A
   const hash = await sha256(rawToken)
   const id = ulid()
   const now = Date.now()
+  const expiresAt = now + 90 * 24 * 60 * 60 * 1000 // 90 days
 
   await env.DB
-    .prepare('INSERT INTO daemon_tokens (id, team_id, agent_id, token_hash, label, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, teamId, agentId ?? null, hash, label, now)
+    .prepare('INSERT INTO daemon_tokens (id, team_id, agent_id, token_hash, label, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, teamId, agentId ?? null, hash, label, now, expiresAt)
     .run()
 
   return json({ id, token: rawToken, label }, 201)
