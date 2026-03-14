@@ -24,7 +24,7 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
 
   const rows = await env.DB
-    .prepare('SELECT id, task_id, role, body, transcript_key, created_at, scheduled_at FROM messages WHERE task_id = ? ORDER BY scheduled_at ASC NULLS LAST, created_at ASC')
+    .prepare('SELECT id, task_id, sender_id, role, body, transcript_key, created_at, scheduled_at FROM messages WHERE task_id = ? ORDER BY CASE WHEN scheduled_at IS NOT NULL THEN 1 ELSE 0 END ASC, created_at ASC')
     .bind(taskId)
     .all()
   return json({ messages: rows.results })

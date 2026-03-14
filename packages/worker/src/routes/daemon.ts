@@ -112,13 +112,14 @@ async function processAgentHeartbeat(
           .prepare(`
             SELECT body FROM messages
             WHERE task_id = ? AND role = 'user'
+              AND (scheduled_at IS NULL OR scheduled_at <= ?)
               AND created_at > (
                 SELECT COALESCE(MAX(created_at), 0) FROM messages
                 WHERE task_id = ? AND role = 'agent'
               )
             ORDER BY created_at ASC LIMIT 1
           `)
-          .bind(state.current_task_id, state.current_task_id)
+          .bind(state.current_task_id, now, state.current_task_id)
           .first<{ body: string }>()
 
         if (reply) {
@@ -143,8 +144,8 @@ async function processAgentHeartbeat(
 
   if (task) {
     const msgRows = await env.DB
-      .prepare("SELECT role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') ORDER BY created_at ASC")
-      .bind(task.id)
+      .prepare("SELECT role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') AND (scheduled_at IS NULL OR scheduled_at <= ?) ORDER BY created_at ASC")
+      .bind(task.id, now)
       .all<{ role: string; body: string }>()
     return {
       agent_id: agentId,
@@ -181,6 +182,37 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
 
   const now = Date.now()
   const nextPollMs = POLL_BASE_MS + Math.floor(Math.random() * POLL_JITTER_MS)
+
+  // Deliver any scheduled messages that are now due for this batch of agents.
+  // Doing this before processing means the daemon picks up delivered tasks in
+  // the same request — no extra round-trip needed.
+  const placeholders = agentIds.map(() => '?').join(',')
+  const dueMessages = await env.DB
+    .prepare(`
+      SELECT m.id, m.task_id, t.agent_id, t.status AS task_status
+      FROM messages m
+      JOIN tasks t ON m.task_id = t.id
+      WHERE m.scheduled_at IS NOT NULL
+        AND m.scheduled_at <= ?
+        AND m.role = 'user'
+        AND t.agent_id IN (${placeholders})
+    `)
+    .bind(now, ...agentIds)
+    .all<{ id: string; task_id: string; agent_id: string; task_status: string }>()
+
+  for (const msg of dueMessages.results) {
+    await env.DB
+      .prepare('UPDATE messages SET scheduled_at = NULL WHERE id = ?')
+      .bind(msg.id)
+      .run()
+    if (msg.task_status !== 'pending' && msg.task_status !== 'running') {
+      await env.DB
+        .prepare("UPDATE tasks SET status = 'pending', completed_at = NULL WHERE id = ?")
+        .bind(msg.task_id)
+        .run()
+    }
+  }
+
   const allIdle = statuses.every(s => s === 'idle')
 
   // Fetch agent rows for rate-limit check + control flags (single D1 batch)
@@ -413,6 +445,44 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
   return json({ ok: true, session_id, message_id: msgId })
 }
 
+/**
+ * POST /daemon/session/message
+ *
+ * Post an intermediate agent message to the thread without changing task status.
+ * Used for: thinking, tool_call, tool_result, output.
+ * Only sessionNotify (type=final) transitions the task to waiting_input.
+ */
+export async function sessionMessage(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const body = await req.json<{
+    session_id?: string
+    type?: 'thinking' | 'tool_call' | 'tool_result' | 'output'
+    message?: string
+  }>().catch(() => ({} as { session_id?: string; type?: 'thinking' | 'tool_call' | 'tool_result' | 'output'; message?: string }))
+
+  const { session_id, type, message } = body
+  const agentId = daemon.agentId
+  if (!session_id || !message) return err('missing_fields', 400)
+
+  const VALID_TYPES = ['thinking', 'tool_call', 'tool_result', 'output'] as const
+  if (type && !VALID_TYPES.includes(type)) return err('invalid_type', 400)
+
+  const session = await env.DB
+    .prepare('SELECT s.task_id FROM sessions s WHERE s.id = ? AND s.agent_id = ?')
+    .bind(session_id, agentId)
+    .first<{ task_id: string }>()
+  if (!session) return err('not_found', 404)
+
+  const msgId = ulid()
+  const now = Date.now()
+
+  await env.DB
+    .prepare('INSERT INTO messages (id, task_id, sender_id, role, body, type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(msgId, session.task_id, null, 'agent', message, type ?? null, now)
+    .run()
+
+  return json({ ok: true, message_id: msgId }, 201)
+}
+
 export async function presignUpload(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const body = await req.json<{ session_id: string; filename: string }>().catch(() => ({} as { session_id: string; filename: string }))
   const { session_id, filename } = body
@@ -574,8 +644,8 @@ export async function deliverScheduledMessages(_req: Request, env: Env, _ctx: un
       .bind(row.id)
       .run()
 
-    // Reopen task if needed
-    if (row.task_status === 'waiting_input' || row.task_status === 'done' || row.task_status === 'failed') {
+    // Advance task to 'pending' so the daemon picks it up on next heartbeat
+    if (row.task_status !== 'pending' && row.task_status !== 'running') {
       await env.DB
         .prepare("UPDATE tasks SET status = 'pending', completed_at = NULL WHERE id = ?")
         .bind(row.task_id)

@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { DateTimePicker } from '@/components/ui/date-time-picker'
 import {
   Card,
   CardContent,
@@ -78,6 +79,11 @@ import {
   AlertTriangle,
   RefreshCw,
   Check,
+  Clock,
+  Edit,
+  Brain,
+  Wrench,
+  ChevronRight,
 } from 'lucide-react'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
@@ -307,6 +313,7 @@ function relativeTime(ms: number): string {
 
 const STATUS_COLOR: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   pending: 'outline', queued: 'secondary', running: 'default', waiting_input: 'secondary',
+  scheduled: 'secondary',
   done: 'default', failed: 'destructive', offline: 'outline', idle: 'default',
   accumulating: 'default', live: 'default', stuck: 'secondary', error: 'destructive',
 }
@@ -396,6 +403,8 @@ function InboxView({ teamId }: { teamId: string }) {
   const [taskBody, setTaskBody] = useState('')
   const [agentId, setAgentId] = useState('')
   const [creating, setCreating] = useState(false)
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false)
+  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const nav = useNavigate()
 
@@ -433,9 +442,24 @@ function InboxView({ teamId }: { teamId: string }) {
     e.preventDefault()
     setCreating(true)
     try {
-      await api.tasks.create({ agent_id: agentId, subject, team_id: teamId, body: taskBody || undefined })
-      trackEvent('task_created', { agent_id: agentId, team_id: teamId });
-      setShowCompose(false); setSubject(''); setTaskBody(''); setAgentId('')
+      let scheduledAt: number | undefined
+      if (scheduledDate && scheduledDate.getTime() > Date.now()) {
+        scheduledAt = scheduledDate.getTime()
+      }
+      await api.tasks.create({ 
+        agent_id: agentId, 
+        subject, 
+        team_id: teamId, 
+        body: taskBody || undefined,
+        scheduled_at: scheduledAt 
+      })
+      trackEvent('task_created', { agent_id: agentId, team_id: teamId, scheduled: !!scheduledAt });
+      setShowCompose(false); 
+      setSubject(''); 
+      setTaskBody(''); 
+      setAgentId('')
+      setShowSchedulePicker(false)
+      setScheduledDate(undefined)
       load()
     } finally { setCreating(false) }
   }
@@ -514,13 +538,33 @@ function InboxView({ teamId }: { teamId: string }) {
                   className="font-mono text-sm"
                 />
               </div>
+              
+              {/* Schedule picker */}
+              {showSchedulePicker && (
+                <div className="border border-border rounded-lg p-3">
+                  <DateTimePicker
+                    date={scheduledDate}
+                    setDate={setScheduledDate}
+                  />
+                </div>
+              )}
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setShowCompose(false)}>
+              {!showSchedulePicker && (
+                <Button type="button" variant="ghost" onClick={() => setShowSchedulePicker(true)} className="mr-auto">
+                  <Clock className="h-4 w-4 mr-1.5" />
+                  Schedule
+                </Button>
+              )}
+              <Button type="button" variant="outline" onClick={() => {
+                setShowCompose(false)
+                setShowSchedulePicker(false)
+                setScheduledDate(undefined)
+              }}>
                 Cancel
               </Button>
               <Button type="submit" disabled={creating}>
-                {creating ? '...' : 'Send'}
+                {creating ? '...' : (scheduledDate ? 'Schedule' : 'Send')}
               </Button>
             </DialogFooter>
           </form>
@@ -594,10 +638,81 @@ function InboxView({ teamId }: { teamId: string }) {
   )
 }
 
-function MessageBubble({ message, agentName, taskId }: { message: Message; agentName?: string; taskId?: string }) {
+/** Intermediate agent activity row — compact, expandable, skimmable. */
+function ActivityRow({ message }: { message: Message }) {
+  const [expanded, setExpanded] = useState(false)
+  const type = message.type
+
+  // Derive icon + label + preview from type and body
+  let Icon = Terminal
+  let label: string = type ?? 'output'
+  let preview = ''
+  let detail = message.body
+
+  if (type === 'thinking') {
+    Icon = Brain
+    label = 'thinking'
+    preview = message.body.slice(0, 80).replace(/\n/g, ' ')
+  } else if (type === 'tool_call') {
+    Icon = Wrench
+    try {
+      const p = JSON.parse(message.body)
+      label = p.name ?? 'tool_call'
+      const inputStr = p.input !== undefined ? JSON.stringify(p.input) : ''
+      preview = inputStr.slice(0, 80)
+      detail = p.input !== undefined ? JSON.stringify(p.input, null, 2) : message.body
+    } catch {
+      preview = message.body.slice(0, 80)
+    }
+  } else if (type === 'tool_result') {
+    Icon = Terminal
+    try {
+      const p = JSON.parse(message.body)
+      const out = p.output ?? p.result ?? message.body
+      label = p.name ? `${String(p.name)} result` : 'tool_result'
+      preview = String(out).slice(0, 80).replace(/\n/g, ' ')
+      detail = String(out)
+    } catch {
+      preview = message.body.slice(0, 80).replace(/\n/g, ' ')
+    }
+  } else {
+    // 'output' or any unknown typed message
+    Icon = Terminal
+    label = type ?? 'output'
+    preview = message.body.slice(0, 80).replace(/\n/g, ' ')
+  }
+
+  return (
+    <div className="mb-0.5">
+      <button
+        onClick={() => setExpanded(x => !x)}
+        className="w-full flex items-center gap-2 px-3 py-1 rounded-md text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors group text-left"
+      >
+        <Icon className="h-3 w-3 shrink-0 opacity-50 group-hover:opacity-100" />
+        <span className="font-mono text-[11px] shrink-0 opacity-70">{label}</span>
+        <span className="font-mono text-[11px] truncate flex-1 opacity-50">{preview}</span>
+        <ChevronRight className={cn('h-3 w-3 shrink-0 opacity-0 group-hover:opacity-40 transition-transform', expanded && 'rotate-90 opacity-40')} />
+      </button>
+      {expanded && (
+        <div className="mx-3 mb-1 rounded border border-border/40 bg-muted/30 overflow-x-auto">
+          <pre className="px-3 py-2 text-[11px] font-mono text-foreground/70 whitespace-pre-wrap break-all leading-relaxed">{detail}</pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
+  message: Message;
+  agentName?: string;
+  taskId?: string;
+  onDelete?: (msgId: string) => void;
+  onEdit?: (msg: Message) => void;
+}) {
   const isUser = message.role === 'user'
   const isAgent = message.role === 'agent'
   const isSystem = message.role === 'system'
+  const isScheduled = isUser && message.scheduled_at != null && message.scheduled_at > Date.now()
   const [copied, setCopied] = useState(false)
 
   function copyBody() {
@@ -617,18 +732,34 @@ function MessageBubble({ message, agentName, taskId }: { message: Message; agent
     )
   }
 
+  // Intermediate agent message → compact activity row
+  if (isAgent && message.type != null) {
+    return <ActivityRow message={message} />
+  }
+
   const time = new Date(message.created_at).toLocaleString([], {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   })
 
+  function formatScheduleTime(timestamp: number): string {
+    const date = new Date(timestamp)
+    const now = new Date()
+    const tomorrow = new Date(now)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const timeStr = date.toLocaleString([], { hour: '2-digit', minute: '2-digit' })
+    if (date.toDateString() === now.toDateString()) return `Today at ${timeStr}`
+    if (date.toDateString() === tomorrow.toDateString()) return `Tomorrow at ${timeStr}`
+    return date.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+
+  const scheduledTime = message.scheduled_at ? formatScheduleTime(message.scheduled_at) : null
+
+  // Final / regular message — full bubble
   return (
     <div className={cn(
       'rounded-xl border mb-3 overflow-hidden transition-shadow hover:shadow-sm',
-      isUser
-        ? 'border-primary/20 bg-primary/[0.04]'
-        : 'border-border/60 bg-card'
+      isUser ? 'border-primary/20 bg-primary/[0.04]' : 'border-border/60 bg-card'
     )}>
-      {/* Message header */}
       <div className={cn(
         'flex items-center gap-2.5 px-4 py-2.5 border-b',
         isUser ? 'border-primary/10' : 'border-border/40'
@@ -642,19 +773,34 @@ function MessageBubble({ message, agentName, taskId }: { message: Message; agent
         <span className="text-sm font-semibold flex-1 text-foreground">
           {isUser ? 'You' : (agentName || 'Agent')}
         </span>
+        {isScheduled && scheduledTime && (
+          <span className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 px-1.5 py-0.5 rounded">
+              Scheduled
+            </span>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Clock className="h-3 w-3" />
+              {scheduledTime}
+            </span>
+          </span>
+        )}
         <span className="text-xs text-muted-foreground">{time}</span>
-        <button
-          onClick={copyBody}
-          className="ml-1 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          title="Copy message"
-        >
+        {isScheduled && onEdit && (
+          <button onClick={() => onEdit(message)} className="ml-1 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Edit scheduled message">
+            <Edit className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {isScheduled && onDelete && (
+          <button onClick={() => onDelete(message.id)} className="ml-1 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Delete scheduled message">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <button onClick={copyBody} className="ml-1 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Copy message">
           {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
         </button>
       </div>
-
-      {/* Message body */}
       <div className="px-4 py-3.5">
-        <div className="text-sm leading-relaxed whitespace-pre-wrap select-text text-foreground/90">
+        <div className={cn('text-sm leading-relaxed whitespace-pre-wrap select-text', isScheduled ? 'text-foreground/60' : 'text-foreground/90')}>
           {message.body}
         </div>
         {isAgent && message.transcript_key && taskId && (
@@ -667,7 +813,7 @@ function MessageBubble({ message, agentName, taskId }: { message: Message; agent
   )
 }
 
-function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) {
+function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'free' | 'pro'; internalUserId: string | null }) {
   const { taskId } = useParams<{ taskId: string }>()
   const [task, setTask] = useState<Task | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -680,6 +826,9 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
   const [showForward, setShowForward] = useState(false)
   const [forwardAgentId, setForwardAgentId] = useState('')
   const [forwarding, setForwarding] = useState(false)
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false)
+  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined)
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const replyFormRef = useRef<HTMLFormElement>(null)
   const esRef = useRef<EventSource | null>(null)
@@ -696,6 +845,16 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
     setMessages(m.messages ?? [])
     setAgents(ad.agents ?? [])
   }, [taskId, teamId])
+
+  const agentMap = useMemo(() => Object.fromEntries(agents.map(a => [a.id, a])), [agents])
+
+  function taskStatus(t: Task): string {
+    if (t.status === 'pending') {
+      const agent = agentMap[t.agent_id]
+      if (agent && (agent.status === 'running' || agent.status === 'waiting_input')) return 'queued'
+    }
+    return t.status
+  }
 
   useEffect(() => { load() }, [load])
   useEffect(() => { if (watching) setShowLog(true) }, [watching])
@@ -773,9 +932,50 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
     if (!taskId || !reply.trim()) return
     setSending(true)
     try {
-      await api.messages.create(taskId, reply)
-      trackEvent('message_sent', { task_id: taskId, role: 'user' });
+      let scheduledAt: number | undefined
+      if (scheduledDate && scheduledDate.getTime() > Date.now()) {
+        scheduledAt = scheduledDate.getTime()
+      }
+      await api.messages.create(taskId, reply, scheduledAt)
+      trackEvent('message_sent', { task_id: taskId, role: 'user', scheduled: !!scheduledAt });
       setReply('')
+      setShowSchedulePicker(false)
+      setScheduledDate(undefined)
+      load()
+    } finally { setSending(false) }
+  }
+
+  async function deleteScheduledMessage(msgId: string) {
+    if (!taskId || !confirm('Delete this scheduled message?')) return
+    await api.messages.delete(taskId, msgId)
+    trackEvent('scheduled_message_deleted', { task_id: taskId, msg_id: msgId });
+    load()
+  }
+
+  function editScheduledMessage(msg: Message) {
+    setEditingMessage(msg)
+    setReply(msg.body)
+    setShowSchedulePicker(true)
+    if (msg.scheduled_at) {
+      setScheduledDate(new Date(msg.scheduled_at))
+    }
+  }
+
+  async function saveEditedMessage(e: React.FormEvent) {
+    e.preventDefault()
+    if (!taskId || !editingMessage || !reply.trim()) return
+    setSending(true)
+    try {
+      let scheduledAt: number | undefined
+      if (scheduledDate && scheduledDate.getTime() > Date.now()) {
+        scheduledAt = scheduledDate.getTime()
+      }
+      await api.messages.update(taskId, editingMessage.id, reply, scheduledAt)
+      trackEvent('scheduled_message_edited', { task_id: taskId, msg_id: editingMessage.id });
+      setReply('')
+      setEditingMessage(null)
+      setShowSchedulePicker(false)
+      setScheduledDate(undefined)
       load()
     } finally { setSending(false) }
   }
@@ -784,6 +984,19 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
     if (!task) return 'Agent'
     return agents.find(a => a.id === task.agent_id)?.name || 'Agent'
   }, [task, agents])
+
+  // A scheduled reply pending delivery blocks the reply box (user must cancel it first).
+  // When internalUserId is not yet loaded, match any pending scheduled user message as a
+  // conservative fallback so the reply box never incorrectly shows during load.
+  const pendingScheduledReply = useMemo(() => {
+    const now = Date.now()
+    return messages.find(
+      m => m.role === 'user'
+        && m.scheduled_at != null
+        && m.scheduled_at > now
+        && (!internalUserId || m.sender_id === internalUserId)
+    ) ?? null
+  }, [messages, internalUserId])
 
   return (
     <div className="animate-fade-in w-full">
@@ -803,7 +1016,7 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
             {task?.subject ?? '…'}
           </h1>
           <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground flex-wrap">
-            {task && <StatusBadge status={task.status} />}
+            {task && <StatusBadge status={taskStatus(task)} />}
             <span className="flex items-center gap-1">
               <Bot className="h-3.5 w-3.5" />
               {agentName}
@@ -900,6 +1113,8 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
             message={m}
             agentName={agentName}
             taskId={taskId}
+            onDelete={deleteScheduledMessage}
+            onEdit={editScheduledMessage}
           />
         ))}
 
@@ -924,8 +1139,104 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
         )}
       </div>
 
-      {/* ── Gmail-style compose reply box ── */}
-      {task && task.status === 'waiting_input' && (
+      {/* ── Edit form for scheduled messages (any task status) ── */}
+      {editingMessage && (
+        <div className="border border-amber-200 dark:border-amber-800 rounded-xl overflow-hidden shadow-sm bg-background">
+          <div className="px-4 py-2.5 border-b border-amber-200/60 dark:border-amber-800/60 flex items-center gap-2 bg-amber-50/50 dark:bg-amber-950/20">
+            <Clock className="h-3.5 w-3.5 text-amber-600" />
+            <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
+              Edit scheduled message
+            </span>
+          </div>
+          <form ref={replyFormRef} onSubmit={saveEditedMessage}>
+            <Textarea
+              value={reply}
+              onChange={e => setReply(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveEditedMessage(e as any) }}
+              placeholder="Edit your message…"
+              rows={4}
+              className="border-0 rounded-none resize-none focus-visible:ring-0 text-sm px-4 py-3 bg-transparent"
+            />
+            <div className="px-4 py-3 border-t border-border/20">
+              <DateTimePicker
+                date={scheduledDate ?? (editingMessage.scheduled_at ? new Date(editingMessage.scheduled_at) : undefined)}
+                setDate={setScheduledDate}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-border/30 bg-muted/10">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditingMessage(null)
+                  setReply('')
+                  setShowSchedulePicker(false)
+                  setScheduledDate(undefined)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={sending || !reply.trim()} size="sm">
+                {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                Save
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Pending scheduled reply banner (blocks reply box) ── */}
+      {pendingScheduledReply && !editingMessage && (
+        <div className="border border-amber-200 dark:border-amber-800 rounded-xl overflow-hidden shadow-sm bg-amber-50/40 dark:bg-amber-950/10">
+          <div className="px-4 py-2.5 border-b border-amber-200/60 dark:border-amber-800/60 flex items-center gap-2">
+            <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+            <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider flex-1">
+              Scheduled reply
+            </span>
+            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">
+              {pendingScheduledReply.scheduled_at
+                ? new Date(pendingScheduledReply.scheduled_at).toLocaleString(undefined, {
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                  })
+                : ''}
+            </Badge>
+          </div>
+          <div className="px-4 py-3">
+            <p className="text-sm text-foreground/80 whitespace-pre-wrap line-clamp-3">
+              {pendingScheduledReply.body}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2.5 border-t border-amber-200/40 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-950/20">
+            <span className="text-xs text-amber-700/70 dark:text-amber-400/70 flex-1">
+              Delete this scheduled reply to send a message now.
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
+              onClick={() => editScheduledMessage(pendingScheduledReply)}
+            >
+              <Edit className="h-3.5 w-3.5 mr-1.5" />
+              Edit
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+              onClick={() => deleteScheduledMessage(pendingScheduledReply.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reply box when agent is waiting for input ── */}
+      {task && task.status === 'waiting_input' && !pendingScheduledReply && !editingMessage && (
         <div className="border border-border/60 rounded-xl overflow-hidden shadow-sm bg-background">
           <div className="px-4 py-2.5 border-b border-border/40 flex items-center gap-2">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Reply</span>
@@ -940,12 +1251,72 @@ function TaskThread({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) 
               rows={4}
               className="border-0 rounded-none resize-none focus-visible:ring-0 text-sm px-4 py-3 bg-transparent"
             />
+            {showSchedulePicker && (
+              <div className="px-4 py-3 border-t border-border/20">
+                <DateTimePicker date={scheduledDate} setDate={setScheduledDate} />
+              </div>
+            )}
             <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/30 bg-muted/10">
-              <span className="text-xs text-muted-foreground hidden sm:block">⌘ Enter to send</span>
-              <Button type="submit" disabled={sending || !reply.trim()} size="sm">
-                {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                Send
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => setShowSchedulePicker(!showSchedulePicker)}
+              >
+                <Clock className="h-3.5 w-3.5 mr-1.5" />
+                {showSchedulePicker ? 'Cancel schedule' : 'Schedule'}
               </Button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground hidden sm:block">⌘ Enter to send</span>
+                <Button type="submit" disabled={sending || !reply.trim()} size="sm">
+                  {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                  {scheduledDate ? 'Schedule' : 'Send'}
+                </Button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── New message box for completed tasks (done/failed) ── */}
+      {task && ['done', 'failed'].includes(task.status) && !pendingScheduledReply && !editingMessage && (
+        <div className="border border-border/60 rounded-xl overflow-hidden shadow-sm bg-background">
+          <div className="px-4 py-2.5 border-b border-border/40 flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Send message</span>
+          </div>
+          <form onSubmit={sendReply}>
+            <Textarea
+              value={reply}
+              onChange={e => setReply(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendReply(e as any) }}
+              placeholder="Write a message to the agent…"
+              rows={3}
+              className="border-0 rounded-none resize-none focus-visible:ring-0 text-sm px-4 py-3 bg-transparent"
+            />
+            {showSchedulePicker && (
+              <div className="px-4 py-3 border-t border-border/20">
+                <DateTimePicker date={scheduledDate} setDate={setScheduledDate} />
+              </div>
+            )}
+            <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/30 bg-muted/10">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => setShowSchedulePicker(!showSchedulePicker)}
+              >
+                <Clock className="h-3.5 w-3.5 mr-1.5" />
+                {showSchedulePicker ? 'Cancel schedule' : 'Schedule'}
+              </Button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground hidden sm:block">⌘ Enter to send</span>
+                <Button type="submit" disabled={sending || !reply.trim()} size="sm">
+                  {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                  {scheduledDate ? 'Schedule' : 'Send'}
+                </Button>
+              </div>
             </div>
           </form>
         </div>
@@ -1957,7 +2328,7 @@ export default function Dashboard() {
         <main className="flex-1 overflow-auto p-4 sm:p-8 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
         <Routes>
           <Route path="/" element={<InboxView teamId={teamId} />} />
-          <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} plan={plan} />} />
+          <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />
           <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} onLeave={handleLeaveProject} plan={plan} isOwner={isOwner} />} />

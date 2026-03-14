@@ -90,13 +90,14 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   if (isScheduled) {
     await env.DB.batch([
+      // Use 'scheduled' status so the daemon doesn't pick it up before the scheduled time
       env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'pending', now),
+        .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'scheduled', now),
       // Insert initial user message with scheduled_at
       env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now, scheduled_at),
     ])
-    return json({ id: taskId, status: 'pending' }, 201)
+    return json({ id: taskId, status: 'scheduled' }, 201)
   }
 
   await env.DB.batch([

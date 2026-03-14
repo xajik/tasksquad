@@ -35,6 +35,9 @@ class_name = "AgentRelay"
 tag         = "v1"
 new_classes = ["AgentRelay"]
 
+[triggers]
+crons = ["* * * * *"]
+
 [observability]
 enabled = true
 

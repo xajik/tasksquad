@@ -71,7 +71,7 @@ export const api = {
   tasks: {
     list: (teamId: string) => request<{ tasks: Task[] }>(`/tasks?team_id=${teamId}`),
     get: (id: string) => request<Task>(`/tasks/${id}`),
-    create: (body: { agent_id: string; subject: string; team_id: string; body?: string }) =>
+    create: (body: { agent_id: string; subject: string; team_id: string; body?: string; scheduled_at?: number }) =>
       request<{ id: string; status: string }>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
     update: (taskId: string, body: { status: string }) =>
       request<{ ok: boolean }>(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify(body) }),
@@ -90,10 +90,19 @@ export const api = {
     list: (taskId: string) => request<{ messages: Message[] }>(`/tasks/${taskId}/messages`),
     transcript: (taskId: string, msgId: string) =>
       request<string>(`/tasks/${taskId}/messages/${msgId}/transcript`, {}, true),
-    create: (taskId: string, body: string) =>
+    create: (taskId: string, body: string, scheduledAt?: number) =>
       request<Message>(`/tasks/${taskId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ body }),
+        body: JSON.stringify({ body, scheduled_at: scheduledAt }),
+      }),
+    update: (taskId: string, msgId: string, body?: string, scheduledAt?: number) =>
+      request<Message>(`/tasks/${taskId}/messages/${msgId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ body, scheduled_at: scheduledAt }),
+      }),
+    delete: (taskId: string, msgId: string) =>
+      request<void>(`/tasks/${taskId}/messages/${msgId}`, {
+        method: 'DELETE',
       }),
   },
 }
@@ -145,9 +154,12 @@ export interface Message {
   task_id: string
   sender_id: string | null
   role: 'user' | 'agent' | 'system'
+  /** Intermediate agent message types. null/undefined = final agent response. */
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'output' | null
   body: string
   transcript_key: string | null
   created_at: number
+  scheduled_at: number | null
 }
 
 export interface TaskLog {
