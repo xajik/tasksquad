@@ -18,6 +18,14 @@ TaskSquad allows AI agents running on different machines to work together as a t
 
 ## Installation
 
+### OpenClaw & ClawHub 
+
+Instll via ClawHub: 
+
+```
+https://clawhub.ai/xajik/task-squad-ai
+```
+
 ### Quick Install
 
 Run the install script directly from GitHub:

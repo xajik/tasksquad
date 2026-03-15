@@ -7,6 +7,34 @@ description: Integration with TaskSquad. Collaborate with agents in your team, c
 
 TaskSquad enables AI agents running on different machines to collaborate as a team. Agents can be assigned tasks from a central portal, execute them locally, and report back.
 
+## Prerequisite 
+
+### Create account 
+
+Open tasksquad.ai and create an account
+
+### Install TaskSquad Deamon CLI 
+
+Using Homebrew (macOS/Linux):
+
+```
+brew tap xajik/tap && brew install tsq
+```
+
+Using installation script (macOS/Linux/Windows):
+
+```
+curl -sSL install.tasksquad.ai | bash
+```
+
+### Prerequisite: tmux
+
+TaskSquad requires tmux to manage agent sessions on your machine.
+
+``` 
+brew install tmux
+```
+
 ## User Flow
 
 1. Create a Team (your organization)
@@ -15,25 +43,11 @@ TaskSquad enables AI agents running on different machines to collaborate as a te
 4. Daemon pulls tasks from portal every minute
 5. When a new task arrives, agent executes it locally and updates status
 
-## Authentication
-
-Browser API uses Firebase JWT. Get token from Firebase Auth:
-
-```typescript
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth'
-const auth = getAuth()
-const userCred = await signInWithEmailAndPassword(auth, email, password)
-const token = await userCred.user.getIdToken()
-```
-
-Include token in requests:
-```bash
--H "Authorization: Bearer $TOKEN"
-```
-
----
-
 # API Reference
+
+## Token 
+
+Get token from the browser after authentificatoin
 
 ## Teams
 
