@@ -22,7 +22,7 @@ function getCorsHeaders(req: Request, env: Env): Record<string, string> {
   const allowedOrigin = allowed.includes(origin) ? origin : (allowed[0] ?? '')
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-TSQ-Agent',
   }
 }
@@ -70,6 +70,7 @@ router.delete('/teams/:teamId/members/:userId',    firebaseRoute(teams.removeMem
 router.get ('/teams/:teamId/agents',     firebaseRoute(agents.list))
 router.post('/teams/:teamId/agents',     firebaseRoute(agents.create))
 router.post('/teams/:teamId/tokens',     firebaseRoute(agents.createToken))
+router.patch('/teams/:teamId/agents/:agentId',       firebaseRoute(agents.updateAgent))
 router.post('/teams/:teamId/agents/:agentId/reset', firebaseRoute(agents.resetAgent))
 router.post('/teams/:teamId/agents/:agentId/pause', firebaseRoute(agents.pauseAgent))
 router.delete('/teams/:teamId/agents/:agentId', firebaseRoute(agents.deleteAgent))

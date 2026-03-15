@@ -26,9 +26,9 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
   const rows = await env.DB
-    .prepare('SELECT id, name, command, work_dir, status, last_seen, created_at, paused, reset_pending FROM agents WHERE team_id = ? ORDER BY created_at ASC')
+    .prepare('SELECT id, name, role, status, last_seen, created_at, paused, reset_pending FROM agents WHERE team_id = ? ORDER BY created_at ASC')
     .bind(teamId)
-    .all<{ id: string; name: string; command: string; work_dir: string; status: string; last_seen: number | null; created_at: number; paused: number; reset_pending: number }>()
+    .all<{ id: string; name: string; role: string | null; status: string; last_seen: number | null; created_at: number; paused: number; reset_pending: number }>()
 
   return json({ agents: rows.results })
 }
@@ -39,9 +39,9 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   if (!(await requireMaintainer(env.DB, teamId, auth.userId))) return err('forbidden', 403)
 
-  const body = await req.json<{ name?: string; command?: string; work_dir?: string }>().catch(() => ({} as { name?: string; command?: string; work_dir?: string }))
-  const { name, command, work_dir } = body
-  if (!name?.trim() || !command?.trim() || !work_dir?.trim()) return err('missing_fields', 400)
+  const body = await req.json<{ name?: string; role?: string }>().catch(() => ({} as { name?: string; role?: string }))
+  const { name, role } = body
+  if (!name?.trim()) return err('missing_fields', 400)
 
   // Check name uniqueness within team
   const existing = await env.DB
@@ -66,8 +66,8 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   const id = ulid()
   const now = Date.now()
   await env.DB
-    .prepare('INSERT INTO agents (id, team_id, name, command, work_dir, status, created_at, encrypted_dek) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, teamId, name.trim(), command.trim(), work_dir.trim(), 'offline', now, encryptedDek)
+    .prepare('INSERT INTO agents (id, team_id, name, role, status, created_at, encrypted_dek) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, teamId, name.trim(), role?.trim() || null, 'offline', now, encryptedDek)
     .run()
 
   // Initialise agent_state row
@@ -168,6 +168,28 @@ export async function pauseAgent(req: Request, env: Env, _ctx: unknown, auth: Au
   await env.DB.prepare('UPDATE agents SET paused = ? WHERE id = ?').bind(paused, agentId).run()
 
   return json({ ok: true, paused: !!paused })
+}
+
+export async function updateAgent(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const parts = url.pathname.split('/')
+  const teamId = parts[2]
+  const agentId = parts[4]
+
+  if (!(await requireMaintainer(env.DB, teamId, auth.userId))) return err('forbidden', 403)
+
+  const agent = await env.DB
+    .prepare('SELECT id FROM agents WHERE id = ? AND team_id = ?')
+    .bind(agentId, teamId)
+    .first<{ id: string }>()
+  if (!agent) return err('not_found', 404)
+
+  const body = await req.json<{ role?: string }>().catch(() => ({} as { role?: string }))
+  const role = body.role?.trim() ?? null
+
+  await env.DB.prepare('UPDATE agents SET role = ? WHERE id = ?').bind(role, agentId).run()
+
+  return json({ ok: true, role })
 }
 
 export async function deleteAgent(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

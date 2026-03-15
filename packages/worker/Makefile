@@ -20,7 +20,7 @@ install:
 
 # Apply all pending migrations to production D1
 migrate:
-	bunx wrangler d1 migrations apply tasksquad-db
+	bunx wrangler d1 migrations apply tasksquad-db --remote
 
 # Apply all pending migrations to local D1 (for local dev / wrangler dev)
 migrate-local:

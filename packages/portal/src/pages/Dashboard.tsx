@@ -1142,8 +1142,8 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
         )}
       </div>
 
-      {/* ── Edit form for scheduled messages (any task status) ── */}
-      {editingMessage && (
+      {/* ── Edit form for scheduled messages — only when agent is waiting for input ── */}
+      {editingMessage && task?.status === 'waiting_input' && (
         <div className="border border-amber-200 dark:border-amber-800 rounded-xl overflow-hidden shadow-sm bg-background">
           <div className="px-4 py-2.5 border-b border-amber-200/60 dark:border-amber-800/60 flex items-center gap-2 bg-amber-50/50 dark:bg-amber-950/20">
             <Clock className="h-3.5 w-3.5 text-amber-600" />
@@ -1214,16 +1214,18 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
             <span className="text-xs text-amber-700/70 dark:text-amber-400/70 flex-1">
               Delete this scheduled reply to send a message now.
             </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
-              onClick={() => editScheduledMessage(pendingScheduledReply)}
-            >
-              <Edit className="h-3.5 w-3.5 mr-1.5" />
-              Edit
-            </Button>
+            {task?.status === 'waiting_input' && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                onClick={() => editScheduledMessage(pendingScheduledReply)}
+              >
+                <Edit className="h-3.5 w-3.5 mr-1.5" />
+                Edit
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -1324,6 +1326,8 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
   const [newToken, setNewToken] = useState<{ agentId: string; token: string; agentName: string } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'claude' | 'gemini' | 'opencode' | 'codex'>('claude')
+  const [editingRole, setEditingRole] = useState<{ agentId: string; name: string; role: string } | null>(null)
+  const [savingRole, setSavingRole] = useState(false)
   const nav = useNavigate()
 
   const load = useCallback(async () => {
@@ -1342,8 +1346,7 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
     if (atAgentLimit) return
     setCreating(true)
     try {
-      // Default values are now handled by the UI guide
-      await api.agents.create(teamId, { name, command: 'claude --dangerously-skip-permissions', work_dir: '~/Projects' })
+      await api.agents.create(teamId, { name })
       trackEvent('agent_created', { team_id: teamId, name });
       setName(''); load()
     } finally { setCreating(false) }
@@ -1373,8 +1376,44 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
     load()
   }
 
+  async function saveRole() {
+    if (!editingRole) return
+    setSavingRole(true)
+    try {
+      await api.agents.updateRole(teamId, editingRole.agentId, editingRole.role)
+      trackEvent('agent_role_updated', { agent_id: editingRole.agentId, team_id: teamId })
+      setEditingRole(null)
+      load()
+    } finally { setSavingRole(false) }
+  }
+
   return (
     <div className="animate-fade-in">
+      {/* Edit role dialog */}
+      <Dialog open={!!editingRole} onOpenChange={open => { if (!open) setEditingRole(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit role for "{editingRole?.name}"</DialogTitle>
+            <DialogDescription>
+              Describe this agent's identity, expertise, or purpose. This is shown on the agent card and helps your team understand what the agent does.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={editingRole?.role ?? ''}
+            onChange={e => setEditingRole(prev => prev ? { ...prev, role: e.target.value } : null)}
+            placeholder="e.g. Senior frontend engineer specialising in React and TypeScript. Handles UI tasks and reviews PRs."
+            rows={4}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingRole(null)}>Cancel</Button>
+            <Button onClick={saveRole} disabled={savingRole}>
+              {savingRole ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-1.5">
           <h2 className="text-2xl font-semibold">Agents</h2>
@@ -1433,6 +1472,16 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
                   </div>
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
+                  {a.role ? (
+                    <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{a.role}</p>
+                  ) : isMaintainer ? (
+                    <button
+                      className="text-xs text-muted-foreground/60 italic mb-2 hover:text-muted-foreground transition-colors text-left"
+                      onClick={() => setEditingRole({ agentId: a.id, name: a.name, role: '' })}
+                    >
+                      + Add role description
+                    </button>
+                  ) : null}
                   <div className="text-xs text-muted-foreground font-mono truncate">ID: {a.id}</div>
                   <div className="text-xs text-muted-foreground mb-4">
                     Last seen: {a.last_seen ? new Date(a.last_seen).toLocaleString() : 'Never'}
@@ -1465,6 +1514,15 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
                     </div>
                     {isMaintainer && (
                       <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          title="Edit role"
+                          onClick={() => setEditingRole({ agentId: a.id, name: a.name, role: a.role ?? '' })}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button

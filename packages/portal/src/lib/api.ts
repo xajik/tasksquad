@@ -51,8 +51,13 @@ export const api = {
   agents: {
     list: (teamId: string) =>
       request<{ agents: Agent[] }>(`/teams/${teamId}/agents`),
-    create: (teamId: string, body: { name: string; command: string; work_dir: string }) =>
+    create: (teamId: string, body: { name: string; role?: string }) =>
       request<Agent>(`/teams/${teamId}/agents`, { method: 'POST', body: JSON.stringify(body) }),
+    updateRole: (teamId: string, agentId: string, role: string) =>
+      request<{ ok: boolean; role: string | null }>(`/teams/${teamId}/agents/${agentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      }),
     createToken: (teamId: string, agentId: string, label: string) =>
       request<{ id: string; token: string; label: string }>(`/teams/${teamId}/tokens`, {
         method: 'POST',
@@ -123,8 +128,7 @@ export interface Member {
 export interface Agent {
   id: string
   name: string
-  command: string
-  work_dir: string
+  role: string | null
   status: string
   last_seen: number | null
   created_at: number
