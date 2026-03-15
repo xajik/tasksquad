@@ -5,7 +5,7 @@ import { json, err, withDaemonBatchAuth, withFirebaseAuth } from '../auth.js'
 import type { Env, DaemonContext } from '../types.js'
 import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
 import { sendFCMNotification } from '../fcm.js'
-import { getCombinedInboxVersion, bumpInboxVersion } from '../inbox_version.js'
+import { getCombinedInboxVersion } from '../inbox_version.js'
 
 function truncate(text: string, maxLen = 80): string {
   return text.slice(0, maxLen) + (text.length > maxLen ? '…' : '')
@@ -652,57 +652,3 @@ export async function userAgents(req: Request, env: Env, _ctx: unknown): Promise
   return json({ agents })
 }
 
-/**
- * POST /daemon/scheduled-messages/deliver
- *
- * Called by daemon to deliver any scheduled messages that are now due.
- * Returns messages that should be processed.
- */
-export async function deliverScheduledMessages(_req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
-  const now = Date.now()
-
-  // Get all scheduled messages for this agent that are due
-  const rows = await env.DB
-    .prepare(`
-      SELECT m.id, m.task_id, m.body, t.status AS task_status, t.id AS task_id
-      FROM messages m
-      JOIN tasks t ON m.task_id = t.id
-      WHERE m.scheduled_at IS NOT NULL
-        AND m.scheduled_at <= ?
-        AND t.agent_id = ?
-        AND m.role = 'user'
-    `)
-    .bind(now, daemon.agentId)
-    .all<{ id: string; task_id: string; body: string; task_status: string }>()
-
-  if (!rows.results?.length) {
-    return json({ messages: [] })
-  }
-
-  const deliveredIds: string[] = []
-
-  for (const row of rows.results) {
-    // Clear scheduled_at to mark as delivered
-    await env.DB
-      .prepare('UPDATE messages SET scheduled_at = NULL WHERE id = ?')
-      .bind(row.id)
-      .run()
-
-    // Advance task to 'pending' so the daemon picks it up on next heartbeat.
-    // 'running' tasks are also reset — if this endpoint is called, the daemon is not
-    // actively running (it would use batchHeartbeat instead), so 'running' is stale.
-    if (row.task_status !== 'pending') {
-      await env.DB
-        .prepare("UPDATE tasks SET status = 'pending', completed_at = NULL WHERE id = ?")
-        .bind(row.task_id)
-        .run()
-    }
-
-    deliveredIds.push(row.id)
-  }
-
-  // Bump inbox to wake up daemon
-  await bumpInboxVersion(env, daemon.agentId)
-
-  return json({ delivered: deliveredIds, count: deliveredIds.length })
-}

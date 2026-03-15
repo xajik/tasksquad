@@ -7,7 +7,6 @@ import * as messages from './routes/messages.js'
 import * as daemon   from './routes/daemon.js'
 import * as live     from './routes/live.js'
 import * as me       from './routes/me.js'
-import { bumpInboxVersion } from './inbox_version.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 export { AgentRelay } from './relay.js'
 
@@ -104,7 +103,6 @@ router.post('/daemon/push/:agentId',     daemonRoute(daemon.push))
 router.post('/daemon/r2/presign',        daemonRoute(daemon.presignUpload))
 router.post('/daemon/messages/:msgId/attach', daemonRoute(daemon.messageAttach))
 router.post('/daemon/sessions/:sessionId/attach', daemonRoute(daemon.sessionAttach))
-router.post('/daemon/scheduled-messages/deliver', daemonRoute(daemon.deliverScheduledMessages))
 
 router.all('*', () => err('not_found', 404))
 
@@ -112,45 +110,6 @@ function addCors(res: Response, req: Request, env: Env): Response {
   const headers = new Headers(res.headers)
   for (const [k, v] of Object.entries(getCorsHeaders(req, env))) headers.set(k, v)
   return new Response(res.body, { status: res.status, headers })
-}
-
-async function deliverDueScheduledMessages(env: Env): Promise<void> {
-  const now = Date.now()
-
-  const { results } = await env.DB
-    .prepare(`
-      SELECT m.id, m.task_id, t.agent_id, t.status AS task_status
-      FROM messages m
-      JOIN tasks t ON m.task_id = t.id
-      WHERE m.scheduled_at IS NOT NULL
-        AND m.scheduled_at <= ?
-        AND m.role = 'user'
-    `)
-    .bind(now)
-    .all<{ id: string; task_id: string; agent_id: string; task_status: string }>()
-
-  if (!results.length) return
-
-  for (const row of results) {
-    // Clear scheduled_at to mark as delivered
-    await env.DB
-      .prepare('UPDATE messages SET scheduled_at = NULL WHERE id = ?')
-      .bind(row.id)
-      .run()
-
-    // Advance task to pending so daemon picks it up
-    if (row.task_status !== 'pending' && row.task_status !== 'running') {
-      await env.DB
-        .prepare("UPDATE tasks SET status = 'pending', completed_at = NULL WHERE id = ?")
-        .bind(row.task_id)
-        .run()
-    }
-
-    // Wake up the agent's daemon
-    await bumpInboxVersion(env, row.agent_id)
-  }
-
-  console.log(`[cron] delivered ${results.length} scheduled message(s)`)
 }
 
 export default {
@@ -167,7 +126,4 @@ export default {
     }
   },
 
-  scheduled: async (_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> => {
-    await deliverDueScheduledMessages(env)
-  },
 }

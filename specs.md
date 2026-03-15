@@ -239,7 +239,6 @@ The system supports two authentication mechanisms:
 | POST | `/daemon/r2/presign` | daemon.presignUpload | Get presigned R2 upload URL |
 | POST | `/daemon/messages/:msgId/attach` | daemon.messageAttach | Attach transcript to message |
 | POST | `/daemon/sessions/:sessionId/attach` | daemon.sessionAttach | Attach log file to session |
-| POST | `/daemon/scheduled-messages/deliver` | daemon.deliverScheduledMessages | Get due scheduled messages |
 
 ## Data Flow
 
@@ -354,7 +353,7 @@ Each agent has a dedicated Durable Object (AgentRelay):
 
 Messages can be scheduled for future delivery:
 - Stored with `scheduled_at` timestamp
-- Daemon heartbeat checks and delivers
+- Delivered during batch heartbeat for the specific agents in that request — no cron needed
 
 ### 6. End-to-End Log Encryption
 
