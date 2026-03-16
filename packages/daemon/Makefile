@@ -3,21 +3,24 @@
 -include .env
 export
 
+VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+LDFLAGS := -ldflags "-X main.version=$(VERSION)"
+
 dev:
 	@which air > /dev/null 2>&1 || go install github.com/air-verse/air@latest
 	air
 
 build:
-	go build -o tsq .
+	go build $(LDFLAGS) -o tsq .
 
 build-debug:
-	go build -tags debug -o tsq .
+	go build -tags debug $(LDFLAGS) -o tsq .
 
 build-all:
 	mkdir -p dist
-	GOOS=darwin  GOARCH=arm64 go build -o dist/tsq-darwin-arm64 .
-	GOOS=darwin  GOARCH=amd64 go build -o dist/tsq-darwin-amd64 .
-	GOOS=linux   GOARCH=amd64 go build -o dist/tsq-linux-amd64  .
+	GOOS=darwin  GOARCH=arm64 go build $(LDFLAGS) -o dist/tsq-darwin-arm64 .
+	GOOS=darwin  GOARCH=amd64 go build $(LDFLAGS) -o dist/tsq-darwin-amd64 .
+	GOOS=linux   GOARCH=amd64 go build $(LDFLAGS) -o dist/tsq-linux-amd64  .
 
 test:
 	CGO_ENABLED=0 go test ./...

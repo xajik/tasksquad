@@ -45,18 +45,16 @@ var iconActiveData []byte
 //go:embed systray-off.png
 var iconPausedData []byte
 
-const uiVersion = "0.1.0"
-
 // Run starts the system tray UI on the main OS thread (required by macOS AppKit).
 // It blocks until the user clicks Quit or the process is killed.
-func Run(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, dashboardURL string, configPath string) {
+func Run(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, dashboardURL string, configPath string, version string) {
 	systray.Run(
-		func() { onReady(agents, ctrl, authCtrl, autostartCtrl, dashboardURL, configPath) },
+		func() { onReady(agents, ctrl, authCtrl, autostartCtrl, dashboardURL, configPath, version) },
 		func() { os.Exit(0) },
 	)
 }
 
-func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, dashboardURL string, configPath string) {
+func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, dashboardURL string, configPath string, version string) {
 	// Green icon = pulling active; red icon = paused.
 	if ctrl.IsPaused() {
 		systray.SetIcon(iconPaused())
@@ -64,10 +62,10 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 		systray.SetIcon(iconActive())
 	}
 	systray.SetTitle("")
-	systray.SetTooltip("TaskSquad Daemon " + uiVersion)
+	systray.SetTooltip("TaskSquad Daemon " + version)
 
 	// ── Header (disabled) ──────────────────────────────────────────────────
-	mHeader := systray.AddMenuItem("● TaskSquad "+uiVersion, "TaskSquad daemon")
+	mHeader := systray.AddMenuItem("● TaskSquad "+version, "TaskSquad daemon")
 	mHeader.Disable()
 
 	// Auth status row — shows logged-in email.

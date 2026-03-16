@@ -21,7 +21,8 @@ import (
 	"github.com/tasksquad/daemon/ui"
 )
 
-const version = "0.1.0"
+// version is overridden at build time via -ldflags "-X main.version=<tag>".
+var version = "dev"
 
 func main() {
 	if len(os.Args) > 1 {
@@ -126,7 +127,7 @@ func main() {
 	// Agents run in goroutines above; the hook server runs in its own goroutine.
 	authCtrl := &mainAuthController{}
 	autostartCtrl := &mainAutostartController{execPath: execPath}
-	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, autostartCtrl, dashboardURL(cfg.Server.URL), *cfgPath)
+	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, autostartCtrl, dashboardURL(cfg.Server.URL), *cfgPath, version)
 }
 
 // mainAuthController implements ui.AuthController using the auth package.
