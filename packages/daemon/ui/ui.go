@@ -109,7 +109,7 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 	mQuit := systray.AddMenuItem("Quit", "Stop the tsq daemon")
 
 	// ── Start local control panel server ──────────────────────────────────
-	cpURL := StartDashboard(agents, authCtrl.Email(), dashboardURL)
+	cpURL := StartDashboard(agents, authCtrl.Email(), dashboardURL, configPath)
 	if cpURL != "" {
 		mSessions.SetTooltip(cpURL)
 	} else {

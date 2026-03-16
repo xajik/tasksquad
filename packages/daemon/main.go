@@ -126,7 +126,7 @@ func main() {
 	// Agents run in goroutines above; the hook server runs in its own goroutine.
 	authCtrl := &mainAuthController{}
 	autostartCtrl := &mainAutostartController{execPath: execPath}
-	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, autostartCtrl, cfg.Server.URL, *cfgPath)
+	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, autostartCtrl, dashboardURL(cfg.Server.URL), *cfgPath)
 }
 
 // mainAuthController implements ui.AuthController using the auth package.

@@ -16,6 +16,14 @@ type AgentStatus interface {
 	TmuxSession() string
 	// GetTaskID returns the current task ID being executed, or "" if idle.
 	GetTaskID() string
+	// AgentID returns the server-assigned agent ID from config.
+	AgentID() string
+	// WorkDir returns the agent's configured working directory.
+	WorkDir() string
+	// Command returns the CLI command used to run the agent.
+	Command() string
+	// Provider returns the detected or configured hook provider name.
+	Provider() string
 }
 
 // PullController lets the UI pause and resume all agents' heartbeat polling.

@@ -160,6 +160,18 @@ func (a *Agent) Name() string { return a.Config.Name }
 // even when multiple agents share the same display name.
 func (a *Agent) ID() string { return a.Config.ID }
 
+// AgentID implements ui.AgentStatus — same as ID().
+func (a *Agent) AgentID() string { return a.Config.ID }
+
+// WorkDir implements ui.AgentStatus — returns the configured working directory.
+func (a *Agent) WorkDir() string { return a.Config.WorkDir }
+
+// Command implements ui.AgentStatus — returns the CLI command string.
+func (a *Agent) Command() string { return a.Config.Command }
+
+// Provider implements ui.AgentStatus — returns the provider name.
+func (a *Agent) Provider() string { return a.prov.Name() }
+
 // GetMode implements the hooks.Agent and ui.AgentStatus interfaces.
 func (a *Agent) GetMode() string {
 	a.mu.Lock()

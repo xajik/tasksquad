@@ -22,7 +22,7 @@ const dashboardHTML = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>tsq — Control Panel</title>
+<title>TaskSquad — Control Panel</title>
 <style>
 /* ── Design tokens (mirrors packages/portal/src/index.css @theme) ─────────── */
 :root {
@@ -266,6 +266,57 @@ pre {
   color: hsl(210 40% 88%);
 }
 
+/* ── Agent groups & detail rows ─────────────────────────────────────────────── */
+.group-header {
+  padding: 7px 16px;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-fg);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row.expandable { cursor: pointer; }
+.expand-icon {
+  font-size: 9px;
+  color: var(--muted-fg);
+  transition: transform 0.15s;
+  display: inline-block;
+  margin-right: 2px;
+  flex-shrink: 0;
+  user-select: none;
+}
+.expand-icon.open { transform: rotate(90deg); }
+.agent-detail {
+  display: none;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px 8px 40px;
+}
+.agent-detail.open { display: block; }
+.detail-row {
+  display: flex;
+  gap: 8px;
+  font-size: 11.5px;
+  line-height: 1.8;
+}
+.detail-key {
+  font-weight: 500;
+  color: var(--fg);
+  min-width: 68px;
+  flex-shrink: 0;
+}
+.detail-val {
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted-fg);
+  word-break: break-all;
+}
+
 /* ── Animation ──────────────────────────────────────────────────────────────── */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(6px); }
@@ -291,7 +342,7 @@ pre {
 <header>
   <div class="header-brand">
     <div class="brand-dot"></div>
-    <span class="brand-name">tsq Control Panel</span>
+    <span class="brand-name">TaskSquad Control Panel</span>
   </div>
   <div class="header-right">
     <span class="email-label" id="email-label"></span>
@@ -311,6 +362,7 @@ pre {
           <div class="card-title">Agents</div>
           <div class="card-subtitle" id="agents-subtitle"></div>
         </div>
+        <button class="btn btn-ghost btn-sm" onclick="openConfigFolder()">Edit</button>
       </div>
       <div id="agents-list"><div class="empty"><span class="spinner"></span></div></div>
     </div>
@@ -341,6 +393,7 @@ pre {
 <script>
 let DASH_URL = '';
 let PORTAL_URL = '';
+let CONFIG_DIR = '';
 let activeLog = null; // {url: string} | null
 let logTimer = null;
 
@@ -351,6 +404,7 @@ async function load() {
     const d = await r.json();
     DASH_URL = d.dash_url || '';
     PORTAL_URL = d.portal_url || '';
+    CONFIG_DIR = d.config_dir || '';
     document.getElementById('email-label').textContent = d.email || '';
     document.getElementById('refresh-label').textContent = 'updated ' + ago(d.updated_at);
     renderAgents(d.agents || []);
@@ -377,29 +431,60 @@ function modeLabel(mode) {
 
 function renderAgents(agents) {
   const el = document.getElementById('agents-list');
-  const sub = document.getElementById('agents-subtitle');
+  const subEl = document.getElementById('agents-subtitle');
   const running = agents.filter(a => a.mode === 'running').length;
   const waiting = agents.filter(a => a.mode === 'waiting_input').length;
-  sub.textContent = running + ' running · ' + waiting + ' waiting · ' + (agents.length - running - waiting) + ' idle';
+  subEl.textContent = running + ' running · ' + waiting + ' waiting · ' + (agents.length - running - waiting) + ' idle';
   if (!agents.length) { el.innerHTML = '<div class="empty">No agents configured</div>'; return; }
-  el.innerHTML = agents.map(a => {
-    const logBtn = a.task_id
-      ? '<button class="btn btn-secondary btn-sm" onclick="showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ')">Logs</button>'
-      : '';
-    const sub = a.task_id
-      ? 'task ' + a.task_id.slice(0,10) + '… · pull ' + a.pull_ago
-      : 'pull ' + a.pull_ago;
-    return row(
-      '<div class="status-dot ' + dotClass(a.mode) + '"></div>',
-      x(a.name), sub,
-      '<span class="badge ' + badgeClass(a.mode) + '">' + modeLabel(a.mode) + '</span>' + logBtn
-    );
-  }).join('');
+
+  // Group by work_dir
+  const groups = {};
+  const groupOrder = [];
+  for (const a of agents) {
+    const dir = a.work_dir || '(unknown)';
+    if (!groups[dir]) { groups[dir] = []; groupOrder.push(dir); }
+    groups[dir].push(a);
+  }
+
+  let html = '';
+  let idx = 0;
+  for (const dir of groupOrder) {
+    html += '<div class="group-header" title="' + x(dir) + '">' + x(dir) + '</div>';
+    for (const a of groups[dir]) {
+      const i = idx++;
+      const logBtn = a.task_id
+        ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ')">Logs</button>'
+        : '';
+      const subTxt = a.task_id
+        ? 'task ' + a.task_id.slice(0,10) + '… · pull ' + a.pull_ago
+        : 'pull ' + a.pull_ago;
+      html += '<div class="row expandable" onclick="toggleAgentDetail(' + i + ')">'
+        + '<span class="expand-icon" id="ei-' + i + '">▶</span>'
+        + '<div class="status-dot ' + dotClass(a.mode) + '"></div>'
+        + '<div class="row-info"><div class="row-name">' + x(a.name) + '</div><div class="row-sub">' + x(subTxt) + '</div></div>'
+        + '<div class="row-actions"><span class="badge ' + badgeClass(a.mode) + '">' + modeLabel(a.mode) + '</span>' + logBtn + '</div>'
+        + '</div>'
+        + '<div class="agent-detail" id="ad-' + i + '">'
+        + (a.command  ? '<div class="detail-row"><span class="detail-key">Command</span><span class="detail-val">' + x(a.command)  + '</span></div>' : '')
+        + (a.provider ? '<div class="detail-row"><span class="detail-key">Provider</span><span class="detail-val">' + x(a.provider) + '</span></div>' : '')
+        + (a.id       ? '<div class="detail-row"><span class="detail-key">Agent ID</span><span class="detail-val">' + x(a.id)       + '</span></div>' : '')
+        + '</div>';
+    }
+  }
+  el.innerHTML = html;
+}
+
+function toggleAgentDetail(i) {
+  const det  = document.getElementById('ad-' + i);
+  const icon = document.getElementById('ei-' + i);
+  if (!det) return;
+  det.classList.toggle('open');
+  if (icon) icon.classList.toggle('open');
 }
 
 function renderSessions(sessions) {
   const el = document.getElementById('sessions-list');
-  if (!sessions.length) { el.innerHTML = '<div class="empty">No active tsq sessions</div>'; return; }
+  if (!sessions.length) { el.innerHTML = '<div class="empty">No active sessions</div>'; return; }
   el.innerHTML = sessions.map(s => {
     const dotCls = s.orphan ? 'dot-orphan' : 'dot-running';
     const badgeCls = s.orphan ? 'badge-orphan' : 'badge-linked';
@@ -456,6 +541,17 @@ async function killSession(e, name) {
 }
 
 function openPortal() { if (PORTAL_URL) window.open(PORTAL_URL, '_blank'); }
+function openConfigFolder() { if (CONFIG_DIR) openFolder(CONFIG_DIR); }
+
+async function openFolder(path) {
+  try {
+    await fetch('/api/open', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path}),
+    });
+  } catch(e) { console.error('openFolder:', e); }
+}
 
 function openLog(title, url, poll = false) {
   activeLog = (url && poll) ? {url} : null;
@@ -518,18 +614,23 @@ type dashStatus struct {
 	Email     string        `json:"email"`
 	DashURL   string        `json:"dash_url"`
 	PortalURL string        `json:"portal_url"` // /dashboard if logged in, /auth otherwise
+	ConfigDir string        `json:"config_dir"`
 	Agents    []dashAgent   `json:"agents"`
 	Sessions  []dashSession `json:"sessions"`
 	UpdatedAt int64         `json:"updated_at"`
 }
 
 type dashAgent struct {
-	Name    string `json:"name"`
-	Mode    string `json:"mode"`
-	TaskID  string `json:"task_id"`
-	LogPath string `json:"log_path"`
-	Session string `json:"session"`
-	PullAgo string `json:"pull_ago"`
+	Name     string `json:"name"`
+	Mode     string `json:"mode"`
+	TaskID   string `json:"task_id"`
+	LogPath  string `json:"log_path"`
+	Session  string `json:"session"`
+	PullAgo  string `json:"pull_ago"`
+	ID       string `json:"id"`
+	WorkDir  string `json:"work_dir"`
+	Command  string `json:"command"`
+	Provider string `json:"provider"`
 }
 
 type dashSession struct {
@@ -541,7 +642,7 @@ type dashSession struct {
 
 // StartDashboard starts a local HTTP control panel server and returns the URL.
 // The server provides status, log reading, and session kill endpoints.
-func StartDashboard(agents []AgentStatus, email, dashURL string) string {
+func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) string {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -572,12 +673,16 @@ func StartDashboard(agents []AgentStatus, email, dashURL string) string {
 				ago = relTime(t)
 			}
 			agts = append(agts, dashAgent{
-				Name:    a.Name(),
-				Mode:    a.GetMode(),
-				TaskID:  a.GetTaskID(),
-				LogPath: a.LastLogPath(),
-				Session: a.TmuxSession(),
-				PullAgo: ago,
+				Name:     a.Name(),
+				Mode:     a.GetMode(),
+				TaskID:   a.GetTaskID(),
+				LogPath:  a.LastLogPath(),
+				Session:  a.TmuxSession(),
+				PullAgo:  ago,
+				ID:       a.AgentID(),
+				WorkDir:  a.WorkDir(),
+				Command:  a.Command(),
+				Provider: a.Provider(),
 			})
 		}
 
@@ -609,6 +714,7 @@ func StartDashboard(agents []AgentStatus, email, dashURL string) string {
 			Email:     email,
 			DashURL:   dashURL,
 			PortalURL: portalURL,
+			ConfigDir: filepath.Dir(configPath),
 			Agents:    agts,
 			Sessions:  sessions,
 			UpdatedAt: time.Now().UnixMilli(),
@@ -669,6 +775,23 @@ func StartDashboard(agents []AgentStatus, email, dashURL string) string {
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write([]byte(strings.Join(lines, "\n"))) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/open", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			Path string `json:"path"`
+		}
+		json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
+		if body.Path == "" {
+			http.Error(w, "missing path", http.StatusBadRequest)
+			return
+		}
+		exec.Command("open", body.Path).Start() //nolint:errcheck
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	mux.HandleFunc("/api/session/kill", func(w http.ResponseWriter, r *http.Request) {
