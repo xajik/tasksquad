@@ -33,7 +33,7 @@ export const TaskSquadPlugin = async ({ client }) => {
 
   const post = async (path, body) => {
     try {
-      await fetch("http://127.0.0.1:%d" + path, {
+      await fetch("http://localhost:%d" + path, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       })

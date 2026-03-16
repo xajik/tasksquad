@@ -52,7 +52,7 @@ func (p *ClaudeCode) Setup(workDir string, hooksPort int, agentID string, taskID
 				"hooks": []any{
 					map[string]any{
 						"type": "http",
-						"url":  fmt.Sprintf("http://127.0.0.1:%d/hooks/stop?agent=%s&task_id=%s", hooksPort, agentID, taskID),
+						"url":  fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s", hooksPort, agentID, taskID),
 					},
 				},
 			},
@@ -63,7 +63,7 @@ func (p *ClaudeCode) Setup(workDir string, hooksPort int, agentID string, taskID
 				"hooks": []any{
 					map[string]any{
 						"type": "http",
-						"url":  fmt.Sprintf("http://127.0.0.1:%d/hooks/notification?agent=%s&task_id=%s", hooksPort, agentID, taskID),
+						"url":  fmt.Sprintf("http://localhost:%d/hooks/notification?agent=%s&task_id=%s", hooksPort, agentID, taskID),
 					},
 				},
 			},

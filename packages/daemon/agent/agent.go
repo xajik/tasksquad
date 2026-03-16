@@ -451,8 +451,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		if len(sessionSuffix) > 8 {
 			sessionSuffix = sessionSuffix[:8]
 		}
-		sessionName := fmt.Sprintf("ts-%s", sessionSuffix)
-		fifoPath := fmt.Sprintf("/tmp/ts-%s.fifo", sessionSuffix)
+		sessionName := fmt.Sprintf("tsq-%s", sessionSuffix)
+		fifoPath := fmt.Sprintf("/tmp/tsq-%s.fifo", sessionSuffix)
 		os.Remove(fifoPath)
 
 		if err := mkfifo(fifoPath, 0644); err != nil {
@@ -612,7 +612,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		if len(sessionSuffix) > 8 {
 			sessionSuffix = sessionSuffix[:8]
 		}
-		logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s via=tmux session=ts-%s", a.Config.Name, taskID, sessionSuffix))
+		logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s via=tmux session=tsq-%s", a.Config.Name, taskID, sessionSuffix))
 		a.writeRunLog("[EVENT] event=running via=tmux")
 	} else {
 		logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s pid=%d", a.Config.Name, taskID, cmd.Process.Pid))

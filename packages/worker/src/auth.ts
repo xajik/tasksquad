@@ -223,6 +223,24 @@ export async function sha256(text: string): Promise<string> {
     .join('')
 }
 
+// revokeCliToken deletes the CLI token used in the current request.
+// Called by `tsq logout` — the token is deleted immediately and any subsequent
+// request using it will receive 401 invalid_token.
+export async function revokeCliToken(req: Request, env: Env): Promise<Response> {
+  const header = req.headers.get('Authorization')
+  const token = header?.startsWith('Bearer ') ? header.slice(7) : null
+  if (!token?.startsWith(CLI_TOKEN_PREFIX)) return err('invalid_token', 401)
+
+  const hash = await sha256(token)
+  const result = await env.DB
+    .prepare('DELETE FROM user_cli_tokens WHERE token_hash = ?')
+    .bind(hash)
+    .run()
+
+  if (!result.meta.changes) return err('invalid_token', 401)
+  return json({ ok: true })
+}
+
 // Used by SSE routes where EventSource cannot send Authorization header
 export async function verifyTokenString(token: string, env: Env): Promise<AuthContext | null> {
   try {

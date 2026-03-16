@@ -51,7 +51,7 @@ func (p *Codex) Setup(_ string, hooksPort int, agentID string, taskID string) er
 	}
 
 	configPath := filepath.Join(codexDir, "config.toml")
-	stopURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/codex?agent=%s&task_id=%s", hooksPort, agentID, taskID)
+	stopURL := fmt.Sprintf("http://localhost:%d/hooks/codex?agent=%s&task_id=%s", hooksPort, agentID, taskID)
 	notifyLine := fmt.Sprintf("notify = %q", codexNotifyCmd(stopURL))
 
 	// Read existing config and replace/append the notify line, preserving other settings.

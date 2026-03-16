@@ -88,7 +88,8 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 	mToggle := systray.AddMenuItem(pullToggleLabel(ctrl.IsPaused()), "Toggle task pulling")
 
 	// ── Quick actions ──────────────────────────────────────────────────────
-	mDash := systray.AddMenuItem("Open Dashboard", dashboardURL)
+	mDash := systray.AddMenuItem("Open Web Portal", dashboardURL)
+	mSessions := systray.AddMenuItem("Control Panel", "Open control panel")
 	mBoot := systray.AddMenuItem(bootLabel(autostartCtrl.IsEnabled()), "Toggle run on OS boot")
 
 	systray.AddSeparator()
@@ -106,6 +107,14 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 
 	mConfig := systray.AddMenuItem("Open Config", "Edit config.toml")
 	mQuit := systray.AddMenuItem("Quit", "Stop the tsq daemon")
+
+	// ── Start local control panel server ──────────────────────────────────
+	cpURL := StartDashboard(agents, authCtrl.Email(), dashboardURL)
+	if cpURL != "" {
+		mSessions.SetTooltip(cpURL)
+	} else {
+		mSessions.Disable()
+	}
 
 	// ── Acquire wakelock if pulling is active at startup ───────────────────
 	var wl *wakelock
@@ -147,7 +156,18 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 
 	go func() {
 		for range mDash.ClickedCh {
-			openBrowser(dashboardURL)
+			if authCtrl.Email() != "" {
+				openBrowser(dashboardURL + "/dashboard")
+			} else {
+				openBrowser(dashboardURL + "/auth")
+			}
+		}
+	}()
+	go func() {
+		for range mSessions.ClickedCh {
+			if cpURL != "" {
+				openBrowser(cpURL)
+			}
 		}
 	}()
 	go func() {

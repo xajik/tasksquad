@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -33,6 +34,15 @@ func main() {
 			return
 		case "logout":
 			runLogout()
+			return
+		case "sessions":
+			runSessions()
+			return
+		case "attach":
+			runAttach(os.Args[2:])
+			return
+		case "logs":
+			runLogs(os.Args[2:])
 			return
 		}
 	}
@@ -334,4 +344,174 @@ func fetchUserAgents(apiURL, token string) ([]serverAgent, error) {
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
 	return body.Agents, nil
+}
+
+// tmuxSessionPrefix is the prefix used for all tsq-managed tmux sessions.
+const tmuxSessionPrefix = "tsq-"
+
+// sessionNameFromArg converts a user-supplied argument to a tsq session name.
+// Accepts either a full session name (tsq-XXXXXXXX), a raw task ID, or the
+// first 8 characters of a task ID.
+func sessionNameFromArg(arg string) string {
+	if strings.HasPrefix(arg, tmuxSessionPrefix) {
+		return arg
+	}
+	suffix := arg
+	if len(suffix) > 8 {
+		suffix = suffix[:8]
+	}
+	return tmuxSessionPrefix + suffix
+}
+
+// runSessions lists all active tsq tmux sessions (prefix tsq-).
+func runSessions() {
+	out, err := exec.Command("tmux", "list-sessions", "-F",
+		"#{session_name}\t#{session_windows} window(s)\tcreated #{t:session_created}").Output()
+	if err != nil {
+		// tmux exits non-zero when there are no sessions at all.
+		fmt.Println("No active tsq sessions.")
+		return
+	}
+
+	var found bool
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if strings.HasPrefix(line, tmuxSessionPrefix) {
+			if !found {
+				fmt.Println("Active tsq sessions:")
+				found = true
+			}
+			fmt.Println(" ", line)
+		}
+	}
+	if !found {
+		fmt.Println("No active tsq sessions.")
+	}
+}
+
+// runAttach attaches the terminal to a tsq tmux session.
+//
+// Usage:
+//
+//	tsq attach                   — attach to the only active tsq session (or list if multiple)
+//	tsq attach <taskID>          — attach to session tsq-<taskID[:8]>
+//	tsq attach <tsq-XXXXXXXX>   — attach by full session name
+func runAttach(args []string) {
+	var sessionName string
+
+	if len(args) == 0 {
+		// No argument: find the single active tsq session automatically.
+		out, err := exec.Command("tmux", "list-sessions", "-F", "#{session_name}").Output()
+		if err != nil {
+			fmt.Println("No active tsq sessions.")
+			return
+		}
+		var sessions []string
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			if strings.HasPrefix(line, tmuxSessionPrefix) {
+				sessions = append(sessions, line)
+			}
+		}
+		switch len(sessions) {
+		case 0:
+			fmt.Println("No active tsq sessions.")
+			return
+		case 1:
+			sessionName = sessions[0]
+		default:
+			fmt.Println("Multiple active tsq sessions — specify one:")
+			for _, s := range sessions {
+				fmt.Println(" ", s)
+			}
+			fmt.Println("\nUsage: tsq attach <taskID>")
+			return
+		}
+	} else {
+		sessionName = sessionNameFromArg(args[0])
+	}
+
+	fmt.Printf("Attaching to %s (detach: Ctrl-b d)\n", sessionName)
+	cmd := exec.Command("tmux", "attach-session", "-t", sessionName)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: session %q not found or tmux unavailable\n", sessionName)
+		os.Exit(1)
+	}
+}
+
+// runLogs shows a local task run log or the daemon log.
+//
+// Usage:
+//
+//	tsq logs                            — tail today's daemon log
+//	tsq logs <agentName>                — list task logs for an agent
+//	tsq logs <agentName> <taskID>       — tail a specific task log
+func runLogs(args []string) {
+	home, _ := os.UserHomeDir()
+	logsDir := filepath.Join(home, ".tasksquad", "logs")
+
+	switch len(args) {
+	case 0:
+		// Tail today's daemon log.
+		today := fmt.Sprintf("daemon-%s.log", nowDate())
+		path := filepath.Join(logsDir, today)
+		tailFile(path)
+
+	case 1:
+		agentName := args[0]
+		agentLogsDir := filepath.Join(logsDir, sanitizeAgentName(agentName))
+		entries, err := os.ReadDir(agentLogsDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "no logs found for agent %q (looked in %s)\n", agentName, agentLogsDir)
+			os.Exit(1)
+		}
+		fmt.Printf("Task logs for agent %q:\n", agentName)
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".log") {
+				info, _ := e.Info()
+				taskID := strings.TrimSuffix(e.Name(), ".log")
+				fmt.Printf("  %s  (%s)\n", taskID, info.ModTime().Format("2006-01-02 15:04:05"))
+			}
+		}
+
+	default:
+		agentName, taskID := args[0], args[1]
+		path := filepath.Join(logsDir, sanitizeAgentName(agentName), taskID+".log")
+		tailFile(path)
+	}
+}
+
+// tailFile prints the contents of path to stdout (like cat).
+func tailFile(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "log not found: %s\n", path)
+		os.Exit(1)
+	}
+	defer f.Close()
+	fmt.Printf("=== %s ===\n", path)
+	io.Copy(os.Stdout, f) //nolint:errcheck
+}
+
+// nowDate returns today's date as YYYY-MM-DD.
+func nowDate() string {
+	out, err := exec.Command("date", "+%Y-%m-%d").Output()
+	if err != nil {
+		return "unknown"
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// sanitizeAgentName mirrors logger.sanitizeName: replaces non-alphanumeric chars with '-'.
+func sanitizeAgentName(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
 }

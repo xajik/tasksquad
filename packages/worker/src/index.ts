@@ -1,5 +1,5 @@
 import { Router, IRequest } from 'itty-router'
-import { withFirebaseAuth, withDaemonAgentAuth, mintCliToken, err, json } from './auth.js'
+import { withFirebaseAuth, withDaemonAgentAuth, mintCliToken, revokeCliToken, err, json } from './auth.js'
 import * as teams    from './routes/teams.js'
 import * as agents   from './routes/agents.js'
 import * as tasks    from './routes/tasks.js'
@@ -55,6 +55,8 @@ router.post('/auth/cli-token', firebaseRoute(async (_req, env, _ctx, auth) => {
   const { token, expiresAt } = await mintCliToken(env, auth.userId)
   return json({ token, expires_at: expiresAt, expires_in: 90 * 24 * 3600 })
 }))
+// Revoke the current CLI token — used by `tsq logout`.
+router.delete('/auth/cli-token', (req: IRequest, env: Env) => revokeCliToken(req as Request, env))
 
 // ── Browser routes (Firebase JWT) ─────────────────────────────────────────────
 router.get('/me', firebaseRoute(me.getMe))

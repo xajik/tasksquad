@@ -194,6 +194,7 @@ The system supports two authentication mechanisms:
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
 | POST | `/auth/cli-token` | - | Exchange Firebase token for CLI token |
+| DELETE | `/auth/cli-token` | - | Revoke current CLI token (`tsq logout`) |
 | GET | `/me` | me.getMe | Get current user profile |
 | POST | `/me/push/token` | me.savePushToken | Register FCM push token |
 | GET | `/teams` | teams.list | List user's teams |

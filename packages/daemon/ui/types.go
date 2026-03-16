@@ -14,6 +14,8 @@ type AgentStatus interface {
 	LastLogPath() string
 	// TmuxSession returns the active tmux session name, or "" if not running in tmux.
 	TmuxSession() string
+	// GetTaskID returns the current task ID being executed, or "" if idle.
+	GetTaskID() string
 }
 
 // PullController lets the UI pause and resume all agents' heartbeat polling.

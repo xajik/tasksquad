@@ -49,9 +49,9 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentID string, taskID str
 		_ = json.Unmarshal(data, &existing)
 	}
 
-	stopURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/stop?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
-	notifURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/notification?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
-	afterAgentURL := fmt.Sprintf("http://127.0.0.1:%d/hooks/after_agent?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
+	stopURL := fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
+	notifURL := fmt.Sprintf("http://localhost:%d/hooks/notification?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
+	afterAgentURL := fmt.Sprintf("http://localhost:%d/hooks/after_agent?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
 
 	// Gemini CLI hooks structure: {"hooks": {"EventName": [{"matcher": "*", "hooks": [...]}]}}
 	existing["hooks"] = map[string]any{
