@@ -628,6 +628,55 @@ export async function sessionAttach(req: Request, env: Env, _ctx: unknown, daemo
 }
 
 /**
+ * POST /daemon/permission/request
+ *
+ * Called by the daemon hook script when Claude Code fires a PermissionRequest event.
+ * Creates a permission_request message in the task thread and transitions the task to
+ * waiting_input so the portal user can reply. The existing batch heartbeat delivers
+ * the reply back to the daemon (no new polling mechanism needed).
+ */
+export async function permissionRequest(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const body = await req.json<{
+    session_id?: string
+    tool_name?: string
+    tool_input?: unknown
+    options?: string[]
+  }>().catch(() => ({} as { session_id?: string; tool_name?: string; tool_input?: unknown; options?: string[] }))
+
+  const { session_id, tool_name, tool_input, options } = body
+  const agentId = daemon.agentId
+  if (!session_id || !tool_name || tool_input === undefined) return err('missing_fields', 400)
+
+  const session = await env.DB
+    .prepare('SELECT s.task_id, t.subject, a.name AS agent_name FROM sessions s JOIN tasks t ON t.id = s.task_id JOIN agents a ON a.id = s.agent_id WHERE s.id = ? AND s.agent_id = ?')
+    .bind(session_id, agentId)
+    .first<{ task_id: string; subject: string; agent_name: string }>()
+  if (!session) return err('not_found', 404)
+
+  const optionsArr = Array.isArray(options) ? options.filter(o => typeof o === 'string') : []
+  const payload: Record<string, unknown> = { tool_name, tool_input }
+  if (optionsArr.length) payload.options = optionsArr
+  const jsonPayload = JSON.stringify(payload)
+
+  const msgId = ulid()
+  const now = Date.now()
+  const agentName = session.agent_name ?? 'Agent'
+  const msgBody = `${agentName} needs permission to run ${tool_name}`
+
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, type, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(msgId, session.task_id, null, 'agent', msgBody, 'permission_request', jsonPayload, now),
+    env.DB.prepare("UPDATE tasks SET status = 'waiting_input' WHERE id = ?").bind(session.task_id),
+    env.DB.prepare("UPDATE agents SET status = 'waiting_input' WHERE id = ?").bind(agentId),
+    env.DB.prepare("UPDATE agent_state SET mode = 'waiting_input', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
+  ])
+
+  await notifyTeamMembers(env, session.task_id, `${agentName} needs permission`, `${session.subject} · ${tool_name}`)
+
+  return json({ id: msgId }, 201)
+}
+
+/**
  * GET /daemon/user/agents
  *
  * Returns all teams and their agents for the authenticated user.

@@ -103,6 +103,7 @@ router.post('/daemon/push/:agentId',     daemonRoute(daemon.push))
 router.post('/daemon/r2/presign',        daemonRoute(daemon.presignUpload))
 router.post('/daemon/messages/:msgId/attach', daemonRoute(daemon.messageAttach))
 router.post('/daemon/sessions/:sessionId/attach', daemonRoute(daemon.sessionAttach))
+router.post('/daemon/permission/request',         daemonRoute(daemon.permissionRequest))
 
 router.all('*', () => err('not_found', 404))
 

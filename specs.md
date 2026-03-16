@@ -118,7 +118,8 @@ CREATE TABLE messages (
   sender_id      TEXT,
   role           TEXT NOT NULL,  -- 'user' | 'agent' | 'system'
   body           TEXT NOT NULL,
-  type           TEXT,           -- 'thinking' | 'tool_call' | 'tool_result' | 'output'
+  type           TEXT,           -- 'thinking' | 'tool_call' | 'tool_result' | 'output' | 'permission_request'
+  json_payload   TEXT,           -- Structured JSON for typed messages (tool_name, tool_input, options, etc.)
   transcript_key TEXT,            -- R2 key for full transcript
   scheduled_at   INTEGER,        -- For delayed message delivery
   created_at     INTEGER NOT NULL
@@ -239,6 +240,7 @@ The system supports two authentication mechanisms:
 | POST | `/daemon/r2/presign` | daemon.presignUpload | Get presigned R2 upload URL |
 | POST | `/daemon/messages/:msgId/attach` | daemon.messageAttach | Attach transcript to message |
 | POST | `/daemon/sessions/:sessionId/attach` | daemon.sessionAttach | Attach log file to session |
+| POST | `/daemon/permission/request` | daemon.permissionRequest | Submit PermissionRequest hook event |
 
 ## Data Flow
 

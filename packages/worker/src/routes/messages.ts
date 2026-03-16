@@ -24,8 +24,27 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
 
   const rows = await env.DB
-    .prepare('SELECT id, task_id, sender_id, role, body, transcript_key, created_at, scheduled_at FROM messages WHERE task_id = ? ORDER BY CASE WHEN scheduled_at IS NOT NULL THEN 1 ELSE 0 END ASC, created_at ASC')
-    .bind(taskId)
+    .prepare(`
+      SELECT m.id, m.task_id, m.sender_id, m.role, m.body, m.type,
+             m.json_payload, m.transcript_key, m.created_at, m.scheduled_at,
+             pe.interaction_status, pe.interaction_response
+      FROM messages m
+      LEFT JOIN (
+        SELECT pr.id AS msg_id,
+               CASE WHEN EXISTS (
+                 SELECT 1 FROM messages r
+                 WHERE r.task_id = pr.task_id AND r.role = 'user' AND r.created_at > pr.created_at
+               ) THEN 'resolved' ELSE 'pending' END AS interaction_status,
+               (SELECT r.body FROM messages r
+                WHERE r.task_id = pr.task_id AND r.role = 'user' AND r.created_at > pr.created_at
+                ORDER BY r.created_at ASC LIMIT 1) AS interaction_response
+        FROM messages pr
+        WHERE pr.task_id = ? AND pr.type = 'permission_request'
+      ) pe ON pe.msg_id = m.id
+      WHERE m.task_id = ?
+      ORDER BY CASE WHEN m.scheduled_at IS NOT NULL THEN 1 ELSE 0 END ASC, m.created_at ASC
+    `)
+    .bind(taskId, taskId)
     .all()
   return json({ messages: rows.results })
 }

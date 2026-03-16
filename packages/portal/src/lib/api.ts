@@ -159,11 +159,16 @@ export interface Message {
   sender_id: string | null
   role: 'user' | 'agent' | 'system'
   /** Intermediate agent message types. null/undefined = final agent response. */
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'output' | null
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'output' | 'permission_request' | null
   body: string
+  /** Structured JSON payload for typed messages (e.g. permission_request). */
+  json_payload: string | null
   transcript_key: string | null
   created_at: number
   scheduled_at: number | null
+  /** Only present on permission_request messages. */
+  interaction_status?: 'pending' | 'resolved' | null
+  interaction_response?: string | null
 }
 
 export interface TaskLog {
