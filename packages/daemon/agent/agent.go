@@ -641,9 +641,17 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		// Block until the FIFO closes — happens when the tmux session ends
 		// (naturally or killed by Complete() via the Stop hook).
 		<-outputDone
-		// complete() may have already been called by Complete() if the Stop hook
-		// fired first. The completing flag makes double-calls a safe no-op.
-		a.complete(cfg, "")
+		// For hook-based providers (OpenCode, Gemini) correct completion comes
+		// via the Stop hook; process exit without the hook means the provider
+		// crashed or exited unexpectedly before finishing. Treat that as a crash
+		// so the task is marked failed rather than silently succeeding with no reply.
+		// For non-hook providers (stdout) process exit is the normal completion signal.
+		// complete() is a no-op if the Stop hook already set the completing flag.
+		if a.prov.UsesHooks() {
+			a.complete(cfg, "crashed")
+		} else {
+			a.complete(cfg, "")
+		}
 		return
 	}
 
@@ -682,6 +690,10 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 	a.mu.Unlock()
 
 	scanner := bufio.NewScanner(r)
+	// OpenCode renders full-screen TUI frames that can be very large ANSI blobs.
+	// The default 64KB limit causes scanner to fail silently, closing outputDone
+	// and triggering a false crash. Use a 4MB buffer to handle any real-world frame.
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	var batch []string
 
 	flushPush := func() {
@@ -724,6 +736,9 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 		}
 	}
 	flushPush()
+	if err := scanner.Err(); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] streamOutput scanner error: %v", a.Config.Name, err))
+	}
 }
 
 // uploadAndAttach gets a presigned R2 PUT URL, uploads the local file, then

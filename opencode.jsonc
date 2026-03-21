@@ -3,8 +3,7 @@
   "mcp": {
     "browseruse": {
       "type": "local",
-      "command": ["npx", "@browsermcp/mcp@latest"],
-      "enabled": true,
+      "command": ["npx", "@browsermcp/mcp@latest"]
     }
   }
 }

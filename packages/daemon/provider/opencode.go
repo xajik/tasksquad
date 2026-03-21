@@ -18,7 +18,7 @@ func (p *OpenCode) Name() string { return "opencode" }
 
 // Setup writes .opencode/plugins/tasksquad.mjs in workDir.
 // The plugin exports event handlers for lifecycle events following the Go SDK
-// patterns (session.*, message.*).
+// patterns (session.*, message.*, tool.*).
 // It POSTs to the daemon's local hook server so the agent knows when to stop
 // or when a response (reply) is available.
 func (p *OpenCode) Setup(workDir string, hooksPort int, agentID string, taskID string) error {
@@ -44,6 +44,8 @@ export const TaskSquadPlugin = async ({ client }) => {
 
   // messageID -> { sessionID, textParts: [{id, text}], completed }
   const messageCache = new Map()
+  let pendingToolCount = 0
+  let sessionIdleSent = false
 
   return {
     "event": async (input) => {
@@ -72,28 +74,58 @@ export const TaskSquadPlugin = async ({ client }) => {
         }
       }
 
-      if (event.type === "session.idle") {
-        await client.app.log({ body: { service: "tasksquad", level: "info", message: "session.idle" } })
-        let lastCompleted = null
-        for (const [, cached] of messageCache.entries()) {
-          if (cached.completed) lastCompleted = cached
+      if (event.type === "tool.execute.before") {
+        pendingToolCount++
+        await client.app.log({ body: { service: "tasksquad", level: "info", message: "tool.execute.before: " + pendingToolCount } })
+      }
+
+      if (event.type === "tool.execute.after") {
+        pendingToolCount = Math.max(0, pendingToolCount - 1)
+        await client.app.log({ body: { service: "tasksquad", level: "info", message: "tool.execute.after: pending=" + pendingToolCount } })
+        // When tools complete and session goes idle, send stop hook
+        if (pendingToolCount === 0 && !sessionIdleSent) {
+          let lastCompleted = null
+          for (const [, cached] of messageCache.entries()) {
+            if (cached.completed) lastCompleted = cached
+          }
+          const message = lastCompleted ? lastCompleted.textParts.map(p => p.text).join("") : ""
+          await post("/hooks/stop?agent=%s&task_id=%s&provider=opencode", { stop_reason: "idle", message })
+          sessionIdleSent = true
         }
-        const message = lastCompleted ? lastCompleted.textParts.map(p => p.text).join("") : ""
-        await post("/hooks/stop?agent=%s&task_id=%s&provider=opencode", { stop_reason: "idle", message })
+      }
+
+      if (event.type === "session.idle") {
+        await client.app.log({ body: { service: "tasksquad", level: "info", message: "session.idle pending=" + pendingToolCount } })
+        if (pendingToolCount === 0 && !sessionIdleSent) {
+          let lastCompleted = null
+          for (const [, cached] of messageCache.entries()) {
+            if (cached.completed) lastCompleted = cached
+          }
+          const message = lastCompleted ? lastCompleted.textParts.map(p => p.text).join("") : ""
+          await post("/hooks/stop?agent=%s&task_id=%s&provider=opencode", { stop_reason: "idle", message })
+          sessionIdleSent = true
+        }
       }
 
       if (event.type === "session.error") {
         await client.app.log({ body: { service: "tasksquad", level: "error", message: "session.error" } })
         await post("/hooks/stop?agent=%s&task_id=%s&provider=opencode", { stop_reason: "error", message: event.properties?.error?.message || "Unknown error" })
       }
+
+      // Reset on new user message to handle multiple turns
+      if (event.type === "session.updated" && event.properties?.info?.role === "user") {
+        sessionIdleSent = false
+        messageCache.clear()
+        pendingToolCount = 0
+      }
     },
   }
 }
 `, hooksPort, agentID, taskID, agentID, taskID)
-	return os.WriteFile(filepath.Join(pluginDir, "tasksquad.ts"), []byte(plugin), 0644)
+	return os.WriteFile(filepath.Join(pluginDir, "tasksquad.mjs"), []byte(plugin), 0644)
 }
 
 func (p *OpenCode) UsesHooks() bool            { return true }
 func (p *OpenCode) Stdin(prompt string) string { return prompt }
 func (p *OpenCode) Env(_ int) []string         { return nil }
-func (p *OpenCode) ExtraArgs() []string        { return nil }
+func (p *OpenCode) ExtraArgs() []string        { return []string{"--print-logs"} }
