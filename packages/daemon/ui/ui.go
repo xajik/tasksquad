@@ -20,6 +20,7 @@
 //	├── Open Dashboard                ← opens browser to dashboardURL
 //	├── ─────────────────────────
 //	├── ── Agents ──                  ← section label, disabled
+//	├── 📁 ~/Projects/myapp           ← folder group header, disabled
 //	├──   ● agent-name: running       ← one per agent, refreshed every 5s
 //	├── ─────────────────────────
 //	└── Quit
@@ -32,6 +33,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -92,13 +94,37 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 
 	systray.AddSeparator()
 
-	// ── Per-agent rows ─────────────────────────────────────────────────────
+	// ── Per-agent rows grouped by workDir ─────────────────────────────────
 	mAgentsLabel := systray.AddMenuItem("── Agents ──", "")
 	mAgentsLabel.Disable()
 
-	agentItems := make([]*systray.MenuItem, len(agents))
+	// Build ordered groups: map workDir → agent indices (preserving insertion order)
+	type agentGroup struct {
+		dir     string
+		indices []int
+	}
+	var groups []agentGroup
+	dirIdx := map[string]int{}
 	for i, a := range agents {
-		agentItems[i] = systray.AddMenuItem(agentLabel(a), a.LastLogPath())
+		dir := a.WorkDir()
+		if dir == "" {
+			dir = "(unknown)"
+		}
+		if gi, ok := dirIdx[dir]; ok {
+			groups[gi].indices = append(groups[gi].indices, i)
+		} else {
+			dirIdx[dir] = len(groups)
+			groups = append(groups, agentGroup{dir: dir, indices: []int{i}})
+		}
+	}
+
+	agentItems := make([]*systray.MenuItem, len(agents))
+	for _, g := range groups {
+		hdr := systray.AddMenuItem(folderLabel(g.dir), g.dir)
+		hdr.Disable()
+		for _, i := range g.indices {
+			agentItems[i] = systray.AddMenuItem(agentLabel(agents[i]), agents[i].LastLogPath())
+		}
 	}
 
 	systray.AddSeparator()
@@ -303,6 +329,17 @@ func agentLabel(a AgentStatus) string {
 		dot = "○"
 	}
 	return fmt.Sprintf("  %s %s: %s", dot, a.Name(), a.GetMode())
+}
+
+// folderLabel formats a workDir path for display as a group header.
+// Replaces the home directory with ~, e.g. "/Users/alice/Projects/app" → "📁 ~/Projects/app".
+func folderLabel(dir string) string {
+	if home, err := os.UserHomeDir(); err == nil {
+		if rel, err := filepath.Rel(home, dir); err == nil && !filepath.IsAbs(rel) {
+			dir = "~/" + rel
+		}
+	}
+	return "📁 " + dir
 }
 
 // openBrowser opens url in the default system browser.

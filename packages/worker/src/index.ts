@@ -7,6 +7,7 @@ import * as messages from './routes/messages.js'
 import * as daemon   from './routes/daemon.js'
 import * as live     from './routes/live.js'
 import * as me       from './routes/me.js'
+import * as notes    from './routes/notes.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 export { AgentRelay } from './relay.js'
 
@@ -75,6 +76,16 @@ router.patch('/teams/:teamId/agents/:agentId',       firebaseRoute(agents.update
 router.post('/teams/:teamId/agents/:agentId/reset', firebaseRoute(agents.resetAgent))
 router.post('/teams/:teamId/agents/:agentId/pause', firebaseRoute(agents.pauseAgent))
 router.delete('/teams/:teamId/agents/:agentId', firebaseRoute(agents.deleteAgent))
+
+router.get ('/teams/:teamId/notes',                    firebaseRoute(notes.list))
+router.post('/teams/:teamId/notes',                    firebaseRoute(notes.create))
+router.get ('/teams/:teamId/notes/:noteId',            firebaseRoute(notes.get))
+router.put ('/teams/:teamId/notes/:noteId',            firebaseRoute(notes.update))
+router.delete('/teams/:teamId/notes/:noteId',          firebaseRoute(notes.remove))
+router.get ('/teams/:teamId/notes/:noteId/comments',   firebaseRoute(notes.listComments))
+router.post  ('/teams/:teamId/notes/:noteId/comments',             firebaseRoute(notes.createComment))
+router.delete('/teams/:teamId/notes/:noteId/comments/:commentId',  firebaseRoute(notes.deleteComment))
+router.post  ('/teams/:teamId/notes/:noteId/convert',              firebaseRoute(notes.convertToInbox))
 
 router.get ('/tasks',                    firebaseRoute(tasks.list))
 router.post('/tasks',                    firebaseRoute(tasks.create))

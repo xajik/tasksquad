@@ -110,6 +110,30 @@ export const api = {
         method: 'DELETE',
       }),
   },
+  notes: {
+    list: (teamId: string) => request<{ notes: Note[] }>(`/teams/${teamId}/notes`),
+    create: (teamId: string, body: { title: string; content: string; tags?: string[] }) =>
+      request<Note>(`/teams/${teamId}/notes`, { method: 'POST', body: JSON.stringify(body) }),
+    get: (teamId: string, noteId: string) => request<Note>(`/teams/${teamId}/notes/${noteId}`),
+    update: (teamId: string, noteId: string, body: { title?: string; content?: string; tags?: string[] }) =>
+      request<{ ok: boolean }>(`/teams/${teamId}/notes/${noteId}`, { method: 'PUT', body: JSON.stringify(body) }),
+    delete: (teamId: string, noteId: string) =>
+      del(`/teams/${teamId}/notes/${noteId}`),
+    listComments: (teamId: string, noteId: string) =>
+      request<{ comments: NoteComment[] }>(`/teams/${teamId}/notes/${noteId}/comments`),
+    createComment: (teamId: string, noteId: string, content: string) =>
+      request<NoteComment>(`/teams/${teamId}/notes/${noteId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      }),
+    deleteComment: (teamId: string, noteId: string, commentId: string) =>
+      request<void>(`/teams/${teamId}/notes/${noteId}/comments/${commentId}`, { method: 'DELETE' }),
+    convertToInbox: (teamId: string, noteId: string, body: { agent_id: string; include_comments?: boolean; instructions?: string }) =>
+      request<{ task_id: string }>(`/teams/${teamId}/notes/${noteId}/convert`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  },
 }
 
 export interface UserProfile {
@@ -159,7 +183,7 @@ export interface Message {
   sender_id: string | null
   role: 'user' | 'agent' | 'system'
   /** Intermediate agent message types. null/undefined = final agent response. */
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'output' | 'permission_request' | null
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'output' | 'permission_request' | 'note-to-inbox' | null
   body: string
   /** Structured JSON payload for typed messages (e.g. permission_request). */
   json_payload: string | null
@@ -169,6 +193,25 @@ export interface Message {
   /** Only present on permission_request messages. */
   interaction_status?: 'pending' | 'resolved' | null
   interaction_response?: string | null
+}
+
+export interface Note {
+  id: string
+  team_id: string
+  author_id: string
+  title: string
+  content: string
+  created_at: number
+  updated_at: number
+  tags: string[]
+}
+
+export interface NoteComment {
+  id: string
+  note_id: string
+  author_id: string
+  content: string
+  created_at: number
 }
 
 export interface TaskLog {

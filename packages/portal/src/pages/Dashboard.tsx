@@ -87,6 +87,9 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 
+import { Notes } from './Notes'
+import { NoteDetail } from './NoteDetail'
+
 // ── Transcript viewer ─────────────────────────────────────────────────────────
 
 interface TranscriptEntry {
@@ -754,6 +757,32 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
       <div className="flex justify-center my-3">
         <div className="bg-muted/50 text-muted-foreground text-[10px] uppercase tracking-wider font-semibold px-3 py-1 rounded-full border border-border/50">
           {message.body}
+        </div>
+      </div>
+    )
+  }
+
+  // Note-to-inbox user message — show as a collapsible card (content can be very long)
+  if (isUser && message.type === 'note-to-inbox') {
+    const [expanded, setExpanded] = useState(false)
+    let noteTitle = ''
+    try { noteTitle = JSON.parse(message.json_payload ?? '{}').note_title ?? '' } catch {}
+    return (
+      <div className="flex justify-start my-2 mx-3">
+        <div className="max-w-[80%] rounded-xl border border-border/60 bg-muted/30 overflow-hidden">
+          <button
+            className="flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+            onClick={() => setExpanded(e => !e)}
+          >
+            <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs font-medium text-foreground/80 flex-1 truncate">{noteTitle || 'Note'}</span>
+            <span className="text-[10px] text-muted-foreground">{expanded ? 'Hide' : 'Show content'}</span>
+          </button>
+          {expanded && (
+            <pre className="px-3 pb-3 text-[11px] font-mono text-foreground/70 whitespace-pre-wrap break-words leading-relaxed border-t border-border/40 pt-2 max-h-64 overflow-y-auto">
+              {message.body}
+            </pre>
+          )}
         </div>
       </div>
     )
@@ -2232,6 +2261,7 @@ export default function Dashboard() {
   const isAgents = location.pathname === '/dashboard/agents'
   const isMembers = location.pathname === '/dashboard/members'
   const isSettings = location.pathname === '/dashboard/settings'
+  const isNotes = location.pathname.startsWith('/dashboard/notes')
 
   if (isLoadingTeams) return (
     <div className="flex h-screen items-center justify-center">
@@ -2316,12 +2346,20 @@ export default function Dashboard() {
         </div>
         <nav className="flex-1 px-2">
           <Button
-            variant={!isAgents && !isSettings ? 'secondary' : 'ghost'}
+            variant={!isAgents && !isSettings && !isMembers && !isNotes ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
             onClick={() => handleNav('/dashboard')}
           >
             <Inbox className="mr-2 h-4 w-4" />
             Inbox
+          </Button>
+          <Button
+            variant={isNotes ? 'secondary' : 'ghost'}
+            className="w-full justify-start mb-1"
+            onClick={() => handleNav('/dashboard/notes')}
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            Notes
           </Button>
           <Button
             variant={isAgents ? 'secondary' : 'ghost'}
@@ -2425,6 +2463,8 @@ export default function Dashboard() {
         <Routes>
           <Route path="/" element={<InboxView teamId={teamId} />} />
           <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} plan={plan} internalUserId={internalUserId} />} />
+          <Route path="/notes" element={<Notes teamId={teamId} />} />
+          <Route path="/notes/:noteId" element={<NoteDetail teamId={teamId} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />
           <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} onLeave={handleLeaveProject} plan={plan} isOwner={isOwner} />} />
