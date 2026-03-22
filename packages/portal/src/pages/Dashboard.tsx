@@ -399,7 +399,7 @@ function useTeam() {
   return { teamId, teamName, teams, isLoadingTeams, createTeam, switchTeam }
 }
 
-function InboxView({ teamId }: { teamId: string }) {
+function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId: string | null }) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [showCompose, setShowCompose] = useState(false)
@@ -410,6 +410,7 @@ function InboxView({ teamId }: { teamId: string }) {
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const [activeFilter, setActiveFilter] = useState<'all' | 'system' | 'mine' | 'from-note' | 'scheduled'>('all')
   const nav = useNavigate()
 
   const prevTaskStatusesRef = useRef<Record<string, string>>({})
@@ -486,6 +487,24 @@ function InboxView({ teamId }: { teamId: string }) {
     return t.status
   }
 
+  const filteredTasks = useMemo(() => {
+    const now = Date.now()
+    if (activeFilter === 'all') return tasks
+    if (activeFilter === 'system') return tasks.filter(t => t.first_message_role === 'system' && t.first_message_type !== 'note-to-inbox')
+    if (activeFilter === 'mine') return tasks.filter(t => t.first_message_role === 'user' && t.sender_id === internalUserId && t.first_message_type !== 'note-to-inbox')
+    if (activeFilter === 'from-note') return tasks.filter(t => t.first_message_type === 'note-to-inbox')
+    if (activeFilter === 'scheduled') return tasks.filter(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
+    return tasks
+  }, [tasks, activeFilter, internalUserId])
+
+  const hasSystem = useMemo(() => tasks.some(t => t.first_message_role === 'system' && t.first_message_type !== 'note-to-inbox'), [tasks])
+  const hasMine = useMemo(() => tasks.some(t => t.first_message_role === 'user' && t.sender_id === internalUserId && t.first_message_type !== 'note-to-inbox'), [tasks])
+  const hasNotes = useMemo(() => tasks.some(t => t.first_message_type === 'note-to-inbox'), [tasks])
+  const hasScheduled = useMemo(() => {
+    const now = Date.now()
+    return tasks.some(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
+  }, [tasks])
+
   return (
     <div className="animate-fade-in">
       <div className="flex justify-between items-center mb-6">
@@ -499,6 +518,59 @@ function InboxView({ teamId }: { teamId: string }) {
           New message
         </Button>
       </div>
+
+      {(hasSystem || hasMine || hasNotes || hasScheduled) && (
+        <div className="flex items-center gap-1.5 mb-6 flex-wrap">
+          <Button
+            variant={activeFilter === 'all' ? 'default' : 'outline'}
+            size="sm"
+            className="h-7 rounded-full px-3 text-xs"
+            onClick={() => setActiveFilter('all')}
+          >
+            All
+          </Button>
+          {hasSystem && (
+            <Button
+              variant={activeFilter === 'system' ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={() => setActiveFilter(activeFilter === 'system' ? 'all' : 'system')}
+            >
+              System
+            </Button>
+          )}
+          {hasMine && (
+            <Button
+              variant={activeFilter === 'mine' ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={() => setActiveFilter(activeFilter === 'mine' ? 'all' : 'mine')}
+            >
+              Mine
+            </Button>
+          )}
+          {hasNotes && (
+            <Button
+              variant={activeFilter === 'from-note' ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={() => setActiveFilter(activeFilter === 'from-note' ? 'all' : 'from-note')}
+            >
+              From Note
+            </Button>
+          )}
+          {hasScheduled && (
+            <Button
+              variant={activeFilter === 'scheduled' ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={() => setActiveFilter(activeFilter === 'scheduled' ? 'all' : 'scheduled')}
+            >
+              Scheduled
+            </Button>
+          )}
+        </div>
+      )}
 
       <Dialog open={showCompose} onOpenChange={setShowCompose}>
         <DialogContent className="sm:max-w-[500px]">
@@ -589,10 +661,10 @@ function InboxView({ teamId }: { teamId: string }) {
               </Card>
             ))}
           </div>
-        ) : tasks.length === 0 ? (
+        ) : filteredTasks.length === 0 ? (
           <p className="text-muted-foreground">No messages yet.</p>
         ) : (
-          tasks.map(t => (
+          filteredTasks.map(t => (
             <Card
               key={t.id}
               className="cursor-pointer hover:bg-accent/50 transition-colors"
@@ -2461,7 +2533,7 @@ export default function Dashboard() {
         </div>
         <main className="flex-1 overflow-auto p-4 sm:p-8 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
         <Routes>
-          <Route path="/" element={<InboxView teamId={teamId} />} />
+          <Route path="/" element={<InboxView teamId={teamId} internalUserId={internalUserId} />} />
           <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/notes" element={<Notes teamId={teamId} />} />
           <Route path="/notes/:noteId" element={<NoteDetail teamId={teamId} />} />

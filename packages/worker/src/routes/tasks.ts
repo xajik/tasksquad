@@ -21,12 +21,22 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!teamId) return err('team_id_required', 400)
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
-  let query = 'SELECT id, team_id, agent_id, sender_id, subject, status, created_at, started_at, completed_at FROM tasks WHERE team_id = ?'
+  let query = `
+    SELECT t.id, t.team_id, t.agent_id, t.sender_id, t.subject, t.status, t.created_at, t.started_at, t.completed_at,
+           m.role as first_message_role, m.type as first_message_type,
+           MAX(all_m.scheduled_at) as scheduled_at
+    FROM tasks t
+    LEFT JOIN messages m ON m.task_id = t.id AND m.id = (
+      SELECT id FROM messages WHERE task_id = t.id ORDER BY created_at ASC, id ASC LIMIT 1
+    )
+    LEFT JOIN messages all_m ON all_m.task_id = t.id
+    WHERE t.team_id = ?
+  `
   const binds: unknown[] = [teamId]
 
-  if (agentId) { query += ' AND agent_id = ?'; binds.push(agentId) }
-  if (status)  { query += ' AND status = ?';   binds.push(status) }
-  query += ' ORDER BY created_at DESC LIMIT 100'
+  if (agentId) { query += ' AND t.agent_id = ?'; binds.push(agentId) }
+  if (status)  { query += ' AND t.status = ?';   binds.push(status) }
+  query += ' GROUP BY t.id ORDER BY t.created_at DESC LIMIT 100'
 
   const rows = await env.DB.prepare(query).bind(...binds).all()
   return json({ tasks: rows.results })

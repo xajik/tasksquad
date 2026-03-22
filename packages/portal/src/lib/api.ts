@@ -175,6 +175,9 @@ export interface Task {
   created_at: number
   started_at: number | null
   completed_at: number | null
+  first_message_role?: 'user' | 'agent' | 'system'
+  first_message_type?: string | null
+  scheduled_at?: number | null
 }
 
 export interface Message {
