@@ -1,5 +1,5 @@
 -- ─── Notes ───────────────────────────────────────────────────────────────────
-CREATE TABLE notes (
+CREATE TABLE IF NOT EXISTS notes (
   id           TEXT PRIMARY KEY, -- ulid
   team_id      TEXT NOT NULL REFERENCES teams(id),
   author_id    TEXT NOT NULL REFERENCES users(id),
@@ -10,7 +10,7 @@ CREATE TABLE notes (
 );
 
 -- ─── Tags (Normalized) ────────────────────────────────────────────────────────
-CREATE TABLE tags (
+CREATE TABLE IF NOT EXISTS tags (
   id      TEXT PRIMARY KEY, -- ulid
   team_id TEXT NOT NULL REFERENCES teams(id),
   name    TEXT NOT NULL,
@@ -19,14 +19,14 @@ CREATE TABLE tags (
 );
 
 -- ─── Note Tags Junction ───────────────────────────────────────────────────────
-CREATE TABLE note_tags (
+CREATE TABLE IF NOT EXISTS note_tags (
   note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
   tag_id  TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
   PRIMARY KEY (note_id, tag_id)
 );
 
 -- ─── Note Comments ────────────────────────────────────────────────────────────
-CREATE TABLE note_comments (
+CREATE TABLE IF NOT EXISTS note_comments (
   id         TEXT PRIMARY KEY, -- ulid
   note_id    TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
   author_id  TEXT NOT NULL REFERENCES users(id),
@@ -35,6 +35,6 @@ CREATE TABLE note_comments (
 );
 
 -- ─── Indexes ──────────────────────────────────────────────────────────────────
-CREATE INDEX idx_notes_team ON notes(team_id, updated_at DESC);
-CREATE INDEX idx_note_comments_note ON note_comments(note_id, created_at ASC);
-CREATE INDEX idx_tags_team ON tags(team_id);
+CREATE INDEX IF NOT EXISTS idx_notes_team ON notes(team_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_note_comments_note ON note_comments(note_id, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_tags_team ON tags(team_id);
