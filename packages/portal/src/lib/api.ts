@@ -91,6 +91,27 @@ export const api = {
         body: JSON.stringify({ agent_id: agentId }),
       }),
   },
+  conveyors: {
+    list: (teamId: string) => request<{ conveyors: Conveyor[] }>(`/teams/${teamId}/conveyors`),
+    create: (teamId: string, body: {
+      agent_id: string;
+      subject: string;
+      body: string;
+      frequency: string;
+      hour: number;
+      minute?: number;
+      day_of_week?: number;
+      day_of_month?: number;
+      repeat_count?: number;
+      end_date?: number;
+    }) =>
+      request<{ id: string; next_run_at: number }>(`/teams/${teamId}/conveyors`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    delete: (teamId: string, conveyorId: string) =>
+      del(`/teams/${teamId}/conveyors/${conveyorId}`),
+  },
   messages: {
     list: (taskId: string) => request<{ messages: Message[] }>(`/tasks/${taskId}/messages`),
     transcript: (taskId: string, msgId: string) =>
@@ -164,6 +185,25 @@ export interface Team {
   id: string
   name: string
   role: string
+}
+
+export interface Conveyor {
+  id: string
+  team_id: string
+  agent_id: string
+  sender_id: string
+  subject: string
+  body: string
+  frequency: 'daily' | 'weekly' | 'monthly'
+  hour: number
+  minute: number
+  day_of_week: number | null
+  day_of_month: number | null
+  repeat_count: number | null
+  repeat_counter: number
+  end_date: number | null
+  next_run_at: number
+  created_at: number
 }
 
 export interface Task {

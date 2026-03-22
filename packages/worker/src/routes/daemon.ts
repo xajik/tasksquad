@@ -6,6 +6,7 @@ import type { Env, DaemonContext } from '../types.js'
 import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
 import { sendFCMNotification } from '../fcm.js'
 import { getCombinedInboxVersion } from '../inbox_version.js'
+import { calculateNextRun, type ConveyorRow } from './conveyors.js'
 
 function truncate(text: string, maxLen = 80): string {
   return text.slice(0, maxLen) + (text.length > maxLen ? '…' : '')
@@ -174,6 +175,65 @@ async function processAgentHeartbeat(
   return { agent_id: agentId, ok: true, next_poll_ms: nextPollMs }
 }
 
+async function processConveyors(env: Env, teamIds: string[], now: number) {
+  const ONE_HOUR = 3600_000
+
+  // Find teams that haven't been checked in the last hour
+  const { results: teams } = await env.DB
+    .prepare(`
+      SELECT id, last_conveyor_run 
+      FROM teams 
+      WHERE id IN (${teamIds.map(() => '?').join(',')})
+        AND (last_conveyor_run IS NULL OR ? - last_conveyor_run >= ?)
+    `)
+    .bind(...teamIds, now, ONE_HOUR)
+    .all<{ id: string; last_conveyor_run: number | null }>()
+
+  if (!teams.length) return
+
+  for (const team of teams) {
+    // Find due conveyors for this team
+    // "any pending tasks in next 1 hour?" — also respects repeat_count and end_date
+    const { results: dueConveyors } = await env.DB
+      .prepare(`
+        SELECT * FROM conveyors
+        WHERE team_id = ?
+          AND next_run_at <= ?
+          AND (repeat_count IS NULL OR repeat_counter < repeat_count)
+          AND (end_date IS NULL OR next_run_at <= end_date)
+      `)
+      .bind(team.id, now + ONE_HOUR)
+      .all<ConveyorRow>()
+
+    for (const conveyor of dueConveyors) {
+      // Create scheduled message in Inbox
+      const taskId = ulid()
+      const msgId = ulid()
+
+      const nextRun = calculateNextRun(
+        conveyor.next_run_at,
+        conveyor.frequency,
+        conveyor.day_of_week,
+        conveyor.day_of_month,
+        conveyor.hour,
+        conveyor.minute ?? 0
+      )
+
+      await env.DB.batch([
+        env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(taskId, team.id, conveyor.agent_id, conveyor.sender_id, conveyor.subject, 'scheduled', now),
+        env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(msgId, taskId, conveyor.sender_id, 'user', conveyor.body, now, conveyor.next_run_at),
+        env.DB.prepare('UPDATE conveyors SET repeat_counter = repeat_counter + 1, next_run_at = ? WHERE id = ?')
+          .bind(nextRun, conveyor.id)
+      ])
+    }
+
+    // Update last_conveyor_run
+    await env.DB.prepare('UPDATE teams SET last_conveyor_run = ? WHERE id = ?').bind(now, team.id).run()
+  }
+}
+
 /**
  * POST /daemon/heartbeat/batch
  *
@@ -198,6 +258,10 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
 
   const now = Date.now()
   const nextPollMs = POLL_BASE_MS + Math.floor(Math.random() * POLL_JITTER_MS)
+
+  // Run conveyor check once per hour per team
+  const teamsToCheck = [...new Set(authResult.map(c => c.teamId))]
+  await processConveyors(env, teamsToCheck, now)
 
   // Deliver any scheduled messages that are now due for this batch of agents.
   // Doing this before processing means the daemon picks up delivered tasks in

@@ -78,6 +78,7 @@ import {
   PlayCircle,
   AlertTriangle,
   RefreshCw,
+  Repeat,
   Check,
   Clock,
   Edit,
@@ -89,6 +90,7 @@ import {
 
 import { Notes } from './Notes'
 import { NoteDetail } from './NoteDetail'
+import { Conveyors } from './Conveyors'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
 
@@ -2332,9 +2334,9 @@ export default function Dashboard() {
 
   const isAgents = location.pathname === '/dashboard/agents'
   const isMembers = location.pathname === '/dashboard/members'
+  const isConveyors = location.pathname === '/dashboard/conveyor'
   const isSettings = location.pathname === '/dashboard/settings'
   const isNotes = location.pathname.startsWith('/dashboard/notes')
-
   if (isLoadingTeams) return (
     <div className="flex h-screen items-center justify-center">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -2432,10 +2434,17 @@ export default function Dashboard() {
           >
             <FileText className="mr-2 h-4 w-4" />
             Notes
-          </Button>
-          <Button
-            variant={isAgents ? 'secondary' : 'ghost'}
+            </Button>
+            <Button
+            variant={isConveyors ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
+            onClick={() => handleNav('/dashboard/conveyor')}
+            >
+            <Repeat className="mr-2 h-4 w-4" />
+            Conveyor
+            </Button>
+            <Button
+            variant={isAgents ? 'secondary' : 'ghost'}            className="w-full justify-start mb-1"
             onClick={() => handleNav('/dashboard/agents')}
           >
             <Bot className="mr-2 h-4 w-4" />
@@ -2537,8 +2546,8 @@ export default function Dashboard() {
           <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/notes" element={<Notes teamId={teamId} />} />
           <Route path="/notes/:noteId" element={<NoteDetail teamId={teamId} />} />
-          <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />
-          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />
+          <Route path="/conveyor" element={<Conveyors teamId={teamId} />} />
+          <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} onLeave={handleLeaveProject} plan={plan} isOwner={isOwner} />} />
         </Routes>
       </main>

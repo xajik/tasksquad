@@ -8,6 +8,7 @@ import * as daemon   from './routes/daemon.js'
 import * as live     from './routes/live.js'
 import * as me       from './routes/me.js'
 import * as notes    from './routes/notes.js'
+import * as conveyors from './routes/conveyors.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 export { AgentRelay } from './relay.js'
 
@@ -76,6 +77,10 @@ router.patch('/teams/:teamId/agents/:agentId',       firebaseRoute(agents.update
 router.post('/teams/:teamId/agents/:agentId/reset', firebaseRoute(agents.resetAgent))
 router.post('/teams/:teamId/agents/:agentId/pause', firebaseRoute(agents.pauseAgent))
 router.delete('/teams/:teamId/agents/:agentId', firebaseRoute(agents.deleteAgent))
+
+router.get ('/teams/:teamId/conveyors',                 firebaseRoute(conveyors.list))
+router.post('/teams/:teamId/conveyors',                 firebaseRoute(conveyors.create))
+router.delete('/teams/:teamId/conveyors/:conveyorId',   firebaseRoute(conveyors.remove))
 
 router.get ('/teams/:teamId/notes',                    firebaseRoute(notes.list))
 router.post('/teams/:teamId/notes',                    firebaseRoute(notes.create))
