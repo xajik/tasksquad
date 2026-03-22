@@ -6,9 +6,7 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Markdown } from 'tiptap-markdown'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { api, type Note, type NoteComment, type Agent, type Member } from '../lib/api'
+import { api, type Note, type NoteComment, type Agent, type Member, type LinkedTask } from '../lib/api'
 import { auth } from '../lib/firebase'
 import { trackEvent } from '../lib/analytics'
 import { Button } from '@/components/ui/button'
@@ -34,9 +32,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   ArrowLeft, Trash2, Tag as TagIcon, Send,
-  MessageSquare, Eye, Edit2, Loader2, X,
+  MessageSquare, Loader2, X,
   Bold, Italic, Strikethrough, Code, Code2, List, ListOrdered,
   ListTodo, Quote, Minus, Undo, Redo, Heading1, Heading2, Heading3,
+  Link2, CheckCircle2, Clock, XCircle, CircleDot,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -182,15 +181,14 @@ function RichTextEditor({ content, onChange }: { content: string; onChange: (md:
 
 // ─── Note-to-Inbox Dialog ─────────────────────────────────────────────────────
 
-function NoteToInboxDialog({ noteId, teamId, isOpen, onOpenChange }: {
-  noteId: string; teamId: string; isOpen: boolean; onOpenChange: (open: boolean) => void
+function NoteToInboxDialog({ noteId, teamId, isOpen, onOpenChange, onSuccess }: {
+  noteId: string; teamId: string; isOpen: boolean; onOpenChange: (open: boolean) => void; onSuccess?: () => void
 }) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [agentId, setAgentId] = useState('')
   const [includeComments, setIncludeComments] = useState(false)
   const [instructions, setInstructions] = useState('')
   const [sending, setSending] = useState(false)
-  const nav = useNavigate()
 
   useEffect(() => {
     if (isOpen) api.agents.list(teamId).then(d => setAgents(d.agents ?? []))
@@ -203,7 +201,7 @@ function NoteToInboxDialog({ noteId, teamId, isOpen, onOpenChange }: {
       await api.notes.convertToInbox(teamId, noteId, { agent_id: agentId, include_comments: includeComments, instructions })
       trackEvent('note_to_inbox', { team_id: teamId, agent_id: agentId })
       onOpenChange(false)
-      nav('/dashboard')
+      onSuccess?.()
     } catch (e) {
       console.error(e)
     } finally {
@@ -272,17 +270,21 @@ export function NoteDetail({ teamId }: { teamId: string }) {
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState('')
 
-  const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit')
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<number | null>(null)
   const [showInboxDialog, setShowInboxDialog] = useState(false)
   const [showMobileComments, setShowMobileComments] = useState(false)
+  const [sidebarTab, setSidebarTab] = useState<'comments' | 'tasks'>('comments')
 
   // Comments
   const [comments, setComments] = useState<NoteComment[]>([])
   const [newComment, setNewComment] = useState('')
   const [loadingComments, setLoadingComments] = useState(false)
   const [postingComment, setPostingComment] = useState(false)
+
+  // Linked tasks
+  const [linkedTasks, setLinkedTasks] = useState<LinkedTask[]>([])
+  const [loadingLinkedTasks, setLoadingLinkedTasks] = useState(false)
 
   // Members for author display
   const [members, setMembers] = useState<Member[]>([])
@@ -316,12 +318,24 @@ export function NoteDetail({ teamId }: { teamId: string }) {
     }
   }, [teamId, noteId])
 
+  const loadLinkedTasks = useCallback(async () => {
+    if (!noteId) return
+    setLoadingLinkedTasks(true)
+    try {
+      const d = await api.notes.listLinkedTasks(teamId, noteId)
+      setLinkedTasks(d.tasks)
+    } finally {
+      setLoadingLinkedTasks(false)
+    }
+  }, [teamId, noteId])
+
   useEffect(() => {
     load()
     loadComments()
+    loadLinkedTasks()
     api.members.list(teamId).then(d => setMembers(d.members ?? []))
     api.me().then(u => setCurrentUserId(u.id)).catch(() => {})
-  }, [load, loadComments, teamId])
+  }, [load, loadComments, loadLinkedTasks, teamId])
 
   // Auto-save
   useEffect(() => {
@@ -443,6 +457,54 @@ export function NoteDetail({ teamId }: { teamId: string }) {
     </>
   )
 
+  function taskStatusIcon(status: string) {
+    switch (status) {
+      case 'completed': return <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+      case 'failed':    return <XCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+      case 'in_progress': return <CircleDot className="h-3.5 w-3.5 text-primary shrink-0" />
+      default:          return <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+    }
+  }
+
+  const linkedTasksPanelJsx = (
+    <ScrollArea className="flex-1 p-4">
+      {loadingLinkedTasks ? (
+        <Loader2 className="animate-spin mx-auto mt-4" />
+      ) : linkedTasks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+          <Link2 className="h-8 w-8 mb-2 opacity-20" />
+          <p className="text-xs">No tasks from this note yet.</p>
+          <p className="text-[11px] mt-1 opacity-70">Use "To Inbox" to create one.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {linkedTasks.map(t => (
+            <button
+              key={t.id}
+              className="w-full text-left rounded-lg border bg-background hover:border-primary/50 hover:bg-muted/30 transition-colors p-2.5 group"
+              onClick={() => nav(`/dashboard/tasks/${t.id}`)}
+            >
+              <div className="flex items-start gap-2">
+                {taskStatusIcon(t.status)}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium line-clamp-2 group-hover:text-primary transition-colors">{t.subject}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    {t.agent_name && (
+                      <span className="text-[10px] text-muted-foreground truncate">{t.agent_name}</span>
+                    )}
+                    <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">
+                      {new Date(t.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </ScrollArea>
+  )
+
   if (!note) return <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin" /></div>
 
   return (
@@ -464,23 +526,21 @@ export function NoteDetail({ teamId }: { teamId: string }) {
           <span className="text-xs text-muted-foreground mr-2 hidden sm:inline">
             {saving ? 'Saving…' : lastSaved ? 'Saved' : ''}
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 mr-1 text-muted-foreground"
-            onClick={() => setViewMode(m => m === 'edit' ? 'preview' : 'edit')}
-            title={viewMode === 'edit' ? 'Switch to preview' : 'Switch to edit'}
-          >
-            {viewMode === 'edit' ? <Eye className="h-3.5 w-3.5" /> : <Edit2 className="h-3.5 w-3.5" />}
-            <span className="text-xs hidden sm:inline">{viewMode === 'edit' ? 'Preview' : 'Edit'}</span>
-          </Button>
 
-          {/* Mobile-only comments button */}
-          <Button variant="ghost" size="icon" className="h-8 w-8 lg:hidden relative" onClick={() => setShowMobileComments(true)} title="Comments">
+          {/* Mobile-only panel button */}
+          <Button variant="ghost" size="icon" className="h-8 w-8 lg:hidden relative" onClick={() => { setSidebarTab('comments'); setShowMobileComments(true) }} title="Comments">
             <MessageSquare className="h-4 w-4" />
             {comments.length > 0 && (
               <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-[9px] text-primary-foreground flex items-center justify-center font-bold">
                 {comments.length > 9 ? '9+' : comments.length}
+              </span>
+            )}
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 lg:hidden relative" onClick={() => { setSidebarTab('tasks'); setShowMobileComments(true) }} title="Linked tasks">
+            <Link2 className="h-4 w-4" />
+            {linkedTasks.length > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-[9px] text-primary-foreground flex items-center justify-center font-bold">
+                {linkedTasks.length > 9 ? '9+' : linkedTasks.length}
               </span>
             )}
           </Button>
@@ -518,44 +578,91 @@ export function NoteDetail({ teamId }: { teamId: string }) {
 
           {/* Editor or Preview */}
           <div className="flex-1 overflow-hidden">
-            {viewMode === 'edit' ? (
-              <div className="h-full flex flex-col overflow-hidden">
-                <RichTextEditor content={content} onChange={setContent} />
-              </div>
-            ) : (
-              <div className="h-full overflow-auto bg-muted/5 p-4 sm:p-8 prose prose-sm dark:prose-invert max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-              </div>
-            )}
+            <div className="h-full flex flex-col overflow-hidden">
+              <RichTextEditor content={content} onChange={setContent} />
+            </div>
           </div>
         </div>
 
-        {/* Comments Sidebar — desktop only */}
+        {/* Sidebar — desktop only */}
         <div className="w-80 border-l bg-muted/5 flex-col shrink-0 hidden lg:flex">
-          <div className="p-3 border-b font-medium text-sm flex items-center gap-2 shrink-0">
-            <MessageSquare className="h-4 w-4" />
-            Comments
-            {comments.length > 0 && (
-              <Badge variant="secondary" className="h-4 px-1.5 text-[10px] ml-auto">{comments.length}</Badge>
-            )}
-          </div>
-          {commentsPanelJsx}
-        </div>
-      </div>
-
-      {/* Mobile comments dialog */}
-      <Dialog open={showMobileComments} onOpenChange={setShowMobileComments}>
-        <DialogContent className="h-[85dvh] flex flex-col p-0 gap-0 sm:max-w-md">
-          <DialogHeader className="p-4 pb-3 border-b shrink-0">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <MessageSquare className="h-4 w-4" /> Comments
+          {/* Tab header */}
+          <div className="flex border-b shrink-0">
+            <button
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors',
+                sidebarTab === 'comments'
+                  ? 'border-b-2 border-primary text-primary'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              onClick={() => setSidebarTab('comments')}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Comments
               {comments.length > 0 && (
                 <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{comments.length}</Badge>
               )}
-            </DialogTitle>
+            </button>
+            <button
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors',
+                sidebarTab === 'tasks'
+                  ? 'border-b-2 border-primary text-primary'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              onClick={() => setSidebarTab('tasks')}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              Tasks
+              {linkedTasks.length > 0 && (
+                <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{linkedTasks.length}</Badge>
+              )}
+            </button>
+          </div>
+          {sidebarTab === 'comments' ? commentsPanelJsx : linkedTasksPanelJsx}
+        </div>
+      </div>
+
+      {/* Mobile sidebar dialog */}
+      <Dialog open={showMobileComments} onOpenChange={setShowMobileComments}>
+        <DialogContent className="h-[85dvh] flex flex-col p-0 gap-0 sm:max-w-md">
+          <DialogHeader className="p-0 shrink-0">
+            <DialogTitle className="sr-only">Note panel</DialogTitle>
+            <div className="flex border-b">
+              <button
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors',
+                  sidebarTab === 'comments'
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+                onClick={() => setSidebarTab('comments')}
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                Comments
+                {comments.length > 0 && (
+                  <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{comments.length}</Badge>
+                )}
+              </button>
+              <button
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors',
+                  sidebarTab === 'tasks'
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+                onClick={() => setSidebarTab('tasks')}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Tasks
+                {linkedTasks.length > 0 && (
+                  <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{linkedTasks.length}</Badge>
+                )}
+              </button>
+            </div>
           </DialogHeader>
           <div className="flex flex-col flex-1 min-h-0">
-            {commentsPanelJsx}
+            {sidebarTab === 'comments' ? commentsPanelJsx : linkedTasksPanelJsx}
           </div>
         </DialogContent>
       </Dialog>
@@ -565,6 +672,7 @@ export function NoteDetail({ teamId }: { teamId: string }) {
         teamId={teamId}
         isOpen={showInboxDialog}
         onOpenChange={setShowInboxDialog}
+        onSuccess={() => { loadLinkedTasks(); setSidebarTab('tasks') }}
       />
     </div>
   )

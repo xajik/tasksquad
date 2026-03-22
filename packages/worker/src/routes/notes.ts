@@ -215,6 +215,34 @@ export async function deleteComment(req: Request, env: Env, _ctx: unknown, auth:
   return new Response(null, { status: 204 })
 }
 
+// ─── Tasks linked to a note ───────────────────────────────────────────────────
+
+export async function listLinkedTasks(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const parts = url.pathname.split('/')
+  const teamId = parts[2]
+  const noteId = parts[4]
+
+  if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
+
+  const tasks = await env.DB
+    .prepare(`
+      SELECT DISTINCT t.id, t.subject, t.status, t.created_at, t.agent_id, a.name as agent_name
+      FROM tasks t
+      JOIN messages m ON m.task_id = t.id
+      LEFT JOIN agents a ON a.id = t.agent_id
+      WHERE t.team_id = ?
+        AND m.type = 'note-to-inbox'
+        AND m.role = 'system'
+        AND json_extract(m.json_payload, '$.note_id') = ?
+      ORDER BY t.created_at DESC
+    `)
+    .bind(teamId, noteId)
+    .all()
+
+  return json({ tasks: tasks.results })
+}
+
 // ─── Convert to Inbox ─────────────────────────────────────────────────────────
 
 export async function convertToInbox(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

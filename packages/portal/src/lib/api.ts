@@ -154,6 +154,8 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    listLinkedTasks: (teamId: string, noteId: string) =>
+      request<{ tasks: LinkedTask[] }>(`/teams/${teamId}/notes/${noteId}/tasks`),
   },
 }
 
@@ -247,6 +249,15 @@ export interface Note {
   created_at: number
   updated_at: number
   tags: string[]
+}
+
+export interface LinkedTask {
+  id: string
+  subject: string
+  status: string
+  created_at: number
+  agent_id: string
+  agent_name: string | null
 }
 
 export interface NoteComment {

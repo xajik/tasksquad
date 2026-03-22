@@ -1102,6 +1102,13 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 			fmt.Fprintf(runLog, "\n[EVENT] event=failure status=%s\n# ended=%s\n", status, time.Now().Format(time.RFC3339))
 		}
 	}
+	// For tmux path: write the full scrollback to the local run log so the
+	// Control Panel log viewer shows real output instead of an empty file.
+	// The FIFO-streamed lines are stripped to nothing by cleanLine on Claude
+	// Code's TUI redraws, so tmuxCapture is the only source of visible output.
+	if runLog != nil && tmuxCapture != "" {
+		fmt.Fprintf(runLog, "\n# --- terminal scrollback ---\n%s\n", tmuxCapture)
+	}
 	if runLog != nil {
 		runLog.Close()
 	}
