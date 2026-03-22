@@ -104,6 +104,7 @@ export const api = {
       day_of_month?: number;
       repeat_count?: number;
       end_date?: number;
+      timezone?: string;
     }) =>
       request<{ id: string; next_run_at: number }>(`/teams/${teamId}/conveyors`, {
         method: 'POST',
@@ -132,7 +133,14 @@ export const api = {
       }),
   },
   notes: {
-    list: (teamId: string) => request<{ notes: Note[] }>(`/teams/${teamId}/notes`),
+    list: (teamId: string, params?: { archived?: boolean; limit?: number; offset?: number }) => {
+      const qs = new URLSearchParams()
+      if (params?.archived) qs.set('archived', 'true')
+      if (params?.limit != null) qs.set('limit', String(params.limit))
+      if (params?.offset != null) qs.set('offset', String(params.offset))
+      const q = qs.toString()
+      return request<{ notes: Note[]; total: number; has_more: boolean }>(`/teams/${teamId}/notes${q ? '?' + q : ''}`)
+    },
     create: (teamId: string, body: { title: string; content: string; tags?: string[] }) =>
       request<Note>(`/teams/${teamId}/notes`, { method: 'POST', body: JSON.stringify(body) }),
     get: (teamId: string, noteId: string) => request<Note>(`/teams/${teamId}/notes/${noteId}`),
@@ -140,6 +148,10 @@ export const api = {
       request<{ ok: boolean }>(`/teams/${teamId}/notes/${noteId}`, { method: 'PUT', body: JSON.stringify(body) }),
     delete: (teamId: string, noteId: string) =>
       del(`/teams/${teamId}/notes/${noteId}`),
+    archive: (teamId: string, noteId: string) =>
+      request<{ ok: boolean }>(`/teams/${teamId}/notes/${noteId}/archive`, { method: 'POST' }),
+    unarchive: (teamId: string, noteId: string) =>
+      request<{ ok: boolean }>(`/teams/${teamId}/notes/${noteId}/archive`, { method: 'DELETE' }),
     listComments: (teamId: string, noteId: string) =>
       request<{ comments: NoteComment[] }>(`/teams/${teamId}/notes/${noteId}/comments`),
     createComment: (teamId: string, noteId: string, content: string) =>
@@ -248,6 +260,7 @@ export interface Note {
   content: string
   created_at: number
   updated_at: number
+  archived_at: number | null
   tags: string[]
 }
 

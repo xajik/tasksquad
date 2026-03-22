@@ -19,27 +19,38 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
 
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
+  const archived = url.searchParams.get('archived') === 'true'
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '20'), 100)
+  const offset = Math.max(parseInt(url.searchParams.get('offset') || '0'), 0)
+  const whereArchived = archived ? 'n.archived_at IS NOT NULL' : 'n.archived_at IS NULL'
+
+  const countRow = await env.DB
+    .prepare(`SELECT COUNT(*) as total FROM notes n WHERE n.team_id = ? AND ${whereArchived}`)
+    .bind(teamId)
+    .first<{ total: number }>()
+  const total = countRow?.total ?? 0
+
   const notes = await env.DB
     .prepare(`
-      SELECT n.id, n.team_id, n.author_id, n.title, n.content, n.created_at, n.updated_at,
+      SELECT n.id, n.team_id, n.author_id, n.title, n.content, n.created_at, n.updated_at, n.archived_at,
              json_group_array(t.name) FILTER (WHERE t.name IS NOT NULL) as tags
       FROM notes n
       LEFT JOIN note_tags nt ON n.id = nt.note_id
       LEFT JOIN tags t ON nt.tag_id = t.id
-      WHERE n.team_id = ?
+      WHERE n.team_id = ? AND ${whereArchived}
       GROUP BY n.id
       ORDER BY n.updated_at DESC
+      LIMIT ? OFFSET ?
     `)
-    .bind(teamId)
+    .bind(teamId, limit, offset)
     .all()
 
-  // Parse JSON tags
   const results = notes.results.map((n: any) => ({
     ...n,
-    tags: JSON.parse(n.tags || '[]')
+    tags: JSON.parse(n.tags || '[]'),
   }))
 
-  return json({ notes: results })
+  return json({ notes: results, total, has_more: offset + results.length < total })
 }
 
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
@@ -158,6 +169,40 @@ export async function remove(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   await env.DB.prepare('DELETE FROM notes WHERE id = ? AND team_id = ?').bind(noteId, teamId).run()
   return new Response(null, { status: 204 })
+}
+
+export async function archive(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const parts = url.pathname.split('/')
+  const teamId = parts[2]
+  const noteId = parts[4]
+
+  if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
+
+  const result = await env.DB
+    .prepare('UPDATE notes SET archived_at = ? WHERE id = ? AND team_id = ? AND archived_at IS NULL')
+    .bind(Date.now(), noteId, teamId)
+    .run()
+
+  if (!result.meta?.changes) return err('not_found', 404)
+  return json({ ok: true })
+}
+
+export async function unarchive(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const parts = url.pathname.split('/')
+  const teamId = parts[2]
+  const noteId = parts[4]
+
+  if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
+
+  const result = await env.DB
+    .prepare('UPDATE notes SET archived_at = NULL WHERE id = ? AND team_id = ? AND archived_at IS NOT NULL')
+    .bind(noteId, teamId)
+    .run()
+
+  if (!result.meta?.changes) return err('not_found', 404)
+  return json({ ok: true })
 }
 
 // ─── Comments ─────────────────────────────────────────────────────────────────

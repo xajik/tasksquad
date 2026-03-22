@@ -100,6 +100,7 @@ export function Conveyors({ teamId }: { teamId: string }) {
         day_of_month: frequency === 'monthly' ? parseInt(dayOfMonth) : undefined,
         repeat_count: repeatCount ? parseInt(repeatCount) : undefined,
         end_date: endDate ? endDate.getTime() : undefined,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       })
       trackEvent('conveyor_created', { agent_id: agentId, team_id: teamId, frequency })
       setShowCompose(false)

@@ -178,22 +178,16 @@ async function processAgentHeartbeat(
 async function processConveyors(env: Env, teamIds: string[], now: number) {
   const ONE_HOUR = 3600_000
 
-  // Find teams that haven't been checked in the last hour
-  const { results: teams } = await env.DB
-    .prepare(`
-      SELECT id, last_conveyor_run 
-      FROM teams 
-      WHERE id IN (${teamIds.map(() => '?').join(',')})
-        AND (last_conveyor_run IS NULL OR ? - last_conveyor_run >= ?)
-    `)
-    .bind(...teamIds, now, ONE_HOUR)
-    .all<{ id: string; last_conveyor_run: number | null }>()
+  // Fast-path: check KV to skip teams processed in the last hour (avoids a D1 read per heartbeat)
+  const kvValues = await Promise.all(teamIds.map(id => env.POLL_CACHE.get(`cv:lr:${id}`)))
+  const dueTeams = teamIds.filter((_, i) => {
+    const v = kvValues[i]
+    return v === null || now - parseInt(v) >= ONE_HOUR
+  })
+  if (!dueTeams.length) return
 
-  if (!teams.length) return
-
-  for (const team of teams) {
-    // Find due conveyors for this team
-    // "any pending tasks in next 1 hour?" — also respects repeat_count and end_date
+  for (const teamId of dueTeams) {
+    // Find conveyors due within the next hour
     const { results: dueConveyors } = await env.DB
       .prepare(`
         SELECT * FROM conveyors
@@ -202,11 +196,10 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
           AND (repeat_count IS NULL OR repeat_counter < repeat_count)
           AND (end_date IS NULL OR next_run_at <= end_date)
       `)
-      .bind(team.id, now + ONE_HOUR)
+      .bind(teamId, now + ONE_HOUR)
       .all<ConveyorRow>()
 
     for (const conveyor of dueConveyors) {
-      // Create scheduled message in Inbox
       const taskId = ulid()
       const msgId = ulid()
 
@@ -216,21 +209,25 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
         conveyor.day_of_week,
         conveyor.day_of_month,
         conveyor.hour,
-        conveyor.minute ?? 0
+        conveyor.minute ?? 0,
+        conveyor.timezone ?? 'UTC'
       )
 
       await env.DB.batch([
         env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .bind(taskId, team.id, conveyor.agent_id, conveyor.sender_id, conveyor.subject, 'scheduled', now),
+          .bind(taskId, teamId, conveyor.agent_id, conveyor.sender_id, conveyor.subject, 'scheduled', now),
         env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
           .bind(msgId, taskId, conveyor.sender_id, 'user', conveyor.body, now, conveyor.next_run_at),
         env.DB.prepare('UPDATE conveyors SET repeat_counter = repeat_counter + 1, next_run_at = ? WHERE id = ?')
-          .bind(nextRun, conveyor.id)
+          .bind(nextRun, conveyor.id),
       ])
     }
 
-    // Update last_conveyor_run
-    await env.DB.prepare('UPDATE teams SET last_conveyor_run = ? WHERE id = ?').bind(now, team.id).run()
+    // Persist last-run timestamp: KV for fast heartbeat skipping, D1 for durability
+    await Promise.all([
+      env.POLL_CACHE.put(`cv:lr:${teamId}`, String(now), { expirationTtl: 7200 }),
+      env.DB.prepare('UPDATE teams SET last_conveyor_run = ? WHERE id = ?').bind(now, teamId).run(),
+    ])
   }
 }
 

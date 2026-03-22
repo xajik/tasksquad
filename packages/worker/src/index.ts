@@ -92,6 +92,8 @@ router.post  ('/teams/:teamId/notes/:noteId/comments',             firebaseRoute
 router.delete('/teams/:teamId/notes/:noteId/comments/:commentId',  firebaseRoute(notes.deleteComment))
 router.post  ('/teams/:teamId/notes/:noteId/convert',              firebaseRoute(notes.convertToInbox))
 router.get   ('/teams/:teamId/notes/:noteId/tasks',                firebaseRoute(notes.listLinkedTasks))
+router.post  ('/teams/:teamId/notes/:noteId/archive',              firebaseRoute(notes.archive))
+router.delete('/teams/:teamId/notes/:noteId/archive',              firebaseRoute(notes.unarchive))
 
 router.get ('/tasks',                    firebaseRoute(tasks.list))
 router.post('/tasks',                    firebaseRoute(tasks.create))

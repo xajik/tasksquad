@@ -22,6 +22,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -35,7 +46,7 @@ import {
   MessageSquare, Loader2, X,
   Bold, Italic, Strikethrough, Code, Code2, List, ListOrdered,
   ListTodo, Quote, Minus, Undo, Redo, Heading1, Heading2, Heading3,
-  Link2, CheckCircle2, Clock, XCircle, CircleDot,
+  Link2, CheckCircle2, Clock, XCircle, CircleDot, Archive, ArchiveRestore,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -376,10 +387,20 @@ export function NoteDetail({ teamId }: { teamId: string }) {
   }
 
   const deleteNote = async () => {
-    if (confirm('Are you sure you want to delete this note?')) {
-      await api.notes.delete(teamId, noteId!)
-      nav('/dashboard/notes')
-    }
+    await api.notes.delete(teamId, noteId!)
+    nav('/dashboard/notes')
+  }
+
+  const archiveNote = async () => {
+    await api.notes.archive(teamId, noteId!)
+    trackEvent('note_archived', { team_id: teamId })
+    nav('/dashboard/notes')
+  }
+
+  const unarchiveNote = async () => {
+    await api.notes.unarchive(teamId, noteId!)
+    trackEvent('note_unarchived', { team_id: teamId })
+    setNote(prev => prev ? { ...prev, archived_at: null } : null)
   }
 
   const deleteComment = async (commentId: string) => {
@@ -520,7 +541,13 @@ export function NoteDetail({ teamId }: { teamId: string }) {
             onChange={e => setTitle(e.target.value)}
             className="text-lg font-bold border-none shadow-none focus-visible:ring-0 px-0 h-auto py-1"
             placeholder="Untitled Note"
+            readOnly={!!note?.archived_at}
           />
+          {note?.archived_at && (
+            <Badge variant="secondary" className="shrink-0 bg-amber-500/10 text-amber-600 border-amber-500/20 text-[10px]">
+              Archived
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <span className="text-xs text-muted-foreground mr-2 hidden sm:inline">
@@ -545,13 +572,64 @@ export function NoteDetail({ teamId }: { teamId: string }) {
             )}
           </Button>
 
-          <Button variant="outline" size="sm" onClick={() => setShowInboxDialog(true)}>
-            <Send className="h-3.5 w-3.5 mr-1.5" />
-            To Inbox
-          </Button>
-          <Button variant="ghost" size="icon" onClick={deleteNote} className="text-destructive hover:bg-destructive/10">
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {!note?.archived_at && (
+            <Button variant="outline" size="sm" onClick={() => setShowInboxDialog(true)}>
+              <Send className="h-3.5 w-3.5 mr-1.5" />
+              To Inbox
+            </Button>
+          )}
+
+          {/* Archive / Unarchive */}
+          {note?.archived_at ? (
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:bg-amber-500/10" title="Unarchive note" onClick={unarchiveNote}>
+              <ArchiveRestore className="h-4 w-4" />
+            </Button>
+          ) : (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:bg-muted" title="Archive note">
+                  <Archive className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Archive Note</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This note will be archived. You can restore it at any time from the Archived filter.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={archiveNote}>Archive</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Note</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete "{title}"? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={deleteNote}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
