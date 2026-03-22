@@ -67,18 +67,15 @@ export function Conveyors({ teamId }: { teamId: string }) {
 
   const load = useCallback(async () => {
     setIsLoading(true)
-    try {
-      const [cd, ad] = await Promise.all([
-        api.conveyors.list(teamId),
-        api.agents.list(teamId)
-      ])
-      setConveyors(cd.conveyors ?? [])
-      setAgents(ad.agents ?? [])
-    } catch (e) {
-      console.error('Failed to load conveyors:', e)
-    } finally {
-      setIsLoading(false)
-    }
+    const [cd, ad] = await Promise.allSettled([
+      api.conveyors.list(teamId),
+      api.agents.list(teamId)
+    ])
+    if (cd.status === 'fulfilled') setConveyors(cd.value.conveyors ?? [])
+    else console.error('Failed to load conveyors:', cd.reason)
+    if (ad.status === 'fulfilled') setAgents(ad.value.agents ?? [])
+    else console.error('Failed to load agents:', ad.reason)
+    setIsLoading(false)
   }, [teamId])
 
   useEffect(() => { load() }, [load])
