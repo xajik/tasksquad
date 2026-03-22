@@ -196,7 +196,7 @@ export async function forwardTask(req: Request, env: Env, _ctx: unknown, auth: A
   const url = new URL(req.url)
   const taskId = url.pathname.split('/')[2]
 
-  const body = await req.json<{ agent_id?: string }>().catch(() => ({} as { agent_id?: string }))
+  const body = await req.json<{ agent_id?: string; instructions?: string }>().catch(() => ({} as { agent_id?: string; instructions?: string }))
   if (!body.agent_id) return err('agent_id_required', 400)
 
   const task = await env.DB
@@ -227,6 +227,11 @@ export async function forwardTask(req: Request, env: Env, _ctx: unknown, auth: A
     return `[${label}]: ${m.body}`
   }).join('\n\n---\n\n')
 
+  let messageBody = `[Forwarded thread]\n\n${history}`
+  if (body.instructions?.trim()) {
+    messageBody = `${body.instructions.trim()}\n\n---\n\n${messageBody}`
+  }
+
   const newId = ulid()
   const now = Date.now()
 
@@ -236,7 +241,7 @@ export async function forwardTask(req: Request, env: Env, _ctx: unknown, auth: A
     ).bind(newId, task.team_id, body.agent_id, auth.userId, task.subject, 'pending', now, taskId),
     env.DB.prepare(
       'INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?,?,?,?,?,?)'
-    ).bind(ulid(), newId, auth.userId, 'user', `[Forwarded thread]\n\n${history}`, now),
+    ).bind(ulid(), newId, auth.userId, 'user', messageBody, now),
   ])
 
   await bumpInboxVersion(env, body.agent_id)

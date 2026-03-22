@@ -955,6 +955,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
   const [showLog, setShowLog] = useState(false)
   const [showForward, setShowForward] = useState(false)
   const [forwardAgentId, setForwardAgentId] = useState('')
+  const [forwardInstructions, setForwardInstructions] = useState('')
   const [forwarding, setForwarding] = useState(false)
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined)
@@ -1051,9 +1052,10 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
     if (!taskId || !forwardAgentId) return
     setForwarding(true)
     try {
-      const { task_id } = await api.tasks.forward(taskId, forwardAgentId)
+      const { task_id } = await api.tasks.forward(taskId, forwardAgentId, forwardInstructions)
       trackEvent('task_forwarded', { from_task_id: taskId, to_agent_id: forwardAgentId, new_task_id: task_id });
       setShowForward(false)
+      setForwardInstructions('')
       nav(`/dashboard/tasks/${task_id}`)
     } finally { setForwarding(false) }
   }
@@ -1241,6 +1243,15 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Instructions (Optional)</Label>
+                    <Textarea
+                      placeholder="e.g. Summarize the previous thread, or Focus on the last message..."
+                      value={forwardInstructions}
+                      onChange={e => setForwardInstructions(e.target.value)}
+                      rows={3}
+                    />
                   </div>
                 </div>
                 <DialogFooter>

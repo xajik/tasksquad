@@ -85,10 +85,10 @@ export const api = {
     delete: (taskId: string) =>
       request<{ ok: boolean }>(`/tasks/${taskId}`, { method: 'DELETE' }),
     logs: (taskId: string) => request<{ logs: TaskLog[] }>(`/tasks/${taskId}/logs`),
-    forward: (taskId: string, agentId: string) =>
+    forward: (taskId: string, agentId: string, instructions?: string) =>
       request<{ task_id: string }>(`/tasks/${taskId}/forward`, {
         method: 'POST',
-        body: JSON.stringify({ agent_id: agentId }),
+        body: JSON.stringify({ agent_id: agentId, instructions }),
       }),
   },
   conveyors: {
