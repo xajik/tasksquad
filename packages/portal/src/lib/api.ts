@@ -110,6 +110,23 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    update: (teamId: string, conveyorId: string, body: {
+      agent_id?: string;
+      subject?: string;
+      body?: string;
+      frequency?: string;
+      hour?: number;
+      minute?: number;
+      day_of_week?: number | null;
+      day_of_month?: number | null;
+      repeat_count?: number | null;
+      end_date?: number | null;
+      timezone?: string;
+    }) =>
+      request<{ id: string; next_run_at: number }>(`/teams/${teamId}/conveyors/${conveyorId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
     delete: (teamId: string, conveyorId: string) =>
       del(`/teams/${teamId}/conveyors/${conveyorId}`),
   },
@@ -238,7 +255,7 @@ export interface Message {
   id: string
   task_id: string
   sender_id: string | null
-  role: 'user' | 'agent' | 'system'
+  role: 'user' | 'agent' | 'system' | 'supervisor'
   /** Intermediate agent message types. null/undefined = final agent response. */
   type: 'thinking' | 'tool_call' | 'tool_result' | 'output' | 'permission_request' | 'note-to-inbox' | null
   body: string

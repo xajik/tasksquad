@@ -738,6 +738,39 @@ export async function permissionRequest(req: Request, env: Env, _ctx: unknown, d
 }
 
 /**
+ * POST /daemon/supervisor/report
+ *
+ * Called by the local supervisor after its CLI session completes.
+ * Inserts a message with role='supervisor' into the task thread so the
+ * portal can display the supervisor's findings inline.
+ */
+export async function supervisorReport(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const body = await req.json<{ task_id?: string; body?: string }>().catch(() => ({} as { task_id?: string; body?: string }))
+  const { task_id, body: msgBody } = body
+  const agentId = daemon.agentId
+
+  if (!task_id || !msgBody?.trim()) return err('missing_fields', 400)
+
+  // Verify the task belongs to this agent so a rogue daemon can't inject
+  // supervisor messages into arbitrary tasks.
+  const task = await env.DB
+    .prepare('SELECT id FROM tasks WHERE id = ? AND agent_id = ?')
+    .bind(task_id, agentId)
+    .first<{ id: string }>()
+  if (!task) return err('not_found', 404)
+
+  const msgId = ulid()
+  const now = Date.now()
+
+  await env.DB
+    .prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(msgId, task_id, null, 'supervisor', msgBody.trim(), now)
+    .run()
+
+  return json({ ok: true, message_id: msgId }, 201)
+}
+
+/**
  * GET /daemon/user/agents
  *
  * Returns all teams and their agents for the authenticated user.

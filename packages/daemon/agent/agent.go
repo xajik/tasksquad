@@ -141,6 +141,7 @@ type Agent struct {
 	transcriptPath string         // Claude Code conversation transcript (from Stop hook payload)
 	lastPrompt     string         // the initial prompt or latest user reply sent to the process
 	lastPollAt     time.Time      // time of the last successful heartbeat
+	lastActivityAt time.Time      // time of the last meaningful task event (start, hook fired)
 	lastLogPath    string         // path to the current per-task run log file
 }
 
@@ -222,6 +223,14 @@ func (a *Agent) LastLogPath() string {
 	return a.lastLogPath
 }
 
+// GetLastActivityAt returns the time of the last meaningful task event.
+// Used by the supervisor to detect inactivity.
+func (a *Agent) GetLastActivityAt() time.Time {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastActivityAt
+}
+
 // TmuxSession implements ui.AgentStatus — returns the active tmux session name.
 func (a *Agent) TmuxSession() string {
 	a.mu.Lock()
@@ -289,9 +298,7 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 				// tmux path: deliver reply via send-keys
 				// Small delay to ensure tmux session is ready to receive input.
 				time.Sleep(1 * time.Second)
-				exec.Command(tmuxBin, "send-keys", "-t", sess, reply).Run() //nolint:errcheck
-				time.Sleep(1 * time.Second)
-				exec.Command(tmuxBin, "send-keys", "-t", sess, "C-m").Run() //nolint:errcheck
+				exec.Command(tmuxBin, "send-keys", "-t", sess, reply, "Enter").Run() //nolint:errcheck
 				a.mu.Lock()
 				a.mode = ModeRunning
 				a.lastPrompt = reply
@@ -378,6 +385,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.taskID = taskID
 	a.outputLines = nil
 	a.completing = false
+	a.lastActivityAt = time.Now()
 	a.mu.Unlock()
 
 	logger.Lifecycle(fmt.Sprintf("[%s] event=started task_id=%s subject=%q", a.Config.Name, taskID, subject))
@@ -502,9 +510,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 				// Deliver the initial prompt.
 				// Gemini requires extra time to initialize its internal state.
 				time.Sleep(15 * time.Second)
-				exec.Command(tmuxBin, "send-keys", "-t", sessionName, stdinData).Run() //nolint:errcheck
-				time.Sleep(1 * time.Second)
-				exec.Command(tmuxBin, "send-keys", "-t", sessionName, "C-m").Run() //nolint:errcheck
+				exec.Command(tmuxBin, "send-keys", "-t", sessionName, stdinData, "Enter").Run() //nolint:errcheck
 
 				a.mu.Lock()
 				a.tmuxSession = sessionName
@@ -1404,6 +1410,10 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 		logger.Debug(fmt.Sprintf("[%s] SetWaitingInput ignored: mode=%s completing=%v", a.Config.Name, mode, completing))
 		return
 	}
+	// Hook fired — agent is active; reset inactivity timer.
+	a.mu.Lock()
+	a.lastActivityAt = time.Now()
+	a.mu.Unlock()
 
 	// Wait briefly for any PTY output still buffered in the kernel to be read
 	// and appended to outputLines by the streamOutput goroutine.

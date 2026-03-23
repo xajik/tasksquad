@@ -816,6 +816,7 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
   const isUser = message.role === 'user'
   const isAgent = message.role === 'agent'
   const isSystem = message.role === 'system'
+  const isSupervisor = message.role === 'supervisor'
   const isScheduled = isUser && message.scheduled_at != null && message.scheduled_at > Date.now()
   const [copied, setCopied] = useState(false)
 
@@ -831,6 +832,26 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
       <div className="flex justify-center my-3">
         <div className="bg-muted/50 text-muted-foreground text-[10px] uppercase tracking-wider font-semibold px-3 py-1 rounded-full border border-border/50">
           {message.body}
+        </div>
+      </div>
+    )
+  }
+
+  if (isSupervisor) {
+    const time = new Date(message.created_at).toLocaleString([], {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    })
+    return (
+      <div className="flex justify-center my-3 px-4">
+        <div className="w-full max-w-2xl rounded-lg border border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20 overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-amber-200/60 dark:border-amber-900/40">
+            <ShieldAlert className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 flex-1">Supervisor</span>
+            <span className="text-[10px] text-amber-600/70 dark:text-amber-500/70">{time}</span>
+          </div>
+          <pre className="px-3 py-2 text-xs text-amber-900 dark:text-amber-200 whitespace-pre-wrap break-words font-mono leading-relaxed">
+            {message.body}
+          </pre>
         </div>
       </div>
     )

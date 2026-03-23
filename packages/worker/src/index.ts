@@ -80,6 +80,7 @@ router.delete('/teams/:teamId/agents/:agentId', firebaseRoute(agents.deleteAgent
 
 router.get ('/teams/:teamId/conveyors',                 firebaseRoute(conveyors.list))
 router.post('/teams/:teamId/conveyors',                 firebaseRoute(conveyors.create))
+router.put   ('/teams/:teamId/conveyors/:conveyorId',   firebaseRoute(conveyors.update))
 router.delete('/teams/:teamId/conveyors/:conveyorId',   firebaseRoute(conveyors.remove))
 
 router.get ('/teams/:teamId/notes',                    firebaseRoute(notes.list))
@@ -125,6 +126,7 @@ router.post('/daemon/r2/presign',        daemonRoute(daemon.presignUpload))
 router.post('/daemon/messages/:msgId/attach', daemonRoute(daemon.messageAttach))
 router.post('/daemon/sessions/:sessionId/attach', daemonRoute(daemon.sessionAttach))
 router.post('/daemon/permission/request',         daemonRoute(daemon.permissionRequest))
+router.post('/daemon/supervisor/report',          daemonRoute(daemon.supervisorReport))
 
 router.all('*', () => err('not_found', 404))
 
