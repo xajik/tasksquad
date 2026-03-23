@@ -213,11 +213,13 @@ header {
   font-weight: 500;
   line-height: 1.6;
 }
-.badge-running  { background: #dcfce7; color: #166534; }
-.badge-waiting  { background: #fef3c7; color: #92400e; }
-.badge-idle     { background: var(--secondary); color: var(--muted-fg); }
-.badge-orphan   { background: #fee2e2; color: #991b1b; }
-.badge-linked   { background: #dbeafe; color: #1e40af; }
+.badge-running    { background: #dcfce7; color: #166534; }
+.badge-waiting    { background: #fef3c7; color: #92400e; }
+.badge-idle       { background: var(--secondary); color: var(--muted-fg); }
+.badge-orphan     { background: #fee2e2; color: #991b1b; }
+.badge-linked     { background: #dbeafe; color: #1e40af; }
+.badge-supervisor { background: #ede9fe; color: #5b21b6; }
+.dot-supervisor   { background: #7c3aed; }
 
 /* ── Empty state ────────────────────────────────────────────────────────────── */
 .empty {
@@ -486,13 +488,30 @@ function renderSessions(sessions) {
   const el = document.getElementById('sessions-list');
   if (!sessions.length) { el.innerHTML = '<div class="empty">No active sessions</div>'; return; }
   el.innerHTML = sessions.map(s => {
-    const dotCls = s.orphan ? 'dot-orphan' : 'dot-running';
-    const badgeCls = s.orphan ? 'badge-orphan' : 'badge-linked';
-    const badgeTxt = s.orphan ? 'orphan' : 'linked';
-    const sub = s.orphan ? 'no linked agent' : 'agent: ' + x(s.agent_name);
-    const logBtn = s.task_id
-      ? '<button class="btn btn-secondary btn-sm" onclick="showSessionLog(event,' + x(JSON.stringify(s)) + ')">Logs</button>'
-      : '';
+    let dotCls, badgeCls, badgeTxt, sub, logBtn;
+    if (s.is_supervisor) {
+      dotCls  = 'dot-supervisor';
+      badgeCls = 'badge-supervisor';
+      badgeTxt = 'supervisor';
+      sub = s.agent_name ? 'watching: ' + x(s.agent_name) : 'no linked agent';
+      logBtn = s.task_id
+        ? '<button class="btn btn-secondary btn-sm" onclick="showSupervisorLog(event,' + q(s.task_id) + ',' + q(s.agent_name||'') + ')">Logs</button>'
+        : '';
+    } else if (s.orphan) {
+      dotCls  = 'dot-orphan';
+      badgeCls = 'badge-orphan';
+      badgeTxt = 'orphan';
+      sub = 'no linked agent';
+      logBtn = '';
+    } else {
+      dotCls  = 'dot-running';
+      badgeCls = 'badge-linked';
+      badgeTxt = 'linked';
+      sub = 'agent: ' + x(s.agent_name);
+      logBtn = s.task_id
+        ? '<button class="btn btn-secondary btn-sm" onclick="showSessionLog(event,' + x(JSON.stringify(s)) + ')">Logs</button>'
+        : '';
+    }
     const killBtn = '<button class="btn btn-destructive btn-sm" onclick="killSession(event,' + q(s.name) + ')">Kill</button>';
     return row(
       '<div class="status-dot ' + dotCls + '"></div>',
@@ -524,6 +543,14 @@ async function showSessionLog(e, session) {
     return;
   }
   await showAgentLog(e, session.agent_name, session.task_id);
+}
+
+async function showSupervisorLog(e, taskId, agentName) {
+  e.stopPropagation();
+  if (!taskId) return;
+  const label = 'supervisor · ' + (agentName || taskId.slice(0, 14) + '…');
+  const url = '/api/logs/supervisor?task=' + encodeURIComponent(taskId);
+  openLog(label, url, true);
 }
 
 async function killSession(e, name) {
@@ -634,10 +661,11 @@ type dashAgent struct {
 }
 
 type dashSession struct {
-	Name      string `json:"name"`
-	AgentName string `json:"agent_name"`
-	TaskID    string `json:"task_id"`
-	Orphan    bool   `json:"orphan"`
+	Name         string `json:"name"`
+	AgentName    string `json:"agent_name"`
+	TaskID       string `json:"task_id"`
+	Orphan       bool   `json:"orphan"`
+	IsSupervisor bool   `json:"is_supervisor"`
 }
 
 // StartDashboard starts a local HTTP control panel server and returns the URL.
@@ -694,6 +722,20 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 				if !strings.HasPrefix(line, "tsq-") || line == "" {
 					continue
 				}
+				// Supervisor sessions: tsq-sup-<taskID[:8]>
+				if strings.HasPrefix(line, "tsq-sup-") {
+					taskSuffix := strings.TrimPrefix(line, "tsq-sup-")
+					lnk, ok := byPrefix[taskSuffix]
+					sessions = append(sessions, dashSession{
+						Name:         line,
+						AgentName:    lnk.agent,
+						TaskID:       lnk.task,
+						IsSupervisor: true,
+						Orphan:       !ok,
+					})
+					continue
+				}
+				// Regular agent sessions: tsq-<taskID[:8]>
 				suffix := strings.TrimPrefix(line, "tsq-")
 				lnk, ok := byPrefix[suffix]
 				sessions = append(sessions, dashSession{
@@ -772,6 +814,37 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 		lines := strings.Split(string(content), "\n")
 		if len(lines) > 300 {
 			lines = lines[len(lines)-300:]
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write([]byte(strings.Join(lines, "\n"))) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/logs/supervisor", func(w http.ResponseWriter, r *http.Request) {
+		taskID := r.URL.Query().Get("task")
+		if taskID == "" {
+			http.Error(w, "missing task", http.StatusBadRequest)
+			return
+		}
+		home, _ := os.UserHomeDir()
+		path := filepath.Join(home, ".tasksquad", "logs", "supervisor", taskID+".log")
+		content, err := os.ReadFile(path)
+		if err != nil {
+			// Fall back to live tmux capture if log file not yet written.
+			suffix := taskID
+			if len(suffix) > 8 {
+				suffix = suffix[:8]
+			}
+			sessionName := "tsq-sup-" + suffix
+			tmuxOut, tmuxErr := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p", "-S", "-").Output()
+			if tmuxErr != nil {
+				http.Error(w, "supervisor log not found", http.StatusNotFound)
+				return
+			}
+			content = tmuxOut
+		}
+		lines := strings.Split(string(content), "\n")
+		if len(lines) > 500 {
+			lines = lines[len(lines)-500:]
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write([]byte(strings.Join(lines, "\n"))) //nolint:errcheck

@@ -40,7 +40,7 @@ import {
   RefreshCw,
   Plus,
   Trash2,
-  Copy,
+  Pencil,
   Repeat,
   Calendar,
   Bot,
@@ -64,6 +64,21 @@ export function Conveyors({ teamId }: { teamId: string }) {
   const [creating, setCreating] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [agentError, setAgentError] = useState(false)
+
+  // Edit dialog state
+  const [editConveyor, setEditConveyor] = useState<Conveyor | null>(null)
+  const [editSubject, setEditSubject] = useState('')
+  const [editBody, setEditBody] = useState('')
+  const [editAgentId, setEditAgentId] = useState<string | undefined>(undefined)
+  const [editFrequency, setEditFrequency] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+  const [editHour, setEditHour] = useState('9')
+  const [editMinute, setEditMinute] = useState('0')
+  const [editDayOfWeek, setEditDayOfWeek] = useState('1')
+  const [editDayOfMonth, setEditDayOfMonth] = useState('1')
+  const [editRepeatCount, setEditRepeatCount] = useState('')
+  const [editEndDate, setEditEndDate] = useState<Date | undefined>(undefined)
+  const [editAgentError, setEditAgentError] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -135,19 +150,47 @@ export function Conveyors({ teamId }: { teamId: string }) {
     }
   }
 
-  function cloneConveyor(c: Conveyor) {
-    setSubject(c.subject)
-    setTaskBody(c.body)
-    setAgentId(c.agent_id)
-    setFrequency(c.frequency)
-    setHour(c.hour.toString())
-    setMinute((c.minute ?? 0).toString())
-    setDayOfWeek(c.day_of_week?.toString() ?? '1')
-    setDayOfMonth(c.day_of_month?.toString() ?? '1')
-    setRepeatCount(c.repeat_count?.toString() ?? '')
-    setEndDate(c.end_date ? new Date(c.end_date) : undefined)
-    setAgentError(false)
-    setShowCompose(true)
+function openEdit(c: Conveyor) {
+    setEditConveyor(c)
+    setEditSubject(c.subject)
+    setEditBody(c.body)
+    setEditAgentId(c.agent_id)
+    setEditFrequency(c.frequency)
+    setEditHour(c.hour.toString())
+    setEditMinute((c.minute ?? 0).toString())
+    setEditDayOfWeek(c.day_of_week?.toString() ?? '1')
+    setEditDayOfMonth(c.day_of_month?.toString() ?? '1')
+    setEditRepeatCount(c.repeat_count?.toString() ?? '')
+    setEditEndDate(c.end_date ? new Date(c.end_date) : undefined)
+    setEditAgentError(false)
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editConveyor) return
+    if (!editAgentId) { setEditAgentError(true); return }
+    setEditAgentError(false)
+    setSaving(true)
+    try {
+      await api.conveyors.update(teamId, editConveyor.id, {
+        agent_id: editAgentId,
+        subject: editSubject,
+        body: editBody,
+        frequency: editFrequency,
+        hour: parseInt(editHour),
+        minute: parseInt(editMinute),
+        day_of_week: editFrequency === 'weekly' ? parseInt(editDayOfWeek) : null,
+        day_of_month: editFrequency === 'monthly' ? parseInt(editDayOfMonth) : null,
+        repeat_count: editRepeatCount ? parseInt(editRepeatCount) : null,
+        end_date: editEndDate ? editEndDate.getTime() : null,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      })
+      trackEvent('conveyor_updated', { conveyor_id: editConveyor.id, team_id: teamId })
+      setEditConveyor(null)
+      load()
+    } catch (e) {
+      console.error('Failed to update conveyor:', e)
+    } finally { setSaving(false) }
   }
 
   const agentMap = useMemo(() => Object.fromEntries(agents.map(a => [a.id, a])), [agents])
@@ -349,6 +392,159 @@ export function Conveyors({ teamId }: { teamId: string }) {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Dialog */}
+      <Dialog open={!!editConveyor} onOpenChange={(open) => { if (!open) setEditConveyor(null) }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Conveyor</DialogTitle>
+            <DialogDescription>Update the recurring task details.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={saveEdit}>
+            <div className="grid gap-4 py-4">
+
+              {/* Agent */}
+              <div className="grid gap-2">
+                <Label>Agent</Label>
+                <Select value={editAgentId} onValueChange={(v) => { setEditAgentId(v); setEditAgentError(false) }}>
+                  <SelectTrigger className={editAgentError ? 'border-destructive' : ''}>
+                    <SelectValue placeholder="Select agent…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agents.map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {editAgentError && <p className="text-xs text-destructive">Please select an agent.</p>}
+              </div>
+
+              {/* Subject */}
+              <div className="grid gap-2">
+                <Label>Subject</Label>
+                <Input
+                  value={editSubject}
+                  onChange={e => setEditSubject(e.target.value)}
+                  placeholder="Task subject"
+                  required
+                />
+              </div>
+
+              {/* Body */}
+              <div className="grid gap-2">
+                <Label>Description</Label>
+                <Textarea
+                  value={editBody}
+                  onChange={e => setEditBody(e.target.value)}
+                  placeholder="Task description"
+                  rows={3}
+                  className="font-mono text-sm"
+                  required
+                />
+              </div>
+
+              {/* Frequency + Time */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="grid gap-2">
+                  <Label>Repeat</Label>
+                  <Select value={editFrequency} onValueChange={(v: any) => setEditFrequency(v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Hour</Label>
+                  <Select value={editHour} onValueChange={setEditHour}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 24 }).map((_, i) => (
+                        <SelectItem key={i} value={i.toString()}>{i.toString().padStart(2, '0')}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Minute</Label>
+                  <Select value={editMinute} onValueChange={setEditMinute}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => (
+                        <SelectItem key={m} value={m.toString()}>{m.toString().padStart(2, '0')}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Day of week (weekly) */}
+              {editFrequency === 'weekly' && (
+                <div className="grid gap-2">
+                  <Label>On</Label>
+                  <Select value={editDayOfWeek} onValueChange={setEditDayOfWeek}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">Sunday</SelectItem>
+                      <SelectItem value="1">Monday</SelectItem>
+                      <SelectItem value="2">Tuesday</SelectItem>
+                      <SelectItem value="3">Wednesday</SelectItem>
+                      <SelectItem value="4">Thursday</SelectItem>
+                      <SelectItem value="5">Friday</SelectItem>
+                      <SelectItem value="6">Saturday</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Day of month (monthly) */}
+              {editFrequency === 'monthly' && (
+                <div className="grid gap-2">
+                  <Label>Day of month</Label>
+                  <Select value={editDayOfMonth} onValueChange={setEditDayOfMonth}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 31 }).map((_, i) => (
+                        <SelectItem key={i + 1} value={(i + 1).toString()}>{i + 1}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Stop conditions */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-2">
+                  <Label>Max runs (empty = ∞)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={editRepeatCount}
+                    onChange={e => setEditRepeatCount(e.target.value)}
+                    placeholder="Infinite"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>End date (optional)</Label>
+                  <DateTimePicker date={editEndDate} setDate={setEditEndDate} />
+                </div>
+              </div>
+
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditConveyor(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving || !editSubject || !editBody}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex flex-col gap-2">
         {isLoading ? (
           <div className="space-y-2">
@@ -396,8 +592,8 @@ export function Conveyors({ teamId }: { teamId: string }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => cloneConveyor(c)} title="Clone for edit">
-                    <Copy className="h-4 w-4 text-muted-foreground" />
+                  <Button variant="ghost" size="icon" onClick={() => openEdit(c)} title="Edit">
+                    <Pencil className="h-4 w-4 text-muted-foreground" />
                   </Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>

@@ -18,6 +18,7 @@ import (
 	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
+	"github.com/tasksquad/daemon/supervisor"
 	"github.com/tasksquad/daemon/ui"
 )
 
@@ -108,6 +109,14 @@ func main() {
 
 	// Run all agents in a single shared poll loop (one HTTP request per interval).
 	go agent.RunBatch(cfg, rawAgents)
+
+	// Start supervisor monitor — watches for stuck tasks and spawns a helper session.
+	sup := supervisor.New(cfg)
+	supAgents := make([]supervisor.MonitoredAgent, len(rawAgents))
+	for i, a := range rawAgents {
+		supAgents[i] = a
+	}
+	go sup.Monitor(supAgents)
 
 	logger.Info("Running — waiting for tasks...")
 

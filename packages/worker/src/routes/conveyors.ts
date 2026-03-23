@@ -196,6 +196,67 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   return json({ id, next_run_at: nextRunAt }, 201)
 }
 
+export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const teamId = url.pathname.split('/')[2]
+  const conveyorId = url.pathname.split('/')[4]
+
+  if (!teamId || !conveyorId) return err('missing_fields', 400)
+  if (!(await requireMember(env.DB, teamId, auth.userId))) return err('forbidden', 403)
+
+  const existing = await env.DB
+    .prepare('SELECT * FROM conveyors WHERE id = ? AND team_id = ?')
+    .bind(conveyorId, teamId)
+    .first<ConveyorRow>()
+  if (!existing) return err('not_found', 404)
+
+  const body = await req.json<{
+    agent_id?: string
+    subject?: string
+    body?: string
+    frequency?: ConveyorFrequency
+    hour?: number
+    minute?: number
+    day_of_week?: number | null
+    day_of_month?: number | null
+    repeat_count?: number | null
+    end_date?: number | null
+    timezone?: string
+  }>().catch(() => ({} as any))
+
+  const agent_id = body.agent_id ?? existing.agent_id
+  const subject = body.subject?.trim() ?? existing.subject
+  const taskBody = body.body?.trim() ?? existing.body
+  const frequency = body.frequency ?? existing.frequency
+  const hour = body.hour ?? existing.hour
+  const minute = body.minute ?? existing.minute
+  const day_of_week = 'day_of_week' in body ? (body.day_of_week ?? null) : existing.day_of_week
+  const day_of_month = 'day_of_month' in body ? (body.day_of_month ?? null) : existing.day_of_month
+  const repeat_count = 'repeat_count' in body ? (body.repeat_count ?? null) : existing.repeat_count
+  const end_date = 'end_date' in body ? (body.end_date ?? null) : existing.end_date
+  const tz = body.timezone ?? existing.timezone ?? 'UTC'
+
+  const nextRunAt = calculateNextRun(Date.now(), frequency, day_of_week, day_of_month, hour, minute, tz)
+
+  await env.DB
+    .prepare(`
+      UPDATE conveyors SET
+        agent_id = ?, subject = ?, body = ?, frequency = ?,
+        hour = ?, minute = ?, day_of_week = ?, day_of_month = ?,
+        repeat_count = ?, end_date = ?, next_run_at = ?, timezone = ?
+      WHERE id = ? AND team_id = ?
+    `)
+    .bind(
+      agent_id, subject, taskBody, frequency,
+      hour, minute, day_of_week, day_of_month,
+      repeat_count, end_date, nextRunAt, tz,
+      conveyorId, teamId
+    )
+    .run()
+
+  return json({ id: conveyorId, next_run_at: nextRunAt })
+}
+
 export async function remove(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const url = new URL(req.url)
   const teamId = url.pathname.split('/')[2]

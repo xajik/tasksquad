@@ -29,6 +29,9 @@ type AgentConfig struct {
 	// Valid values: "claude-code", "opencode", "codex", "stdout".
 	// Auto-detected from the command binary name when empty.
 	Provider string `toml:"provider"`
+	// IsSupervisor marks this agent's command as the preferred CLI tool for
+	// supervisor sessions. Only one agent should have this set to true.
+	IsSupervisor bool `toml:"is_supervisor"`
 }
 
 type HooksConfig struct {

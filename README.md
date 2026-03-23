@@ -115,6 +115,25 @@ tsq
 
 <i>See <a href="https://tasksquad.ai/howto">How to</a></i>
 
+## Other features
+
+There are many other features at your and your agent disposal.
+
+### Conveyor
+Run prompts on a schedule to automate recurring tasks and keep your agents working for you.
+
+<img src="screenshots/mobile/Conveyor.PNG" width="300" />
+
+### Notes
+A collaborative editor to write specs and send them to your inbox when ready. Work with your team, include comments, and turn notes into actionable tasks.
+
+<div align="center">
+  <img src="screenshots/mobile/note_preview.PNG" width="250" />
+  <img src="screenshots/mobile/note_to_task_prompt.PNG" width="250" />
+  <img src="screenshots/mobile/note_task_link.PNG" width="250" />
+  <img src="screenshots/mobile/task_from_note.PNG" width="250" />
+</div>
+
 ## Components
 
 | Package | What it is |
