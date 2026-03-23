@@ -140,7 +140,8 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 		return
 	}
 
-	prompt := buildPrompt(a.Name(), taskID, agentTmux, logPath, troubleshootPath)
+	tmuxSnapshot := captureTmuxPane(agentTmux, 50)
+	prompt := buildPrompt(a.Name(), taskID, agentTmux, logPath, troubleshootPath, tmuxSnapshot)
 
 	// Write header + prompt to log file before the session starts.
 	header := fmt.Sprintf(
@@ -197,8 +198,22 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	}
 }
 
+// captureTmuxPane returns the last n lines of a tmux pane's scrollback.
+// Returns an empty string if the session does not exist or tmux is unavailable.
+func captureTmuxPane(session string, lines int) string {
+	if session == "" {
+		return ""
+	}
+	out, err := exec.Command("tmux", "capture-pane", "-t", session, "-p",
+		"-S", fmt.Sprintf("-%d", lines)).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // buildPrompt returns the initial message sent to the supervisor CLI.
-func buildPrompt(agentName, taskID, tmuxSession, logPath, troubleshootingPath string) string {
+func buildPrompt(agentName, taskID, tmuxSession, logPath, troubleshootingPath, tmuxSnapshot string) string {
 	// Session availability determines which commands are possible.
 	sessionID := "(none — session may have crashed)"
 	attachCmd := "# no session to attach to"
@@ -210,12 +225,17 @@ func buildPrompt(agentName, taskID, tmuxSession, logPath, troubleshootingPath st
 		attachCmd = fmt.Sprintf("tmux attach-session -t %s", tmuxSession)
 		captureCmd = fmt.Sprintf("tmux capture-pane -t %s -p", tmuxSession)
 		scrollbackCmd = fmt.Sprintf("tmux capture-pane -t %s -p -S -200", tmuxSession)
-		sendKeyCmd = fmt.Sprintf("tmux send-keys -t %s \"<text>\" C-m", tmuxSession)
+		sendKeyCmd = fmt.Sprintf("tmux send-keys -t %s \"<text>\"\nsleep 2\ntmux send-keys -t %s C-m", tmuxSession, tmuxSession)
 	}
 
 	logSection := "(no run log available)"
 	if logPath != "" {
 		logSection = logPath
+	}
+
+	snapshotSection := "(session not available)"
+	if tmuxSnapshot != "" {
+		snapshotSection = tmuxSnapshot
 	}
 
 	return fmt.Sprintf(
@@ -230,6 +250,11 @@ Task ID:      %s
 tmux session: %s
 Run log:      %s
 Past fixes:   %s
+
+Terminal snapshot (last 50 lines captured at supervisor start):
+────────────────────────────────────────────────────────
+%s
+────────────────────────────────────────────────────────
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 1 — INSPECT  (always run these first)
@@ -271,19 +296,25 @@ PATH A — Agent is BLOCKED by a non-standard prompt
     %s
 
   Numbered menu  ("1. Option A  2. Option B  …"):
-    tmux send-keys -t %s "1" C-m           # pick the first / safest option
+    tmux send-keys -t %s "1"
+    sleep 2
+    tmux send-keys -t %s C-m
 
   Arrow-key / Enter menu  (highlighted selection, press C-m to confirm):
-    tmux send-keys -t %s "" C-m            # confirm current selection
+    tmux send-keys -t %s C-m               # just Enter — no content to type first
 
   Checkbox  (spacebar toggles, C-m confirms):
-    tmux send-keys -t %s " " C-m          # toggle current item then confirm
+    tmux send-keys -t %s " "
+    sleep 2
+    tmux send-keys -t %s C-m
 
   Permission / tool approval  ("Allow claude to run bash?", "Approve?"):
-    tmux send-keys -t %s "y" C-m
+    tmux send-keys -t %s "y"
+    sleep 2
+    tmux send-keys -t %s C-m
 
   Empty-input confirm  (blank prompt "> " or just waiting for C-m):
-    tmux send-keys -t %s "" C-m
+    tmux send-keys -t %s C-m               # just Enter — no content to type first
 
   After sending: wait 5 seconds, then re-run Step 1b to confirm the agent resumed.
 
@@ -317,14 +348,14 @@ RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ✓ Always run Step 1 before deciding
   ✓ Only act if the agent is genuinely blocked by a prompt (PATH A)
-  ✓ Send keys as one command: tmux send-keys -t <session> "<text>" C-m
+  ✓ Send keys in TWO steps: first send text, wait 2s, then send C-m separately
   ✗ Never kill the agent session
   ✗ Never restart a task
   ✗ Never send keys if the agent is actively progressing`,
-		agentName, taskID, sessionID, logSection, troubleshootingPath,
+		agentName, taskID, sessionID, logSection, troubleshootingPath, snapshotSection,
 		captureCmd, tmuxSession, scrollbackCmd, logSection, troubleshootingPath, attachCmd,
 		sendKeyCmd,
-		tmuxSession, tmuxSession, tmuxSession, tmuxSession, tmuxSession,
+		tmuxSession, tmuxSession, tmuxSession, tmuxSession, tmuxSession, tmuxSession, tmuxSession, tmuxSession,
 		troubleshootingPath, agentName, taskID,
 	)
 }

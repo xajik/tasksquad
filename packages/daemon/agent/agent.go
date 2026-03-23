@@ -18,6 +18,7 @@ import (
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
+	"github.com/tasksquad/daemon/tmux"
 )
 
 // tmuxBin is the path to the tmux binary, or empty if tmux is not installed.
@@ -296,9 +297,8 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 
 			if sess != "" {
 				// tmux path: deliver reply via send-keys
-				// Small delay to ensure tmux session is ready to receive input.
 				time.Sleep(1 * time.Second)
-				exec.Command(tmuxBin, "send-keys", "-t", sess, reply, "Enter").Run() //nolint:errcheck
+				tmux.SendKeys(sess, reply) //nolint:errcheck
 				a.mu.Lock()
 				a.mode = ModeRunning
 				a.lastPrompt = reply
@@ -510,7 +510,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 				// Deliver the initial prompt.
 				// Gemini requires extra time to initialize its internal state.
 				time.Sleep(15 * time.Second)
-				exec.Command(tmuxBin, "send-keys", "-t", sessionName, stdinData, "Enter").Run() //nolint:errcheck
+				tmux.SendKeys(sessionName, stdinData) //nolint:errcheck
 
 				a.mu.Lock()
 				a.tmuxSession = sessionName

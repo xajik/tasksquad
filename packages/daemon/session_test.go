@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/tasksquad/daemon/agent"
+	"github.com/tasksquad/daemon/tmux"
 )
 
 // testPrompt is simple so the test completes quickly.
@@ -170,9 +171,7 @@ func runTmuxIntegrationTest(t *testing.T, provider, binName string) {
 	// ── 8. Wait for interactive prompt, then send the task ────────────────────
 	// Give the TUI time to finish rendering its startup screen.
 	time.Sleep(5 * time.Second)
-	exec.Command(tmuxBin, "send-keys", "-t", sessionName, testPrompt).Run() //nolint:errcheck
-	time.Sleep(1 * time.Second)
-	exec.Command(tmuxBin, "send-keys", "-t", sessionName, "Enter").Run() //nolint:errcheck
+	tmux.SendKeys(sessionName, testPrompt) //nolint:errcheck
 	t.Logf("[%s] Prompt sent via send-keys: %q", provider, testPrompt)
 
 	// ── 9. Wait for Stop/SessionEnd hook ──────────────────────────────────────
