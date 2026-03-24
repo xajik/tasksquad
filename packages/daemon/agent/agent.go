@@ -63,9 +63,8 @@ func buildNotifyMessage(a *Agent, fallback string) string {
 	var visible []string
 
 	if sess != "" && tmuxBin != "" {
-		out, err := exec.Command(tmuxBin, "capture-pane", "-t", sess, "-p").Output()
-		if err == nil {
-			for _, raw := range strings.Split(string(out), "\n") {
+		if out := tmux.CapturePane(sess, 200); out != "" {
+			for _, raw := range strings.Split(out, "\n") {
 				if s := strings.TrimSpace(cleanLine(raw)); s != "" {
 					visible = append(visible, s)
 				}
@@ -507,9 +506,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 				// FIFO for writing and unblocks the reader goroutine above.
 				exec.Command(tmuxBin, "pipe-pane", "-t", sessionName, "cat > "+fifoPath).Run() //nolint:errcheck
 
-				// Deliver the initial prompt.
-				// Gemini requires extra time to initialize its internal state.
-				time.Sleep(15 * time.Second)
+				// Deliver the initial prompt once the TUI is ready.
+				tmux.WaitForReady()
 				tmux.SendKeys(sessionName, stdinData) //nolint:errcheck
 
 				a.mu.Lock()

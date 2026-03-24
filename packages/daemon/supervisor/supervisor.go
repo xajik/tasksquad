@@ -14,6 +14,7 @@ import (
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/tmux"
 )
 
 const inactivityTimeout = 10 * time.Minute
@@ -169,24 +170,20 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 		return
 	}
 
-	// Give the CLI a moment to initialise before sending the prompt.
-	time.Sleep(3 * time.Second)
+	// Wait for the CLI to fully initialise before sending the prompt.
+	tmux.WaitForReady()
 
-	// Load prompt into a named tmux buffer, then paste it into the session
-	// atomically.  This avoids shell quoting issues with multi-line text.
+	// Load prompt into a named tmux buffer, paste it into the session
+	// (avoids shell-quoting issues with multi-line text), then send Enter.
 	bufName := "sup-" + suffix
-	exec.Command("tmux", "load-buffer", "-b", bufName, promptFile).Run() //nolint:errcheck
-	exec.Command("tmux", "paste-buffer", "-b", bufName, "-t", sessionName).Run() //nolint:errcheck
-
-	// Send Enter to submit the pasted prompt.
-	exec.Command("tmux", "send-keys", "-t", sessionName, "", "Enter").Run() //nolint:errcheck
+	tmux.PastePromptFile(sessionName, bufName, promptFile) //nolint:errcheck
 
 	// Block until the session exits.
 	waitForSession(sessionName)
 
 	// Clean up temp files.
-	os.Remove(promptFile)                                                         //nolint:errcheck
-	exec.Command("tmux", "delete-buffer", "-b", bufName).Run()                   //nolint:errcheck
+	os.Remove(promptFile) //nolint:errcheck
+	tmux.DeleteBuffer(bufName)
 
 	// Append completion marker to log.
 	appendToLog(supLog, fmt.Sprintf("\n--- SUPERVISOR COMPLETE: %s ---\n", time.Now().Format(time.RFC3339)))
@@ -204,12 +201,7 @@ func captureTmuxPane(session string, lines int) string {
 	if session == "" {
 		return ""
 	}
-	out, err := exec.Command("tmux", "capture-pane", "-t", session, "-p",
-		"-S", fmt.Sprintf("-%d", lines)).Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
+	return tmux.CapturePane(session, lines)
 }
 
 // buildPrompt returns the initial message sent to the supervisor CLI.
@@ -384,7 +376,7 @@ func troubleshootingFile(workDir string) string {
 func waitForSession(name string) {
 	for {
 		time.Sleep(15 * time.Second)
-		if err := exec.Command("tmux", "has-session", "-t", name).Run(); err != nil {
+		if !tmux.HasSession(name) {
 			return
 		}
 	}
