@@ -86,11 +86,13 @@ import {
   Wrench,
   ChevronRight,
   ShieldAlert,
+  BookOpen,
 } from 'lucide-react'
 
 import { Notes } from './Notes'
 import { NoteDetail } from './NoteDetail'
 import { Conveyors } from './Conveyors'
+import { Skills } from './Skills'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
 
@@ -2381,6 +2383,7 @@ export default function Dashboard() {
   const isConveyors = location.pathname === '/dashboard/conveyor'
   const isSettings = location.pathname === '/dashboard/settings'
   const isNotes = location.pathname.startsWith('/dashboard/notes')
+  const isSkills = location.pathname.startsWith('/dashboard/skills')
   if (isLoadingTeams) return (
     <div className="flex h-screen items-center justify-center">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -2464,7 +2467,7 @@ export default function Dashboard() {
         </div>
         <nav className="flex-1 px-2">
           <Button
-            variant={!isAgents && !isSettings && !isMembers && !isNotes ? 'secondary' : 'ghost'}
+            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
             onClick={() => handleNav('/dashboard')}
           >
@@ -2486,6 +2489,14 @@ export default function Dashboard() {
             >
             <Repeat className="mr-2 h-4 w-4" />
             Conveyor
+            </Button>
+            <Button
+            variant={isSkills ? 'secondary' : 'ghost'}
+            className="w-full justify-start mb-1"
+            onClick={() => handleNav('/dashboard/skills')}
+            >
+            <BookOpen className="mr-2 h-4 w-4" />
+            Skills
             </Button>
             <Button
             variant={isAgents ? 'secondary' : 'ghost'}            className="w-full justify-start mb-1"
@@ -2591,6 +2602,7 @@ export default function Dashboard() {
           <Route path="/notes" element={<Notes teamId={teamId} />} />
           <Route path="/notes/:noteId" element={<NoteDetail teamId={teamId} />} />
           <Route path="/conveyor" element={<Conveyors teamId={teamId} />} />
+          <Route path="/skills" element={<Skills teamId={teamId} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} onLeave={handleLeaveProject} plan={plan} isOwner={isOwner} />} />
         </Routes>

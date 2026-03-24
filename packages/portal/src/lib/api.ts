@@ -186,6 +186,15 @@ export const api = {
     listLinkedTasks: (teamId: string, noteId: string) =>
       request<{ tasks: LinkedTask[] }>(`/teams/${teamId}/notes/${noteId}/tasks`),
   },
+  skills: {
+    list: (teamId: string) => request<{ skills: Skill[] }>(`/teams/${teamId}/skills`),
+    get: (teamId: string, skillId: string) => request<Skill>(`/teams/${teamId}/skills/${skillId}`),
+    create: (teamId: string, body: { name: string; description: string; content: string }) =>
+      request<{ id: string; name: string; etag: string }>(`/teams/${teamId}/skills`, { method: 'POST', body: JSON.stringify(body) }),
+    update: (teamId: string, skillId: string, body: { name?: string; description?: string; content?: string; auto_install?: boolean }) =>
+      request<{ ok: boolean }>(`/teams/${teamId}/skills/${skillId}`, { method: 'PUT', body: JSON.stringify(body) }),
+    delete: (teamId: string, skillId: string) => del(`/teams/${teamId}/skills/${skillId}`),
+  },
 }
 
 export interface UserProfile {
@@ -216,6 +225,20 @@ export interface Team {
   id: string
   name: string
   role: string
+}
+
+export interface Skill {
+  id: string
+  team_id: string | null
+  name: string
+  description: string
+  content?: string
+  author_id: string | null
+  etag: string
+  is_default: number
+  auto_install: number
+  created_at: number
+  updated_at: number
 }
 
 export interface Conveyor {

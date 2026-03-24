@@ -18,6 +18,7 @@ import (
 	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
+	"github.com/tasksquad/daemon/skills"
 	"github.com/tasksquad/daemon/supervisor"
 	"github.com/tasksquad/daemon/ui"
 )
@@ -117,6 +118,13 @@ func main() {
 		supAgents[i] = a
 	}
 	go sup.Monitor(supAgents)
+
+	// Start skills auto-install sync — checks server for new/updated skills every hour.
+	skillAgents := make([]skills.AgentRef, len(rawAgents))
+	for i, a := range rawAgents {
+		skillAgents[i] = a
+	}
+	go skills.StartSync(cfg, skillAgents)
 
 	logger.Info("Running — waiting for tasks...")
 

@@ -9,6 +9,7 @@ import * as live     from './routes/live.js'
 import * as me       from './routes/me.js'
 import * as notes    from './routes/notes.js'
 import * as conveyors from './routes/conveyors.js'
+import * as skills   from './routes/skills.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 export { AgentRelay } from './relay.js'
 
@@ -96,6 +97,12 @@ router.get   ('/teams/:teamId/notes/:noteId/tasks',                firebaseRoute
 router.post  ('/teams/:teamId/notes/:noteId/archive',              firebaseRoute(notes.archive))
 router.delete('/teams/:teamId/notes/:noteId/archive',              firebaseRoute(notes.unarchive))
 
+router.get   ('/teams/:teamId/skills',              firebaseRoute(skills.list))
+router.post  ('/teams/:teamId/skills',              firebaseRoute(skills.create))
+router.get   ('/teams/:teamId/skills/:skillId',     firebaseRoute(skills.get))
+router.put   ('/teams/:teamId/skills/:skillId',     firebaseRoute(skills.update))
+router.delete('/teams/:teamId/skills/:skillId',     firebaseRoute(skills.remove))
+
 router.get ('/tasks',                    firebaseRoute(tasks.list))
 router.post('/tasks',                    firebaseRoute(tasks.create))
 router.get ('/tasks/:taskId',            firebaseRoute(tasks.get))
@@ -114,6 +121,7 @@ router.get ('/live/:agentId',            (req: IRequest, env: Env) => live.conne
 
 // ── Daemon routes (Firebase JWT) ──────────────────────────────────────────────
 router.get ('/daemon/user/agents',       (req: IRequest, env: Env, ctx: ExecutionContext) => daemon.userAgents(req as Request, env, ctx))
+router.get ('/daemon/user/skills',       firebaseRoute(skills.userSkills))
 router.post('/daemon/heartbeat/batch',   (req: IRequest, env: Env, ctx: ExecutionContext) => daemon.batchHeartbeat(req as Request, env, ctx))
 router.post('/daemon/complete',          daemonRoute(daemon.complete))
 router.post('/daemon/session/open',      daemonRoute(daemon.sessionOpen))
@@ -127,6 +135,7 @@ router.post('/daemon/messages/:msgId/attach', daemonRoute(daemon.messageAttach))
 router.post('/daemon/sessions/:sessionId/attach', daemonRoute(daemon.sessionAttach))
 router.post('/daemon/permission/request',         daemonRoute(daemon.permissionRequest))
 router.post('/daemon/supervisor/report',          daemonRoute(daemon.supervisorReport))
+router.post('/daemon/skills',                     daemonRoute(skills.daemonUpsert))
 
 router.all('*', () => err('not_found', 404))
 

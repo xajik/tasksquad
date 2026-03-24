@@ -18,6 +18,7 @@ import (
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
+	"github.com/tasksquad/daemon/skills"
 	"github.com/tasksquad/daemon/tmux"
 )
 
@@ -1187,6 +1188,11 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 			"type":  "done",
 			"lines": []string{finalText},
 		})
+	}
+
+	// Asynchronously extract skills from this session's terminal output.
+	if tmuxCapture != "" {
+		go skills.ExtractFromSession(cfg, agentID, tmuxCapture)
 	}
 
 	// Remove the FIFO now that all output has been drained.
