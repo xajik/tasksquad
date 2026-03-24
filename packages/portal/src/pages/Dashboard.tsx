@@ -838,20 +838,32 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
   }
 
   if (isSupervisor) {
-    const time = new Date(message.created_at).toLocaleString([], {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-    })
+    const [expanded, setExpanded] = useState(false)
+    // Extract summary from the body (format: "[Supervisor] <summary>\nStatus: ...\nFound: ...\nAction: ...")
+    let summary = ''
+    try {
+      const match = message.body.match(/\[Supervisor\]\s*(.+)/)
+      if (match) summary = match[1]
+    } catch { /* ignore */ }
     return (
       <div className="flex justify-center my-3 px-4">
         <div className="w-full max-w-2xl rounded-lg border border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20 overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-amber-200/60 dark:border-amber-900/40">
+          <button
+            className="flex items-center gap-2 w-full px-3 py-1.5 border-b border-amber-200/60 dark:border-amber-900/40 hover:bg-amber-100/30 dark:hover:bg-amber-900/20 transition-colors"
+            onClick={() => setExpanded(e => !e)}
+          >
             <ShieldAlert className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 flex-1">Supervisor</span>
-            <span className="text-[10px] text-amber-600/70 dark:text-amber-500/70">{time}</span>
-          </div>
-          <pre className="px-3 py-2 text-xs text-amber-900 dark:text-amber-200 whitespace-pre-wrap break-words font-mono leading-relaxed">
-            {message.body}
-          </pre>
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 flex-1 text-left">Supervisor</span>
+            {summary && !expanded && (
+              <span className="text-[10px] text-amber-600/70 dark:text-amber-500/70 truncate max-w-[200px]">{summary}</span>
+            )}
+            <span className="text-[10px] text-amber-600/70 dark:text-amber-500/70 shrink-0">{expanded ? 'Hide' : 'Show'}</span>
+          </button>
+          {expanded && (
+            <pre className="px-3 py-2 text-xs text-amber-900 dark:text-amber-200 whitespace-pre-wrap break-words font-mono leading-relaxed">
+              {message.body}
+            </pre>
+          )}
         </div>
       </div>
     )

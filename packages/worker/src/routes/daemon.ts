@@ -745,8 +745,9 @@ export async function permissionRequest(req: Request, env: Env, _ctx: unknown, d
  * portal can display the supervisor's findings inline.
  */
 export async function supervisorReport(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
-  const body = await req.json<{ task_id?: string; body?: string }>().catch(() => ({} as { task_id?: string; body?: string }))
-  const { task_id, body: msgBody } = body
+  const body = await req.json<{ task_id?: string; body?: string; type?: 'progress' | 'report' }>()
+    .catch(() => ({} as { task_id?: string; body?: string; type?: 'progress' | 'report' }))
+  const { task_id, body: msgBody, type } = body
   const agentId = daemon.agentId
 
   if (!task_id || !msgBody?.trim()) return err('missing_fields', 400)
@@ -762,9 +763,14 @@ export async function supervisorReport(req: Request, env: Env, _ctx: unknown, da
   const msgId = ulid()
   const now = Date.now()
 
+  // "progress" type: minimal message when task is running well (no push notification)
+  // "report" type (default): full findings from supervisor intervention
+  // Both insert a message with role='supervisor' so portal can display it inline.
+  const msgType = type === 'progress' ? 'progress' : 'report'
+
   await env.DB
-    .prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(msgId, task_id, null, 'supervisor', msgBody.trim(), now)
+    .prepare('INSERT INTO messages (id, task_id, sender_id, role, body, type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(msgId, task_id, null, 'supervisor', msgBody.trim(), msgType, now)
     .run()
 
   return json({ ok: true, message_id: msgId }, 201)

@@ -2,10 +2,12 @@ package supervisor
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -189,9 +191,16 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	appendToLog(supLog, fmt.Sprintf("\n--- SUPERVISOR COMPLETE: %s ---\n", time.Now().Format(time.RFC3339)))
 	logger.Info(fmt.Sprintf("[supervisor] Session %s complete for task %s", sessionName, taskID))
 
-	// Parse supervisor output and report back to the worker.
-	if report := parseSupervisorOutput(supLog); report != "" {
-		go s.reportToWorker(taskID, agentID, report)
+	// Parse supervisor output and route based on status.
+	report, status := parseSupervisorOutput(supLog)
+	if report != "" && status != "" {
+		if status == "healthy" {
+			// Task is running well - send minimal progress message (no push)
+			go s.notifyProgress(taskID, agentID, "Task is running well — picked up and in progress")
+		} else {
+			// Stuck/resolved/failed - send full report to inbox
+			go s.reportToWorker(taskID, agentID, report)
+		}
 	}
 }
 
@@ -328,12 +337,18 @@ If you encountered an issue not already in the past-fixes file, append it:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 4 — REPORT  (always last — this is your final output)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Print exactly this block as your LAST output so the daemon can capture it:
+When you are done with your investigation, output EXACTLY this marker line FIRST,
+then a JSON block. Nothing else should come after this block:
 
-  [Supervisor] <one-line summary>
-  Status: resolved | healthy | crashed
-  Found: <what the terminal showed — one sentence>
-  Action: <what you sent, or "none — agent is healthy / progressing">
+Supervisor verdict is:
+{
+  "status": "healthy|resolved|failed",
+  "summary": "<one-line summary>",
+  "found": "<what the terminal showed — one sentence>",
+  "action": "<what you sent, or 'none'>"
+}
+
+The status must be exactly: "healthy" (agent is running fine), "resolved" (you fixed the issue), or "failed" (agent is stuck and cannot be unblocked).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULES
@@ -392,19 +407,25 @@ func appendToLog(path, text string) {
 	fmt.Fprint(f, text) //nolint:errcheck
 }
 
-// parseSupervisorOutput reads the supervisor log and extracts the [Supervisor]
-// report block that the CLI agent wrote to stdout.  Returns empty string if
-// no [Supervisor] prefix is found.
-func parseSupervisorOutput(logPath string) string {
+// supervisorVerdict represents the JSON output from the supervisor CLI.
+type supervisorVerdict struct {
+	Status  string `json:"status"`
+	Summary string `json:"summary"`
+	Found   string `json:"found"`
+	Action  string `json:"action"`
+}
+
+// parseSupervisorOutput reads the supervisor log and extracts the verdict.
+// Returns the report body and the status ("healthy", "resolved", "crashed", or "" if not found).
+func parseSupervisorOutput(logPath string) (string, string) {
 	f, err := os.Open(logPath)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	defer f.Close()
 
 	// Scan for the --- OUTPUT --- separator, then collect lines until
-	// --- SUPERVISOR COMPLETE: is hit.  Among those lines, grab everything
-	// from the first [Supervisor] occurrence to the end.
+	// --- SUPERVISOR COMPLETE: is hit.
 	inOutput := false
 	var outputLines []string
 
@@ -423,20 +444,65 @@ func parseSupervisorOutput(logPath string) string {
 		}
 	}
 
-	// Find the first [Supervisor] line and take everything from there.
-	start := -1
+	// Find the "Supervisor verdict is:" marker
+	verdictStart := -1
 	for i, line := range outputLines {
-		if strings.Contains(line, "[Supervisor]") {
-			start = i
+		if strings.Contains(line, "Supervisor verdict is:") {
+			verdictStart = i
 			break
 		}
 	}
-	if start < 0 {
-		return ""
+	if verdictStart < 0 {
+		return "", ""
 	}
 
-	report := strings.Join(outputLines[start:], "\n")
-	return strings.TrimSpace(report)
+	// Extract lines after the verdict marker
+	verdictLines := outputLines[verdictStart+1:]
+	verdictText := strings.TrimSpace(strings.Join(verdictLines, "\n"))
+
+	// Try to parse as JSON first
+	var verdict supervisorVerdict
+	if err := json.Unmarshal([]byte(verdictText), &verdict); err == nil {
+		if verdict.Status == "healthy" || verdict.Status == "resolved" || verdict.Status == "failed" {
+			// Format as readable report
+			report := fmt.Sprintf("[Supervisor] %s\nStatus: %s\nFound: %s\nAction: %s",
+				verdict.Summary, verdict.Status, verdict.Found, verdict.Action)
+			return report, verdict.Status
+		}
+	}
+
+	// Fallback to regex parsing
+	statusRE := regexp.MustCompile(`(?i)"status"\s*:\s*"([^"]+)"`)
+	summaryRE := regexp.MustCompile(`(?i)"summary"\s*:\s*"([^"]+)"`)
+	foundRE := regexp.MustCompile(`(?i)"found"\s*:\s*"([^"]+)"`)
+	actionRE := regexp.MustCompile(`(?i)"action"\s*:\s*"([^"]+)"`)
+
+	status := ""
+	summary := ""
+	found := ""
+	action := ""
+
+	if matches := statusRE.FindStringSubmatch(verdictText); len(matches) > 1 {
+		status = matches[1]
+	}
+	if matches := summaryRE.FindStringSubmatch(verdictText); len(matches) > 1 {
+		summary = matches[1]
+	}
+	if matches := foundRE.FindStringSubmatch(verdictText); len(matches) > 1 {
+		found = matches[1]
+	}
+	if matches := actionRE.FindStringSubmatch(verdictText); len(matches) > 1 {
+		action = matches[1]
+	}
+
+	// Validate status
+	if status != "healthy" && status != "resolved" && status != "failed" {
+		return "", ""
+	}
+
+	report := fmt.Sprintf("[Supervisor] %s\nStatus: %s\nFound: %s\nAction: %s",
+		summary, status, found, action)
+	return report, status
 }
 
 // reportToWorker posts a supervisor message to the task inbox via the daemon API.
@@ -458,6 +524,29 @@ func (s *Supervisor) reportToWorker(taskID, agentID, body string) {
 		return
 	}
 	logger.Info(fmt.Sprintf("[supervisor] Report posted for task %s (%d chars)", taskID, len(body)))
+}
+
+// notifyProgress posts a minimal "running well" progress message to the task inbox.
+// Uses type="progress" to indicate this is just a status update, not a full report.
+func (s *Supervisor) notifyProgress(taskID, agentID, message string) {
+	if s.cfg == nil {
+		return
+	}
+	token, err := auth.GetToken(s.cfg.Firebase.APIKey, s.cfg.Server.URL)
+	if err != nil {
+		logger.Error(fmt.Sprintf("[supervisor] Auth failed for progress (task %s): %v", taskID, err))
+		return
+	}
+	_, err = api.Post(s.cfg, token, agentID, "/daemon/supervisor/report", map[string]any{
+		"task_id": taskID,
+		"body":    "[Supervisor] " + message,
+		"type":    "progress",
+	})
+	if err != nil {
+		logger.Error(fmt.Sprintf("[supervisor] Failed to post progress for task %s: %v", taskID, err))
+		return
+	}
+	logger.Info(fmt.Sprintf("[supervisor] Progress posted for task %s", taskID))
 }
 
 // sanitize replaces non-alphanumeric characters with hyphens.
