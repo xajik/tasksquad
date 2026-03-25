@@ -940,7 +940,7 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
         </span>
         {isScheduled && scheduledTime && (
           <span className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 px-1.5 py-0.5 rounded">
+            <span className="text-xs font-semibold uppercase tracking-wide bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground border border-primary/30 dark:border-primary/40 px-1.5 py-0.5 rounded">
               Scheduled
             </span>
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -965,7 +965,7 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
         </button>
       </div>
       <div className="px-4 py-3.5">
-        <div className={cn('text-sm leading-relaxed whitespace-pre-wrap select-text', isScheduled ? 'text-foreground/60' : 'text-foreground/90')}>
+        <div className={cn('text-sm leading-relaxed whitespace-pre-wrap select-text', isScheduled ? 'text-foreground/80' : 'text-foreground/90')}>
           {message.body}
         </div>
         {isAgent && message.transcript_key && taskId && (
@@ -1343,10 +1343,10 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
 
       {/* ── Edit form for scheduled messages — only when agent is waiting for input ── */}
       {editingMessage && task?.status === 'waiting_input' && (
-        <div className="border border-amber-200 dark:border-amber-800 rounded-xl overflow-hidden shadow-sm bg-background">
-          <div className="px-4 py-2.5 border-b border-amber-200/60 dark:border-amber-800/60 flex items-center gap-2 bg-amber-50/50 dark:bg-amber-950/20">
-            <Clock className="h-3.5 w-3.5 text-amber-600" />
-            <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
+        <div className="border border-primary/20 dark:border-primary/30 rounded-xl overflow-hidden shadow-sm bg-background">
+          <div className="px-4 py-2.5 border-b border-primary/10 dark:border-primary/20 flex items-center gap-2 bg-primary/[0.03] dark:bg-primary/[0.02]">
+            <Clock className="h-3.5 w-3.5 text-primary" />
+            <span className="text-xs font-semibold text-primary dark:text-primary-foreground uppercase tracking-wider">
               Edit scheduled message
             </span>
           </div>
@@ -1390,13 +1390,13 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
 
       {/* ── Pending scheduled reply banner (blocks reply box) ── */}
       {pendingScheduledReply && !editingMessage && (
-        <div className="border border-amber-200 dark:border-amber-800 rounded-xl overflow-hidden shadow-sm bg-amber-50/40 dark:bg-amber-950/10">
-          <div className="px-4 py-2.5 border-b border-amber-200/60 dark:border-amber-800/60 flex items-center gap-2">
-            <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-            <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider flex-1">
+        <div className="border border-primary/20 dark:border-primary/30 rounded-xl overflow-hidden shadow-sm bg-primary/[0.03] dark:bg-primary/[0.02]">
+          <div className="px-4 py-2.5 border-b border-primary/10 dark:border-primary/20 flex items-center gap-2">
+            <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="text-xs font-semibold text-primary dark:text-primary-foreground uppercase tracking-wider flex-1">
               Scheduled reply
             </span>
-            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">
+            <Badge variant="outline" className="text-xs bg-primary/5 text-primary border-primary/20 dark:border-primary/30">
               {pendingScheduledReply.scheduled_at
                 ? new Date(pendingScheduledReply.scheduled_at).toLocaleString(undefined, {
                     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -1405,12 +1405,12 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
             </Badge>
           </div>
           <div className="px-4 py-3">
-            <p className="text-sm text-foreground/80 whitespace-pre-wrap line-clamp-3">
+            <p className="text-sm text-foreground whitespace-pre-wrap line-clamp-3">
               {pendingScheduledReply.body}
             </p>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2.5 border-t border-amber-200/40 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-950/20">
-            <span className="text-xs text-amber-700/70 dark:text-amber-400/70 flex-1">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-t border-primary/10 dark:border-primary/20 bg-primary/[0.02]">
+            <span className="text-xs text-muted-foreground flex-1">
               Delete this scheduled reply to send a message now.
             </span>
             {task?.status === 'waiting_input' && (
@@ -1418,7 +1418,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
                 type="button"
                 variant="outline"
                 size="sm"
-                className="border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                className="border-primary/30 text-primary hover:bg-primary/10 dark:border-primary/40 dark:text-primary-foreground dark:hover:bg-primary/20"
                 onClick={() => editScheduledMessage(pendingScheduledReply)}
               >
                 <Edit className="h-3.5 w-3.5 mr-1.5" />

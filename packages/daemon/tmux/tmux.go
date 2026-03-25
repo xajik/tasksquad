@@ -12,7 +12,7 @@ const tmuxBin = "tmux"
 // SessionReadyWait is how long to wait after starting a tmux session before
 // sending the initial prompt. CLI tools (Claude Code, Gemini, etc.) need time
 // to initialise their TUI before they can accept keyboard input.
-const SessionReadyWait = 5 * time.Second
+const SessionReadyWait = 15 * time.Second
 
 // SubmitWait is how long to wait between sending prompt text and sending Enter.
 // Two separate send-keys calls are required — merging them causes Claude's TUI
@@ -32,12 +32,6 @@ func SendKeys(session, text string) error {
 		return err
 	}
 	time.Sleep(SubmitWait)
-	return exec.Command(tmuxBin, "send-keys", "-t", session, "C-m").Run()
-}
-
-// SendEnter sends only Enter (C-m) to a tmux session — use when there is no
-// text to type first (e.g. arrow-key menus, empty-input confirmations).
-func SendEnter(session string) error {
 	return exec.Command(tmuxBin, "send-keys", "-t", session, "C-m").Run()
 }
 

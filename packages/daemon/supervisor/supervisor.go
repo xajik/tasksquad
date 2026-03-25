@@ -36,10 +36,19 @@ type MonitoredAgent interface {
 
 // Supervisor monitors all agents and spawns a dedicated tmux session when a
 // running task has had no hook activity for inactivityTimeout.
+// supervisorTimeout is how long a supervisor session may run before it is
+// killed and the attempt is retried on the next inactivity cycle.
+const supervisorTimeout = 1 * time.Minute
+
+// orphanCleanupInterval is how often the supervisor scans for dangling
+// tsq-sup-* tmux sessions that survived previous daemon runs or crashes.
+const orphanCleanupInterval = 12 * time.Hour
+
 type Supervisor struct {
 	mu            sync.Mutex
 	activeForTask map[string]bool
-	cli           string // resolved CLI binary path
+	lastAttempt   map[string]time.Time // when supervision was last attempted per taskID
+	cli           string               // resolved CLI binary path
 	cfg           *config.Config
 }
 
@@ -47,6 +56,7 @@ type Supervisor struct {
 func New(cfg *config.Config) *Supervisor {
 	return &Supervisor{
 		activeForTask: make(map[string]bool),
+		lastAttempt:   make(map[string]time.Time),
 		cli:           detectCLI(cfg),
 		cfg:           cfg,
 	}
@@ -85,34 +95,50 @@ func (s *Supervisor) Monitor(agents []MonitoredAgent) {
 	}
 	logger.Info(fmt.Sprintf("[supervisor] Monitor started (cli=%s, timeout=%s)", s.cli, inactivityTimeout))
 
+	// Kill any tsq-sup-* sessions left over from a previous daemon run.
+	s.cleanOrphans()
+
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
+	orphanTicker := time.NewTicker(orphanCleanupInterval)
+	defer orphanTicker.Stop()
 
-	for range ticker.C {
-		for _, a := range agents {
-			if a.GetMode() != "running" {
-				continue
+	for {
+		select {
+		case <-ticker.C:
+			for _, a := range agents {
+				if a.GetMode() != "running" {
+					continue
+				}
+				taskID := a.GetTaskID()
+				if taskID == "" {
+					continue
+				}
+				s.mu.Lock()
+				active := s.activeForTask[taskID]
+				last := s.lastAttempt[taskID]
+				s.mu.Unlock()
+				if active {
+					continue
+				}
+				// Cooldown: don't re-attempt until inactivityTimeout after the last attempt.
+				if !last.IsZero() && time.Since(last) < inactivityTimeout {
+					continue
+				}
+				lastActivity := a.GetLastActivityAt()
+				if lastActivity.IsZero() || time.Since(lastActivity) < inactivityTimeout {
+					continue
+				}
+				logger.Info(fmt.Sprintf("[supervisor] Agent %q task %s inactive >%s — spawning supervisor",
+					a.Name(), taskID, inactivityTimeout))
+				s.mu.Lock()
+				s.activeForTask[taskID] = true
+				s.lastAttempt[taskID] = time.Now()
+				s.mu.Unlock()
+				go s.spawn(a, taskID)
 			}
-			taskID := a.GetTaskID()
-			if taskID == "" {
-				continue
-			}
-			s.mu.Lock()
-			active := s.activeForTask[taskID]
-			s.mu.Unlock()
-			if active {
-				continue
-			}
-			lastActivity := a.GetLastActivityAt()
-			if lastActivity.IsZero() || time.Since(lastActivity) < inactivityTimeout {
-				continue
-			}
-			logger.Info(fmt.Sprintf("[supervisor] Agent %q task %s inactive >%s — spawning supervisor",
-				a.Name(), taskID, inactivityTimeout))
-			s.mu.Lock()
-			s.activeForTask[taskID] = true
-			s.mu.Unlock()
-			go s.spawn(a, taskID)
+		case <-orphanTicker.C:
+			s.cleanOrphans()
 		}
 	}
 }
@@ -180,12 +206,19 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	bufName := "sup-" + suffix
 	tmux.PastePromptFile(sessionName, bufName, promptFile) //nolint:errcheck
 
-	// Block until the session exits.
-	waitForSession(sessionName)
+	// Wait until the supervisor outputs its verdict or the 1-minute timeout fires.
+	// On either path the tmux session is killed before this call returns.
+	verdictFound := s.waitForVerdictOrKill(sessionName, supLog)
 
 	// Clean up temp files.
 	os.Remove(promptFile) //nolint:errcheck
 	tmux.DeleteBuffer(bufName)
+
+	if !verdictFound {
+		appendToLog(supLog, fmt.Sprintf("\n--- SUPERVISOR TIMEOUT: %s ---\n", time.Now().Format(time.RFC3339)))
+		logger.Warn(fmt.Sprintf("[supervisor] Session %s timed out — will retry after next inactivity window", sessionName))
+		return
+	}
 
 	// Append completion marker to log.
 	appendToLog(supLog, fmt.Sprintf("\n--- SUPERVISOR COMPLETE: %s ---\n", time.Now().Format(time.RFC3339)))
@@ -387,12 +420,65 @@ func troubleshootingFile(workDir string) string {
 	return filepath.Join(dir, "troubleshooting.md")
 }
 
-// waitForSession blocks until the named tmux session no longer exists.
-func waitForSession(name string) {
-	for {
-		time.Sleep(15 * time.Second)
-		if !tmux.HasSession(name) {
-			return
+// waitForVerdictOrKill polls the supervisor log for the verdict marker and kills
+// the tmux session once the verdict appears or supervisorTimeout elapses.
+// Returns true if a verdict was found, false if timed out.
+func (s *Supervisor) waitForVerdictOrKill(sessionName, logPath string) bool {
+	deadline := time.Now().Add(supervisorTimeout)
+	for time.Now().Before(deadline) {
+		time.Sleep(5 * time.Second)
+		if containsVerdictMarker(logPath) {
+			// Grace period: let `script` flush its last bytes before we kill.
+			time.Sleep(2 * time.Second)
+			exec.Command("tmux", "kill-session", "-t", sessionName).Run() //nolint:errcheck
+			logger.Info(fmt.Sprintf("[supervisor] Session %s: verdict found — killed", sessionName))
+			return true
+		}
+	}
+	exec.Command("tmux", "kill-session", "-t", sessionName).Run() //nolint:errcheck
+	logger.Warn(fmt.Sprintf("[supervisor] Session %s: timed out after %s — killed", sessionName, supervisorTimeout))
+	return false
+}
+
+// containsVerdictMarker reports whether the supervisor log file contains the
+// "Supervisor verdict is:" marker that the CLI must output on completion.
+func containsVerdictMarker(logPath string) bool {
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "Supervisor verdict is:")
+}
+
+// cleanOrphans scans tmux for tsq-sup-* sessions that are not actively managed
+// by the current daemon run (left over from previous runs or crashes) and kills them.
+func (s *Supervisor) cleanOrphans() {
+	out, err := exec.Command("tmux", "list-sessions", "-F", "#{session_name}").Output()
+	if err != nil {
+		return // tmux not running or no sessions
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		name := strings.TrimSpace(line)
+		if !strings.HasPrefix(name, "tsq-sup-") {
+			continue
+		}
+		suffix := strings.TrimPrefix(name, "tsq-sup-")
+		isActive := false
+		for taskID := range s.activeForTask {
+			taskSuffix := taskID
+			if len(taskSuffix) > 8 {
+				taskSuffix = taskSuffix[:8]
+			}
+			if taskSuffix == suffix {
+				isActive = true
+				break
+			}
+		}
+		if !isActive {
+			exec.Command("tmux", "kill-session", "-t", name).Run() //nolint:errcheck
+			logger.Info(fmt.Sprintf("[supervisor] Orphan cleanup: killed %s", name))
 		}
 	}
 }
