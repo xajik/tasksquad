@@ -84,10 +84,12 @@ func TestExtractTranscriptResponse_OpenCode(t *testing.T) {
 
 func TestBuildNotifyMessage_FiltersPrompt(t *testing.T) {
 	a := &Agent{
-		lastPrompt: "Translate into ukrainian: I love you my motherland",
-		outputLines: []string{
-			"> Translate into ukrainian: I love you my motherland",
-			"I will translate that for you. Is that okay?",
+		st: &AgentState{
+			lastPrompt: "Translate into ukrainian: I love you my motherland",
+			outputLines: []string{
+				"> Translate into ukrainian: I love you my motherland",
+				"I will translate that for you. Is that okay?",
+			},
 		},
 	}
 
@@ -101,9 +103,9 @@ func TestBuildNotifyMessage_FiltersPrompt(t *testing.T) {
 
 func TestBuildNotifyMessage_FallbackWhenAllFiltered(t *testing.T) {
 	a := &Agent{
-		lastPrompt: "Hello",
-		outputLines: []string{
-			"Hello",
+		st: &AgentState{
+			lastPrompt:  "Hello",
+			outputLines: []string{"Hello"},
 		},
 	}
 

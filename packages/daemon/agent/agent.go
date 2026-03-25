@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/creack/pty"
@@ -55,11 +54,11 @@ func cleanLine(s string) string {
 // For the PTY path: fall back to the last 15 non-empty output lines from
 // streamOutput.
 func buildNotifyMessage(a *Agent, fallback string) string {
-	a.mu.Lock()
-	sess := a.tmuxSession
-	lines := append([]string(nil), a.outputLines...)
-	prompt := a.lastPrompt
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	sess := a.st.tmuxSession
+	lines := append([]string(nil), a.st.outputLines...)
+	prompt := a.st.lastPrompt
+	a.st.mu.Unlock()
 
 	var visible []string
 
@@ -125,34 +124,17 @@ const (
 type Agent struct {
 	Config config.AgentConfig
 	prov   provider.Provider
-
-	mu             sync.Mutex
-	mode           Mode
-	paused         bool   // when true, heartbeat is skipped
-	agentID        string // resolved from server on first heartbeat
-	sessionID      string
-	taskID         string
-	outputLines    []string
-	completing     bool
-	proc           *exec.Cmd
-	stdinWrite     io.WriteCloser // open while process is running (pipe or PTY master)
-	runLog         *os.File       // per-task log file, open while task runs
-	outputDone     chan struct{}  // closed when streamOutput finishes draining stdout
-	tmuxSession    string         // tmux session name while task is running (tmux path only)
-	fifoPath       string         // FIFO path for tmux output streaming
-	transcriptPath string         // Claude Code conversation transcript (from Stop hook payload)
-	lastPrompt     string         // the initial prompt or latest user reply sent to the process
-	lastPollAt     time.Time      // time of the last successful heartbeat
-	lastActivityAt time.Time      // time of the last meaningful task event (start, hook fired)
-	lastLogPath    string         // path to the current per-task run log file
+	st     *AgentState
 }
 
 func New(cfg config.AgentConfig) *Agent {
 	return &Agent{
-		Config:  cfg,
-		agentID: cfg.ID, // known upfront from config (set during tsq init)
-		mode:    ModeIdle,
-		prov:    provider.Detect(cfg.Command, cfg.Provider),
+		Config: cfg,
+		prov:   provider.Detect(cfg.Command, cfg.Provider),
+		st: &AgentState{
+			agentID: cfg.ID,
+			mode:    ModeIdle,
+		},
 	}
 }
 
@@ -176,77 +158,45 @@ func (a *Agent) Command() string { return a.Config.Command }
 func (a *Agent) Provider() string { return a.prov.Name() }
 
 // GetMode implements the hooks.Agent and ui.AgentStatus interfaces.
-func (a *Agent) GetMode() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return string(a.mode)
-}
+func (a *Agent) GetMode() string { return a.st.Mode() }
 
 // IsLearning returns true when the agent is in the end-session learning phase.
 // Called by the hook server to route Stop hooks to Complete instead of StopAndPause.
-func (a *Agent) IsLearning() bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.mode == ModeLearning
-}
+func (a *Agent) IsLearning() bool { return a.st.ModeValue() == ModeLearning }
 
-func (a *Agent) GetTaskID() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.taskID
-}
+func (a *Agent) GetTaskID() string { return a.st.TaskID() }
 
 // Pause stops the heartbeat poll loop until Resume is called.
 func (a *Agent) Pause() {
-	a.mu.Lock()
-	a.paused = true
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	a.st.paused = true
+	a.st.mu.Unlock()
 	logger.Info(fmt.Sprintf("[%s] Pulling paused", a.Config.Name))
 }
 
 // Resume re-enables the heartbeat poll loop.
 func (a *Agent) Resume() {
-	a.mu.Lock()
-	a.paused = false
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	a.st.paused = false
+	a.st.mu.Unlock()
 	logger.Info(fmt.Sprintf("[%s] Pulling resumed", a.Config.Name))
 }
 
 // IsPaused reports whether the poll loop is currently paused.
-func (a *Agent) IsPaused() bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.paused
-}
+func (a *Agent) IsPaused() bool { return a.st.Paused() }
 
 // LastPullTime implements ui.AgentStatus — returns the time of the last successful heartbeat.
-func (a *Agent) LastPullTime() time.Time {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.lastPollAt
-}
+func (a *Agent) LastPullTime() time.Time { return a.st.LastPollAt() }
 
 // LastLogPath implements ui.AgentStatus — returns the path to the current run log file.
-func (a *Agent) LastLogPath() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.lastLogPath
-}
+func (a *Agent) LastLogPath() string { return a.st.LogPath() }
 
 // GetLastActivityAt returns the time of the last meaningful task event.
 // Used by the supervisor to detect inactivity.
-func (a *Agent) GetLastActivityAt() time.Time {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.lastActivityAt
-}
+func (a *Agent) GetLastActivityAt() time.Time { return a.st.LastActivityAt() }
 
 // TmuxSession implements ui.AgentStatus — returns the active tmux session name.
-func (a *Agent) TmuxSession() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.tmuxSession
-}
+func (a *Agent) TmuxSession() string { return a.st.Session() }
 
 func (a *Agent) post(cfg *config.Config, path string, body any) (map[string]any, error) {
 	token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)
@@ -262,17 +212,15 @@ func (a *Agent) post(cfg *config.Config, path string, body any) (map[string]any,
 func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 	// Resolve agentID from first heartbeat response.
 	if id, ok := resp["agent_id"].(string); ok && id != "" {
-		a.mu.Lock()
-		if a.agentID == "" {
-			a.agentID = id
+		a.st.mu.Lock()
+		if a.st.agentID == "" {
+			a.st.agentID = id
 			logger.Info(fmt.Sprintf("[%s] Resolved agent ID: %s", a.Config.Name, id))
 		}
-		a.mu.Unlock()
+		a.st.mu.Unlock()
 	}
 
-	a.mu.Lock()
-	currentMode := a.mode
-	a.mu.Unlock()
+	currentMode := a.st.ModeValue()
 
 	// Reset requested from portal — kill tmux and go idle regardless of current mode.
 	// In-progress tasks have already been completed server-side.
@@ -304,28 +252,28 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 	// When waiting for user input: check if the server has a reply ready.
 	if currentMode == ModeWaitingInput {
 		if reply, ok := resp["reply"].(string); ok && reply != "" {
-			a.mu.Lock()
-			sess := a.tmuxSession
-			pw := a.stdinWrite
-			a.mu.Unlock()
+			a.st.mu.Lock()
+			sess := a.st.tmuxSession
+			pw := a.st.stdinWrite
+			a.st.mu.Unlock()
 
 			if sess != "" {
 				// tmux path: deliver reply via send-keys
 				time.Sleep(1 * time.Second)
 				tmux.SendKeys(sess, reply) //nolint:errcheck
-				a.mu.Lock()
-				a.mode = ModeRunning
-				a.lastPrompt = reply
-				a.mu.Unlock()
+				a.st.Transition(EventUserReplied) //nolint:errcheck
+				a.st.mu.Lock()
+				a.st.lastPrompt = reply
+				a.st.mu.Unlock()
 				logger.Info(fmt.Sprintf("[%s] User replied — resuming via tmux", a.Config.Name))
 			} else if pw != nil {
 				if _, err := fmt.Fprintln(pw, reply); err != nil {
 					logger.Warn(fmt.Sprintf("[%s] Failed to write reply to stdin: %v", a.Config.Name, err))
 				} else {
-					a.mu.Lock()
-					a.mode = ModeRunning
-					a.lastPrompt = reply
-					a.mu.Unlock()
+					a.st.Transition(EventUserReplied) //nolint:errcheck
+					a.st.mu.Lock()
+					a.st.lastPrompt = reply
+					a.st.mu.Unlock()
 					logger.Info(fmt.Sprintf("[%s] User replied — resuming", a.Config.Name))
 				}
 			}
@@ -345,9 +293,9 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 
 // writeRunLog writes a timestamped line to the current per-task log file (if open).
 func (a *Agent) writeRunLog(msg string) {
-	a.mu.Lock()
-	f := a.runLog
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	f := a.st.runLog
+	a.st.mu.Unlock()
 	if f == nil {
 		return
 	}
@@ -394,13 +342,15 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	taskID, _ := task["id"].(string)
 	subject, _ := task["subject"].(string)
 
-	a.mu.Lock()
-	a.mode = ModeRunning
-	a.taskID = taskID
-	a.outputLines = nil
-	a.completing = false
-	a.lastActivityAt = time.Now()
-	a.mu.Unlock()
+	if err := a.st.Transition(EventTaskStarted); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] startTask: unexpected transition error: %v", a.Config.Name, err))
+	}
+	a.st.mu.Lock()
+	a.st.taskID = taskID
+	a.st.outputLines = nil
+	a.st.completing = false
+	a.st.lastActivityAt = time.Now()
+	a.st.mu.Unlock()
 
 	logger.Lifecycle(fmt.Sprintf("[%s] event=started task_id=%s subject=%q", a.Config.Name, taskID, subject))
 	logger.Info(fmt.Sprintf("[%s] Starting task %s: \"%s\"", a.Config.Name, taskID, subject))
@@ -412,10 +362,10 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	} else {
 		fmt.Fprintf(runLog, "# TaskSquad run log\n# agent=%s  task_id=%s  subject=%s\n# started=%s\n\n",
 			a.Config.Name, taskID, subject, time.Now().Format(time.RFC3339))
-		a.mu.Lock()
-		a.runLog = runLog
-		a.lastLogPath = runLog.Name()
-		a.mu.Unlock()
+		a.st.mu.Lock()
+		a.st.runLog = runLog
+		a.st.lastLogPath = runLog.Name()
+		a.st.mu.Unlock()
 	}
 
 	// Open session on the server.
@@ -424,16 +374,14 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	})
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] Session open failed: %v", a.Config.Name, err))
-		a.mu.Lock()
-		a.mode = ModeIdle
-		a.mu.Unlock()
+		a.st.Transition(EventSpawnFailed) //nolint:errcheck
 		return
 	}
 
 	sessionID, _ := sessResp["session_id"].(string)
-	a.mu.Lock()
-	a.sessionID = sessionID
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	a.st.sessionID = sessionID
+	a.st.mu.Unlock()
 
 	// Let the provider write any hook/config files it needs (e.g. .claude/settings.json).
 	if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port, a.Config.ID, taskID); err != nil {
@@ -442,9 +390,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 
 	// Build prompt from the full conversation history.
 	prompt := buildConversationPrompt(subject, task["messages"])
-	a.mu.Lock()
-	a.lastPrompt = prompt
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	a.st.lastPrompt = prompt
+	a.st.mu.Unlock()
 
 	// Spawn the command.
 	// Providers that return a non-empty Stdin() receive the prompt via a pipe
@@ -472,9 +420,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 
 	// outputDone is closed when the output reader goroutine finishes draining.
 	outputDone := make(chan struct{})
-	a.mu.Lock()
-	a.outputDone = outputDone
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	a.st.outputDone = outputDone
+	a.st.mu.Unlock()
 
 	var outputReader io.Reader
 	usingTmux := false
@@ -525,10 +473,10 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 				tmux.WaitForReady()
 				tmux.SendKeys(sessionName, stdinData) //nolint:errcheck
 
-				a.mu.Lock()
-				a.tmuxSession = sessionName
-				a.fifoPath = fifoPath
-				a.mu.Unlock()
+				a.st.mu.Lock()
+				a.st.tmuxSession = sessionName
+				a.st.fifoPath = fifoPath
+				a.st.mu.Unlock()
 
 				logger.Info(fmt.Sprintf("[%s] tmux session started — attach: tmux attach-session -t %s", a.Config.Name, sessionName))
 
@@ -540,10 +488,10 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 					logger.Warn(fmt.Sprintf("[%s] FIFO open timed out — falling back to PTY", a.Config.Name))
 					exec.Command(tmuxBin, "kill-session", "-t", sessionName).Run() //nolint:errcheck
 					os.Remove(fifoPath)
-					a.mu.Lock()
-					a.tmuxSession = ""
-					a.fifoPath = ""
-					a.mu.Unlock()
+					a.st.mu.Lock()
+					a.st.tmuxSession = ""
+					a.st.fifoPath = ""
+					a.st.mu.Unlock()
 				}
 			}
 		}
@@ -560,9 +508,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 				// Fallback: plain pipe (no rich output, but still functional).
 				pr, pw := io.Pipe()
 				cmd.Stdin = pr
-				a.mu.Lock()
-				a.stdinWrite = pw
-				a.mu.Unlock()
+				a.st.mu.Lock()
+				a.st.stdinWrite = pw
+				a.st.mu.Unlock()
 				go func() {
 					if _, werr := fmt.Fprintln(pw, stdinData); werr != nil {
 						logger.Warn(fmt.Sprintf("[%s] Failed to write prompt to stdin: %v", a.Config.Name, werr))
@@ -571,18 +519,18 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 				stdout, serr := cmd.StdoutPipe()
 				if serr != nil {
 					logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))
-					a.mu.Lock()
-					a.mode = ModeIdle
-					a.mu.Unlock()
+					a.st.mu.Lock()
+					a.st.mode = ModeIdle
+					a.st.mu.Unlock()
 					close(outputDone)
 					return
 				}
 				stderr, _ := cmd.StderrPipe()
 				if serr = cmd.Start(); serr != nil {
 					logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, serr))
-					a.mu.Lock()
-					a.mode = ModeIdle
-					a.mu.Unlock()
+					a.st.mu.Lock()
+					a.st.mode = ModeIdle
+					a.st.mu.Unlock()
 					close(outputDone)
 					return
 				}
@@ -593,9 +541,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 				// Set a wide terminal so progress bars / tables don't wrap.
 				_ = pty.Setsize(ptmx, &pty.Winsize{Rows: 50, Cols: 220})
 
-				a.mu.Lock()
-				a.stdinWrite = ptmx // PTY master is both stdin and stdout
-				a.mu.Unlock()
+				a.st.mu.Lock()
+				a.st.stdinWrite = ptmx // PTY master is both stdin and stdout
+				a.st.mu.Unlock()
 
 				// Write the initial prompt into the PTY; keep it open for future replies.
 				go func() {
@@ -611,18 +559,18 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 			stdout, serr := cmd.StdoutPipe()
 			if serr != nil {
 				logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))
-				a.mu.Lock()
-				a.mode = ModeIdle
-				a.mu.Unlock()
+				a.st.mu.Lock()
+				a.st.mode = ModeIdle
+				a.st.mu.Unlock()
 				close(outputDone)
 				return
 			}
 			stderr, _ := cmd.StderrPipe()
 			if serr = cmd.Start(); serr != nil {
 				logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, serr))
-				a.mu.Lock()
-				a.mode = ModeIdle
-				a.mu.Unlock()
+				a.st.mu.Lock()
+				a.st.mode = ModeIdle
+				a.st.mu.Unlock()
 				close(outputDone)
 				return
 			}
@@ -631,12 +579,12 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		}
 	}
 
-	a.mu.Lock()
+	a.st.mu.Lock()
 	if !usingTmux {
-		a.proc = cmd
+		a.st.proc = cmd
 	}
-	agentID := a.agentID
-	a.mu.Unlock()
+	agentID := a.st.agentID
+	a.st.mu.Unlock()
 
 	if usingTmux {
 		sessionSuffix := taskID
@@ -685,12 +633,12 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	}
 
 	// Close the stdin pipe now that the process has exited (safe no-op if already closed by complete()).
-	a.mu.Lock()
-	if pw := a.stdinWrite; pw != nil {
+	a.st.mu.Lock()
+	if pw := a.st.stdinWrite; pw != nil {
 		pw.Close()
-		a.stdinWrite = nil
+		a.st.stdinWrite = nil
 	}
-	a.mu.Unlock()
+	a.st.mu.Unlock()
 
 	logger.Info(fmt.Sprintf("[%s] Process exited (code %d)", a.Config.Name, code))
 	logger.Lifecycle(fmt.Sprintf("[%s] event=exit code=%d task_id=%s", a.Config.Name, code, taskID))
@@ -704,9 +652,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 }
 
 func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
-	a.mu.Lock()
-	runLog := a.runLog
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	runLog := a.st.runLog
+	a.st.mu.Unlock()
 
 	scanner := bufio.NewScanner(r)
 	// OpenCode renders full-screen TUI frames that can be very large ANSI blobs.
@@ -719,9 +667,9 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 		if len(batch) == 0 {
 			return
 		}
-		a.mu.Lock()
-		id := a.agentID
-		a.mu.Unlock()
+		a.st.mu.Lock()
+		id := a.st.agentID
+		a.st.mu.Unlock()
 		if id != "" {
 			a.post(cfg, "/daemon/push/"+id, map[string]any{ //nolint:errcheck
 				"type":  "line",
@@ -739,9 +687,9 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 
 		// Append to outputLines immediately so SetWaitingInput can read the
 		// latest content when the Notification hook fires.
-		a.mu.Lock()
-		a.outputLines = append(a.outputLines, line)
-		a.mu.Unlock()
+		a.st.mu.Lock()
+		a.st.outputLines = append(a.st.outputLines, line)
+		a.st.mu.Unlock()
 
 		// Write to the per-task run log immediately.
 		if runLog != nil {
@@ -1005,27 +953,27 @@ func ExtractTranscriptResponse(path string) string {
 // complete finalises the current task. Safe to call from both the hook handler
 // and the process-exit path — the completing flag prevents double execution.
 func (a *Agent) complete(cfg *config.Config, status string) {
-	a.mu.Lock()
-	if a.completing || a.sessionID == "" {
-		a.mu.Unlock()
+	a.st.mu.Lock()
+	if a.st.completing || a.st.sessionID == "" {
+		a.st.mu.Unlock()
 		return
 	}
-	a.completing = true
-	sessionID := a.sessionID
-	agentID := a.agentID
-	taskID := a.taskID
-	pw := a.stdinWrite
-	a.stdinWrite = nil
-	runLog := a.runLog
-	a.runLog = nil
-	outputDone := a.outputDone
-	sess := a.tmuxSession
-	fifo := a.fifoPath
-	transcriptPath := a.transcriptPath
-	a.tmuxSession = ""
-	a.fifoPath = ""
-	a.transcriptPath = ""
-	a.mu.Unlock()
+	a.st.completing = true
+	sessionID := a.st.sessionID
+	agentID := a.st.agentID
+	taskID := a.st.taskID
+	pw := a.st.stdinWrite
+	a.st.stdinWrite = nil
+	runLog := a.st.runLog
+	a.st.runLog = nil
+	outputDone := a.st.outputDone
+	sess := a.st.tmuxSession
+	fifo := a.st.fifoPath
+	transcriptPath := a.st.transcriptPath
+	a.st.tmuxSession = ""
+	a.st.fifoPath = ""
+	a.st.transcriptPath = ""
+	a.st.mu.Unlock()
 
 	a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath, false)
 }
@@ -1035,19 +983,19 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 // complete/sessionClose here as the server-side state is already settled.
 // The agent becomes idle and will start pulling new tasks on its next heartbeat.
 func (a *Agent) handleReset() {
-	a.mu.Lock()
-	sess := a.tmuxSession
-	fifo := a.fifoPath
-	pw := a.stdinWrite
-	a.stdinWrite = nil
-	a.tmuxSession = ""
-	a.fifoPath = ""
-	a.transcriptPath = ""
-	a.sessionID = ""
-	a.taskID = ""
-	a.completing = false
-	a.mode = ModeIdle
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	sess := a.st.tmuxSession
+	fifo := a.st.fifoPath
+	pw := a.st.stdinWrite
+	a.st.stdinWrite = nil
+	a.st.tmuxSession = ""
+	a.st.fifoPath = ""
+	a.st.transcriptPath = ""
+	a.st.sessionID = ""
+	a.st.taskID = ""
+	a.st.completing = false
+	a.st.mode = ModeIdle
+	a.st.mu.Unlock()
 
 	if sess != "" && tmuxBin != "" {
 		exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
@@ -1103,9 +1051,9 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		}
 	}
 
-	a.mu.Lock()
-	lines := append([]string(nil), a.outputLines...)
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	lines := append([]string(nil), a.st.outputLines...)
+	a.st.mu.Unlock()
 
 	logger.Info(fmt.Sprintf("[%s] Completing task %s — status=%s", a.Config.Name, taskID, status))
 
@@ -1215,14 +1163,14 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		os.Remove(fifo)
 	}
 
-	a.mu.Lock()
-	a.mode = ModeIdle
-	a.sessionID = ""
-	a.outputLines = nil
-	a.outputDone = nil
-	a.proc = nil
-	a.completing = false
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	a.st.mode = ModeIdle
+	a.st.sessionID = ""
+	a.st.outputLines = nil
+	a.st.outputDone = nil
+	a.st.proc = nil
+	a.st.completing = false
+	a.st.mu.Unlock()
 }
 
 // Complete is called by the hook server when the provider emits a Stop event.
@@ -1231,30 +1179,30 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 // status. For the PTY path it closes stdin and lets cmd.Wait() in startTask
 // determine the exit code and call complete() from there.
 func (a *Agent) Complete(cfg *config.Config, status string, transcriptPath string) {
-	a.mu.Lock()
-	if a.completing || a.sessionID == "" {
-		a.mu.Unlock()
+	a.st.mu.Lock()
+	if a.st.completing || a.st.sessionID == "" {
+		a.st.mu.Unlock()
 		return
 	}
-	a.completing = true
-	wasLearning := a.mode == ModeLearning
-	sessionID := a.sessionID
-	agentID := a.agentID
-	taskID := a.taskID
-	pw := a.stdinWrite
-	a.stdinWrite = nil
-	runLog := a.runLog
-	a.runLog = nil
-	outputDone := a.outputDone
-	sess := a.tmuxSession
-	fifo := a.fifoPath
+	a.st.completing = true
+	wasLearning := a.st.mode == ModeLearning
+	sessionID := a.st.sessionID
+	agentID := a.st.agentID
+	taskID := a.st.taskID
+	pw := a.st.stdinWrite
+	a.st.stdinWrite = nil
+	runLog := a.st.runLog
+	a.st.runLog = nil
+	outputDone := a.st.outputDone
+	sess := a.st.tmuxSession
+	fifo := a.st.fifoPath
 	if transcriptPath == "" {
-		transcriptPath = a.transcriptPath
+		transcriptPath = a.st.transcriptPath
 	}
-	a.tmuxSession = ""
-	a.fifoPath = ""
-	a.transcriptPath = ""
-	a.mu.Unlock()
+	a.st.tmuxSession = ""
+	a.st.fifoPath = ""
+	a.st.transcriptPath = ""
+	a.st.mu.Unlock()
 
 	go a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath, wasLearning)
 }
@@ -1265,13 +1213,13 @@ func (a *Agent) Complete(cfg *config.Config, status string, transcriptPath strin
 // to waiting_input — keeping the tmux session alive so the user can send a
 // follow-up or click "Complete session" to cleanly shut down.
 func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath string) {
-	a.mu.Lock()
-	mode := a.mode
-	completing := a.completing
-	sessionID := a.sessionID
-	agentID := a.agentID
-	sess := a.tmuxSession
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	mode := a.st.mode
+	completing := a.st.completing
+	sessionID := a.st.sessionID
+	agentID := a.st.agentID
+	sess := a.st.tmuxSession
+	a.st.mu.Unlock()
 
 	if mode != ModeRunning || completing {
 		logger.Debug(fmt.Sprintf("[%s] StopAndPause ignored: mode=%s completing=%v", a.Config.Name, mode, completing))
@@ -1314,9 +1262,9 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 		}
 	}
 	if finalText == "" {
-		a.mu.Lock()
-		lines := append([]string(nil), a.outputLines...)
-		a.mu.Unlock()
+		a.st.mu.Lock()
+		lines := append([]string(nil), a.st.outputLines...)
+		a.st.mu.Unlock()
 		finalText = strings.TrimSpace(strings.Join(lines, "\n"))
 		if len(finalText) > 10000 {
 			finalText = finalText[len(finalText)-10000:]
@@ -1343,9 +1291,9 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	}
 
 	// Upload execution log.
-	a.mu.Lock()
-	lines := append([]string(nil), a.outputLines...)
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	lines := append([]string(nil), a.st.outputLines...)
+	a.st.mu.Unlock()
 	logContent := strings.Join(lines, "\n")
 	if tmuxCapture != "" {
 		logContent = tmuxCapture
@@ -1360,12 +1308,12 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 		})
 	}
 
-	a.mu.Lock()
+	a.st.mu.Lock()
 	if transcriptPath != "" {
-		a.transcriptPath = transcriptPath
+		a.st.transcriptPath = transcriptPath
 	}
-	a.mode = ModeWaitingInput
-	a.mu.Unlock()
+	a.st.mode = ModeWaitingInput
+	a.st.mu.Unlock()
 
 	logger.Info(fmt.Sprintf("[%s] Paused after response — tmux session kept alive, waiting for reply or close", a.Config.Name))
 }
@@ -1375,22 +1323,22 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 // session and resets the agent to idle WITHOUT calling /daemon/session/close
 // (the server already closed the session and task).
 func (a *Agent) closeSession(cfg *config.Config) {
-	a.mu.Lock()
-	sess := a.tmuxSession
-	fifo := a.fifoPath
-	runLog := a.runLog
-	agentID := a.agentID
+	a.st.mu.Lock()
+	sess := a.st.tmuxSession
+	fifo := a.st.fifoPath
+	runLog := a.st.runLog
+	agentID := a.st.agentID
 	// Clear all session state. complete() will be called by the startTask
 	// goroutine once outputDone closes, but will be a safe no-op because
 	// sessionID is empty.
-	a.tmuxSession = ""
-	a.fifoPath = ""
-	a.sessionID = ""
-	a.transcriptPath = ""
-	a.mode = ModeIdle
-	a.outputLines = nil
-	a.runLog = nil
-	a.mu.Unlock()
+	a.st.tmuxSession = ""
+	a.st.fifoPath = ""
+	a.st.sessionID = ""
+	a.st.transcriptPath = ""
+	a.st.mode = ModeIdle
+	a.st.outputLines = nil
+	a.st.runLog = nil
+	a.st.mu.Unlock()
 
 	if runLog != nil {
 		fmt.Fprintf(runLog, "\n[EVENT] event=closed_by_user\n# ended=%s\n", time.Now().Format(time.RFC3339))
@@ -1421,10 +1369,10 @@ const learningTimeout = 10 * time.Minute
 // prompt into the active tmux session, and starts a safety timer that forces
 // Complete("closed") after learningTimeout if the Stop hook never fires.
 func (a *Agent) startLearning(cfg *config.Config) {
-	a.mu.Lock()
-	a.mode = ModeLearning
-	sess := a.tmuxSession
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	a.st.mode = ModeLearning
+	sess := a.st.tmuxSession
+	a.st.mu.Unlock()
 
 	if sess == "" || tmuxBin == "" {
 		logger.Warn(fmt.Sprintf("[%s] startLearning: no tmux session — skipping", a.Config.Name))
@@ -1441,9 +1389,9 @@ func (a *Agent) startLearning(cfg *config.Config) {
 		timer := time.NewTimer(learningTimeout)
 		defer timer.Stop()
 		<-timer.C
-		a.mu.Lock()
-		stillLearning := a.mode == ModeLearning
-		a.mu.Unlock()
+		a.st.mu.Lock()
+		stillLearning := a.st.mode == ModeLearning
+		a.st.mu.Unlock()
 		if stillLearning {
 			logger.Warn(fmt.Sprintf("[%s] Learning phase timed out after %s — forcing Complete(closed)", a.Config.Name, learningTimeout))
 			a.Complete(cfg, "closed", "")
@@ -1456,12 +1404,12 @@ func (a *Agent) startLearning(cfg *config.Config) {
 // reply can be piped back via stdin.
 func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPath string) {
 	logger.Info(fmt.Sprintf("[%s] SetWaitingInput called — message=%q transcript_path=%q", a.Config.Name, message, transcriptPath))
-	a.mu.Lock()
-	mode := a.mode
-	completing := a.completing
-	agentID := a.agentID
-	sessionID := a.sessionID
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	mode := a.st.mode
+	completing := a.st.completing
+	agentID := a.st.agentID
+	sessionID := a.st.sessionID
+	a.st.mu.Unlock()
 
 	// Ignore if not running or if complete() is already in progress (e.g. Stop
 	// hook arrived just before this Notification hook was delivered).
@@ -1470,9 +1418,9 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 		return
 	}
 	// Hook fired — agent is active; reset inactivity timer.
-	a.mu.Lock()
-	a.lastActivityAt = time.Now()
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	a.st.lastActivityAt = time.Now()
+	a.st.mu.Unlock()
 
 	// Wait briefly for any PTY output still buffered in the kernel to be read
 	// and appended to outputLines by the streamOutput goroutine.
@@ -1527,7 +1475,7 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 		}
 	}
 
-	a.mu.Lock()
-	a.mode = ModeWaitingInput
-	a.mu.Unlock()
+	a.st.mu.Lock()
+	a.st.mode = ModeWaitingInput
+	a.st.mu.Unlock()
 }
