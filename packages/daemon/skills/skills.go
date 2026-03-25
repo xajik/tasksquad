@@ -257,6 +257,10 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 	lock := loadLock(workDir)
 	serverNames := map[string]bool{}
 
+	if len(raw) > 0 {
+		logger.Debug(fmt.Sprintf("[skills] Sync found %d potential skills for agent %s", len(raw), agentID))
+	}
+
 	for _, item := range raw {
 		m, ok := item.(map[string]any)
 		if !ok {
@@ -269,7 +273,11 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 		serverNames[skill.Name] = true
 
 		if lock[skill.Name] == skill.Etag && skill.Etag != "" {
-			continue // already up to date
+			// Check if the file actually exists on disk. If not, re-install it.
+			skillDir := filepath.Join(workDir, ".tsq", "skills", skill.Name)
+			if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err == nil {
+				continue // already up to date and exists
+			}
 		}
 
 		// Fetch full content if not in list response
@@ -286,6 +294,7 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 		}
 
 		if skill.Content == "" {
+			logger.Warn(fmt.Sprintf("[skills] Skipping %q — no content received", skill.Name))
 			continue
 		}
 
@@ -309,21 +318,52 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 	saveLock(workDir, lock)
 }
 
-// installSkill writes content to <workDir>/.claude/skills/<name>/SKILL.md
-// Server version always wins over any local copy.
+// installSkill writes content to <workDir>/.tsq/skills/<name>/SKILL.md
+// and symlinks it to <workDir>/.claude/skills/<name> and <workDir>/.agents/skills/<name>
+// for compatibility with various agent tools.
 func installSkill(workDir string, skill remoteSkill) error {
-	dir := filepath.Join(workDir, ".claude", "skills", skill.Name)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	tsqDir := filepath.Join(workDir, ".tsq", "skills", skill.Name)
+	if err := os.MkdirAll(tsqDir, 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(skill.Content), 0644)
+	if err := os.WriteFile(filepath.Join(tsqDir, "SKILL.md"), []byte(skill.Content), 0644); err != nil {
+		return err
+	}
+
+	// Symlink targets for different agent tools
+	linkDirs := []string{
+		filepath.Join(workDir, ".claude", "skills"),
+		filepath.Join(workDir, ".agents", "skills"),
+	}
+
+	for _, dir := range linkDirs {
+		os.MkdirAll(dir, 0755) //nolint:errcheck
+
+		target := filepath.Join(dir, skill.Name)
+		os.RemoveAll(target) //nolint:errcheck
+
+		// Use relative path for symlink to keep it portable (../../.tsq/skills/<name>)
+		relPath := filepath.Join("..", "..", ".tsq", "skills", skill.Name)
+		if err := os.Symlink(relPath, target); err != nil {
+			logger.Warn(fmt.Sprintf("[skills] Failed to create symlink at %s: %v", target, err))
+		}
+	}
+
+	return nil
 }
 
-// removeSkill deletes SKILL.md and the folder for a given skill name.
+// removeSkill deletes the skill from .tsq/skills and its symlinks.
 func removeSkill(workDir, name string) {
-	dir := filepath.Join(workDir, ".claude", "skills", name)
-	os.Remove(filepath.Join(dir, "SKILL.md")) //nolint:errcheck
-	os.Remove(dir)                            //nolint:errcheck
+	tsqDir := filepath.Join(workDir, ".tsq", "skills", name)
+	os.RemoveAll(tsqDir) //nolint:errcheck
+
+	linkPaths := []string{
+		filepath.Join(workDir, ".claude", "skills", name),
+		filepath.Join(workDir, ".agents", "skills", name),
+	}
+	for _, p := range linkPaths {
+		os.Remove(p) //nolint:errcheck
+	}
 }
 
 // ─── Lock file helpers ────────────────────────────────────────────────────────
