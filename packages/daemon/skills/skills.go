@@ -186,9 +186,27 @@ func runCLI(cli, prompt string, timeout time.Duration) (string, error) {
 
 // ─── Periodic sync ─────────────────────────────────────────────────────────────
 
+// Syncer allows external code to trigger an immediate skills sync.
+type Syncer struct {
+	triggerCh chan struct{}
+}
+
+// NewSyncer creates a Syncer.
+func NewSyncer() *Syncer {
+	return &Syncer{triggerCh: make(chan struct{}, 1)}
+}
+
+// ForceSync triggers an immediate skills sync (non-blocking; no-op if already pending).
+func (s *Syncer) ForceSync() {
+	select {
+	case s.triggerCh <- struct{}{}:
+	default:
+	}
+}
+
 // StartSync polls the server every hour for auto_install skills and syncs them
 // to each agent's work directory. Safe to call in a goroutine.
-func StartSync(cfg *config.Config, agents []AgentRef) {
+func StartSync(cfg *config.Config, agents []AgentRef, syncer *Syncer) {
 	if cfg == nil || len(agents) == 0 {
 		return
 	}
@@ -196,8 +214,14 @@ func StartSync(cfg *config.Config, agents []AgentRef) {
 	syncSkills(cfg, agents) // immediate sync on startup so new projects get skills right away
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
-	for range ticker.C {
-		syncSkills(cfg, agents)
+	for {
+		select {
+		case <-ticker.C:
+			syncSkills(cfg, agents)
+		case <-syncer.triggerCh:
+			logger.Info("[skills] force-sync triggered")
+			syncSkills(cfg, agents)
+		}
 	}
 }
 

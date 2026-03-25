@@ -11,6 +11,24 @@ import (
 	"github.com/tasksquad/daemon/logger"
 )
 
+// BatchController allows external code to trigger an immediate poll.
+type BatchController struct {
+	triggerCh chan struct{}
+}
+
+// NewBatchController creates a BatchController.
+func NewBatchController() *BatchController {
+	return &BatchController{triggerCh: make(chan struct{}, 1)}
+}
+
+// ForcePoll triggers an immediate heartbeat poll (non-blocking; no-op if already pending).
+func (c *BatchController) ForcePoll() {
+	select {
+	case c.triggerCh <- struct{}{}:
+	default:
+	}
+}
+
 // RunBatch polls the server in a loop driven by the server-returned next_poll_ms
 // value (from the response body). On the first poll and as fallback,
 // cfg.Server.PollInterval is used. A combined ETag lets the server return 304
@@ -20,19 +38,19 @@ import (
 // is enforced server-side; no client-side backoff is applied.
 //
 // On 401 the loop rotates the token once via ForceRotate and retries.
-func RunBatch(cfg *config.Config, agents []*Agent) {
+func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 	nextInterval := time.Duration(cfg.Server.PollInterval) * time.Second
 	timer := time.NewTimer(0) // fire immediately for first poll
 	defer timer.Stop()
 
 	var combinedEtag string
 
-	for range timer.C {
+	doPoll := func() {
 		token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)
 		if err != nil {
 			logger.Error(fmt.Sprintf("[batch] auth error: %v", err))
 			timer.Reset(nextInterval)
-			continue
+			return
 		}
 
 		// Build per-agent entry list.
@@ -46,7 +64,7 @@ func RunBatch(cfg *config.Config, agents []*Agent) {
 			if isRateLimited(err) {
 				logger.Warn("[batch] rate limited (429) — retrying after normal interval")
 				timer.Reset(nextInterval)
-				continue
+				return
 			}
 			if isUnauthorized(err) {
 				logger.Warn("[batch] received 401 — rotating token and retrying once...")
@@ -55,7 +73,7 @@ func RunBatch(cfg *config.Config, agents []*Agent) {
 					logger.Error(fmt.Sprintf("[batch] token rotation failed: %v", rotErr))
 					logger.Error("[batch] run: tsq login to re-authenticate")
 					timer.Reset(nextInterval)
-					continue
+					return
 				}
 				agentMaps, newEtag, is304, err = api.PostBatch(cfg, newToken, "/daemon/heartbeat/batch", entries, combinedEtag)
 				if err != nil {
@@ -64,19 +82,19 @@ func RunBatch(cfg *config.Config, agents []*Agent) {
 						logger.Error("[batch] run: tsq login to re-authenticate")
 					}
 					timer.Reset(nextInterval)
-					continue
+					return
 				}
 			} else {
 				logger.Error(fmt.Sprintf("[batch] heartbeat failed: %v", err))
 				timer.Reset(nextInterval)
-				continue
+				return
 			}
 		}
 
 		if is304 {
 			logger.Debug("[batch] 304 — inbox unchanged, all agents idle")
 			timer.Reset(nextInterval)
-			continue
+			return
 		}
 
 		combinedEtag = newEtag
@@ -102,6 +120,23 @@ func RunBatch(cfg *config.Config, agents []*Agent) {
 
 		timer.Reset(nextInterval)
 	}
+
+	for {
+		select {
+		case <-timer.C:
+			doPoll()
+		case <-ctrl.triggerCh:
+			// Force-poll: drain pending timer tick to avoid a double poll.
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			logger.Info("[batch] force-poll triggered")
+			doPoll()
+		}
+	}
 }
 
 // isUnauthorized returns true when the API error indicates a 401 response.
@@ -113,4 +148,3 @@ func isUnauthorized(err error) bool {
 func isRateLimited(err error) bool {
 	return strings.Contains(err.Error(), "HTTP 429")
 }
-

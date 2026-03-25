@@ -41,6 +41,16 @@ type AuthController interface {
 	Logout() error
 }
 
+// SkillsSyncer allows triggering an immediate skills sync from the UI.
+type SkillsSyncer interface {
+	ForceSync()
+}
+
+// ConveyorSyncer allows triggering an immediate task-poll from the UI.
+type ConveyorSyncer interface {
+	ForcePoll()
+}
+
 // AutostartController manages OS-boot registration for the daemon.
 type AutostartController interface {
 	// IsEnabled returns true if the daemon is registered to start on OS boot.

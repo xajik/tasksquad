@@ -128,7 +128,8 @@ func main() {
 	hooks.StartHookServer(cfg, agentList, sup)
 
 	// Run all agents in a single shared poll loop (one HTTP request per interval).
-	go agent.RunBatch(cfg, rawAgents)
+	batchCtrl := agent.NewBatchController()
+	go agent.RunBatch(cfg, rawAgents, batchCtrl)
 
 	// Start supervisor monitor — watches for stuck tasks and spawns a helper session.
 	supAgents := make([]supervisor.MonitoredAgent, len(rawAgents))
@@ -142,7 +143,8 @@ func main() {
 	for i, a := range rawAgents {
 		skillAgents[i] = a
 	}
-	go skills.StartSync(cfg, skillAgents)
+	skillsSyncer := skills.NewSyncer()
+	go skills.StartSync(cfg, skillAgents, skillsSyncer)
 
 	logger.Info("Running — waiting for tasks...")
 
@@ -162,7 +164,7 @@ func main() {
 	// Agents run in goroutines above; the hook server runs in its own goroutine.
 	authCtrl := &mainAuthController{}
 	autostartCtrl := &mainAutostartController{execPath: execPath}
-	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, autostartCtrl, dashboardURL(cfg.Server.URL), *cfgPath, version)
+	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, autostartCtrl, skillsSyncer, batchCtrl, dashboardURL(cfg.Server.URL), *cfgPath, version)
 }
 
 // mainAuthController implements ui.AuthController using the auth package.

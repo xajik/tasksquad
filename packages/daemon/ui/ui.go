@@ -49,14 +49,16 @@ var iconPausedData []byte
 
 // Run starts the system tray UI on the main OS thread (required by macOS AppKit).
 // It blocks until the user clicks Quit or the process is killed.
-func Run(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, dashboardURL string, configPath string, version string) {
+func Run(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, dashboardURL string, configPath string, version string) {
 	systray.Run(
-		func() { onReady(agents, ctrl, authCtrl, autostartCtrl, dashboardURL, configPath, version) },
+		func() {
+			onReady(agents, ctrl, authCtrl, autostartCtrl, skillsSyncer, conveyorSyncer, dashboardURL, configPath, version)
+		},
 		func() { os.Exit(0) },
 	)
 }
 
-func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, dashboardURL string, configPath string, version string) {
+func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, dashboardURL string, configPath string, version string) {
 	// Green icon = pulling active; red icon = paused.
 	if ctrl.IsPaused() {
 		systray.SetIcon(iconPaused())
@@ -91,6 +93,8 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 	mDash := systray.AddMenuItem("Open Web Portal", dashboardURL)
 	mSessions := systray.AddMenuItem("Control Panel", "Open control panel")
 	mBoot := systray.AddMenuItem(bootLabel(autostartCtrl.IsEnabled()), "Toggle run on OS boot")
+	mSyncSkills := systray.AddMenuItem("Sync Skills Now", "Force-sync skills from server")
+	mSyncConveyor := systray.AddMenuItem("Sync Conveyor Now", "Force a heartbeat poll immediately")
 
 	systray.AddSeparator()
 
@@ -211,6 +215,18 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 					logger.Info("[ui] Run on OS boot enabled")
 				}
 			}
+		}
+	}()
+	go func() {
+		for range mSyncSkills.ClickedCh {
+			logger.Info("[ui] Force-sync skills triggered")
+			skillsSyncer.ForceSync()
+		}
+	}()
+	go func() {
+		for range mSyncConveyor.ClickedCh {
+			logger.Info("[ui] Force-sync conveyor triggered")
+			conveyorSyncer.ForcePoll()
 		}
 	}()
 	go func() {
