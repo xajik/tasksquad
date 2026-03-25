@@ -6,7 +6,7 @@ CREATE TABLE conveyors (
   sender_id TEXT NOT NULL,
   subject TEXT NOT NULL,
   body TEXT NOT NULL,
-  frequency TEXT NOT NULL, -- 'daily', 'weekly', 'monthly'
+  frequency TEXT NOT NULL, -- 'hourly', 'daily', 'weekly', 'monthly'
   hour INTEGER NOT NULL, -- 0-23
   day_of_week INTEGER, -- 0-6 (0=Sunday)
   day_of_month INTEGER, -- 1-31

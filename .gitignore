@@ -63,3 +63,6 @@ videos
 
 # Local AI skills (not committed)
 ai/
+
+# TSQ local config and skills
+.tsq/

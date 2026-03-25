@@ -54,7 +54,7 @@ export function Conveyors({ teamId }: { teamId: string }) {
   const [subject, setSubject] = useState('')
   const [taskBody, setTaskBody] = useState('')
   const [agentId, setAgentId] = useState<string | undefined>(undefined)
-  const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+  const [frequency, setFrequency] = useState<'hourly' | 'daily' | 'weekly' | 'monthly'>('daily')
   const [hour, setHour] = useState('9')
   const [minute, setMinute] = useState('0')
   const [dayOfWeek, setDayOfWeek] = useState('1') // Monday
@@ -70,7 +70,7 @@ export function Conveyors({ teamId }: { teamId: string }) {
   const [editSubject, setEditSubject] = useState('')
   const [editBody, setEditBody] = useState('')
   const [editAgentId, setEditAgentId] = useState<string | undefined>(undefined)
-  const [editFrequency, setEditFrequency] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+  const [editFrequency, setEditFrequency] = useState<'hourly' | 'daily' | 'weekly' | 'monthly'>('daily')
   const [editHour, setEditHour] = useState('9')
   const [editMinute, setEditMinute] = useState('0')
   const [editDayOfWeek, setEditDayOfWeek] = useState('1')
@@ -144,7 +144,7 @@ export function Conveyors({ teamId }: { teamId: string }) {
     try {
       await api.conveyors.delete(teamId, id)
       trackEvent('conveyor_deleted', { conveyor_id: id })
-      load()
+      setConveyors(conveyors.filter(c => c.id !== id))
     } catch (e) {
       console.error('Failed to delete conveyor:', e)
     }
@@ -199,6 +199,7 @@ function openEdit(c: Conveyor) {
     const hh = c.hour.toString().padStart(2, '0')
     const mm = (c.minute ?? 0).toString().padStart(2, '0')
     const time = `${hh}:${mm}`
+    if (c.frequency === 'hourly') return `Hourly at :${mm}`
     if (c.frequency === 'daily') return `Daily at ${time}`
     if (c.frequency === 'weekly') {
       const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -295,6 +296,7 @@ function openEdit(c: Conveyor) {
                   <Select value={frequency} onValueChange={(v: any) => setFrequency(v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="hourly">Hourly</SelectItem>
                       <SelectItem value="daily">Daily</SelectItem>
                       <SelectItem value="weekly">Weekly</SelectItem>
                       <SelectItem value="monthly">Monthly</SelectItem>
@@ -302,9 +304,9 @@ function openEdit(c: Conveyor) {
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Hour</Label>
-                  <Select value={hour} onValueChange={setHour}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Label className={frequency === 'hourly' ? 'opacity-50' : ''}>Hour</Label>
+                  <Select value={hour} onValueChange={setHour} disabled={frequency === 'hourly'}>
+                    <SelectTrigger className={frequency === 'hourly' ? 'opacity-50' : ''}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {Array.from({ length: 24 }).map((_, i) => (
                         <SelectItem key={i} value={i.toString()}>{i.toString().padStart(2, '0')}</SelectItem>
@@ -449,6 +451,7 @@ function openEdit(c: Conveyor) {
                   <Select value={editFrequency} onValueChange={(v: any) => setEditFrequency(v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="hourly">Hourly</SelectItem>
                       <SelectItem value="daily">Daily</SelectItem>
                       <SelectItem value="weekly">Weekly</SelectItem>
                       <SelectItem value="monthly">Monthly</SelectItem>
@@ -456,9 +459,9 @@ function openEdit(c: Conveyor) {
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Hour</Label>
-                  <Select value={editHour} onValueChange={setEditHour}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Label className={editFrequency === 'hourly' ? 'opacity-50' : ''}>Hour</Label>
+                  <Select value={editHour} onValueChange={setEditHour} disabled={editFrequency === 'hourly'}>
+                    <SelectTrigger className={editFrequency === 'hourly' ? 'opacity-50' : ''}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {Array.from({ length: 24 }).map((_, i) => (
                         <SelectItem key={i} value={i.toString()}>{i.toString().padStart(2, '0')}</SelectItem>

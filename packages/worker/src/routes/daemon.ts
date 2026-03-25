@@ -176,18 +176,18 @@ async function processAgentHeartbeat(
 }
 
 async function processConveyors(env: Env, teamIds: string[], now: number) {
-  const ONE_HOUR = 3600_000
+  const CONVEYOR_CHECK_INTERVAL = 5 * 60 * 1000 // 5 minutes
 
-  // Fast-path: check KV to skip teams processed in the last hour (avoids a D1 read per heartbeat)
+  // Fast-path: check KV to skip teams processed in the last 5m (avoids a D1 read per heartbeat)
   const kvValues = await Promise.all(teamIds.map(id => env.POLL_CACHE.get(`cv:lr:${id}`)))
   const dueTeams = teamIds.filter((_, i) => {
     const v = kvValues[i]
-    return v === null || now - parseInt(v) >= ONE_HOUR
+    return v === null || now - parseInt(v) >= CONVEYOR_CHECK_INTERVAL
   })
   if (!dueTeams.length) return
 
   for (const teamId of dueTeams) {
-    // Find conveyors due within the next hour
+    // Find conveyors due within the next window
     const { results: dueConveyors } = await env.DB
       .prepare(`
         SELECT * FROM conveyors
@@ -196,7 +196,7 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
           AND (repeat_count IS NULL OR repeat_counter < repeat_count)
           AND (end_date IS NULL OR next_run_at <= end_date)
       `)
-      .bind(teamId, now + ONE_HOUR)
+      .bind(teamId, now + CONVEYOR_CHECK_INTERVAL)
       .all<ConveyorRow>()
 
     for (const conveyor of dueConveyors) {

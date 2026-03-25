@@ -43,35 +43,38 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
-  const body = await req.json<{ name: string; description: string; content: string }>()
-  const { name, description, content } = body
+  const body = await req.json<{ name: string; description: string; content: string; auto_install?: boolean }>()
+  const { name, description, content, auto_install } = body
   if (!name || !content) return err('missing_fields', 400)
 
   const id = ulid()
   const now = Date.now()
   const etag = await contentEtag(content)
+  const autoInstallVal = auto_install ? 1 : 0
 
   // Upsert: if name exists for this team, update it
   await env.DB
     .prepare(`
-      INSERT INTO skills (id, team_id, name, description, content, author_id, etag, is_default, auto_install, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+      INSERT INTO skills (id, team_id, name, description, content, author_id, etag, is_default, auto_install, version, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?)
       ON CONFLICT(team_id, name) DO UPDATE SET
-        description = excluded.description,
-        content     = excluded.content,
-        author_id   = excluded.author_id,
-        etag        = excluded.etag,
-        updated_at  = excluded.updated_at
+        description  = excluded.description,
+        content      = excluded.content,
+        author_id    = excluded.author_id,
+        etag         = excluded.etag,
+        auto_install = excluded.auto_install,
+        version      = version + 1,
+        updated_at   = excluded.updated_at
     `)
-    .bind(id, teamId, name, description ?? '', content, auth.userId, etag, now, now)
+    .bind(id, teamId, name, description ?? '', content, auth.userId, etag, autoInstallVal, now, now)
     .run()
 
   const row = await env.DB
-    .prepare('SELECT id FROM skills WHERE team_id = ? AND name = ?')
+    .prepare('SELECT id, version FROM skills WHERE team_id = ? AND name = ?')
     .bind(teamId, name)
-    .first<{ id: string }>()
+    .first<{ id: string; version: number }>()
 
-  return json({ id: row?.id ?? id, name, etag }, 201)
+  return json({ id: row?.id ?? id, name, etag, version: row?.version ?? 1 }, 201)
 }
 
 export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
@@ -123,6 +126,7 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
           content      = coalesce(?, content),
           etag         = coalesce(?, etag),
           auto_install = coalesce(?, auto_install),
+          version      = CASE WHEN ? IS NOT NULL THEN version + 1 ELSE version END,
           updated_at   = ?
       WHERE id = ?
     `)
@@ -132,6 +136,7 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
       body.content ?? null,
       etag ?? null,
       body.auto_install !== undefined ? (body.auto_install ? 1 : 0) : null,
+      body.content ?? null, // drives version increment — only bumps when content changes
       now,
       skillId,
     )
@@ -209,21 +214,22 @@ export async function daemonUpsert(req: Request, env: Env, _ctx: unknown, daemon
 
   await env.DB
     .prepare(`
-      INSERT INTO skills (id, team_id, name, description, content, author_id, etag, is_default, auto_install, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, NULL, ?, 0, 0, ?, ?)
+      INSERT INTO skills (id, team_id, name, description, content, author_id, etag, is_default, auto_install, version, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, NULL, ?, 0, 0, 1, ?, ?)
       ON CONFLICT(team_id, name) DO UPDATE SET
         description = excluded.description,
         content     = excluded.content,
         etag        = excluded.etag,
+        version     = version + 1,
         updated_at  = excluded.updated_at
     `)
     .bind(id, teamId, name, description ?? '', content, etag, now, now)
     .run()
 
   const row = await env.DB
-    .prepare('SELECT id FROM skills WHERE team_id = ? AND name = ?')
+    .prepare('SELECT id, version FROM skills WHERE team_id = ? AND name = ?')
     .bind(teamId, name)
-    .first<{ id: string }>()
+    .first<{ id: string; version: number }>()
 
-  return json({ id: row?.id ?? id, name, etag, agent_id: agentId }, 201)
+  return json({ id: row?.id ?? id, name, etag, version: row?.version ?? 1, agent_id: agentId }, 201)
 }

@@ -189,7 +189,7 @@ export const api = {
   skills: {
     list: (teamId: string) => request<{ skills: Skill[] }>(`/teams/${teamId}/skills`),
     get: (teamId: string, skillId: string) => request<Skill>(`/teams/${teamId}/skills/${skillId}`),
-    create: (teamId: string, body: { name: string; description: string; content: string }) =>
+    create: (teamId: string, body: { name: string; description: string; content: string; auto_install?: boolean }) =>
       request<{ id: string; name: string; etag: string }>(`/teams/${teamId}/skills`, { method: 'POST', body: JSON.stringify(body) }),
     update: (teamId: string, skillId: string, body: { name?: string; description?: string; content?: string; auto_install?: boolean }) =>
       request<{ ok: boolean }>(`/teams/${teamId}/skills/${skillId}`, { method: 'PUT', body: JSON.stringify(body) }),
@@ -248,7 +248,7 @@ export interface Conveyor {
   sender_id: string
   subject: string
   body: string
-  frequency: 'daily' | 'weekly' | 'monthly'
+  frequency: 'hourly' | 'daily' | 'weekly' | 'monthly'
   hour: number
   minute: number
   day_of_week: number | null

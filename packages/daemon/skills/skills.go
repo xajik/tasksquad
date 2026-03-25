@@ -31,6 +31,7 @@ type remoteSkill struct {
 	Description string
 	Content     string
 	Etag        string
+	Version     int
 	IsDefault   int
 	AutoInstall int
 }
@@ -192,6 +193,7 @@ func StartSync(cfg *config.Config, agents []AgentRef) {
 		return
 	}
 	logger.Info("[skills] Auto-install sync started (interval=1h)")
+	syncSkills(cfg, agents) // immediate sync on startup so new projects get skills right away
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 	for range ticker.C {
@@ -268,7 +270,7 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 			continue
 		}
 		lock[skill.Name] = skill.Etag
-		logger.Info(fmt.Sprintf("[skills] Installed %q → %s", skill.Name, workDir))
+		logger.Info(fmt.Sprintf("[skills] Installed %q v%d → %s", skill.Name, skill.Version, workDir))
 	}
 
 	// Remove skills that were deleted on the server
@@ -341,6 +343,9 @@ func remoteSkillFromMap(m map[string]any) remoteSkill {
 	}
 	if v, ok := m["is_default"].(float64); ok {
 		s.IsDefault = int(v)
+	}
+	if v, ok := m["version"].(float64); ok {
+		s.Version = int(v)
 	}
 	return s
 }

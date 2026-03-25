@@ -10,7 +10,7 @@ async function requireMember(db: D1Database, teamId: string, userId: string): Pr
   return !!row
 }
 
-export type ConveyorFrequency = 'daily' | 'weekly' | 'monthly'
+export type ConveyorFrequency = 'hourly' | 'daily' | 'weekly' | 'monthly'
 
 export interface ConveyorRow {
   id: string
@@ -89,6 +89,12 @@ export function calculateNextRun(
   timezone = 'UTC'
 ): number {
   const local = getLocalParts(baseTime, timezone)
+
+  if (frequency === 'hourly') {
+    const candidate = localToUtcMs(local.year, local.month, local.day, local.hour, minute, timezone)
+    if (candidate > baseTime) return candidate
+    return localToUtcMs(local.year, local.month, local.day, local.hour + 1, minute, timezone)
+  }
 
   if (frequency === 'daily') {
     const candidate = localToUtcMs(local.year, local.month, local.day, hour, minute, timezone)

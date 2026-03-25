@@ -414,16 +414,19 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'system' | 'mine' | 'from-note' | 'scheduled'>('all')
   const nav = useNavigate()
 
   const prevTaskStatusesRef = useRef<Record<string, string>>({})
 
   const load = useCallback(async () => {
+    setIsLoading(true)
     const [td, ad] = await Promise.all([api.tasks.list(teamId), api.agents.list(teamId)])
     const newTasks = td.tasks ?? []
     setTasks(newTasks)
     setAgents(ad.agents ?? [])
+    setIsLoading(false)
     if (isInitialLoad) setIsInitialLoad(false)
 
     // Fire notifications for tasks whose status changed since last poll
@@ -515,7 +518,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
         <div className="flex items-center gap-1.5">
           <h2 className="text-2xl font-semibold">Inbox</h2>
           <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => load()} title="Refresh">
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
         <Button onClick={() => setShowCompose(true)}>

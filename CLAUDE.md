@@ -8,7 +8,8 @@ This file provides guidance to Claude Code when working in this repository.
 
 ## Skills
 
-Project-specific skills live in `ai/skills/` and are symlinked into `.claude/skills/`.
+Project-specific skills live in `.tsq/skills/` and are symlinked into `.claude/skills/`.
+Skills are for **complex, multi-step flows** — API call sequences, non-obvious tool patterns. Not for trivial tasks.
 Each skill directory contains a `SKILL.md` (or `SKILL.mk`) loaded on demand.
 
 | Skill | Trigger |

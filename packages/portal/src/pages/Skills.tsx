@@ -280,6 +280,7 @@ export function Skills({ teamId }: { teamId: string }) {
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newContent, setNewContent] = useState('')
+  const [newAutoInstall, setNewAutoInstall] = useState(false)
   const [creating, setCreating] = useState(false)
 
   const load = useCallback(async () => {
@@ -309,11 +310,12 @@ export function Skills({ teamId }: { teamId: string }) {
     e.preventDefault()
     setCreating(true)
     try {
-      await api.skills.create(teamId, { name: newName, description: newDesc, content: newContent })
+      await api.skills.create(teamId, { name: newName, description: newDesc, content: newContent, auto_install: newAutoInstall })
       setShowCreate(false)
       setNewName('')
       setNewDesc('')
       setNewContent('')
+      setNewAutoInstall(false)
       load()
     } finally {
       setCreating(false)
@@ -365,14 +367,28 @@ export function Skills({ teamId }: { teamId: string }) {
               className="font-mono text-sm min-h-[120px]"
               required
             />
-            <div className="flex gap-2">
-              <Button type="submit" size="sm" disabled={creating}>
-                {creating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                Create
-              </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setShowCreate(false)}>
-                Cancel
-              </Button>
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setNewAutoInstall(v => !v)}
+                className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border transition-colors ${
+                  newAutoInstall
+                    ? 'border-primary/50 bg-primary/5 text-primary'
+                    : 'border-border text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Zap className={`h-3.5 w-3.5 ${newAutoInstall ? 'fill-primary' : ''}`} />
+                Auto-install on agents
+              </button>
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" disabled={creating}>
+                  {creating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                  Create
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowCreate(false)}>
+                  Cancel
+                </Button>
+              </div>
             </div>
           </form>
         )}

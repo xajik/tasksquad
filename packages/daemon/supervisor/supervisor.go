@@ -38,7 +38,7 @@ type MonitoredAgent interface {
 // running task has had no hook activity for inactivityTimeout.
 // supervisorTimeout is how long a supervisor session may run before it is
 // killed and the attempt is retried on the next inactivity cycle.
-const supervisorTimeout = 1 * time.Minute
+const supervisorTimeout = 5 * time.Minute
 
 // orphanCleanupInterval is how often the supervisor scans for dangling
 // tsq-sup-* tmux sessions that survived previous daemon runs or crashes.
@@ -179,9 +179,18 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	)
 	os.WriteFile(supLog, []byte(header), 0644) //nolint:errcheck
 
-	// Launch detached tmux session running the CLI tool interactively.
-	// Output is piped to the log via `script` so it is captured without -p flag.
-	shellCmd := fmt.Sprintf(`script -q -a %s %s`, supLog, s.cli)
+	// Write prompt to a temp file before launching the session.
+	promptFile := fmt.Sprintf("/tmp/tsq-sup-%s.prompt", suffix)
+	if err := os.WriteFile(promptFile, []byte(prompt), 0600); err != nil {
+		logger.Error(fmt.Sprintf("[supervisor] Failed to write prompt file: %v", err))
+		return
+	}
+
+	// Launch detached tmux session running the CLI in print/non-interactive mode.
+	// Print mode (-p) outputs clean text (no ANSI codes) and self-terminates.
+	// --dangerouslySkipPermissions pre-approves tmux tool calls so Claude doesn't
+	// block waiting for a human to press "Yes" in a permission dialog.
+	shellCmd := printModeCmd(s.cli, promptFile, supLog)
 	err := exec.Command("tmux", "new-session", "-d", "-s", sessionName,
 		"-c", workDir, "sh", "-c", shellCmd).Run()
 	if err != nil {
@@ -191,28 +200,12 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	logger.Info(fmt.Sprintf("[supervisor] Session %s started for task %s — attach: tmux attach-session -t %s",
 		sessionName, taskID, sessionName))
 
-	// Write prompt to a temp file — used for paste-buffer and kept for the log.
-	promptFile := fmt.Sprintf("/tmp/tsq-sup-%s.prompt", suffix)
-	if err := os.WriteFile(promptFile, []byte(prompt), 0600); err != nil {
-		logger.Error(fmt.Sprintf("[supervisor] Failed to write prompt file: %v", err))
-		return
-	}
-
-	// Wait for the CLI to fully initialise before sending the prompt.
-	tmux.WaitForReady()
-
-	// Load prompt into a named tmux buffer, paste it into the session
-	// (avoids shell-quoting issues with multi-line text), then send Enter.
-	bufName := "sup-" + suffix
-	tmux.PastePromptFile(sessionName, bufName, promptFile) //nolint:errcheck
-
-	// Wait until the supervisor outputs its verdict or the 1-minute timeout fires.
-	// On either path the tmux session is killed before this call returns.
+	// Wait until the supervisor outputs its verdict, the process self-terminates
+	// (print mode), or the timeout fires. The tmux session is killed before return.
 	verdictFound := s.waitForVerdictOrKill(sessionName, supLog)
 
-	// Clean up temp files.
+	// Clean up temp file.
 	os.Remove(promptFile) //nolint:errcheck
-	tmux.DeleteBuffer(bufName)
 
 	if !verdictFound {
 		appendToLog(supLog, fmt.Sprintf("\n--- SUPERVISOR TIMEOUT: %s ---\n", time.Now().Format(time.RFC3339)))
@@ -422,14 +415,24 @@ func troubleshootingFile(workDir string) string {
 
 // waitForVerdictOrKill polls the supervisor log for the verdict marker and kills
 // the tmux session once the verdict appears or supervisorTimeout elapses.
+// In print mode the CLI self-terminates, so we also detect natural session end.
 // Returns true if a verdict was found, false if timed out.
 func (s *Supervisor) waitForVerdictOrKill(sessionName, logPath string) bool {
 	deadline := time.Now().Add(supervisorTimeout)
 	for time.Now().Before(deadline) {
 		time.Sleep(5 * time.Second)
+		// Print mode: the CLI process exits when done, ending the tmux session.
+		if !tmux.HasSession(sessionName) {
+			found := containsVerdictMarker(logPath)
+			if found {
+				logger.Info(fmt.Sprintf("[supervisor] Session %s: process completed with verdict", sessionName))
+			} else {
+				logger.Warn(fmt.Sprintf("[supervisor] Session %s: process exited without verdict", sessionName))
+			}
+			return found
+		}
 		if containsVerdictMarker(logPath) {
-			// Grace period: let `script` flush its last bytes before we kill.
-			time.Sleep(2 * time.Second)
+			time.Sleep(2 * time.Second) // grace: let output flush before kill
 			exec.Command("tmux", "kill-session", "-t", sessionName).Run() //nolint:errcheck
 			logger.Info(fmt.Sprintf("[supervisor] Session %s: verdict found — killed", sessionName))
 			return true
@@ -440,14 +443,35 @@ func (s *Supervisor) waitForVerdictOrKill(sessionName, logPath string) bool {
 	return false
 }
 
-// containsVerdictMarker reports whether the supervisor log file contains the
-// "Supervisor verdict is:" marker that the CLI must output on completion.
+// containsVerdictMarker reports whether the OUTPUT section of the supervisor log
+// contains the "Supervisor verdict is:" marker. We search only after "--- OUTPUT ---"
+// because the PROMPT template itself contains that string as an example, which would
+// otherwise trigger a false positive immediately after the log file is written.
 func containsVerdictMarker(logPath string) bool {
 	data, err := os.ReadFile(logPath)
 	if err != nil {
 		return false
 	}
-	return strings.Contains(string(data), "Supervisor verdict is:")
+	content := string(data)
+	outputIdx := strings.LastIndex(content, "--- OUTPUT ---")
+	if outputIdx < 0 {
+		return false
+	}
+	return strings.Contains(content[outputIdx:], "Supervisor verdict is:")
+}
+
+// printModeCmd builds a shell command that runs the CLI in print/non-interactive
+// mode, piping the prompt from promptFile and appending stdout+stderr to logFile.
+// For Claude Code, --dangerouslySkipPermissions pre-approves tool calls so tmux
+// commands (capture-pane, send-keys) don't block on interactive permission dialogs.
+func printModeCmd(cli, promptFile, logFile string) string {
+	base := filepath.Base(cli)
+	if strings.HasPrefix(base, "claude") {
+		return fmt.Sprintf(`cat %s | %s -p --dangerouslySkipPermissions >> %s 2>&1`,
+			promptFile, cli, logFile)
+	}
+	// Other CLIs (gemini, opencode, codex) — pipe stdin without special flags.
+	return fmt.Sprintf(`cat %s | %s >> %s 2>&1`, promptFile, cli, logFile)
 }
 
 // cleanOrphans scans tmux for tsq-sup-* sessions that are not actively managed
