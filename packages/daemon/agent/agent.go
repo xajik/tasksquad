@@ -296,7 +296,7 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 		}
 		if learn, _ := resp["learn"].(bool); learn && currentMode == ModeWaitingInput {
 			logger.Info(fmt.Sprintf("[%s] Server requested learning phase — injecting learning prompt", a.Config.Name))
-			go a.startLearning()
+			go a.startLearning(cfg)
 			return
 		}
 	}
@@ -1412,10 +1412,15 @@ func (a *Agent) closeSession(cfg *config.Config) {
 	}
 }
 
-// startLearning transitions the agent to ModeLearning and injects the
-// end-session learning prompt into the active tmux session. The session is
-// kept alive; the Stop hook will call Complete once the agent is done.
-func (a *Agent) startLearning() {
+// learningTimeout is the maximum time the agent may spend in the learning phase
+// before the daemon forces completion. Keeps tasks from hanging if the agent
+// never fires the Stop hook after the learning prompt is injected.
+const learningTimeout = 10 * time.Minute
+
+// startLearning transitions the agent to ModeLearning, injects the learning
+// prompt into the active tmux session, and starts a safety timer that forces
+// Complete("closed") after learningTimeout if the Stop hook never fires.
+func (a *Agent) startLearning(cfg *config.Config) {
 	a.mu.Lock()
 	a.mode = ModeLearning
 	sess := a.tmuxSession
@@ -1429,6 +1434,21 @@ func (a *Agent) startLearning() {
 	logger.Info(fmt.Sprintf("[%s] Injecting learning prompt into %s", a.Config.Name, sess))
 	time.Sleep(500 * time.Millisecond)
 	tmux.SendKeys(sess, "We are closing this session. Load /tsq-end-session-learning and provide any learnings.") //nolint:errcheck
+
+	// Safety timer: if the agent never finishes (no Stop hook), force-complete
+	// after learningTimeout to avoid tasks hanging in "learning" state forever.
+	go func() {
+		timer := time.NewTimer(learningTimeout)
+		defer timer.Stop()
+		<-timer.C
+		a.mu.Lock()
+		stillLearning := a.mode == ModeLearning
+		a.mu.Unlock()
+		if stillLearning {
+			logger.Warn(fmt.Sprintf("[%s] Learning phase timed out after %s — forcing Complete(closed)", a.Config.Name, learningTimeout))
+			a.Complete(cfg, "closed", "")
+		}
+	}()
 }
 
 // SetWaitingInput is called by the hook server on a Notification event.

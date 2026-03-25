@@ -410,6 +410,11 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 			http.Error(w, "status must be working_fine|resolved|cannot_help", http.StatusBadRequest)
 			return
 		}
+		const maxFieldLen = 1000
+		if len(payload.Summary) > maxFieldLen || len(payload.Found) > maxFieldLen || len(payload.Action) > maxFieldLen {
+			http.Error(w, "summary/found/action fields must be ≤1000 chars", http.StatusBadRequest)
+			return
+		}
 		logger.Info(fmt.Sprintf("[hooks/supervisor] Verdict for task %s: status=%s summary=%q",
 			payload.TaskID, payload.Status, payload.Summary))
 		if reporter != nil {

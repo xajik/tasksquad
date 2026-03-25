@@ -33,13 +33,19 @@ type MonitoredAgent interface {
 
 // Supervisor monitors all agents and spawns a dedicated tmux session when a
 // running task has had no hook activity for inactivityTimeout.
-// supervisorTimeout is how long a supervisor session may run before it is
-// killed and the attempt is retried on the next inactivity cycle.
-const supervisorTimeout = 5 * time.Minute
+const (
+	// supervisorTimeout is how long a supervisor session may run before it is
+	// killed and the attempt is retried on the next inactivity cycle.
+	supervisorTimeout = 5 * time.Minute
 
-// orphanCleanupInterval is how often the supervisor scans for dangling
-// tsq-sup-* tmux sessions that survived previous daemon runs or crashes.
-const orphanCleanupInterval = 12 * time.Hour
+	// orphanCleanupInterval is how often the supervisor scans for dangling
+	// tsq-sup-* tmux sessions that survived previous daemon runs or crashes.
+	orphanCleanupInterval = 12 * time.Hour
+
+	// sessionCheckInterval is how often waitForVerdictOrKill polls whether the
+	// supervisor tmux session is still alive (print-mode self-termination).
+	sessionCheckInterval = 5 * time.Second
+)
 
 // supervisorVerdict is the payload sent by the supervisor agent via POST /hooks/supervisor.
 type supervisorVerdict struct {
@@ -95,10 +101,12 @@ func detectCLI(cfg *config.Config) string {
 
 // HandleVerdict receives a supervisor verdict from POST /hooks/supervisor and
 // delivers it to the waiting spawn() goroutine via its channel.
+// Holds the mutex for the full operation to avoid a TOCTOU race between
+// checking the channel exists and sending on it.
 func (s *Supervisor) HandleVerdict(taskID, status, summary, found, action string) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	ch, ok := s.verdictChans[taskID]
-	s.mu.Unlock()
 	if !ok {
 		logger.Warn(fmt.Sprintf("[supervisor] HandleVerdict: no active session for task %s (already done or unknown)", taskID))
 		return
@@ -107,7 +115,7 @@ func (s *Supervisor) HandleVerdict(taskID, status, summary, found, action string
 	case ch <- supervisorVerdict{Status: status, Summary: summary, Found: found, Action: action}:
 		logger.Info(fmt.Sprintf("[supervisor] Verdict received for task %s: status=%s", taskID, status))
 	default:
-		logger.Warn(fmt.Sprintf("[supervisor] HandleVerdict: channel full for task %s — dropping duplicate verdict", taskID))
+		logger.Warn(fmt.Sprintf("[supervisor] HandleVerdict: duplicate verdict for task %s — ignoring", taskID))
 	}
 }
 
@@ -123,8 +131,11 @@ func (s *Supervisor) CancelForTask(taskID string) {
 	}
 	sessionName := "tsq-sup-" + suffix
 	if tmux.HasSession(sessionName) {
-		exec.Command("tmux", "kill-session", "-t", sessionName).Run() //nolint:errcheck
-		logger.Info(fmt.Sprintf("[supervisor] CancelForTask: killed %s (agent stop received for task %s)", sessionName, taskID))
+		if err := exec.Command("tmux", "kill-session", "-t", sessionName).Run(); err != nil {
+			logger.Debug(fmt.Sprintf("[supervisor] CancelForTask: kill-session %s: %v", sessionName, err))
+		} else {
+			logger.Info(fmt.Sprintf("[supervisor] CancelForTask: killed %s (agent stop received for task %s)", sessionName, taskID))
+		}
 	}
 	s.mu.Lock()
 	delete(s.activeForTask, taskID)
@@ -224,18 +235,27 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	)
 	os.WriteFile(supLog, []byte(header), 0644) //nolint:errcheck
 
-	// Write context block to a temp file before launching the session.
-	promptFile := fmt.Sprintf("/tmp/tsq-sup-%s.prompt", suffix)
-	if err := os.WriteFile(promptFile, []byte(contextBlock), 0600); err != nil {
+	// Write context block to a secure temp file before launching the session.
+	// Use os.CreateTemp so the OS picks a non-predictable path.
+	tmpF, err := os.CreateTemp("", "tsq-sup-*.prompt")
+	if err != nil {
+		logger.Error(fmt.Sprintf("[supervisor] Failed to create temp prompt file: %v", err))
+		return
+	}
+	promptFile := tmpF.Name()
+	if _, err := tmpF.WriteString(contextBlock); err != nil {
+		tmpF.Close()
+		os.Remove(promptFile) //nolint:errcheck
 		logger.Error(fmt.Sprintf("[supervisor] Failed to write prompt file: %v", err))
 		return
 	}
+	tmpF.Close()
 
 	// Launch detached tmux session running the CLI in print/non-interactive mode.
 	// Print mode (-p) outputs clean text (no ANSI codes) and self-terminates.
 	// --dangerouslySkipPermissions pre-approves tool calls (tmux, curl) without blocking.
 	shellCmd := printModeCmd(s.cli, promptFile, supLog)
-	err := exec.Command("tmux", "new-session", "-d", "-s", sessionName,
+	err = exec.Command("tmux", "new-session", "-d", "-s", sessionName,
 		"-c", workDir, "sh", "-c", shellCmd).Run()
 	if err != nil {
 		logger.Error(fmt.Sprintf("[supervisor] Failed to start tmux session %s: %v", sessionName, err))
@@ -285,7 +305,7 @@ func (s *Supervisor) waitForVerdictOrKill(taskID, sessionName string) (superviso
 
 	deadline := time.NewTimer(supervisorTimeout)
 	defer deadline.Stop()
-	checkTicker := time.NewTicker(5 * time.Second)
+	checkTicker := time.NewTicker(sessionCheckInterval)
 	defer checkTicker.Stop()
 
 	for {
@@ -293,11 +313,11 @@ func (s *Supervisor) waitForVerdictOrKill(taskID, sessionName string) (superviso
 		case v := <-ch:
 			// Verdict delivered via /hooks/supervisor — kill session and return.
 			time.Sleep(500 * time.Millisecond) // let output flush
-			exec.Command("tmux", "kill-session", "-t", sessionName).Run() //nolint:errcheck
+			killSession(sessionName)
 			return v, true
 
 		case <-deadline.C:
-			exec.Command("tmux", "kill-session", "-t", sessionName).Run() //nolint:errcheck
+			killSession(sessionName)
 			logger.Warn(fmt.Sprintf("[supervisor] Session %s timed out after %s", sessionName, supervisorTimeout))
 			return supervisorVerdict{}, false
 
@@ -420,9 +440,17 @@ func (s *Supervisor) cleanOrphans() {
 			}
 		}
 		if !isActive {
-			exec.Command("tmux", "kill-session", "-t", name).Run() //nolint:errcheck
+			killSession(name)
 			logger.Info(fmt.Sprintf("[supervisor] Orphan cleanup: killed %s", name))
 		}
+	}
+}
+
+// killSession kills a tmux session by name, logging any error at Debug level.
+// Errors are expected when the session was already gone (e.g. process exited in print mode).
+func killSession(name string) {
+	if err := exec.Command("tmux", "kill-session", "-t", name).Run(); err != nil {
+		logger.Debug(fmt.Sprintf("[supervisor] kill-session %s: %v (may be OK if already gone)", name, err))
 	}
 }
 

@@ -144,14 +144,20 @@ async function processAgentHeartbeat(
     return { agent_id: agentId, ok: true, next_poll_ms: nextPollMs }
   }
 
-  // Idle: heal any task left in 'running' state by a daemon crash/restart.
-  // Reset the stale running task to pending and clear agent_state in one batch.
+  // Idle: heal tasks left in 'running' or 'learning' state by a daemon crash/restart.
+  // 'running' → reset to 'pending' so the task is retried.
+  // 'learning' → set to 'done': learning is the final phase; just complete it.
   await env.DB.batch([
     env.DB.prepare(`
       UPDATE tasks SET status = 'pending', completed_at = NULL
       WHERE id = (SELECT current_task_id FROM agent_state WHERE agent_id = ?)
         AND status = 'running'
     `).bind(agentId),
+    env.DB.prepare(`
+      UPDATE tasks SET status = 'done', completed_at = ?
+      WHERE id = (SELECT current_task_id FROM agent_state WHERE agent_id = ?)
+        AND status = 'learning'
+    `).bind(now, agentId),
     env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, updated_at = ? WHERE agent_id = ? AND current_task_id IS NOT NULL")
       .bind(now, agentId),
   ])
