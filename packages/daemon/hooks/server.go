@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/tasksquad/daemon/api"
+	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 )
@@ -24,6 +26,19 @@ type Agent interface {
 	// GetTaskID returns the task ID the agent is currently working on.
 	// Used to reject stale hook events that fired after the task changed.
 	GetTaskID() string
+	// IsLearning returns true when the agent is in the end-session learning phase.
+	IsLearning() bool
+}
+
+// SupervisorReporter is implemented by the supervisor package and allows the
+// hook server to deliver verdicts and cancellations without a circular import.
+type SupervisorReporter interface {
+	// HandleVerdict delivers a verdict from POST /hooks/supervisor to the
+	// waiting spawn() goroutine for the given task.
+	HandleVerdict(taskID, status, summary, found, action string)
+	// CancelForTask kills any active supervisor session for the task.
+	// Called when the monitored agent's Stop hook fires.
+	CancelForTask(taskID string)
 }
 
 // StartHookServer starts a local HTTP server that receives lifecycle events from
@@ -34,7 +49,7 @@ type Agent interface {
 //	POST /hooks/stop         — claude-code Stop hook (task finished)
 //	POST /hooks/notification — claude-code Notification hook (waiting for input)
 //	POST /hooks/codex        — TODO: codex completion event (see provider/codex.go)
-func StartHookServer(cfg *config.Config, agents []Agent) {
+func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorReporter) {
 	mux := http.NewServeMux()
 
 	// ── Hook Handlers: Stop / SessionEnd ──────────────────────────────────────
@@ -118,8 +133,13 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 				logger.Warn(fmt.Sprintf("[hooks] Stop hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
 				continue
 			}
-			if a.GetMode() == "running" || a.GetMode() == "waiting_input" {
-				if crashed {
+			mode := a.GetMode()
+			if mode == "running" || mode == "waiting_input" || mode == "learning" {
+				if a.IsLearning() {
+					// Agent finished the learning skill — fully complete the session.
+					logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(closed) to learning agent %s", a.Name()))
+					go a.Complete(cfg, "closed", transcriptPath)
+				} else if crashed {
 					logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(crashed) to agent %s", a.Name()))
 					go a.Complete(cfg, "crashed", transcriptPath)
 				} else {
@@ -132,6 +152,11 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 		}
 		if !found {
 			logger.Warn(fmt.Sprintf("[hooks] Stop received but no matching active agent found (agent=%q task_id=%q)", agentID, taskIDParam))
+		}
+
+		// Cancel any supervisor session watching this task — the agent is done.
+		if reporter != nil && taskIDParam != "" {
+			reporter.CancelForTask(taskIDParam)
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -296,9 +321,107 @@ func StartHookServer(cfg *config.Config, agents []Agent) {
 		w.Write([]byte("codex hooks not yet implemented")) //nolint:errcheck
 	})
 
+	// ── POST /hooks/skill — agent pushes a learned skill to the server ────────
+	// Called from within a running session (e.g. via curl) as part of the
+	// /tsq-end-session-learning flow. Proxies the skill to POST /daemon/skills.
+	mux.HandleFunc("/hooks/skill", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var payload struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Content     string `json:"content"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil || payload.Name == "" || payload.Content == "" {
+			http.Error(w, "invalid payload: name and content required", http.StatusBadRequest)
+			return
+		}
+		if !strings.HasPrefix(payload.Name, "tsq-") {
+			http.Error(w, "skill name must start with tsq-", http.StatusBadRequest)
+			return
+		}
+
+		// Find the learning agent (or any agent with the given ?agent= ID).
+		agentIDParam := r.URL.Query().Get("agent")
+		var active Agent
+		for _, a := range agents {
+			if a.IsLearning() {
+				active = a
+				break
+			}
+			if agentIDParam != "" && a.ID() == agentIDParam {
+				active = a
+			}
+		}
+		if active == nil {
+			logger.Warn("[hooks/skill] No active agent found for skill push")
+			http.Error(w, "no active agent", http.StatusNotFound)
+			return
+		}
+
+		token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)
+		if err != nil {
+			logger.Error(fmt.Sprintf("[hooks/skill] Auth failed: %v", err))
+			http.Error(w, "auth failed", http.StatusInternalServerError)
+			return
+		}
+
+		resp, err := api.Post(cfg, token, active.ID(), "/daemon/skills", map[string]any{
+			"name":        payload.Name,
+			"description": payload.Description,
+			"content":     payload.Content,
+		})
+		if err != nil {
+			logger.Error(fmt.Sprintf("[hooks/skill] Failed to push skill %q: %v", payload.Name, err))
+			http.Error(w, fmt.Sprintf("upstream error: %v", err), http.StatusBadGateway)
+			return
+		}
+
+		logger.Info(fmt.Sprintf("[hooks/skill] Agent %s pushed skill %q", active.Name(), payload.Name))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp) //nolint:errcheck
+	})
+
+	// ── POST /hooks/supervisor — supervisor agent pushes its verdict ─────────
+	// Called via curl from within the supervisor tmux session after inspection.
+	// Delivers the verdict to the waiting spawn() goroutine via SupervisorReporter.
+	mux.HandleFunc("/hooks/supervisor", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var payload struct {
+			TaskID  string `json:"task_id"`
+			Status  string `json:"status"`
+			Summary string `json:"summary"`
+			Found   string `json:"found"`
+			Action  string `json:"action"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil || payload.TaskID == "" {
+			http.Error(w, "invalid payload: task_id required", http.StatusBadRequest)
+			return
+		}
+		validStatus := map[string]bool{"working_fine": true, "resolved": true, "cannot_help": true}
+		if !validStatus[payload.Status] {
+			http.Error(w, "status must be working_fine|resolved|cannot_help", http.StatusBadRequest)
+			return
+		}
+		logger.Info(fmt.Sprintf("[hooks/supervisor] Verdict for task %s: status=%s summary=%q",
+			payload.TaskID, payload.Status, payload.Summary))
+		if reporter != nil {
+			reporter.HandleVerdict(payload.TaskID, payload.Status, payload.Summary, payload.Found, payload.Action)
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok")) //nolint:errcheck
+	})
+
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
 	logger.Info(fmt.Sprintf("[hooks] Server listening on http://localhost:%d", cfg.Hooks.Port))
-	logger.Info(fmt.Sprintf("[hooks] Registered endpoints: /hooks/stop, /hooks/notification, /hooks/after_agent, /hooks/opencode"))
+	logger.Info("[hooks] Registered endpoints: /hooks/stop, /hooks/notification, /hooks/after_agent, /hooks/opencode, /hooks/skill, /hooks/supervisor")
 	go http.ListenAndServe(addr, mux) //nolint:errcheck
 }
 

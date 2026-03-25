@@ -105,14 +105,17 @@ func main() {
 		uiAgents = append(uiAgents, a)
 	}
 
+	// Start supervisor (needed before hook server so it can be passed as reporter).
+	sup := supervisor.New(cfg)
+
 	// Start hook server (receives Stop / Notification events from CLI providers).
-	hooks.StartHookServer(cfg, agentList)
+	// Pass sup as SupervisorReporter so verdicts and cancellations are routed correctly.
+	hooks.StartHookServer(cfg, agentList, sup)
 
 	// Run all agents in a single shared poll loop (one HTTP request per interval).
 	go agent.RunBatch(cfg, rawAgents)
 
 	// Start supervisor monitor — watches for stuck tasks and spawns a helper session.
-	sup := supervisor.New(cfg)
 	supAgents := make([]supervisor.MonitoredAgent, len(rawAgents))
 	for i, a := range rawAgents {
 		supAgents[i] = a

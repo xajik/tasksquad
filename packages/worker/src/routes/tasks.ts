@@ -128,15 +128,27 @@ export async function closeTask(req: Request, env: Env, _ctx: unknown, auth: Aut
   const taskId = url.pathname.split('/')[2]
 
   const task = await env.DB
-    .prepare('SELECT team_id FROM tasks WHERE id = ?')
+    .prepare('SELECT team_id, agent_id FROM tasks WHERE id = ?')
     .bind(taskId)
-    .first<{ team_id: string }>()
+    .first<{ team_id: string; agent_id: string }>()
   if (!task) return err('not_found', 404)
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('forbidden', 403)
 
   const now = Date.now()
 
-  // Find the currently open session (still status='running' while task is waiting_input)
+  // Check if agent is in waiting_input — if so, put task into "learning" mode
+  // so the daemon injects the learning prompt before killing the session.
+  const agent = await env.DB
+    .prepare("SELECT status FROM agents WHERE id = ?")
+    .bind(task.agent_id)
+    .first<{ status: string }>()
+
+  if (agent?.status === 'waiting_input') {
+    await env.DB.prepare("UPDATE tasks SET status = 'learning' WHERE id = ?").bind(taskId).run()
+    return json({ ok: true })
+  }
+
+  // Agent is not waiting_input (running, idle, etc.) — use original close flow.
   const session = await env.DB
     .prepare("SELECT id FROM sessions WHERE task_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1")
     .bind(taskId)

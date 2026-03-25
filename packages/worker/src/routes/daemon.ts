@@ -104,6 +104,9 @@ async function processAgentHeartbeat(
         .first<{ status: string }>()
 
       if (task) {
+        if (task.status === 'learning' && agentStatus === 'waiting_input') {
+          return { agent_id: agentId, ok: true, learn: true, next_poll_ms: nextPollMs }
+        }
         if (task.status === 'done' && agentStatus === 'waiting_input') {
           return { agent_id: agentId, ok: true, close: true, next_poll_ms: nextPollMs }
         }

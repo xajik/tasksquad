@@ -119,6 +119,7 @@ const (
 	ModeIdle         Mode = "idle"
 	ModeRunning      Mode = "running"
 	ModeWaitingInput Mode = "waiting_input"
+	ModeLearning     Mode = "learning"
 )
 
 type Agent struct {
@@ -179,6 +180,14 @@ func (a *Agent) GetMode() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return string(a.mode)
+}
+
+// IsLearning returns true when the agent is in the end-session learning phase.
+// Called by the hook server to route Stop hooks to Complete instead of StopAndPause.
+func (a *Agent) IsLearning() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.mode == ModeLearning
 }
 
 func (a *Agent) GetTaskID() string {
@@ -273,7 +282,7 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 		return
 	}
 
-	// When running or waiting for input: check if the server signalled a cancel or close.
+	// When running or waiting for input: check if the server signalled a cancel, close, or learn.
 	if currentMode == ModeRunning || currentMode == ModeWaitingInput {
 		if cancel, _ := resp["cancel"].(bool); cancel {
 			logger.Info(fmt.Sprintf("[%s] Task cancelled by server", a.Config.Name))
@@ -283,6 +292,11 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 		if close_, _ := resp["close"].(bool); close_ {
 			logger.Info(fmt.Sprintf("[%s] Session closed by server (user completed)", a.Config.Name))
 			go a.closeSession(cfg)
+			return
+		}
+		if learn, _ := resp["learn"].(bool); learn && currentMode == ModeWaitingInput {
+			logger.Info(fmt.Sprintf("[%s] Server requested learning phase — injecting learning prompt", a.Config.Name))
+			go a.startLearning()
 			return
 		}
 	}
@@ -1013,7 +1027,7 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	a.transcriptPath = ""
 	a.mu.Unlock()
 
-	a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath)
+	a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath, false)
 }
 
 // handleReset kills any running tmux session and returns the agent to idle.
@@ -1048,7 +1062,7 @@ func (a *Agent) handleReset() {
 	logger.Info(fmt.Sprintf("[%s] Reset complete — idle, ready to pull new tasks on next heartbeat", a.Config.Name))
 }
 
-func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string) {
+func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string, skipExtract bool) {
 	logger.Info(fmt.Sprintf("[%s] internalComplete called — status=%q taskID=%s transcriptPath=%q", a.Config.Name, status, taskID, transcriptPath))
 	if status == "" {
 		status = "closed"
@@ -1191,7 +1205,8 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 	}
 
 	// Asynchronously extract skills from this session's terminal output.
-	if tmuxCapture != "" {
+	// Skip when the agent already did explicit learning via /tsq-end-session-learning.
+	if tmuxCapture != "" && !skipExtract {
 		go skills.ExtractFromSession(cfg, agentID, tmuxCapture)
 	}
 
@@ -1222,6 +1237,7 @@ func (a *Agent) Complete(cfg *config.Config, status string, transcriptPath strin
 		return
 	}
 	a.completing = true
+	wasLearning := a.mode == ModeLearning
 	sessionID := a.sessionID
 	agentID := a.agentID
 	taskID := a.taskID
@@ -1240,7 +1256,7 @@ func (a *Agent) Complete(cfg *config.Config, status string, transcriptPath strin
 	a.transcriptPath = ""
 	a.mu.Unlock()
 
-	go a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath)
+	go a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath, wasLearning)
 }
 
 // StopAndPause is called by the hook server when Claude Code's Stop hook fires
@@ -1394,6 +1410,25 @@ func (a *Agent) closeSession(cfg *config.Config) {
 			"type": "done",
 		})
 	}
+}
+
+// startLearning transitions the agent to ModeLearning and injects the
+// end-session learning prompt into the active tmux session. The session is
+// kept alive; the Stop hook will call Complete once the agent is done.
+func (a *Agent) startLearning() {
+	a.mu.Lock()
+	a.mode = ModeLearning
+	sess := a.tmuxSession
+	a.mu.Unlock()
+
+	if sess == "" || tmuxBin == "" {
+		logger.Warn(fmt.Sprintf("[%s] startLearning: no tmux session — skipping", a.Config.Name))
+		return
+	}
+
+	logger.Info(fmt.Sprintf("[%s] Injecting learning prompt into %s", a.Config.Name, sess))
+	time.Sleep(500 * time.Millisecond)
+	tmux.SendKeys(sess, "We are closing this session. Load /tsq-end-session-learning and provide any learnings.") //nolint:errcheck
 }
 
 // SetWaitingInput is called by the hook server on a Notification event.

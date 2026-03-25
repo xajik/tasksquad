@@ -1517,29 +1517,35 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
       {/* ── Sticky action bar ── */}
       {task && !['done', 'failed'].includes(task.status) && (
         <div className="sticky bottom-0 pt-3 pb-1 flex justify-start bg-gradient-to-t from-background via-background to-transparent">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
-                <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
-                Close Session
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Close Session?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will mark the task as done. You can always follow up later if needed.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Keep open</AlertDialogCancel>
-                <AlertDialogAction onClick={closeTask} className="bg-emerald-600 hover:bg-emerald-700">
+          {task.status === 'learning' ? (
+            <Button size="sm" disabled className="bg-emerald-600 text-white shadow-sm opacity-80 cursor-not-allowed">
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              Extracting learnings…
+            </Button>
+          ) : (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                  <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
                   Close Session
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Close Session?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will mark the task as done. You can always follow up later if needed.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep open</AlertDialogCancel>
+                  <AlertDialogAction onClick={closeTask} className="bg-emerald-600 hover:bg-emerald-700">
+                    Close Session
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       )}
 
