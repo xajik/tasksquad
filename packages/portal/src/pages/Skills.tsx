@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { api, type Skill } from '../lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -282,6 +282,7 @@ export function Skills({ teamId }: { teamId: string }) {
   const [newContent, setNewContent] = useState('')
   const [newAutoInstall, setNewAutoInstall] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [autoInstallFilter, setAutoInstallFilter] = useState<boolean | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -295,6 +296,11 @@ export function Skills({ teamId }: { teamId: string }) {
 
   useEffect(() => { load() }, [load])
 
+  const filteredSkills = useMemo(() => {
+    if (autoInstallFilter === null) return skills
+    return skills.filter(s => !!s.auto_install === autoInstallFilter)
+  }, [skills, autoInstallFilter])
+
   async function handleDelete(skill: Skill) {
     await api.skills.delete(teamId, skill.id)
     if (selected?.id === skill.id) setSelected(null)
@@ -306,9 +312,12 @@ export function Skills({ teamId }: { teamId: string }) {
     load()
   }
 
+  const [createError, setCreateError] = useState<string | null>(null)
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setCreating(true)
+    setCreateError(null)
     try {
       await api.skills.create(teamId, { name: newName, description: newDesc, content: newContent, auto_install: newAutoInstall })
       setShowCreate(false)
@@ -317,6 +326,9 @@ export function Skills({ teamId }: { teamId: string }) {
       setNewContent('')
       setNewAutoInstall(false)
       load()
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'error' in err ? String((err as { error: unknown }).error) : 'Failed to create skill'
+      setCreateError(msg)
     } finally {
       setCreating(false)
     }
@@ -327,27 +339,47 @@ export function Skills({ teamId }: { teamId: string }) {
       {/* List panel */}
       <div className={`flex flex-col ${selected ? 'w-1/2 border-r' : 'w-full'} overflow-hidden`}>
         {/* Header */}
-        <div className="flex items-center justify-between p-6 pb-4">
-          <div className="flex items-center gap-2">
-            <BookOpen className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-xl font-semibold">Skills</h1>
-            {!loading && (
-              <span className="text-sm text-muted-foreground ml-1">({skills.length})</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={load} disabled={loading}>
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
-            <Button size="sm" onClick={() => setShowCreate(true)}>
-              <Plus className="h-4 w-4 mr-1" /> New Skill
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-2xl font-semibold">Skills</h2>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={load} disabled={loading} title="Refresh">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4 mr-1" /> New Skill
+          </Button>
+        </div>
+
+        {/* Filters row */}
+        <div className="flex items-center gap-1.5 mb-4 shrink-0">
+          <Button
+            variant={autoInstallFilter === null ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setAutoInstallFilter(null)}
+            className="h-7 rounded-full px-3 text-xs"
+          >
+            All
+          </Button>
+          <Button
+            variant={autoInstallFilter === true ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setAutoInstallFilter(autoInstallFilter === true ? null : true)}
+            className="h-7 rounded-full px-3 text-xs"
+          >
+            <Zap className="h-3 w-3 mr-1" />
+            Auto-install
+          </Button>
         </div>
 
         {/* Create form */}
         {showCreate && (
           <form onSubmit={handleCreate} className="px-6 pb-4 flex flex-col gap-3 border-b">
+            {createError && (
+              <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-md">
+                {createError}
+              </div>
+            )}
             <Input
               placeholder="skill-name (use tsq- prefix for auto-learning)"
               value={newName}
@@ -399,15 +431,15 @@ export function Skills({ teamId }: { teamId: string }) {
             <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading skills…
             </div>
-          ) : skills.length === 0 ? (
+          ) : filteredSkills.length === 0 ? (
             <div className="text-center text-muted-foreground py-12">
               <BookOpen className="h-8 w-8 mx-auto mb-3 opacity-40" />
-              <p className="text-sm">No skills yet.</p>
+              <p className="text-sm">{autoInstallFilter ? 'No auto-install skills.' : 'No skills yet.'}</p>
               <p className="text-xs mt-1">Agents automatically create skills as they learn.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {skills.map(skill => (
+              {filteredSkills.map(skill => (
                 <SkillCard
                   key={skill.id}
                   skill={skill}

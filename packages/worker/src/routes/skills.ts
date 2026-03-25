@@ -47,34 +47,46 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   const { name, description, content, auto_install } = body
   if (!name || !content) return err('missing_fields', 400)
 
-  const id = ulid()
   const now = Date.now()
   const etag = await contentEtag(content)
   const autoInstallVal = auto_install ? 1 : 0
 
-  // Upsert: if name exists for this team, update it
-  await env.DB
-    .prepare(`
-      INSERT INTO skills (id, team_id, name, description, content, author_id, etag, is_default, auto_install, version, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?)
-      ON CONFLICT(team_id, name) DO UPDATE SET
-        description  = excluded.description,
-        content      = excluded.content,
-        author_id    = excluded.author_id,
-        etag         = excluded.etag,
-        auto_install = excluded.auto_install,
-        version      = version + 1,
-        updated_at   = excluded.updated_at
-    `)
-    .bind(id, teamId, name, description ?? '', content, auth.userId, etag, autoInstallVal, now, now)
-    .run()
-
-  const row = await env.DB
+  // Check if skill already exists for this team
+  const existing = await env.DB
     .prepare('SELECT id, version FROM skills WHERE team_id = ? AND name = ?')
     .bind(teamId, name)
     .first<{ id: string; version: number }>()
 
-  return json({ id: row?.id ?? id, name, etag, version: row?.version ?? 1 }, 201)
+  if (existing) {
+    // Update existing skill
+    await env.DB
+      .prepare(`
+        UPDATE skills SET
+          description = ?,
+          content = ?,
+          author_id = ?,
+          etag = ?,
+          auto_install = ?,
+          version = version + 1,
+          updated_at = ?
+        WHERE id = ?
+      `)
+      .bind(description ?? '', content, auth.userId, etag, autoInstallVal, now, existing.id)
+      .run()
+    return json({ id: existing.id, name, etag, version: existing.version + 1 }, 200)
+  }
+
+  // Insert new skill
+  const id = ulid()
+  await env.DB
+    .prepare(`
+      INSERT INTO skills (id, team_id, name, description, content, author_id, etag, is_default, auto_install, version, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?)
+    `)
+    .bind(id, teamId, name, description ?? '', content, auth.userId, etag, autoInstallVal, now, now)
+    .run()
+
+  return json({ id, name, etag, version: 1 }, 201)
 }
 
 export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

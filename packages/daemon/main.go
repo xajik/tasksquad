@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -20,8 +21,9 @@ import (
 	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/skills"
 	"github.com/tasksquad/daemon/supervisor"
-	"github.com/tasksquad/daemon/util"
+	tmuxpkg "github.com/tasksquad/daemon/tmux"
 	"github.com/tasksquad/daemon/ui"
+	"github.com/tasksquad/daemon/util"
 )
 
 // version is overridden at build time via -ldflags "-X main.version=<tag>".
@@ -47,6 +49,18 @@ func main() {
 			return
 		case "logs":
 			runLogs(os.Args[2:])
+			return
+		case "pane":
+			runPane(os.Args[2:])
+			return
+		case "send":
+			runSend(os.Args[2:])
+			return
+		case "report":
+			runReport(os.Args[2:])
+			return
+		case "skill":
+			runSkill(os.Args[2:])
 			return
 		}
 	}
@@ -526,3 +540,166 @@ func nowDate() string {
 }
 
 func sanitizeAgentName(s string) string { return util.Sanitize(s) }
+
+// runPane captures tmux pane output and prints it to stdout.
+//
+// Usage:
+//
+//	tsq pane <session>              — capture last 200 lines
+//	tsq pane <session> --lines N   — capture last N lines
+func runPane(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: tsq pane <session> [--lines N]")
+		os.Exit(1)
+	}
+	session := sessionNameFromArg(args[0])
+
+	fs := flag.NewFlagSet("pane", flag.ContinueOnError)
+	lines := fs.Int("lines", 200, "number of lines to capture from scrollback")
+	fs.Parse(args[1:]) //nolint:errcheck
+
+	out := tmuxpkg.CapturePane(session, *lines)
+	if out == "" {
+		fmt.Fprintf(os.Stderr, "no output captured — session %q may not exist\n", session)
+		os.Exit(1)
+	}
+	fmt.Println(out)
+}
+
+// runSend sends keys to a tmux session.
+// With text: sends text, waits 2 s, then sends Enter.
+// Without text: sends Enter immediately (useful for arrow-key menus and empty-input confirms).
+//
+// Usage:
+//
+//	tsq send <session> <text>   — e.g. "y", "1", " " (spacebar)
+//	tsq send <session>          — just Enter
+func runSend(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: tsq send <session> [<text>]")
+		os.Exit(1)
+	}
+	session := sessionNameFromArg(args[0])
+
+	if len(args) < 2 {
+		// No text — send Enter only.
+		if err := tmuxpkg.SendEnter(session); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if err := tmuxpkg.SendKeys(session, args[1]); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// runReport posts a supervisor verdict to the local hooks API.
+//
+// Usage:
+//
+//	tsq report --task <id> --status <status> --summary "..." [--found "..."] [--action "..."] [--port N]
+func runReport(args []string) {
+	fs := flag.NewFlagSet("report", flag.ContinueOnError)
+	taskID := fs.String("task", "", "task ID (required)")
+	status := fs.String("status", "", "verdict: working_fine | resolved | cannot_help (required)")
+	summary := fs.String("summary", "", "one-line summary (required)")
+	found := fs.String("found", "", "what the terminal showed")
+	action := fs.String("action", "none", "what you sent, or none")
+	port := fs.Int("port", 7374, "hooks server port")
+
+	if err := fs.Parse(args); err != nil {
+		os.Exit(1)
+	}
+
+	if *taskID == "" || *status == "" || *summary == "" {
+		fmt.Fprintln(os.Stderr, "usage: tsq report --task <id> --status <status> --summary <summary> [--found <found>] [--action <action>]")
+		os.Exit(1)
+	}
+
+	payload := map[string]string{
+		"task_id": *taskID,
+		"status":  *status,
+		"summary": *summary,
+		"found":   *found,
+		"action":  *action,
+	}
+	body, _ := json.Marshal(payload)
+
+	url := fmt.Sprintf("http://localhost:%d/hooks/supervisor", *port)
+	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error posting report: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	out, _ := io.ReadAll(resp.Body)
+	fmt.Printf("HTTP %d: %s\n", resp.StatusCode, strings.TrimSpace(string(out)))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		os.Exit(1)
+	}
+}
+
+// runSkill pushes a skill to the local hooks API.
+// Content is read from --file <path> or stdin if --file is omitted.
+//
+// Usage:
+//
+//	tsq skill --name tsq-foo --description "..." --file /tmp/skill.md
+//	cat /tmp/skill.md | tsq skill --name tsq-foo --description "..."
+func runSkill(args []string) {
+	fs := flag.NewFlagSet("skill", flag.ContinueOnError)
+	name := fs.String("name", "", "skill name, e.g. tsq-my-skill (required)")
+	description := fs.String("description", "", "one-line description (required)")
+	file := fs.String("file", "", "path to skill markdown file (reads stdin if omitted)")
+	port := fs.Int("port", 7374, "hooks server port")
+
+	if err := fs.Parse(args); err != nil {
+		os.Exit(1)
+	}
+
+	if *name == "" || *description == "" {
+		fmt.Fprintln(os.Stderr, "usage: tsq skill --name <name> --description <desc> [--file <path>]")
+		os.Exit(1)
+	}
+
+	var content []byte
+	var err error
+	if *file != "" {
+		content, err = os.ReadFile(*file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error reading file: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		content, err = io.ReadAll(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error reading stdin: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	payload := map[string]string{
+		"name":        *name,
+		"description": *description,
+		"content":     string(content),
+	}
+	body, _ := json.Marshal(payload)
+
+	url := fmt.Sprintf("http://localhost:%d/hooks/skill", *port)
+	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error pushing skill: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	out, _ := io.ReadAll(resp.Body)
+	fmt.Printf("HTTP %d: %s\n", resp.StatusCode, strings.TrimSpace(string(out)))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		os.Exit(1)
+	}
+}

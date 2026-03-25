@@ -235,67 +235,61 @@ export function Notes({ teamId }: { teamId: string }) {
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
         </div>
-        {!showArchived && (
-          <Button onClick={createNote} disabled={creating}>
-            {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-            New Note
-          </Button>
-        )}
+        <Button onClick={createNote} disabled={creating}>
+          {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+          New Note
+        </Button>
+      </div>
+
+      {/* Search bar */}
+      <div className="relative mb-4 shrink-0">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder={showArchived ? 'Search archived notes…' : 'Search notes…'}
+          className="pl-9"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
       </div>
 
       {/* Filters row */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-4 shrink-0">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={showArchived ? 'Search archived notes…' : 'Search notes…'}
-            className="pl-9"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 no-scrollbar">
-          {/* Archive toggle */}
-          <Button
-            variant={showArchived ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => handleShowArchived(!showArchived)}
-            className={cn(
-              'text-xs h-8 whitespace-nowrap shrink-0',
-              showArchived && 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20',
-            )}
-          >
-            <Archive className="h-3 w-3 mr-1.5 opacity-70" />
-            Archived
-          </Button>
+      <div className="flex items-center gap-1.5 flex-wrap mb-4 shrink-0">
+        {/* Archive toggle - chip style matching inbox filters */}
+        <Button
+          variant={showArchived ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => handleShowArchived(!showArchived)}
+          className="h-7 rounded-full px-3 text-xs whitespace-nowrap shrink-0"
+        >
+          Archived
+        </Button>
 
-          {/* Tag filters for current view */}
-          {allTags.length > 0 && (
-            <>
-              <div className="w-px h-4 bg-border shrink-0" />
+        {/* Tag filters for current view */}
+        {allTags.length > 0 && (
+          <>
+            <div className="w-px h-4 bg-border shrink-0" />
+            <Button
+              variant={selectedTag === null ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setSelectedTag(null)}
+              className="text-xs h-8 shrink-0"
+            >
+              All
+            </Button>
+            {allTags.map(tag => (
               <Button
-                variant={selectedTag === null ? 'secondary' : 'ghost'}
+                key={tag}
+                variant={selectedTag === tag ? 'secondary' : 'ghost'}
                 size="sm"
-                onClick={() => setSelectedTag(null)}
-                className="text-xs h-8 shrink-0"
+                onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                className={cn('text-xs h-8 whitespace-nowrap', selectedTag === tag && 'bg-primary/10 text-primary hover:bg-primary/20')}
               >
-                All
+                <TagIcon className="h-3 w-3 mr-1.5 opacity-70" />
+                {tag}
               </Button>
-              {allTags.map(tag => (
-                <Button
-                  key={tag}
-                  variant={selectedTag === tag ? 'secondary' : 'ghost'}
-                  size="sm"
-                  onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-                  className={cn('text-xs h-8 whitespace-nowrap', selectedTag === tag && 'bg-primary/10 text-primary hover:bg-primary/20')}
-                >
-                  <TagIcon className="h-3 w-3 mr-1.5 opacity-70" />
-                  {tag}
-                </Button>
-              ))}
-            </>
-          )}
-        </div>
+            ))}
+          </>
+        )}
       </div>
 
       {/* Archived banner */}

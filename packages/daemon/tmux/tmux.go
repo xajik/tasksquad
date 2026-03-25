@@ -75,3 +75,9 @@ func CapturePane(session string, lines int) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+// SendEnter sends a bare Enter (C-m) to a tmux session without any preceding text.
+// Use for arrow-key menus or empty-input confirms.
+func SendEnter(session string) error {
+	return exec.Command(tmuxBin, "send-keys", "-t", session, "C-m").Run()
+}
