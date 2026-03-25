@@ -14,6 +14,7 @@ import (
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/tmux"
+	"github.com/tasksquad/daemon/util"
 )
 
 const inactivityTimeout = 10 * time.Minute
@@ -131,11 +132,8 @@ func (s *Supervisor) CancelForTask(taskID string) {
 	}
 	sessionName := "tsq-sup-" + suffix
 	if tmux.HasSession(sessionName) {
-		if err := exec.Command("tmux", "kill-session", "-t", sessionName).Run(); err != nil {
-			logger.Debug(fmt.Sprintf("[supervisor] CancelForTask: kill-session %s: %v", sessionName, err))
-		} else {
-			logger.Info(fmt.Sprintf("[supervisor] CancelForTask: killed %s (agent stop received for task %s)", sessionName, taskID))
-		}
+		logKill(sessionName, tmux.KillSession(sessionName))
+		logger.Info(fmt.Sprintf("[supervisor] CancelForTask: killed %s (agent stop received for task %s)", sessionName, taskID))
 	}
 	s.mu.Lock()
 	delete(s.activeForTask, taskID)
@@ -313,11 +311,11 @@ func (s *Supervisor) waitForVerdictOrKill(taskID, sessionName string) (superviso
 		case v := <-ch:
 			// Verdict delivered via /hooks/supervisor — kill session and return.
 			time.Sleep(500 * time.Millisecond) // let output flush
-			killSession(sessionName)
+			logKill(sessionName, tmux.KillSession(sessionName))
 			return v, true
 
 		case <-deadline.C:
-			killSession(sessionName)
+			logKill(sessionName, tmux.KillSession(sessionName))
 			logger.Warn(fmt.Sprintf("[supervisor] Session %s timed out after %s", sessionName, supervisorTimeout))
 			return supervisorVerdict{}, false
 
@@ -390,7 +388,7 @@ func SupervisorLogPath(taskID string) string {
 // Format: ~/.tasksquad/projects/<project>/troubleshooting.md
 func troubleshootingFile(workDir string) string {
 	home, _ := os.UserHomeDir()
-	project := sanitize(filepath.Base(workDir))
+	project := util.Sanitize(filepath.Base(workDir))
 	if project == "" || project == "." {
 		project = "default"
 	}
@@ -440,17 +438,9 @@ func (s *Supervisor) cleanOrphans() {
 			}
 		}
 		if !isActive {
-			killSession(name)
+			logKill(name, tmux.KillSession(name))
 			logger.Info(fmt.Sprintf("[supervisor] Orphan cleanup: killed %s", name))
 		}
-	}
-}
-
-// killSession kills a tmux session by name, logging any error at Debug level.
-// Errors are expected when the session was already gone (e.g. process exited in print mode).
-func killSession(name string) {
-	if err := exec.Command("tmux", "kill-session", "-t", name).Run(); err != nil {
-		logger.Debug(fmt.Sprintf("[supervisor] kill-session %s: %v (may be OK if already gone)", name, err))
 	}
 }
 
@@ -508,16 +498,9 @@ func (s *Supervisor) notifyProgress(taskID, agentID, message string) {
 	logger.Info(fmt.Sprintf("[supervisor] Progress posted for task %s", taskID))
 }
 
-// sanitize replaces non-alphanumeric characters with hyphens.
-func sanitize(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
-			b.WriteRune(r)
-		default:
-			b.WriteRune('-')
-		}
+// logKill logs a tmux kill-session error at Debug level; nil errors are silent.
+func logKill(name string, err error) {
+	if err != nil {
+		logger.Debug(fmt.Sprintf("[supervisor] kill-session %s: %v (may be OK if already gone)", name, err))
 	}
-	return b.String()
 }

@@ -5,9 +5,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/tasksquad/daemon/util"
 )
 
 var (
@@ -66,17 +67,7 @@ func Error(msg string)     { write("ERROR", msg) }
 func Lifecycle(msg string) { write("EVENT", msg) }
 
 // sanitizeName converts an agent name into a safe directory name.
-func sanitizeName(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune('-')
-		}
-	}
-	return b.String()
-}
+func sanitizeName(s string) string { return util.Sanitize(s) }
 
 // CreateRunLog opens (or creates) a per-task log file at
 // ~/.tasksquad/logs/<agentName>/<taskID>.log.

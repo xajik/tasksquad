@@ -41,6 +41,14 @@ type SupervisorReporter interface {
 	CancelForTask(taskID string)
 }
 
+// agentMode* constants mirror the Mode values in agent/agent.go.
+// Duplicated here to avoid a circular import between hooks ↔ agent.
+const (
+	agentModeRunning      = "running"
+	agentModeWaitingInput = "waiting_input"
+	agentModeLearning     = "learning"
+)
+
 // StartHookServer starts a local HTTP server that receives lifecycle events from
 // CLI providers and dispatches them to the appropriate agent.
 //
@@ -134,8 +142,8 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 				continue
 			}
 			mode := a.GetMode()
-			if mode == "running" || mode == "waiting_input" || mode == "learning" {
-				if a.IsLearning() {
+			if mode == agentModeRunning || mode == agentModeWaitingInput || mode == agentModeLearning {
+				if mode == agentModeLearning {
 					// Agent finished the learning skill — fully complete the session.
 					logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(closed) to learning agent %s", a.Name()))
 					go a.Complete(cfg, "closed", transcriptPath)
@@ -229,7 +237,7 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 				logger.Warn(fmt.Sprintf("[hooks] Notification hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
 				continue
 			}
-			if a.GetMode() == "running" {
+			if a.GetMode() == agentModeRunning {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching SetWaitingInput to agent %s", a.Name()))
 				go a.SetWaitingInput(cfg, msg, transcriptPath)
 				found = true
@@ -281,7 +289,7 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 				logger.Debug(fmt.Sprintf("[hooks] AfterAgent hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
 				continue
 			}
-			if a.GetMode() == "running" {
+			if a.GetMode() == agentModeRunning {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching StopAndPause to agent %s", a.Name()))
 				go a.StopAndPause(cfg, "", payload.TranscriptPath)
 				found = true

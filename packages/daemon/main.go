@@ -20,6 +20,7 @@ import (
 	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/skills"
 	"github.com/tasksquad/daemon/supervisor"
+	"github.com/tasksquad/daemon/util"
 	"github.com/tasksquad/daemon/ui"
 )
 
@@ -524,15 +525,4 @@ func nowDate() string {
 	return strings.TrimSpace(string(out))
 }
 
-// sanitizeAgentName mirrors logger.sanitizeName: replaces non-alphanumeric chars with '-'.
-func sanitizeAgentName(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune('-')
-		}
-	}
-	return b.String()
-}
+func sanitizeAgentName(s string) string { return util.Sanitize(s) }

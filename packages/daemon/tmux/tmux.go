@@ -59,6 +59,12 @@ func HasSession(name string) bool {
 	return exec.Command(tmuxBin, "has-session", "-t", name).Run() == nil
 }
 
+// KillSession terminates a tmux session by name.
+// Returns an error if tmux reports failure; callers may ignore "not found" errors.
+func KillSession(name string) error {
+	return exec.Command(tmuxBin, "kill-session", "-t", name).Run()
+}
+
 // CapturePane returns the last n lines of visible output from a tmux session.
 // Returns an empty string if the session does not exist or capture fails.
 func CapturePane(session string, lines int) string {

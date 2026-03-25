@@ -1062,7 +1062,7 @@ func (a *Agent) handleReset() {
 	logger.Info(fmt.Sprintf("[%s] Reset complete — idle, ready to pull new tasks on next heartbeat", a.Config.Name))
 }
 
-func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string, skipExtract bool) {
+func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string, wasLearning bool) {
 	logger.Info(fmt.Sprintf("[%s] internalComplete called — status=%q taskID=%s transcriptPath=%q", a.Config.Name, status, taskID, transcriptPath))
 	if status == "" {
 		status = "closed"
@@ -1206,7 +1206,7 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 
 	// Asynchronously extract skills from this session's terminal output.
 	// Skip when the agent already did explicit learning via /tsq-end-session-learning.
-	if tmuxCapture != "" && !skipExtract {
+	if tmuxCapture != "" && !wasLearning {
 		go skills.ExtractFromSession(cfg, agentID, tmuxCapture)
 	}
 

@@ -149,14 +149,11 @@ async function processAgentHeartbeat(
   // 'learning' → set to 'done': learning is the final phase; just complete it.
   await env.DB.batch([
     env.DB.prepare(`
-      UPDATE tasks SET status = 'pending', completed_at = NULL
+      UPDATE tasks SET
+        status = CASE status WHEN 'running' THEN 'pending' WHEN 'learning' THEN 'done' END,
+        completed_at = CASE status WHEN 'learning' THEN ? ELSE NULL END
       WHERE id = (SELECT current_task_id FROM agent_state WHERE agent_id = ?)
-        AND status = 'running'
-    `).bind(agentId),
-    env.DB.prepare(`
-      UPDATE tasks SET status = 'done', completed_at = ?
-      WHERE id = (SELECT current_task_id FROM agent_state WHERE agent_id = ?)
-        AND status = 'learning'
+        AND status IN ('running', 'learning')
     `).bind(now, agentId),
     env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, updated_at = ? WHERE agent_id = ? AND current_task_id IS NOT NULL")
       .bind(now, agentId),
