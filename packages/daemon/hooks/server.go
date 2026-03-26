@@ -22,6 +22,10 @@ type Agent interface {
 	Complete(cfg *config.Config, status string, transcriptPath string)
 	StopAndPause(cfg *config.Config, hookMessage, transcriptPath string)
 	SetWaitingInput(cfg *config.Config, message string, transcriptPath string)
+	// PushIntermediateResponse posts an agent message to the task thread without
+	// pausing the task. Used by Gemini's AfterAgent hook to stream per-turn
+	// responses while the session continues running.
+	PushIntermediateResponse(cfg *config.Config, promptResponse, transcriptPath string)
 	GetMode() string
 	// GetTaskID returns the task ID the agent is currently working on.
 	// Used to reject stale hook events that fired after the task changed.
@@ -261,24 +265,20 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 		taskIDParam := r.URL.Query().Get("task_id")
 		provider := r.URL.Query().Get("provider")
 
-		// Gemini payload: {"message": "...", "transcript_path": "...", "llm_response": {...}}
+		// Gemini AfterAgent payload fires after each model turn (not just the final one).
+		// We post the turn's response as an intermediate message without pausing the task,
+		// so the portal shows per-turn progress while the session keeps running.
+		// Final task completion is signalled by the SessionEnd hook (/hooks/stop).
 		var payload struct {
 			TranscriptPath string `json:"transcript_path"`
-			LLMResponse    struct {
-				Candidates []struct {
-					FinishReason string `json:"finishReason"`
-					Content      struct {
-						Parts []map[string]any `json:"parts"`
-					} `json:"content"`
-				} `json:"candidates"`
-			} `json:"llm_response"`
+			PromptResponse string `json:"prompt_response"`
 		}
 		if err := json.Unmarshal(body, &payload); err != nil {
 			logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal Gemini after_agent hook: %v", err))
 		}
 
-		logger.Info(fmt.Sprintf("[hooks] AfterAgent (Final) received: provider=%s transcript_path=%s",
-			provider, payload.TranscriptPath))
+		logger.Info(fmt.Sprintf("[hooks] AfterAgent received: provider=%s transcript_path=%s prompt_response_len=%d",
+			provider, payload.TranscriptPath, len(payload.PromptResponse)))
 
 		found := false
 		for _, a := range agents {
@@ -290,8 +290,8 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 				continue
 			}
 			if a.GetMode() == agentModeRunning {
-				logger.Debug(fmt.Sprintf("[hooks] Dispatching StopAndPause to agent %s", a.Name()))
-				go a.StopAndPause(cfg, "", payload.TranscriptPath)
+				logger.Debug(fmt.Sprintf("[hooks] Dispatching PushIntermediateResponse to agent %s", a.Name()))
+				go a.PushIntermediateResponse(cfg, payload.PromptResponse, payload.TranscriptPath)
 				found = true
 				break
 			}

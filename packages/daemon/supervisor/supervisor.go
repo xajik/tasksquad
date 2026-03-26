@@ -404,7 +404,7 @@ func troubleshootingFile(workDir string) string {
 func printModeCmd(cli, promptFile, logFile string) string {
 	base := filepath.Base(cli)
 	if strings.HasPrefix(base, "claude") {
-		return fmt.Sprintf(`cat %s | %s -p --dangerouslySkipPermissions >> %s 2>&1`,
+		return fmt.Sprintf(`cat %s | %s -p --dangerously-skip-permissions >> %s 2>&1`,
 			promptFile, cli, logFile)
 	}
 	// Other CLIs (gemini, opencode, codex) — pipe stdin without special flags.

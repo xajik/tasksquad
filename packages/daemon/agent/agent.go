@@ -1110,6 +1110,14 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		}
 	}
 
+	// Learning sessions (end-of-task skill extraction) run in the agent's own
+	// tmux session and fire a Stop hook when done. Their "final_text" would be
+	// the skill-saving confirmation — not a task response. Suppress it so no
+	// spurious message appears in the task thread.
+	if wasLearning {
+		finalText = ""
+	}
+
 	closeResp, err := a.post(cfg, "/daemon/session/close", map[string]any{
 		"session_id": sessionID,
 		"agent_id":   agentID,
@@ -1316,6 +1324,42 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	a.st.mu.Unlock()
 
 	logger.Info(fmt.Sprintf("[%s] Paused after response — tmux session kept alive, waiting for reply or close", a.Config.Name))
+}
+
+// PushIntermediateResponse posts a per-turn agent message to the task thread
+// without pausing the task or changing agent mode. Called by Gemini's AfterAgent
+// hook after each model turn so the portal shows progress while the session
+// continues running. Task completion is signalled by SessionEnd (/hooks/stop).
+func (a *Agent) PushIntermediateResponse(cfg *config.Config, promptResponse, transcriptPath string) {
+	a.st.mu.Lock()
+	mode := a.st.mode
+	sessionID := a.st.sessionID
+	a.st.mu.Unlock()
+
+	if mode != ModeRunning {
+		logger.Debug(fmt.Sprintf("[%s] PushIntermediateResponse ignored: mode=%s", a.Config.Name, mode))
+		return
+	}
+
+	text := promptResponse
+	if text == "" && transcriptPath != "" {
+		text = ExtractTranscriptResponse(transcriptPath)
+	}
+	if text == "" {
+		logger.Debug(fmt.Sprintf("[%s] PushIntermediateResponse: no text to post", a.Config.Name))
+		return
+	}
+
+	_, err := a.post(cfg, "/daemon/session/message", map[string]any{
+		"session_id": sessionID,
+		"type":       "output",
+		"message":    text,
+	})
+	if err != nil {
+		logger.Error(fmt.Sprintf("[%s] PushIntermediateResponse error: %v", a.Config.Name, err))
+	} else {
+		logger.Info(fmt.Sprintf("[%s] Intermediate response posted (%d chars)", a.Config.Name, len(text)))
+	}
 }
 
 // closeSession is called by heartbeat when the server sends a "close" signal,
