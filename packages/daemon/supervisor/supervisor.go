@@ -265,7 +265,7 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	// Launch detached tmux session running the CLI in print/non-interactive mode.
 	// Print mode (-p) outputs clean text (no ANSI codes) and self-terminates.
 	// --dangerouslySkipPermissions pre-approves tool calls (tmux, curl) without blocking.
-	shellCmd := printModeCmd(s.cli, promptFile, supLog, s.daemonBinDir)
+	shellCmd := printModeCmd(s.cli, promptFile, supLog, s.daemonBinDir, taskID, s.cfg.Hooks.Port)
 	err = exec.Command("tmux", "new-session", "-d", "-s", sessionName,
 		"-c", workDir, "sh", "-c", shellCmd).Run()
 	if err != nil {
@@ -433,7 +433,19 @@ func troubleshootingFile(workDir string) string {
 // mode, piping the prompt from promptFile and appending stdout+stderr to logFile.
 // daemonBinDir is prepended to PATH so the supervisor session can find the `tsq`
 // binary (which may not be in the tmux environment's PATH).
-func printModeCmd(cli, promptFile, logFile, daemonBinDir string) string {
+//
+// For non-Claude CLIs (gemini, opencode, codex): the supervisor instructions ask
+// the CLI to curl POST /hooks/supervisor with its verdict. Claude supports this via
+// --dangerously-skip-permissions (pre-approves bash/tool calls). Other CLIs run in
+// non-interactive print mode and may not be able to execute shell commands, so the
+// verdict curl never fires and waitForVerdictOrKill times out after 5 minutes.
+//
+// To fix this, we append a fallback curl after the CLI command using shell ";".
+// If the CLI DID post a verdict: waitForVerdictOrKill receives it and kills the
+// tmux session before the fallback runs. If the CLI exited WITHOUT a verdict:
+// the fallback fires and delivers "cannot_help", unblocking spawn() immediately.
+// Duplicate verdicts are safe — HandleVerdict rejects them with a "buffered channel full" no-op.
+func printModeCmd(cli, promptFile, logFile, daemonBinDir, taskID string, hooksPort int) string {
 	base := filepath.Base(cli)
 	pathPrefix := ""
 	if daemonBinDir != "" {
@@ -443,8 +455,12 @@ func printModeCmd(cli, promptFile, logFile, daemonBinDir string) string {
 		return fmt.Sprintf(`%scat %s | %s -p --dangerously-skip-permissions >> %s 2>&1`,
 			pathPrefix, promptFile, cli, logFile)
 	}
-	// Other CLIs (gemini, opencode, codex) — pipe stdin without special flags.
-	return fmt.Sprintf(`%scat %s | %s >> %s 2>&1`, pathPrefix, promptFile, cli, logFile)
+	// Non-Claude CLIs: append fallback verdict so spawn() is never blocked waiting
+	// for a curl call the CLI is unable to make in non-interactive mode.
+	fallbackCurl := fmt.Sprintf(
+		`curl -sf -X POST http://localhost:%d/hooks/supervisor -H 'Content-Type: application/json' -d '{"task_id":"%s","status":"cannot_help","summary":"Supervisor CLI exited without posting verdict"}' > /dev/null 2>&1 || true`,
+		hooksPort, taskID)
+	return fmt.Sprintf(`%scat %s | %s >> %s 2>&1; %s`, pathPrefix, promptFile, cli, logFile, fallbackCurl)
 }
 
 // cleanOrphans scans tmux for tsq-sup-* sessions that are not actively managed

@@ -333,9 +333,9 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 		taskIDParam := r.URL.Query().Get("task_id")
 
 		var payload struct {
-			Type                string 
-			TurnID              string 
-			LastAssistantMessage string 
+			Type                 string `json:"type"`
+			TurnID               string `json:"turn-id"`
+			LastAssistantMessage string `json:"last-assistant-message"`
 		}
 		if err := json.Unmarshal(body, &payload); err != nil {
 			logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal codex hook: %v", err))
