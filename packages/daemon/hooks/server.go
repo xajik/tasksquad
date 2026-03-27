@@ -289,7 +289,8 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 				logger.Debug(fmt.Sprintf("[hooks] AfterAgent hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
 				continue
 			}
-			if a.GetMode() == agentModeRunning {
+			mode := a.GetMode()
+			if mode == agentModeRunning || mode == agentModeWaitingInput {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching PushIntermediateResponse to agent %s", a.Name()))
 				go a.PushIntermediateResponse(cfg, payload.PromptResponse, payload.TranscriptPath)
 				found = true
