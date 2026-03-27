@@ -166,6 +166,16 @@ func (a *Agent) IsLearning() bool { return a.st.ModeValue() == ModeLearning }
 
 func (a *Agent) GetTaskID() string { return a.st.TaskID() }
 
+// SetHookMessage stores an assistant message delivered by a provider-specific
+// hook (e.g. codex "last-assistant-message"). internalComplete reads it as the
+// first priority for finalText so single-turn hook-based providers get clean
+// output without needing a transcript file.
+func (a *Agent) SetHookMessage(msg string) {
+	a.st.mu.Lock()
+	a.st.hookMessage = msg
+	a.st.mu.Unlock()
+}
+
 // Pause stops the heartbeat poll loop until Resume is called.
 func (a *Agent) Pause() {
 	a.st.mu.Lock()
@@ -264,6 +274,7 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 				a.st.Transition(EventUserReplied) //nolint:errcheck
 				a.st.mu.Lock()
 				a.st.lastPrompt = reply
+				a.st.notifyPosted = false // reset for the next Notification+Stop pair
 				a.st.mu.Unlock()
 				logger.Info(fmt.Sprintf("[%s] User replied — resuming via tmux", a.Config.Name))
 			} else if pw != nil {
@@ -273,6 +284,7 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 					a.st.Transition(EventUserReplied) //nolint:errcheck
 					a.st.mu.Lock()
 					a.st.lastPrompt = reply
+					a.st.notifyPosted = false // reset for the next Notification+Stop pair
 					a.st.mu.Unlock()
 					logger.Info(fmt.Sprintf("[%s] User replied — resuming", a.Config.Name))
 				}
@@ -349,6 +361,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.st.taskID = taskID
 	a.st.outputLines = nil
 	a.st.completing = false
+	a.st.notifyPosted = false
+	a.st.hookMessage = ""
 	a.st.lastActivityAt = time.Now()
 	a.st.mu.Unlock()
 
@@ -1088,8 +1102,16 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 	// JSONL file with the clean conversation — we extract the last assistant turn.
 	// NOTE: Claude fires the Stop hook while still finishing the transcript write.
 	// We retry for up to 10 seconds to wait for the assistant response to appear.
-	finalText := ""
-	if transcriptPath != "" {
+	// finalText priority: hook message (codex) → transcript → terminal output.
+	a.st.mu.Lock()
+	hookMsg := a.st.hookMessage
+	a.st.hookMessage = ""
+	a.st.mu.Unlock()
+	finalText := hookMsg
+	if finalText != "" {
+		logger.Info(fmt.Sprintf("[%s] Final text from hook message (%d chars)", a.Config.Name, len(finalText)))
+	}
+	if finalText == "" && transcriptPath != "" {
 		retryDeadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(retryDeadline) {
 			finalText = ExtractTranscriptResponse(transcriptPath)
@@ -1224,6 +1246,7 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	a.st.mu.Lock()
 	mode := a.st.mode
 	completing := a.st.completing
+	notifyPosted := a.st.notifyPosted
 	sessionID := a.st.sessionID
 	agentID := a.st.agentID
 	sess := a.st.tmuxSession
@@ -1231,6 +1254,19 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 
 	if mode != ModeRunning || completing {
 		logger.Debug(fmt.Sprintf("[%s] StopAndPause ignored: mode=%s completing=%v", a.Config.Name, mode, completing))
+		return
+	}
+
+	// SetWaitingInput already posted a notify for this turn (Claude Code fires
+	// Notification then Stop for question turns). Save the updated transcriptPath
+	// (Claude may have finished writing it by now) and return without a second notify.
+	if notifyPosted {
+		if transcriptPath != "" {
+			a.st.mu.Lock()
+			a.st.transcriptPath = transcriptPath
+			a.st.mu.Unlock()
+		}
+		logger.Debug(fmt.Sprintf("[%s] StopAndPause: skipping duplicate notify (Notification hook already posted)", a.Config.Name))
 		return
 	}
 
@@ -1320,8 +1356,10 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	if transcriptPath != "" {
 		a.st.transcriptPath = transcriptPath
 	}
-	a.st.mode = ModeWaitingInput
 	a.st.mu.Unlock()
+	if err := a.st.Transition(EventHookStop); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] StopAndPause: unexpected transition error: %v", a.Config.Name, err))
+	}
 
 	logger.Info(fmt.Sprintf("[%s] Paused after response — tmux session kept alive, waiting for reply or close", a.Config.Name))
 }
@@ -1336,7 +1374,10 @@ func (a *Agent) PushIntermediateResponse(cfg *config.Config, promptResponse, tra
 	sessionID := a.st.sessionID
 	a.st.mu.Unlock()
 
-	if mode != ModeRunning {
+	// Post intermediate messages in both running and waiting_input modes.
+	// Do NOT change the mode — a late AfterAgent hook must not resurrect a task
+	// that StopAndPause has already transitioned to waiting_input (GAP-03).
+	if mode != ModeRunning && mode != ModeWaitingInput {
 		logger.Debug(fmt.Sprintf("[%s] PushIntermediateResponse ignored: mode=%s", a.Config.Name, mode))
 		return
 	}
@@ -1413,13 +1454,20 @@ const learningTimeout = 10 * time.Minute
 // prompt into the active tmux session, and starts a safety timer that forces
 // Complete("closed") after learningTimeout if the Stop hook never fires.
 func (a *Agent) startLearning(cfg *config.Config) {
+	if err := a.st.Transition(EventLearnStart); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] startLearning: unexpected transition error: %v", a.Config.Name, err))
+		return
+	}
+
 	a.st.mu.Lock()
-	a.st.mode = ModeLearning
 	sess := a.st.tmuxSession
 	a.st.mu.Unlock()
 
 	if sess == "" || tmuxBin == "" {
-		logger.Warn(fmt.Sprintf("[%s] startLearning: no tmux session — skipping", a.Config.Name))
+		// No tmux session available (PTY/pipe path). Completing the task directly
+		// prevents it from hanging in waiting_input forever (GAP-13).
+		logger.Warn(fmt.Sprintf("[%s] startLearning: no tmux session — completing task directly", a.Config.Name))
+		go a.Complete(cfg, "closed", "")
 		return
 	}
 
@@ -1461,8 +1509,11 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 		logger.Debug(fmt.Sprintf("[%s] SetWaitingInput ignored: mode=%s completing=%v", a.Config.Name, mode, completing))
 		return
 	}
-	// Hook fired — agent is active; reset inactivity timer.
+	// Mark notify in progress immediately — before the 300ms sleep — so that a
+	// concurrent StopAndPause goroutine (Claude Code fires Notification then Stop
+	// for the same turn) sees this flag and skips its duplicate notify call.
 	a.st.mu.Lock()
+	a.st.notifyPosted = true
 	a.st.lastActivityAt = time.Now()
 	a.st.mu.Unlock()
 
@@ -1519,7 +1570,7 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 		}
 	}
 
-	a.st.mu.Lock()
-	a.st.mode = ModeWaitingInput
-	a.st.mu.Unlock()
+	if err := a.st.Transition(EventHookNotification); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] SetWaitingInput: unexpected transition error: %v", a.Config.Name, err))
+	}
 }

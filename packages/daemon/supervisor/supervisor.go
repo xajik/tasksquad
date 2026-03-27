@@ -56,22 +56,34 @@ type supervisorVerdict struct {
 	Action  string `json:"action"`
 }
 
+// maxSupervisorFailures is the number of consecutive no-verdict attempts before
+// the supervisor sends an escalation message to the task thread.
+const maxSupervisorFailures = 5
+
 type Supervisor struct {
 	mu            sync.Mutex
 	activeForTask map[string]bool
-	lastAttempt   map[string]time.Time           // when supervision was last attempted per taskID
+	lastAttempt   map[string]time.Time            // when supervision was last attempted per taskID
+	failCount     map[string]int                  // consecutive no-verdict attempts per taskID
 	verdictChans  map[string]chan supervisorVerdict // taskID → verdict delivery channel
 	cli           string                           // resolved CLI binary path
+	daemonBinDir  string                           // directory containing the tsq binary; prepended to PATH in supervisor sessions
 	cfg           *config.Config
 }
 
 // New creates a Supervisor and detects the CLI tool from config or PATH priority.
 func New(cfg *config.Config) *Supervisor {
+	binDir := ""
+	if exe, err := os.Executable(); err == nil {
+		binDir = filepath.Dir(exe)
+	}
 	return &Supervisor{
 		activeForTask: make(map[string]bool),
 		lastAttempt:   make(map[string]time.Time),
+		failCount:     make(map[string]int),
 		verdictChans:  make(map[string]chan supervisorVerdict),
 		cli:           detectCLI(cfg),
+		daemonBinDir:  binDir,
 		cfg:           cfg,
 	}
 }
@@ -137,6 +149,7 @@ func (s *Supervisor) CancelForTask(taskID string) {
 	}
 	s.mu.Lock()
 	delete(s.activeForTask, taskID)
+	delete(s.failCount, taskID)
 	s.mu.Unlock()
 }
 
@@ -252,7 +265,7 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	// Launch detached tmux session running the CLI in print/non-interactive mode.
 	// Print mode (-p) outputs clean text (no ANSI codes) and self-terminates.
 	// --dangerouslySkipPermissions pre-approves tool calls (tmux, curl) without blocking.
-	shellCmd := printModeCmd(s.cli, promptFile, supLog)
+	shellCmd := printModeCmd(s.cli, promptFile, supLog, s.daemonBinDir)
 	err = exec.Command("tmux", "new-session", "-d", "-s", sessionName,
 		"-c", workDir, "sh", "-c", shellCmd).Run()
 	if err != nil {
@@ -270,11 +283,25 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 
 	if !verdictFound {
 		appendToLog(supLog, fmt.Sprintf("\n--- SUPERVISOR TIMEOUT/EXIT: %s ---\n", time.Now().Format(time.RFC3339)))
-		logger.Warn(fmt.Sprintf("[supervisor] Session %s ended without verdict — will retry after next inactivity window", sessionName))
+		s.mu.Lock()
+		s.failCount[taskID]++
+		count := s.failCount[taskID]
+		s.mu.Unlock()
+		logger.Warn(fmt.Sprintf("[supervisor] Session %s ended without verdict (attempt %d/%d)", sessionName, count, maxSupervisorFailures))
+		if count >= maxSupervisorFailures {
+			s.mu.Lock()
+			s.failCount[taskID] = 0
+			s.mu.Unlock()
+			logger.Error(fmt.Sprintf("[supervisor] Task %s: %d consecutive failures — escalating", taskID, count))
+			go s.escalate(taskID, agentID, count)
+		}
 		return
 	}
 
 	appendToLog(supLog, fmt.Sprintf("\n--- SUPERVISOR COMPLETE: %s ---\n", time.Now().Format(time.RFC3339)))
+	s.mu.Lock()
+	s.failCount[taskID] = 0
+	s.mu.Unlock()
 	logger.Info(fmt.Sprintf("[supervisor] Session %s complete for task %s (status=%s)", sessionName, taskID, verdict.Status))
 
 	report := fmt.Sprintf("[Supervisor] %s\nStatus: %s\nFound: %s\nAction: %s",
@@ -372,6 +399,11 @@ Terminal snapshot (last 50 lines captured at supervisor start):
 %s
 ────────────────────────────────────────────────────────
 
+Known blocking patterns (check these first):
+- Gemini rate limit: "Usage limit reached for <model>. Access resets at HH:MM"
+  followed by "● 1. Keep trying   2. Stop" → send "2" to stop gracefully.
+- Claude "❯ Result?" prompt → send "done" to complete the current turn.
+
 Load /tsq-supervisor and follow its instructions to perform the health check.`,
 		agentName, taskID, sessionID, logSection, troubleshootingPath, snapshotSection,
 	)
@@ -399,16 +431,20 @@ func troubleshootingFile(workDir string) string {
 
 // printModeCmd builds a shell command that runs the CLI in print/non-interactive
 // mode, piping the prompt from promptFile and appending stdout+stderr to logFile.
-// For Claude Code, --dangerouslySkipPermissions pre-approves tool calls so tmux
-// commands (capture-pane, send-keys) and curl don't block on permission dialogs.
-func printModeCmd(cli, promptFile, logFile string) string {
+// daemonBinDir is prepended to PATH so the supervisor session can find the `tsq`
+// binary (which may not be in the tmux environment's PATH).
+func printModeCmd(cli, promptFile, logFile, daemonBinDir string) string {
 	base := filepath.Base(cli)
+	pathPrefix := ""
+	if daemonBinDir != "" {
+		pathPrefix = fmt.Sprintf("PATH=%s:$PATH ", daemonBinDir)
+	}
 	if strings.HasPrefix(base, "claude") {
-		return fmt.Sprintf(`cat %s | %s -p --dangerously-skip-permissions >> %s 2>&1`,
-			promptFile, cli, logFile)
+		return fmt.Sprintf(`%scat %s | %s -p --dangerously-skip-permissions >> %s 2>&1`,
+			pathPrefix, promptFile, cli, logFile)
 	}
 	// Other CLIs (gemini, opencode, codex) — pipe stdin without special flags.
-	return fmt.Sprintf(`cat %s | %s >> %s 2>&1`, promptFile, cli, logFile)
+	return fmt.Sprintf(`%scat %s | %s >> %s 2>&1`, pathPrefix, promptFile, cli, logFile)
 }
 
 // cleanOrphans scans tmux for tsq-sup-* sessions that are not actively managed
@@ -496,6 +532,35 @@ func (s *Supervisor) notifyProgress(taskID, agentID, message string) {
 		return
 	}
 	logger.Info(fmt.Sprintf("[supervisor] Progress posted for task %s", taskID))
+}
+
+// escalate is called when a task has exceeded maxSupervisorFailures consecutive
+// no-verdict supervisor attempts. It posts a message to the task thread so the
+// user knows manual intervention is required instead of silent infinite retries.
+func (s *Supervisor) escalate(taskID, agentID string, attempts int) {
+	if s.cfg == nil {
+		return
+	}
+	body := fmt.Sprintf(
+		"[Supervisor] Task has been stuck for %d supervision cycles (~%s) with no resolution. "+
+			"Manual intervention required — check `tmux ls` or restart the agent.",
+		attempts, time.Duration(attempts)*inactivityTimeout,
+	)
+	token, err := auth.GetToken(s.cfg.Firebase.APIKey, s.cfg.Server.URL)
+	if err != nil {
+		logger.Error(fmt.Sprintf("[supervisor] Auth failed for escalation (task %s): %v", taskID, err))
+		return
+	}
+	_, err = api.Post(s.cfg, token, agentID, "/daemon/supervisor/report", map[string]any{
+		"task_id": taskID,
+		"body":    body,
+		"type":    "escalation",
+	})
+	if err != nil {
+		logger.Error(fmt.Sprintf("[supervisor] Failed to post escalation for task %s: %v", taskID, err))
+		return
+	}
+	logger.Info(fmt.Sprintf("[supervisor] Escalation posted for task %s after %d failures", taskID, attempts))
 }
 
 // logKill logs a tmux kill-session error at Debug level; nil errors are silent.

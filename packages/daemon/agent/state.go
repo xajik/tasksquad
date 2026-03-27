@@ -92,6 +92,18 @@ type AgentState struct {
 	// Prompt tracking
 	lastPrompt string // the initial prompt or latest reply sent to the process
 
+	// notifyPosted is set to true at the start of SetWaitingInput so that
+	// StopAndPause can detect a concurrent Notification+Stop pair (Claude Code
+	// fires both hooks for the same turn) and skip the duplicate notify call.
+	// Reset to false in startTask (new task) and processResponse (user replied).
+	notifyPosted bool
+
+	// hookMessage holds the turn's assistant text delivered via a provider-specific
+	// hook (currently codex "last-assistant-message"). Used as the first priority
+	// in internalComplete's finalText chain so Codex tasks get clean output even
+	// though they have no transcript file. Cleared after each use.
+	hookMessage string
+
 	// Timing
 	lastPollAt     time.Time // last successful heartbeat
 	lastActivityAt time.Time // last meaningful task event (start, hook fired)

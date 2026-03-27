@@ -34,8 +34,8 @@ func (c *BatchController) ForcePoll() {
 // cfg.Server.PollInterval is used. A combined ETag lets the server return 304
 // when all agents are idle and nothing has changed.
 //
-// On 429 the daemon simply waits the normal interval and retries — rate limiting
-// is enforced server-side; no client-side backoff is applied.
+// On 429 the daemon applies exponential backoff (30s base, 5m cap) to avoid
+// hammering the server. Backoff resets on the next successful or 304 response.
 //
 // On 401 the loop rotates the token once via ForceRotate and retries.
 func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
@@ -44,6 +44,12 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 	defer timer.Stop()
 
 	var combinedEtag string
+
+	const (
+		rateLimitBase = 30 * time.Second
+		rateLimitMax  = 5 * time.Minute
+	)
+	var rateLimitBackoff time.Duration
 
 	doPoll := func() {
 		token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)
@@ -62,8 +68,16 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 		agentMaps, newEtag, is304, err := api.PostBatch(cfg, token, "/daemon/heartbeat/batch", entries, combinedEtag)
 		if err != nil {
 			if isRateLimited(err) {
-				logger.Warn("[batch] rate limited (429) — retrying after normal interval")
-				timer.Reset(nextInterval)
+				if rateLimitBackoff == 0 {
+					rateLimitBackoff = rateLimitBase
+				} else {
+					rateLimitBackoff *= 2
+					if rateLimitBackoff > rateLimitMax {
+						rateLimitBackoff = rateLimitMax
+					}
+				}
+				logger.Warn(fmt.Sprintf("[batch] rate limited (429) — backing off %s", rateLimitBackoff))
+				timer.Reset(rateLimitBackoff)
 				return
 			}
 			if isUnauthorized(err) {
@@ -93,10 +107,12 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 
 		if is304 {
 			logger.Debug("[batch] 304 — inbox unchanged, all agents idle")
+			rateLimitBackoff = 0
 			timer.Reset(nextInterval)
 			return
 		}
 
+		rateLimitBackoff = 0
 		combinedEtag = newEtag
 
 		// Update poll interval from server-provided hint (first agent carries it).

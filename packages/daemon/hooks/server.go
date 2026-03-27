@@ -32,6 +32,10 @@ type Agent interface {
 	GetTaskID() string
 	// IsLearning returns true when the agent is in the end-session learning phase.
 	IsLearning() bool
+	// SetHookMessage stores the assistant text delivered by a provider-specific
+	// hook (e.g. codex last-assistant-message) so internalComplete can use it
+	// as finalText without a transcript file.
+	SetHookMessage(message string)
 }
 
 // SupervisorReporter is implemented by the supervisor package and allows the
@@ -171,8 +175,7 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 			reporter.CancelForTask(taskIDParam)
 		}
 
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok")) //nolint:errcheck
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
 	// ── Hook Handlers: Notification (waiting for input) ────────────────────────
@@ -252,8 +255,7 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 			logger.Warn(fmt.Sprintf("[hooks] Notification received but no matching active agent (agent=%q task_id=%q modes: %s)", agentID, taskIDParam, getAgentModes(agents)))
 		}
 
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok")) //nolint:errcheck
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
 	// ── Hook Handlers: after_agent (Gemini interactive completion) ────────────
@@ -301,8 +303,7 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 			logger.Debug(fmt.Sprintf("[hooks] AfterAgent ignored: agent %q task_id=%q not in 'running' state", agentID, taskIDParam))
 		}
 
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok")) //nolint:errcheck
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
 	// ── opencode: lifecycle events ───────────────────────────────────────────
@@ -316,18 +317,53 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 		json.Unmarshal(body, &payload) //nolint:errcheck
 
 		logger.Info(fmt.Sprintf("[hooks] OpenCode event: %s (agent=%s)", payload.Type, agentName))
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok")) //nolint:errcheck
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	// ── codex: TODO ────────────────────────────────────────────────────────────
-	// TODO: Map codex event payload to Complete() / SetWaitingInput() once
-	// CODEX_HOOKS_SERVER_URL support is confirmed. See provider/codex.go.
+	// ── codex: agent-turn-complete ───────────────────────────────────────────
+	// Codex fires its notify command (shell: cat | curl -X POST) after each turn.
+	// Payload: {"type":"agent-turn-complete","turn-id":"...","last-assistant-message":"..."}
+	// We store the message in agent state; internalComplete reads it as finalText
+	// (first priority) when the process exits and complete() is called.
 	mux.HandleFunc("/hooks/codex", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		logger.Warn(fmt.Sprintf("[hooks] Codex hook received but not yet implemented: %s", body))
-		w.WriteHeader(http.StatusNotImplemented)
-		w.Write([]byte("codex hooks not yet implemented")) //nolint:errcheck
+		logger.Info(fmt.Sprintf("[hooks] POST /hooks/codex from %s", r.RemoteAddr))
+
+		agentID := r.URL.Query().Get("agent")
+		taskIDParam := r.URL.Query().Get("task_id")
+
+		var payload struct {
+			Type                string 
+			TurnID              string 
+			LastAssistantMessage string 
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal codex hook: %v", err))
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+			return
+		}
+
+		found := false
+		for _, a := range agents {
+			if agentID != "" && a.ID() != agentID {
+				continue
+			}
+			if currentTaskID := a.GetTaskID(); taskIDParam != "" && currentTaskID != taskIDParam {
+				logger.Debug(fmt.Sprintf("[hooks] Codex hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
+				continue
+			}
+			if a.GetMode() == agentModeRunning {
+				a.SetHookMessage(payload.LastAssistantMessage)
+				logger.Info(fmt.Sprintf("[hooks] Codex turn complete for agent %s (turn-id=%s msg_len=%d)", a.Name(), payload.TurnID, len(payload.LastAssistantMessage)))
+				found = true
+			}
+			break
+		}
+		if !found {
+			logger.Debug(fmt.Sprintf("[hooks] Codex hook: no matching running agent for agent=%q task_id=%q", agentID, taskIDParam))
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
 	// ── POST /hooks/skill — agent pushes a learned skill to the server ────────
@@ -429,8 +465,7 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 		if reporter != nil {
 			reporter.HandleVerdict(payload.TaskID, payload.Status, payload.Summary, payload.Found, payload.Action)
 		}
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok")) //nolint:errcheck
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
@@ -445,4 +480,13 @@ func getAgentModes(agents []Agent) string {
 		modes = append(modes, fmt.Sprintf("%s:%s", a.Name(), a.GetMode()))
 	}
 	return strings.Join(modes, ", ")
+}
+
+// writeJSON writes a JSON response with the given status code. Claude Code HTTP
+// hooks require a valid JSON body; returning plain "ok" text causes the hook to
+// fail with "JSON validation failed", which leaves the session stuck at ❯ Result?
+func writeJSON(w http.ResponseWriter, status int, body any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(body) //nolint:errcheck
 }

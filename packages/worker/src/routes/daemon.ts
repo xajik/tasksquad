@@ -113,6 +113,13 @@ async function processAgentHeartbeat(
         if (task.status === 'done' || task.status === 'failed' || task.status === 'cancelled') {
           return { agent_id: agentId, ok: true, cancel: true, next_poll_ms: nextPollMs }
         }
+
+        // SYNC: if daemon says it's running but DB says it's waiting_input, un-pause.
+        if (agentStatus === 'running' && task.status === 'waiting_input') {
+          await env.DB.prepare("UPDATE tasks SET status = 'running' WHERE id = ?")
+            .bind(state.current_task_id)
+            .run()
+        }
       }
 
       if (agentStatus === 'waiting_input') {
