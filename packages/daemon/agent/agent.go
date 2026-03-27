@@ -563,8 +563,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s via=tmux session=tsq-%s", a.Config.Name, taskID, sessionSuffix))
 		a.writeRunLog("[EVENT] event=running via=tmux")
 	} else {
-		logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s pid=%d", a.Config.Name, taskID, cmd.Process.Pid))
-		a.writeRunLog(fmt.Sprintf("[EVENT] event=running pid=%d", cmd.Process.Pid))
+		logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s via=pipe pid=%d", a.Config.Name, taskID, cmd.Process.Pid))
+		a.writeRunLog(fmt.Sprintf("[EVENT] event=running via=pipe pid=%d", cmd.Process.Pid))
 	}
 
 	// Stream output lines to the server and log file.
@@ -1414,13 +1414,9 @@ func (a *Agent) startLearning(cfg *config.Config) {
 		return
 	}
 
-	a.st.mu.Lock()
-	sess := a.st.tmuxSession
-	a.st.mu.Unlock()
-
-	if sess == "" || tmuxBin == "" {
-		// No tmux session available (PTY/pipe path). Completing the task directly
-		// prevents it from hanging in waiting_input forever (GAP-13).
+	if a.TmuxSession() == "" || tmuxBin == "" {
+		// No tmux session — stdout-pipe provider (e.g. codex). Complete directly
+		// so the task doesn't hang in waiting_input forever (GAP-13).
 		logger.Warn(fmt.Sprintf("[%s] startLearning: no tmux session — completing task directly", a.Config.Name))
 		go a.Complete(cfg, "closed", "")
 		return

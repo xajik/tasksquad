@@ -181,6 +181,11 @@ func (s *Supervisor) Monitor(agents []MonitoredAgent) {
 				if taskID == "" {
 					continue
 				}
+				// Only supervise agents running via tmux; stdout-pipe providers
+				// (e.g. codex) have no session to inspect or send keys to.
+				if a.TmuxSession() == "" {
+					continue
+				}
 				s.mu.Lock()
 				active := s.activeForTask[taskID]
 				last := s.lastAttempt[taskID]
