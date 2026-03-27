@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
@@ -441,9 +440,16 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	var outputReader io.Reader
 	usingTmux := false
 
-	// ── tmux path (preferred when tmux is available) ──────────────────────────
-	if stdinData != "" && tmuxBin != "" {
-		sessionSuffix := taskID
+	// ── tmux path (required for stdin-based providers) ─────────────────────────
+	if stdinData != "" {
+		if tmuxBin == "" {
+			logger.Error(fmt.Sprintf("[%s] tmux is required but not found — cannot start task", a.Config.Name))
+			a.complete(cfg, "crashed")
+			close(outputDone)
+			return
+		}
+
+		sessionSuffix := sessionID
 		if len(sessionSuffix) > 8 {
 			sessionSuffix = sessionSuffix[:8]
 		}
@@ -452,145 +458,94 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		os.Remove(fifoPath)
 
 		if err := mkfifo(fifoPath, 0644); err != nil {
-			logger.Warn(fmt.Sprintf("[%s] mkfifo failed: %v — falling back to PTY", a.Config.Name, err))
-		} else {
-			// Build tmux new-session: inherit workDir + provider env.
-			cmdParts := append([]string{parts[0]}, args...)
-			newSessionArgs := append([]string{"new-session", "-d", "-s", sessionName,
-				"-c", a.Config.WorkDir, "--"}, cmdParts...)
-			tmuxCmd := exec.Command(tmuxBin, newSessionArgs...)
-			if len(provEnv) > 0 {
-				tmuxCmd.Env = append(os.Environ(), provEnv...)
-			} else {
-				tmuxCmd.Env = os.Environ()
-			}
-
-			if err := tmuxCmd.Run(); err != nil {
-				logger.Warn(fmt.Sprintf("[%s] tmux new-session failed: %v — falling back to PTY", a.Config.Name, err))
-				os.Remove(fifoPath)
-			} else {
-				// Open FIFO for reading concurrently — blocks until writer opens it.
-				fifoCh := make(chan *os.File, 1)
-				go func() {
-					f, err := os.Open(fifoPath)
-					if err != nil {
-						return
-					}
-					fifoCh <- f
-				}()
-
-				// pipe-pane runs `cat > fifoPath` inside the session, which opens the
-				// FIFO for writing and unblocks the reader goroutine above.
-				exec.Command(tmuxBin, "pipe-pane", "-t", sessionName, "cat > "+fifoPath).Run() //nolint:errcheck
-
-				// Deliver the initial prompt once the TUI is ready.
-				tmux.WaitForReady()
-				tmux.SendKeys(sessionName, stdinData) //nolint:errcheck
-
-				a.st.mu.Lock()
-				a.st.tmuxSession = sessionName
-				a.st.fifoPath = fifoPath
-				a.st.mu.Unlock()
-
-				logger.Info(fmt.Sprintf("[%s] tmux session started — attach: tmux attach-session -t %s", a.Config.Name, sessionName))
-
-				select {
-				case f := <-fifoCh:
-					outputReader = f
-					usingTmux = true
-				case <-time.After(5 * time.Second):
-					logger.Warn(fmt.Sprintf("[%s] FIFO open timed out — falling back to PTY", a.Config.Name))
-					exec.Command(tmuxBin, "kill-session", "-t", sessionName).Run() //nolint:errcheck
-					os.Remove(fifoPath)
-					a.st.mu.Lock()
-					a.st.tmuxSession = ""
-					a.st.fifoPath = ""
-					a.st.mu.Unlock()
-				}
-			}
+			logger.Error(fmt.Sprintf("[%s] mkfifo failed: %v — cannot start task", a.Config.Name, err))
+			a.complete(cfg, "crashed")
+			close(outputDone)
+			return
 		}
-	}
 
-	// ── PTY / pipe path (fallback when tmux unavailable or failed) ────────────
-	if !usingTmux {
-		if stdinData != "" {
-			// Use a PTY so the provider thinks it's in a real terminal and produces
-			// full output: spinner, tool calls, diffs, colours — everything.
-			ptmx, err := pty.Start(cmd)
+		// Build tmux new-session: inherit workDir + provider env.
+		cmdParts := append([]string{parts[0]}, args...)
+		newSessionArgs := append([]string{"new-session", "-d", "-s", sessionName,
+			"-c", a.Config.WorkDir, "--"}, cmdParts...)
+		tmuxCmd := exec.Command(tmuxBin, newSessionArgs...)
+		if len(provEnv) > 0 {
+			tmuxCmd.Env = append(os.Environ(), provEnv...)
+		} else {
+			tmuxCmd.Env = os.Environ()
+		}
+
+		if err := tmuxCmd.Run(); err != nil {
+			logger.Error(fmt.Sprintf("[%s] tmux new-session failed: %v — cannot start task", a.Config.Name, err))
+			os.Remove(fifoPath)
+			a.complete(cfg, "crashed")
+			close(outputDone)
+			return
+		}
+
+		// Open FIFO for reading concurrently — blocks until writer opens it.
+		fifoCh := make(chan *os.File, 1)
+		go func() {
+			f, err := os.Open(fifoPath)
 			if err != nil {
-				logger.Warn(fmt.Sprintf("[%s] PTY start failed, falling back to pipe: %v", a.Config.Name, err))
-				// Fallback: plain pipe (no rich output, but still functional).
-				pr, pw := io.Pipe()
-				cmd.Stdin = pr
-				a.st.mu.Lock()
-				a.st.stdinWrite = pw
-				a.st.mu.Unlock()
-				go func() {
-					if _, werr := fmt.Fprintln(pw, stdinData); werr != nil {
-						logger.Warn(fmt.Sprintf("[%s] Failed to write prompt to stdin: %v", a.Config.Name, werr))
-					}
-				}()
-				stdout, serr := cmd.StdoutPipe()
-				if serr != nil {
-					logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))
-					a.st.mu.Lock()
-					a.st.mode = ModeIdle
-					a.st.mu.Unlock()
-					close(outputDone)
-					return
-				}
-				stderr, _ := cmd.StderrPipe()
-				if serr = cmd.Start(); serr != nil {
-					logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, serr))
-					a.st.mu.Lock()
-					a.st.mode = ModeIdle
-					a.st.mu.Unlock()
-					close(outputDone)
-					return
-				}
-				go io.Copy(io.Discard, stderr)
-				outputReader = stdout
-			} else {
-				// PTY started successfully.
-				// Set a wide terminal so progress bars / tables don't wrap.
-				_ = pty.Setsize(ptmx, &pty.Winsize{Rows: 50, Cols: 220})
-
-				a.st.mu.Lock()
-				a.st.stdinWrite = ptmx // PTY master is both stdin and stdout
-				a.st.mu.Unlock()
-
-				// Write the initial prompt into the PTY; keep it open for future replies.
-				go func() {
-					if _, werr := fmt.Fprintln(ptmx, stdinData); werr != nil {
-						logger.Warn(fmt.Sprintf("[%s] Failed to write prompt to PTY: %v", a.Config.Name, werr))
-					}
-				}()
-
-				outputReader = ptmx
-			}
-		} else {
-			// Non-stdin providers (e.g. codex): use regular stdout pipe with -p flag.
-			stdout, serr := cmd.StdoutPipe()
-			if serr != nil {
-				logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))
-				a.st.mu.Lock()
-				a.st.mode = ModeIdle
-				a.st.mu.Unlock()
-				close(outputDone)
 				return
 			}
-			stderr, _ := cmd.StderrPipe()
-			if serr = cmd.Start(); serr != nil {
-				logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, serr))
-				a.st.mu.Lock()
-				a.st.mode = ModeIdle
-				a.st.mu.Unlock()
-				close(outputDone)
-				return
-			}
-			go io.Copy(io.Discard, stderr)
-			outputReader = stdout
+			fifoCh <- f
+		}()
+
+		// pipe-pane runs `cat > fifoPath` inside the session, which opens the
+		// FIFO for writing and unblocks the reader goroutine above.
+		exec.Command(tmuxBin, "pipe-pane", "-t", sessionName, "cat > "+fifoPath).Run() //nolint:errcheck
+
+		// Deliver the initial prompt once the TUI is ready.
+		tmux.WaitForReady()
+		tmux.SendKeys(sessionName, stdinData) //nolint:errcheck
+
+		a.st.mu.Lock()
+		a.st.tmuxSession = sessionName
+		a.st.fifoPath = fifoPath
+		a.st.mu.Unlock()
+
+		logger.Info(fmt.Sprintf("[%s] tmux session started — attach: tmux attach-session -t %s", a.Config.Name, sessionName))
+
+		select {
+		case f := <-fifoCh:
+			outputReader = f
+			usingTmux = true
+		case <-time.After(5 * time.Second):
+			logger.Error(fmt.Sprintf("[%s] FIFO open timed out — cannot start task", a.Config.Name))
+			exec.Command(tmuxBin, "kill-session", "-t", sessionName).Run() //nolint:errcheck
+			os.Remove(fifoPath)
+			a.st.mu.Lock()
+			a.st.tmuxSession = ""
+			a.st.fifoPath = ""
+			a.st.mu.Unlock()
+			a.complete(cfg, "crashed")
+			close(outputDone)
+			return
 		}
+	} else {
+		// Non-stdin providers (e.g. codex): use regular stdout pipe with -p flag.
+		stdout, serr := cmd.StdoutPipe()
+		if serr != nil {
+			logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))
+			a.st.mu.Lock()
+			a.st.mode = ModeIdle
+			a.st.mu.Unlock()
+			close(outputDone)
+			return
+		}
+		stderr, _ := cmd.StderrPipe()
+		if serr = cmd.Start(); serr != nil {
+			logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, serr))
+			a.st.mu.Lock()
+			a.st.mode = ModeIdle
+			a.st.mu.Unlock()
+			close(outputDone)
+			return
+		}
+		go io.Copy(io.Discard, stderr)
+		outputReader = stdout
 	}
 
 	a.st.mu.Lock()
@@ -601,7 +556,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.st.mu.Unlock()
 
 	if usingTmux {
-		sessionSuffix := taskID
+		sessionSuffix := sessionID
 		if len(sessionSuffix) > 8 {
 			sessionSuffix = sessionSuffix[:8]
 		}
