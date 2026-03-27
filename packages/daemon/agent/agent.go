@@ -1422,6 +1422,7 @@ func (a *Agent) startLearning(cfg *config.Config) {
 		return
 	}
 
+	sess := a.TmuxSession()
 	logger.Info(fmt.Sprintf("[%s] Injecting learning prompt into %s", a.Config.Name, sess))
 	time.Sleep(500 * time.Millisecond)
 	tmux.SendKeys(sess, "We are closing this session. Load /tsq-end-session-learning and provide any learnings.") //nolint:errcheck
