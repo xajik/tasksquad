@@ -2,7 +2,6 @@ package agent
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tasksquad/daemon/agentkit"
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
@@ -834,89 +834,24 @@ func (a *Agent) uploadAndAttachLog(cfg *config.Config, sessionID, logContent str
 	}
 }
 
-// ExtractTranscriptResponse reads a JSONL or JSON conversation transcript (Claude or Gemini)
-// and returns the text of the last assistant message. Returns empty string on
-// any read or parse error so callers can fall back to terminal output.
+// ExtractTranscriptResponse reads a provider-specific conversation transcript and
+// returns the text of the last assistant message. Returns empty string on any
+// read or parse error so callers can fall back to terminal output.
+//
+// This package-level function tries Claude (JSONL) first, then Gemini/OpenCode
+// (single-JSON), preserving the original behaviour for tests that have no agent context.
+// Agent methods should use a.extractTranscriptResponse instead.
 func ExtractTranscriptResponse(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
+	if text := (agentkit.ClaudeAdapter{}).ExtractTranscript(path); text != "" {
+		return text
 	}
+	return (agentkit.GeminiAdapter{}).ExtractTranscript(path)
+}
 
-	content := strings.TrimSpace(string(data))
-	if content == "" {
-		return ""
-	}
-
-	// Handle Gemini's single-JSON format: {"messages": [{"type": "gemini", "content": "..."}]}
-	if content[0] == '{' {
-		var transcript struct {
-			Messages []struct {
-				Type    string `json:"type"`
-				Content any    `json:"content"` // can be string or array
-			} `json:"messages"`
-		}
-		if err := json.Unmarshal([]byte(content), &transcript); err == nil && len(transcript.Messages) > 0 {
-			// Find the last assistant message
-			for i := len(transcript.Messages) - 1; i >= 0; i-- {
-				m := transcript.Messages[i]
-				if m.Type == "gemini" || m.Type == "assistant" {
-					if s, ok := m.Content.(string); ok {
-						return strings.TrimSpace(s)
-					}
-					// If it's a list of content blocks (like Claude's internal structure)
-					if list, ok := m.Content.([]any); ok {
-						var parts []string
-						for _, block := range list {
-							if b, ok := block.(map[string]any); ok {
-								if text, ok := b["text"].(string); ok {
-									parts = append(parts, text)
-								}
-							}
-						}
-						return strings.TrimSpace(strings.Join(parts, "\n"))
-					}
-				}
-			}
-		}
-	}
-
-	// Handle Claude's JSONL format
-	var lastText string
-	for _, rawLine := range strings.Split(content, "\n") {
-		rawLine = strings.TrimSpace(rawLine)
-		if rawLine == "" {
-			continue
-		}
-		var entry struct {
-			Type    string `json:"type"`
-			Message struct {
-				Role    string `json:"role"`
-				Content []struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				} `json:"content"`
-			} `json:"message"`
-		}
-		if err := json.Unmarshal([]byte(rawLine), &entry); err != nil {
-			continue
-		}
-		isAssistant := entry.Type == "assistant" ||
-			(entry.Message.Role == "assistant")
-		if !isAssistant {
-			continue
-		}
-		var parts []string
-		for _, c := range entry.Message.Content {
-			if c.Type == "text" && c.Text != "" {
-				parts = append(parts, c.Text)
-			}
-		}
-		if len(parts) > 0 {
-			lastText = strings.Join(parts, "\n")
-		}
-	}
-	return strings.TrimSpace(lastText)
+// extractTranscriptResponse delegates to the provider-specific adapter so each
+// agent type reads only the format it actually produces.
+func (a *Agent) extractTranscriptResponse(path string) string {
+	return agentkit.For(a.prov.Name()).ExtractTranscript(path)
 }
 
 // complete finalises the current task. Safe to call from both the hook handler
@@ -1069,7 +1004,7 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 	if finalText == "" && transcriptPath != "" {
 		retryDeadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(retryDeadline) {
-			finalText = ExtractTranscriptResponse(transcriptPath)
+			finalText = a.extractTranscriptResponse(transcriptPath)
 			if finalText != "" {
 				logger.Info(fmt.Sprintf("[%s] Final text from transcript (%d chars)", a.Config.Name, len(finalText)))
 				break
@@ -1246,7 +1181,7 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 		// Retry for up to 10 s because Claude Code may still be writing the transcript.
 		retryDeadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(retryDeadline) {
-			finalText = ExtractTranscriptResponse(transcriptPath)
+			finalText = a.extractTranscriptResponse(transcriptPath)
 			if finalText != "" {
 				logger.Info(fmt.Sprintf("[%s] Final text from transcript (%d chars)", a.Config.Name, len(finalText)))
 				break
@@ -1339,7 +1274,7 @@ func (a *Agent) PushIntermediateResponse(cfg *config.Config, promptResponse, tra
 
 	text := promptResponse
 	if text == "" && transcriptPath != "" {
-		text = ExtractTranscriptResponse(transcriptPath)
+		text = a.extractTranscriptResponse(transcriptPath)
 	}
 	if text == "" {
 		logger.Debug(fmt.Sprintf("[%s] PushIntermediateResponse: no text to post", a.Config.Name))
@@ -1481,7 +1416,7 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 	if transcriptPath != "" {
 		retryDeadline := time.Now().Add(3 * time.Second) // shorter timeout for notification
 		for time.Now().Before(retryDeadline) {
-			notifyMsg = ExtractTranscriptResponse(transcriptPath)
+			notifyMsg = a.extractTranscriptResponse(transcriptPath)
 			if notifyMsg != "" {
 				break
 			}

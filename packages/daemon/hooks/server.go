@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/tasksquad/daemon/agentkit"
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
@@ -78,81 +79,20 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 		provider := r.URL.Query().Get("provider")
 		isFailure := r.URL.Query().Get("failure") == "true"
 
-		var transcriptPath string
-		var stopReason string
-		var crashed bool
-
-		// StopFailure hook routes here with failure=true; treat as crashed regardless of payload.
+		adapter := agentkit.For(provider)
+		ev, err := adapter.ParseStop(body, isFailure)
+		if err != nil {
+			logger.Error(fmt.Sprintf("[hooks] Failed to parse Stop hook (provider=%s): %v", provider, err))
+		}
 		if isFailure {
-			var payload struct {
-				ErrorType      string `json:"error_type"`
-				TranscriptPath string `json:"transcript_path"`
-			}
-			if err := json.Unmarshal(body, &payload); err != nil {
-				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal StopFailure hook: %v", err))
-			}
-			transcriptPath = payload.TranscriptPath
-			stopReason = payload.ErrorType
-			crashed = true
-			logger.Warn(fmt.Sprintf("[hooks] StopFailure received: agent=%s task_id=%s error_type=%s", agentID, taskIDParam, stopReason))
-		} else if provider == "gemini" {
-			// Gemini payload: {"transcript_path": "...", "reason": "...", ...}
-			var payload struct {
-				Reason         string `json:"reason"`
-				TranscriptPath string `json:"transcript_path"`
-			}
-			if err := json.Unmarshal(body, &payload); err != nil {
-				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal Gemini SessionEnd hook: %v", err))
-			}
-			transcriptPath = payload.TranscriptPath
-			stopReason = payload.Reason
-			crashed = stopReason == "error"
-		} else if provider == "opencode" {
-			// OpenCode payload: {"stop_reason": "...", "message": "...", "transcript_path": "..."}
-			var payload struct {
-				StopReason     string `json:"stop_reason"`
-				Message        string `json:"message"`
-				TranscriptPath string `json:"transcript_path"`
-			}
-			if err := json.Unmarshal(body, &payload); err != nil {
-				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal OpenCode Stop hook: %v", err))
-			}
-			logger.Debug(fmt.Sprintf("[hooks] OpenCode stop parsed: stop_reason=%q msg=%q transcript_path=%q",
-				payload.StopReason, payload.Message, payload.TranscriptPath))
-			transcriptPath = payload.TranscriptPath
-			stopReason = payload.StopReason
-			crashed = stopReason == "error"
-			if transcriptPath == "" {
-				logger.Warn("[hooks] OpenCode stop missing transcript_path - will fallback to tmux capture")
-			}
-		} else {
-			// Claude payload: {"stop_reason": "...", "transcript_path": "..."}
-			var payload struct {
-				StopReason     string `json:"stop_reason"`
-				TranscriptPath string `json:"transcript_path"`
-			}
-			if err := json.Unmarshal(body, &payload); err != nil {
-				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal Claude Stop hook: %v", err))
-			}
-			transcriptPath = payload.TranscriptPath
-			stopReason = payload.StopReason
-			crashed = stopReason == "error"
+			logger.Warn(fmt.Sprintf("[hooks] StopFailure received: agent=%s task_id=%s error_type=%s", agentID, taskIDParam, ev.Reason))
+		}
+		if provider == "opencode" && ev.TranscriptPath == "" {
+			logger.Warn("[hooks] OpenCode stop missing transcript_path - will fallback to tmux capture")
 		}
 
 		logger.Info(fmt.Sprintf("[hooks] Stop received: provider=%s stop_reason=%s transcript_path=%s",
-			provider, stopReason, transcriptPath))
-
-		// For OpenCode the plugin delivers the clean assistant text in the message
-		// field; pass it through so StopAndPause can use it directly as finalText
-		// instead of relying on the FIFO/outputLines which may not be populated yet.
-		var hookMessage string
-		if provider == "opencode" {
-			var ocMsg struct {
-				Message string `json:"message"`
-			}
-			json.Unmarshal(body, &ocMsg) //nolint:errcheck
-			hookMessage = ocMsg.Message
-		}
+			provider, ev.Reason, ev.TranscriptPath))
 
 		found := false
 		for _, a := range agents {
@@ -168,13 +108,13 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 				if mode == agentModeLearning {
 					// Agent finished the learning skill — fully complete the session.
 					logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(closed) to learning agent %s", a.Name()))
-					go a.Complete(cfg, "closed", transcriptPath)
-				} else if crashed {
+					go a.Complete(cfg, "closed", ev.TranscriptPath)
+				} else if ev.IsFailure {
 					logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(crashed) to agent %s", a.Name()))
-					go a.Complete(cfg, "crashed", transcriptPath)
+					go a.Complete(cfg, "crashed", ev.TranscriptPath)
 				} else {
 					logger.Debug(fmt.Sprintf("[hooks] Dispatching StopAndPause to agent %s", a.Name()))
-					go a.StopAndPause(cfg, hookMessage, transcriptPath)
+					go a.StopAndPause(cfg, ev.HookMessage, ev.TranscriptPath)
 				}
 				found = true
 				break
@@ -201,53 +141,23 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 		taskIDParam := r.URL.Query().Get("task_id")
 		provider := r.URL.Query().Get("provider")
 
-		var msg string
-		var transcriptPath string
-
-		if provider == "gemini" {
-			// Gemini payload: {"message": "...", "transcript_path": "...", ...}
-			var payload struct {
-				Message        string `json:"message"`
-				TranscriptPath string `json:"transcript_path"`
-			}
-			if err := json.Unmarshal(body, &payload); err != nil {
-				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal Gemini Notification hook: %v", err))
-			}
-			msg = payload.Message
-			transcriptPath = payload.TranscriptPath
-		} else if provider == "opencode" {
-			// OpenCode payload: {"message": "...", "transcript_path": "...", ...}
-			var payload struct {
-				Message        string `json:"message"`
-				TranscriptPath string `json:"transcript_path"`
-			}
-			if err := json.Unmarshal(body, &payload); err != nil {
-				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal OpenCode Notification hook: %v", err))
-			}
-			logger.Debug(fmt.Sprintf("[hooks] OpenCode notification parsed: msg=%q transcript_path=%q", payload.Message, payload.TranscriptPath))
-			msg = payload.Message
-			transcriptPath = payload.TranscriptPath
-			if transcriptPath == "" {
+		nev, err := agentkit.For(provider).ParseNotification(body)
+		if err != nil {
+			logger.Error(fmt.Sprintf("[hooks] Failed to parse Notification hook (provider=%s): %v", provider, err))
+		}
+		if provider == "opencode" {
+			logger.Debug(fmt.Sprintf("[hooks] OpenCode notification parsed: msg=%q transcript_path=%q", nev.Message, nev.TranscriptPath))
+			if nev.TranscriptPath == "" {
 				logger.Warn("[hooks] OpenCode notification missing transcript_path - message may not be captured correctly")
 			}
-		} else {
-			// Claude payload: {"message": "...", "transcript_path": "..."}
-			var payload struct {
-				Message        string `json:"message"`
-				TranscriptPath string `json:"transcript_path"`
-			}
-			if err := json.Unmarshal(body, &payload); err != nil {
-				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal Claude Notification hook: %v", err))
-			}
-			msg = payload.Message
-			transcriptPath = payload.TranscriptPath
 		}
 
+		msg := nev.Message
 		if msg == "" {
 			msg = "Waiting for your input"
 		}
 		logger.Info(fmt.Sprintf("[hooks] Notification received: provider=%s msg=%q transcript_path=%s",
-			provider, msg, transcriptPath))
+			provider, msg, nev.TranscriptPath))
 
 		found := false
 		for _, a := range agents {
@@ -260,7 +170,7 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 			}
 			if a.GetMode() == agentModeRunning {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching SetWaitingInput to agent %s", a.Name()))
-				go a.SetWaitingInput(cfg, msg, transcriptPath)
+				go a.SetWaitingInput(cfg, msg, nev.TranscriptPath)
 				found = true
 				break
 			}
@@ -281,20 +191,17 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 		taskIDParam := r.URL.Query().Get("task_id")
 		provider := r.URL.Query().Get("provider")
 
-		// Gemini AfterAgent payload fires after each model turn (not just the final one).
+		// AfterAgent fires after each model turn (currently only Gemini).
 		// We post the turn's response as an intermediate message without pausing the task,
 		// so the portal shows per-turn progress while the session keeps running.
 		// Final task completion is signalled by the SessionEnd hook (/hooks/stop).
-		var payload struct {
-			TranscriptPath string `json:"transcript_path"`
-			PromptResponse string `json:"prompt_response"`
-		}
-		if err := json.Unmarshal(body, &payload); err != nil {
-			logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal Gemini after_agent hook: %v", err))
+		aev, err := agentkit.For(provider).ParseAfterAgent(body)
+		if err != nil {
+			logger.Error(fmt.Sprintf("[hooks] Failed to parse AfterAgent hook (provider=%s): %v", provider, err))
 		}
 
 		logger.Info(fmt.Sprintf("[hooks] AfterAgent received: provider=%s transcript_path=%s prompt_response_len=%d",
-			provider, payload.TranscriptPath, len(payload.PromptResponse)))
+			provider, aev.TranscriptPath, len(aev.PromptResponse)))
 
 		found := false
 		for _, a := range agents {
@@ -308,7 +215,7 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 			mode := a.GetMode()
 			if mode == agentModeRunning || mode == agentModeWaitingInput {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching PushIntermediateResponse to agent %s", a.Name()))
-				go a.PushIntermediateResponse(cfg, payload.PromptResponse, payload.TranscriptPath)
+				go a.PushIntermediateResponse(cfg, aev.PromptResponse, aev.TranscriptPath)
 				found = true
 				break
 			}
