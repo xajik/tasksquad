@@ -11,6 +11,7 @@ import Login from './pages/Login'
 import CLIAuth from './pages/CLIAuth'
 import Dashboard from './pages/Dashboard'
 import Pricing from './pages/Pricing'
+import DocsLayout from './components/DocsLayout'
 import './index.css'
 
 initAnalytics();
@@ -40,6 +41,7 @@ function App() {
         <Route path="/howto" element={<HowTo />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/auth/cli" element={<CLIAuth />} />
+        <Route path="/docs/*" element={<DocsLayout />} />
         {authed === null ? null : (
           <>
             <Route path="/auth" element={authed ? <Navigate to="/dashboard" /> : <Login />} />

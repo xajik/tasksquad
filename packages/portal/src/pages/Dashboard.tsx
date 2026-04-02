@@ -860,9 +860,9 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
             <ShieldAlert className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
             <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 flex-1 text-left">Supervisor</span>
             {summary && !expanded && (
-              <span className="text-[10px] text-amber-600/70 dark:text-amber-500/70 truncate max-w-[200px]">{summary}</span>
+              <span className="text-[10px] text-amber-900 dark:text-amber-300 truncate max-w-[200px]">{summary}</span>
             )}
-            <span className="text-[10px] text-amber-600/70 dark:text-amber-500/70 shrink-0">{expanded ? 'Hide' : 'Show'}</span>
+            <span className="text-[10px] text-amber-900 dark:text-amber-300 shrink-0">{expanded ? 'Hide' : 'Show'}</span>
           </button>
           {expanded && (
             <pre className="px-3 py-2 text-xs text-amber-900 dark:text-amber-200 whitespace-pre-wrap break-words font-mono leading-relaxed">
