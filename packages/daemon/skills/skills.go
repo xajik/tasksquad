@@ -280,11 +280,25 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 			}
 		}
 
-		// Fetch full content if not in list response
-		if skill.Content == "" && skill.ID != "" && skill.TeamID != "" {
-			full, err := api.Get(cfg, token, fmt.Sprintf("/teams/%s/skills/%s", skill.TeamID, skill.ID))
+		// Fetch full content if not in list response.
+		// Default skills have team_id = NULL so we use the daemon-specific endpoint;
+		// team-owned skills use the team-scoped endpoint.
+		// Pass the locally cached etag so the server can return 304 if unchanged.
+		if skill.Content == "" && skill.ID != "" {
+			var path string
+			if skill.TeamID != "" {
+				path = fmt.Sprintf("/teams/%s/skills/%s", skill.TeamID, skill.ID)
+			} else {
+				path = fmt.Sprintf("/daemon/skills/%s", skill.ID)
+			}
+			full, err := api.GetConditional(cfg, token, path, lock[skill.Name])
 			if err != nil {
 				logger.Error(fmt.Sprintf("[skills] Failed to fetch skill %q content: %v", skill.Name, err))
+				continue
+			}
+			if full == nil {
+				// 304 Not Modified — content unchanged, ensure file exists
+				serverNames[skill.Name] = true
 				continue
 			}
 			skill.Content, _ = full["content"].(string)

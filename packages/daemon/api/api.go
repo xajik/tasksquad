@@ -47,17 +47,30 @@ func Post(cfg *config.Config, token, agentID, path string, body any) (map[string
 
 // Get sends a JSON GET to the worker API using Firebase ID token auth.
 func Get(cfg *config.Config, token, path string) (map[string]any, error) {
+	return GetConditional(cfg, token, path, "")
+}
+
+// GetConditional sends a conditional GET with an optional If-None-Match etag.
+// Returns (nil, nil) when the server responds with 304 Not Modified.
+func GetConditional(cfg *config.Config, token, path, etag string) (map[string]any, error) {
 	req, err := http.NewRequest("GET", cfg.Server.URL+path, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	if etag != "" {
+		req.Header.Set("If-None-Match", etag)
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotModified {
+		return nil, nil
+	}
 
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

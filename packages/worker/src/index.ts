@@ -135,6 +135,7 @@ router.post('/daemon/messages/:msgId/attach', daemonRoute(daemon.messageAttach))
 router.post('/daemon/sessions/:sessionId/attach', daemonRoute(daemon.sessionAttach))
 router.post('/daemon/permission/request',         daemonRoute(daemon.permissionRequest))
 router.post('/daemon/supervisor/report',          daemonRoute(daemon.supervisorReport))
+router.get ('/daemon/skills/:skillId',             firebaseRoute(skills.daemonSkillGet))
 router.post('/daemon/skills',                     daemonRoute(skills.daemonUpsert))
 
 router.all('*', () => err('not_found', 404))

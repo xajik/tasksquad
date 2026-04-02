@@ -210,6 +210,38 @@ export async function userSkills(req: Request, env: Env, _ctx: unknown, auth: Au
   return json({ skills: rows.results })
 }
 
+// ─── Daemon skill fetch ────────────────────────────────────────────────────────
+
+// GET /daemon/skills/:skillId
+// Returns the full skill (including content) for a skill the user can access:
+// default skills (is_default = 1) or skills belonging to a team the user is a member of.
+export async function daemonSkillGet(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const skillId = url.pathname.split('/').pop() ?? ''
+  if (!skillId) return err('skill_id_required', 400)
+
+  const skill = await env.DB
+    .prepare('SELECT * FROM skills WHERE id = ?')
+    .bind(skillId)
+    .first<Record<string, unknown> & { team_id: string | null; is_default: number; etag: string }>()
+
+  if (!skill) return err('not_found', 404)
+
+  // Allow access for default skills (no team ownership check needed)
+  if (!skill.is_default) {
+    if (!skill.team_id) return err('not_found', 404)
+    if (!(await requireMember(env.DB, skill.team_id as string, auth.userId))) return err('not_found', 404)
+  }
+
+  // Conditional GET: return 304 if client already has the current version
+  const ifNoneMatch = req.headers.get('If-None-Match')
+  if (ifNoneMatch && ifNoneMatch === skill.etag) {
+    return new Response(null, { status: 304 })
+  }
+
+  return json(skill)
+}
+
 // ─── Daemon upsert ─────────────────────────────────────────────────────────────
 
 export async function daemonUpsert(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
