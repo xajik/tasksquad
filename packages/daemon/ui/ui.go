@@ -194,7 +194,7 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 	go func() {
 		for range mSessions.ClickedCh {
 			if cpURL != "" {
-				openBrowser(cpURL)
+				openControlPanel(cpURL)
 			}
 		}
 	}()
