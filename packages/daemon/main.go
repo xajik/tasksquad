@@ -1,70 +1,65 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 
 	"github.com/tasksquad/daemon/agent"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/autostart"
+	"github.com/tasksquad/daemon/cmd"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/skills"
 	"github.com/tasksquad/daemon/supervisor"
-	tmuxpkg "github.com/tasksquad/daemon/tmux"
 	"github.com/tasksquad/daemon/ui"
-	"github.com/tasksquad/daemon/util"
 )
 
-// version is overridden at build time via -ldflags "-X main.version=<tag>".
 var version = "dev"
 
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "init":
-			runInit()
+			cmd.RunInit()
 			return
 		case "login":
-			runLogin()
+			cmd.RunLogin()
 			return
 		case "logout":
-			runLogout()
+			cmd.RunLogout()
 			return
 		case "sessions":
-			runSessions()
+			cmd.RunSessions()
 			return
 		case "attach":
-			runAttach(os.Args[2:])
+			cmd.RunAttach(os.Args[2:])
 			return
 		case "logs":
-			runLogs(os.Args[2:])
+			cmd.RunLogs(os.Args[2:])
 			return
 		case "pane":
-			runPane(os.Args[2:])
+			cmd.RunPane(os.Args[2:])
 			return
 		case "send":
-			runSend(os.Args[2:])
+			cmd.RunSend(os.Args[2:])
 			return
 		case "report":
-			runReport(os.Args[2:])
+			cmd.RunReport(os.Args[2:])
 			return
 		case "skill":
-			runSkill(os.Args[2:])
+			cmd.RunSkill(os.Args[2:])
 			return
 		}
 	}
 
+	runDaemon()
+}
+
+func runDaemon() {
 	cfgPath := flag.String("config", config.DefaultPath(), "path to config.toml")
 	apiURL := flag.String("api-url", "", "override API URL from config")
 	ver := flag.Bool("version", false, "print version and exit")
@@ -106,7 +101,6 @@ func main() {
 	logger.Info(fmt.Sprintf("Hooks port: %d", cfg.Hooks.Port))
 	logger.Info(fmt.Sprintf("User: %s", auth.GetEmail()))
 
-	// Build agents and collect ui.AgentStatus handles.
 	rawAgents := make([]*agent.Agent, 0, len(cfg.Agents))
 	agentList := make([]hooks.Agent, 0, len(cfg.Agents))
 	uiAgents := make([]ui.AgentStatus, 0, len(cfg.Agents))
@@ -120,25 +114,18 @@ func main() {
 		uiAgents = append(uiAgents, a)
 	}
 
-	// Start supervisor (needed before hook server so it can be passed as reporter).
 	sup := supervisor.New(cfg)
-
-	// Start hook server (receives Stop / Notification events from CLI providers).
-	// Pass sup as SupervisorReporter so verdicts and cancellations are routed correctly.
 	hooks.StartHookServer(cfg, agentList, sup)
 
-	// Run all agents in a single shared poll loop (one HTTP request per interval).
 	batchCtrl := agent.NewBatchController()
 	go agent.RunBatch(cfg, rawAgents, batchCtrl)
 
-	// Start supervisor monitor — watches for stuck tasks and spawns a helper session.
 	supAgents := make([]supervisor.MonitoredAgent, len(rawAgents))
 	for i, a := range rawAgents {
 		supAgents[i] = a
 	}
 	go sup.Monitor(supAgents)
 
-	// Start skills auto-install sync — checks server for new/updated skills every hour.
 	skillAgents := make([]skills.AgentRef, len(rawAgents))
 	for i, a := range rawAgents {
 		skillAgents[i] = a
@@ -148,39 +135,33 @@ func main() {
 
 	logger.Info("Running — waiting for tasks...")
 
-	// Enable autostart on first run (marker file prevents re-enabling after user disables it).
 	execPath, _ := os.Executable()
-	markerPath := filepath.Join(filepath.Dir(config.DefaultPath()), ".autostart-set")
+	markerPath := config.DefaultPath() + ".autostart-set"
 	if _, err := os.Stat(markerPath); os.IsNotExist(err) {
 		if err := autostart.Enable(execPath); err != nil {
 			logger.Warn(fmt.Sprintf("[autostart] first-run enable failed: %v", err))
 		} else {
 			logger.Info("[autostart] Enabled run-on-boot (first run)")
-			os.WriteFile(markerPath, []byte{}, 0600) //nolint:errcheck
+			os.WriteFile(markerPath, []byte{}, 0600)
 		}
 	}
 
-	// ui.Run blocks the main OS thread (required by macOS AppKit / systray).
-	// Agents run in goroutines above; the hook server runs in its own goroutine.
 	authCtrl := &mainAuthController{}
 	autostartCtrl := &mainAutostartController{execPath: execPath}
 	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, autostartCtrl, skillsSyncer, batchCtrl, dashboardURL(cfg.Server.URL), *cfgPath, version)
 }
 
-// mainAuthController implements ui.AuthController using the auth package.
 type mainAuthController struct{}
 
 func (c *mainAuthController) Email() string { return auth.GetEmail() }
 func (c *mainAuthController) Logout() error { return auth.Logout() }
 
-// mainAutostartController implements ui.AutostartController using the autostart package.
 type mainAutostartController struct{ execPath string }
 
-func (c *mainAutostartController) IsEnabled() bool  { return autostart.IsEnabled() }
-func (c *mainAutostartController) Enable() error    { return autostart.Enable(c.execPath) }
-func (c *mainAutostartController) Disable() error   { return autostart.Disable() }
+func (c *mainAutostartController) IsEnabled() bool { return autostart.IsEnabled() }
+func (c *mainAutostartController) Enable() error   { return autostart.Enable(c.execPath) }
+func (c *mainAutostartController) Disable() error  { return autostart.Disable() }
 
-// agentController implements ui.PullController for all configured agents.
 type agentController struct {
 	agents []*agent.Agent
 }
@@ -204,504 +185,25 @@ func (c *agentController) IsPaused() bool {
 	return c.agents[0].IsPaused()
 }
 
-// dashboardURL returns the portal base URL to use for login.
-// TSQ_DASHBOARD_URL env var overrides (useful for local dev via make dev + .env).
 func dashboardURL(cfgServerURL string) string {
 	if u := os.Getenv("TSQ_DASHBOARD_URL"); u != "" {
 		return u
 	}
-	dashURL := strings.TrimSuffix(cfgServerURL, "/api")
-	if strings.HasSuffix(cfgServerURL, ".api.tasksquad.ai") ||
+	dashURL := trimSuffix(cfgServerURL, "/api")
+	if hasSuffix(cfgServerURL, ".api.tasksquad.ai") ||
 		cfgServerURL == "https://api.tasksquad.ai" {
 		return "https://tasksquad.ai"
 	}
 	return dashURL
 }
 
-// runLogin opens a browser for Firebase OAuth and stores credentials in the keychain.
-func runLogin() {
-	// Load config to get the dashboard URL and Firebase settings.
-	cfg, err := config.Load(config.DefaultPath())
-	if err != nil {
-		// Use default dashboard URL if config not yet set up.
-		cfg = &config.Config{}
-		cfg.Server.URL = "https://tasksquad.ai"
+func trimSuffix(s, suffix string) string {
+	if len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix {
+		return s[:len(s)-len(suffix)]
 	}
-
-	dashURL := dashboardURL(cfg.Server.URL)
-
-	email, err := auth.Login(dashURL, cfg.Server.URL)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "login failed: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("Logged in as %s\n", email)
+	return s
 }
 
-// runLogout removes stored credentials from the keychain.
-func runLogout() {
-	if err := auth.Logout(); err != nil {
-		fmt.Fprintf(os.Stderr, "logout error: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println("Logged out.")
-}
-
-// runInit is a guided wizard that:
-//  1. Runs Firebase OAuth to authenticate the user.
-//  2. Fetches the user's agents from the server.
-//  3. Writes ~/.tasksquad/config.toml with the matched agents.
-func runInit() {
-	scanner := strings.NewReader("") // placeholder — we use fmt.Scan below
-	_ = scanner
-
-	fmt.Println("TaskSquad daemon setup")
-	fmt.Println("----------------------")
-	fmt.Println()
-
-	// Step 1: Firebase login.
-	fmt.Println("Step 1: Log in to TaskSquad")
-	cfg := &config.Config{}
-	cfg.Server.URL = "https://api.tasksquad.ai"
-
-	dashURL := dashboardURL(cfg.Server.URL)
-
-	email, err := auth.Login(dashURL, cfg.Server.URL)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "login failed: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("Logged in as %s\n\n", email)
-
-	// Step 2: Fetch user's agents from server.
-	fmt.Println("Step 2: Fetching your agents from the server...")
-	token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "auth error: %v\n", err)
-		os.Exit(1)
-	}
-
-	agentsData, err := fetchUserAgents(cfg.Server.URL, token)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to fetch agents: %v\n", err)
-		os.Exit(1)
-	}
-
-	if len(agentsData) == 0 {
-		fmt.Println("No agents found. Create agents in the TaskSquad portal first.")
-		fmt.Printf("  %s/dashboard\n", dashURL)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Found %d agent(s):\n", len(agentsData))
-	for _, a := range agentsData {
-		fmt.Printf("  - %s (id: %s)\n", a.Name, a.ID)
-	}
-	fmt.Println()
-
-	// Step 3: Prompt for CLI command and work directory per agent.
-	readLine := func(prompt, def string) string {
-		if def != "" {
-			fmt.Printf("%s [%s]: ", prompt, def)
-		} else {
-			fmt.Printf("%s: ", prompt)
-		}
-		var v string
-		fmt.Scanln(&v)
-		v = strings.TrimSpace(v)
-		if v == "" {
-			return def
-		}
-		return v
-	}
-
-	var agentBlocks []string
-	for _, a := range agentsData {
-		fmt.Printf("Configure agent: %s\n", a.Name)
-		command := readLine("  CLI command", "claude")
-		workDir := readLine("  Work directory", "~/Projects")
-		providerName := provider.Detect(command, "").Name()
-
-		block := fmt.Sprintf(`[[agents]]
-id       = %q
-name     = %q
-command  = %q
-# provider = %q  # auto-detected from command; uncomment to override
-work_dir = %q
-`, a.ID, a.Name, command, providerName, workDir)
-		agentBlocks = append(agentBlocks, block)
-		fmt.Println()
-	}
-
-	// Step 4: Write config.
-	cfgContent := strings.Join(agentBlocks, "\n")
-
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".tasksquad")
-	os.MkdirAll(dir, 0755)
-	path := filepath.Join(dir, "config.toml")
-
-	if err := os.WriteFile(path, []byte(cfgContent), 0600); err != nil {
-		fmt.Fprintf(os.Stderr, "error writing config: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Config written to %s\n", path)
-	fmt.Println("Run: tsq")
-}
-
-// serverAgent is the API response shape from GET /daemon/user/agents.
-type serverAgent struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-// fetchUserAgents calls GET /daemon/user/agents and returns the list of agents.
-func fetchUserAgents(apiURL, token string) ([]serverAgent, error) {
-	req, err := http.NewRequest("GET", apiURL+"/daemon/user/agents", nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	b, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, b)
-	}
-
-	var body struct {
-		Agents []serverAgent `json:"agents"`
-	}
-	if err := json.Unmarshal(b, &body); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
-	}
-	return body.Agents, nil
-}
-
-// tmuxSessionPrefix is the prefix used for all tsq-managed tmux sessions.
-const tmuxSessionPrefix = "tsq-"
-
-// sessionNameFromArg converts a user-supplied argument to a tsq session name.
-// Accepts either a full session name (tsq-XXXXXXXX), a raw task ID, or the
-// first 8 characters of a task ID.
-func sessionNameFromArg(arg string) string {
-	if strings.HasPrefix(arg, tmuxSessionPrefix) {
-		return arg
-	}
-	suffix := arg
-	if len(suffix) > 8 {
-		suffix = suffix[:8]
-	}
-	return tmuxSessionPrefix + suffix
-}
-
-// runSessions lists all active tsq tmux sessions (prefix tsq-).
-func runSessions() {
-	out, err := exec.Command("tmux", "list-sessions", "-F",
-		"#{session_name}\t#{session_windows} window(s)\tcreated #{t:session_created}").Output()
-	if err != nil {
-		// tmux exits non-zero when there are no sessions at all.
-		fmt.Println("No active tsq sessions.")
-		return
-	}
-
-	var found bool
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if strings.HasPrefix(line, tmuxSessionPrefix) {
-			if !found {
-				fmt.Println("Active tsq sessions:")
-				found = true
-			}
-			fmt.Println(" ", line)
-		}
-	}
-	if !found {
-		fmt.Println("No active tsq sessions.")
-	}
-}
-
-// runAttach attaches the terminal to a tsq tmux session.
-//
-// Usage:
-//
-//	tsq attach                   — attach to the only active tsq session (or list if multiple)
-//	tsq attach <taskID>          — attach to session tsq-<taskID[:8]>
-//	tsq attach <tsq-XXXXXXXX>   — attach by full session name
-func runAttach(args []string) {
-	var sessionName string
-
-	if len(args) == 0 {
-		// No argument: find the single active tsq session automatically.
-		out, err := exec.Command("tmux", "list-sessions", "-F", "#{session_name}").Output()
-		if err != nil {
-			fmt.Println("No active tsq sessions.")
-			return
-		}
-		var sessions []string
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			if strings.HasPrefix(line, tmuxSessionPrefix) {
-				sessions = append(sessions, line)
-			}
-		}
-		switch len(sessions) {
-		case 0:
-			fmt.Println("No active tsq sessions.")
-			return
-		case 1:
-			sessionName = sessions[0]
-		default:
-			fmt.Println("Multiple active tsq sessions — specify one:")
-			for _, s := range sessions {
-				fmt.Println(" ", s)
-			}
-			fmt.Println("\nUsage: tsq attach <taskID>")
-			return
-		}
-	} else {
-		sessionName = sessionNameFromArg(args[0])
-	}
-
-	fmt.Printf("Attaching to %s (detach: Ctrl-b d)\n", sessionName)
-	cmd := exec.Command("tmux", "attach-session", "-t", sessionName)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: session %q not found or tmux unavailable\n", sessionName)
-		os.Exit(1)
-	}
-}
-
-// runLogs shows a local task run log or the daemon log.
-//
-// Usage:
-//
-//	tsq logs                            — tail today's daemon log
-//	tsq logs <agentName>                — list task logs for an agent
-//	tsq logs <agentName> <taskID>       — tail a specific task log
-func runLogs(args []string) {
-	home, _ := os.UserHomeDir()
-	logsDir := filepath.Join(home, ".tasksquad", "logs")
-
-	switch len(args) {
-	case 0:
-		// Tail today's daemon log.
-		today := fmt.Sprintf("daemon-%s.log", nowDate())
-		path := filepath.Join(logsDir, today)
-		tailFile(path)
-
-	case 1:
-		agentName := args[0]
-		agentLogsDir := filepath.Join(logsDir, sanitizeAgentName(agentName))
-		entries, err := os.ReadDir(agentLogsDir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "no logs found for agent %q (looked in %s)\n", agentName, agentLogsDir)
-			os.Exit(1)
-		}
-		fmt.Printf("Task logs for agent %q:\n", agentName)
-		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), ".log") {
-				info, _ := e.Info()
-				taskID := strings.TrimSuffix(e.Name(), ".log")
-				fmt.Printf("  %s  (%s)\n", taskID, info.ModTime().Format("2006-01-02 15:04:05"))
-			}
-		}
-
-	default:
-		agentName, taskID := args[0], args[1]
-		path := filepath.Join(logsDir, sanitizeAgentName(agentName), taskID+".log")
-		tailFile(path)
-	}
-}
-
-// tailFile prints the contents of path to stdout (like cat).
-func tailFile(path string) {
-	f, err := os.Open(path)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "log not found: %s\n", path)
-		os.Exit(1)
-	}
-	defer f.Close()
-	fmt.Printf("=== %s ===\n", path)
-	io.Copy(os.Stdout, f) //nolint:errcheck
-}
-
-// nowDate returns today's date as YYYY-MM-DD.
-func nowDate() string {
-	out, err := exec.Command("date", "+%Y-%m-%d").Output()
-	if err != nil {
-		return "unknown"
-	}
-	return strings.TrimSpace(string(out))
-}
-
-func sanitizeAgentName(s string) string { return util.Sanitize(s) }
-
-// runPane captures tmux pane output and prints it to stdout.
-//
-// Usage:
-//
-//	tsq pane <session>              — capture last 200 lines
-//	tsq pane <session> --lines N   — capture last N lines
-func runPane(args []string) {
-	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: tsq pane <session> [--lines N]")
-		os.Exit(1)
-	}
-	session := sessionNameFromArg(args[0])
-
-	fs := flag.NewFlagSet("pane", flag.ContinueOnError)
-	lines := fs.Int("lines", 200, "number of lines to capture from scrollback")
-	fs.Parse(args[1:]) //nolint:errcheck
-
-	out := tmuxpkg.CapturePane(session, *lines)
-	if out == "" {
-		fmt.Fprintf(os.Stderr, "no output captured — session %q may not exist\n", session)
-		os.Exit(1)
-	}
-	fmt.Println(out)
-}
-
-// runSend sends keys to a tmux session.
-// With text: sends text, waits 2 s, then sends Enter.
-// Without text: sends Enter immediately (useful for arrow-key menus and empty-input confirms).
-//
-// Usage:
-//
-//	tsq send <session> <text>   — e.g. "y", "1", " " (spacebar)
-//	tsq send <session>          — just Enter
-func runSend(args []string) {
-	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: tsq send <session> [<text>]")
-		os.Exit(1)
-	}
-	session := sessionNameFromArg(args[0])
-
-	if len(args) < 2 {
-		// No text — send Enter only.
-		if err := tmuxpkg.SendEnter(session); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		return
-	}
-
-	if err := tmuxpkg.SendKeys(session, args[1]); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-// runReport posts a supervisor verdict to the local hooks API.
-//
-// Usage:
-//
-//	tsq report --task <id> --status <status> --summary "..." [--found "..."] [--action "..."] [--port N]
-func runReport(args []string) {
-	fs := flag.NewFlagSet("report", flag.ContinueOnError)
-	taskID := fs.String("task", "", "task ID (required)")
-	status := fs.String("status", "", "verdict: working_fine | resolved | cannot_help (required)")
-	summary := fs.String("summary", "", "one-line summary (required)")
-	found := fs.String("found", "", "what the terminal showed")
-	action := fs.String("action", "none", "what you sent, or none")
-	port := fs.Int("port", 7374, "hooks server port")
-
-	if err := fs.Parse(args); err != nil {
-		os.Exit(1)
-	}
-
-	if *taskID == "" || *status == "" || *summary == "" {
-		fmt.Fprintln(os.Stderr, "usage: tsq report --task <id> --status <status> --summary <summary> [--found <found>] [--action <action>]")
-		os.Exit(1)
-	}
-
-	payload := map[string]string{
-		"task_id": *taskID,
-		"status":  *status,
-		"summary": *summary,
-		"found":   *found,
-		"action":  *action,
-	}
-	body, _ := json.Marshal(payload)
-
-	url := fmt.Sprintf("http://localhost:%d/hooks/supervisor", *port)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error posting report: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	out, _ := io.ReadAll(resp.Body)
-	fmt.Printf("HTTP %d: %s\n", resp.StatusCode, strings.TrimSpace(string(out)))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		os.Exit(1)
-	}
-}
-
-// runSkill pushes a skill to the local hooks API.
-// Content is read from --file <path> or stdin if --file is omitted.
-//
-// Usage:
-//
-//	tsq skill --name tsq-foo --description "..." --file /tmp/skill.md
-//	cat /tmp/skill.md | tsq skill --name tsq-foo --description "..."
-func runSkill(args []string) {
-	fs := flag.NewFlagSet("skill", flag.ContinueOnError)
-	name := fs.String("name", "", "skill name, e.g. tsq-my-skill (required)")
-	description := fs.String("description", "", "one-line description (required)")
-	file := fs.String("file", "", "path to skill markdown file (reads stdin if omitted)")
-	port := fs.Int("port", 7374, "hooks server port")
-
-	if err := fs.Parse(args); err != nil {
-		os.Exit(1)
-	}
-
-	if *name == "" || *description == "" {
-		fmt.Fprintln(os.Stderr, "usage: tsq skill --name <name> --description <desc> [--file <path>]")
-		os.Exit(1)
-	}
-
-	var content []byte
-	var err error
-	if *file != "" {
-		content, err = os.ReadFile(*file)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error reading file: %v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		content, err = io.ReadAll(os.Stdin)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error reading stdin: %v\n", err)
-			os.Exit(1)
-		}
-	}
-
-	payload := map[string]string{
-		"name":        *name,
-		"description": *description,
-		"content":     string(content),
-	}
-	body, _ := json.Marshal(payload)
-
-	url := fmt.Sprintf("http://localhost:%d/hooks/skill", *port)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error pushing skill: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	out, _ := io.ReadAll(resp.Body)
-	fmt.Printf("HTTP %d: %s\n", resp.StatusCode, strings.TrimSpace(string(out)))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		os.Exit(1)
-	}
+func hasSuffix(s, suffix string) bool {
+	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
 }
