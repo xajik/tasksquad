@@ -6,6 +6,8 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Markdown } from 'tiptap-markdown'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { api, type Note, type NoteComment, type Agent, type Member, type LinkedTask } from '../lib/api'
 import { auth } from '../lib/firebase'
 import { trackEvent } from '../lib/analytics'
@@ -161,7 +163,6 @@ function RichTextEditor({ content, onChange }: { content: string; onChange: (md:
     ],
     content,
     editorProps: {
-      // Suppress Grammarly — it conflicts with ProseMirror's DOM management
       attributes: {
         class: 'outline-none min-h-[300px]',
         'data-gramm': 'false',
@@ -170,8 +171,7 @@ function RichTextEditor({ content, onChange }: { content: string; onChange: (md:
       },
     },
     onUpdate: ({ editor }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      onChange((editor.storage as any).markdown.getMarkdown())
+      onChange((editor.storage as unknown as { markdown: { getMarkdown: () => string } }).markdown.getMarkdown())
     },
   })
 
@@ -185,6 +185,102 @@ function RichTextEditor({ content, onChange }: { content: string; onChange: (md:
         onClick={() => editor.commands.focus()}
       >
         <EditorContent editor={editor} />
+      </div>
+    </div>
+  )
+}
+
+// ─── Comment Editor (Compact TipTap) ─────────────────────────────────────────
+
+function CommentToolbar({ editor }: { editor: Editor }) {
+  const ToolbarBtn = ({ onClick, active, title, children }: {
+    onClick: () => void; active?: boolean; title: string; children: React.ReactNode
+  }) => (
+    <button
+      type="button"
+      onMouseDown={e => { e.preventDefault(); onClick() }}
+      title={title}
+      className={cn(
+        'h-6 w-6 flex items-center justify-center rounded transition-colors text-[11px]',
+        active ? 'bg-primary/10 text-primary' : 'text-foreground/40 hover:bg-muted hover:text-foreground',
+      )}
+    >
+      {children}
+    </button>
+  )
+
+  const Divider = () => <div className="w-px h-4 bg-border mx-0.5" />
+
+  return (
+    <div className="flex items-center gap-0.5 border-b px-2 py-1 bg-muted/30">
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive('bold')} title="Bold">
+        <Bold className="h-3 w-3" />
+      </ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive('italic')} title="Italic">
+        <Italic className="h-3 w-3" />
+      </ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleStrike().run()} active={editor.isActive('strike')} title="Strikethrough">
+        <Strikethrough className="h-3 w-3" />
+      </ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleCode().run()} active={editor.isActive('code')} title="Inline Code">
+        <Code className="h-3 w-3" />
+      </ToolbarBtn>
+      <Divider />
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} title="Bullet List">
+        <List className="h-3 w-3" />
+      </ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Ordered List">
+        <ListOrdered className="h-3 w-3" />
+      </ToolbarBtn>
+      <Divider />
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleCodeBlock().run()} active={editor.isActive('codeBlock')} title="Code Block">
+        <Code2 className="h-3 w-3" />
+      </ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive('blockquote')} title="Quote">
+        <Quote className="h-3 w-3" />
+      </ToolbarBtn>
+    </div>
+  )
+}
+
+function CommentEditor({ value, onChange, onSubmit, submitting }: {
+  value: string; onChange: (md: string) => void; onSubmit: () => void; submitting: boolean
+}) {
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        bulletList: { keepMarks: true },
+        orderedList: { keepMarks: true },
+      }),
+      Placeholder.configure({ placeholder: 'Add a comment...' }),
+      Markdown.configure({ html: false, tightLists: true }),
+    ],
+    content: value,
+    editorProps: {
+      attributes: {
+        class: 'outline-none min-h-[80px] max-h-[200px] overflow-auto p-2 text-sm',
+      },
+    },
+    onUpdate: ({ editor }) => {
+      onChange((editor.storage as unknown as { markdown: { getMarkdown: () => string } }).markdown.getMarkdown())
+    },
+  })
+
+  const handleSubmit = () => {
+    if (value.trim()) onSubmit()
+  }
+
+  return (
+    <div className="border rounded-lg bg-background">
+      {editor && <CommentToolbar editor={editor} />}
+      <div onClick={() => editor?.commands.focus()}>
+        <EditorContent editor={editor} />
+      </div>
+      <div className="flex justify-end px-2 pb-2 pt-1 border-t bg-muted/20">
+        <Button size="sm" onClick={handleSubmit} disabled={submitting || !value.trim()}>
+          {submitting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <MessageSquare className="h-3 w-3 mr-1" />}
+          Post
+        </Button>
       </div>
     </div>
   )
@@ -408,8 +504,7 @@ export function NoteDetail({ teamId }: { teamId: string }) {
     setComments(prev => prev.filter(c => c.id !== commentId))
   }
 
-  const postComment = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const postComment = async () => {
     if (!newComment.trim()) return
     setPostingComment(true)
     try {
@@ -429,33 +524,62 @@ export function NoteDetail({ teamId }: { teamId: string }) {
     return members.find(m => m.id === authorId)?.email ?? 'Unknown'
   }
 
+  const getInitials = (name: string): string => {
+    const emailPart = name.includes('@') ? name.split('@')[0] : name
+    return emailPart.slice(0, 2).toUpperCase()
+  }
+
+  const formatTimestamp = (ts: number): string => {
+    const date = new Date(ts)
+    const now = new Date()
+    const diff = now.getTime() - date.getTime()
+    const mins = Math.floor(diff / 60000)
+    const hours = Math.floor(diff / 3600000)
+    const days = Math.floor(diff / 86400000)
+
+    if (mins < 1) return 'Just now'
+    if (mins < 60) return `${mins}m ago`
+    if (hours < 24) return `${hours}h ago`
+    if (days < 7) return `${days}d ago`
+    return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+
   const commentsPanelJsx = (
     <>
       <ScrollArea className="flex-1 p-4">
         {loadingComments ? (
           <Loader2 className="animate-spin mx-auto mt-4" />
         ) : (
-          <div className="space-y-4">
-            {comments.map(c => (
-              <div key={c.id} className="text-sm group">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-semibold text-xs text-foreground/70">{authorLabel(c.author_id)}</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-muted-foreground">
-                      {new Date(c.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    {c.author_id === currentUserId && (
-                      <button
-                        onClick={() => deleteComment(c.id)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive ml-1"
-                        title="Delete comment"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
+          <div className="space-y-3">
+            {comments.map((c, idx) => (
+              <div
+                key={c.id}
+                className={cn(
+                  'rounded-lg border p-3',
+                  idx % 2 === 0 ? 'bg-muted/20' : 'bg-background'
+                )}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-6 w-6 rounded-full bg-primary/20 text-primary text-[10px] font-medium flex items-center justify-center shrink-0">
+                    {getInitials(authorLabel(c.author_id))}
                   </div>
+                  <span className="font-semibold text-xs text-foreground">{authorLabel(c.author_id)}</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">
+                    {formatTimestamp(c.created_at)}
+                  </span>
+                  {c.author_id === currentUserId && (
+                    <button
+                      onClick={() => deleteComment(c.id)}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                      title="Delete comment"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
-                <div className="bg-background border rounded-lg p-2 text-foreground/90">{c.content}</div>
+                <div className="prose prose-sm prose-neutral max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{c.content}</ReactMarkdown>
+                </div>
               </div>
             ))}
             {comments.length === 0 && (
@@ -464,17 +588,14 @@ export function NoteDetail({ teamId }: { teamId: string }) {
           </div>
         )}
       </ScrollArea>
-      <form onSubmit={postComment} className="p-3 border-t bg-background shrink-0">
-        <Textarea
+      <div className="p-3 border-t bg-background shrink-0">
+        <CommentEditor
           value={newComment}
-          onChange={e => setNewComment(e.target.value)}
-          placeholder="Add a comment..."
-          className="min-h-[80px] mb-2 text-xs"
+          onChange={setNewComment}
+          onSubmit={postComment}
+          submitting={postingComment}
         />
-        <Button size="sm" className="w-full" disabled={postingComment || !newComment.trim()}>
-          Post Comment
-        </Button>
-      </form>
+      </div>
     </>
   )
 
