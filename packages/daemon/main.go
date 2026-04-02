@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/tasksquad/daemon/agent"
+	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/autostart"
 	"github.com/tasksquad/daemon/cmd"
@@ -84,6 +85,18 @@ func runDaemon() {
 		cfg.Server.URL = *apiURL
 	}
 
+	analytics.Init(
+		analytics.Config{
+			APIKey:  cfg.Analytics.APIKey,
+			Enabled: cfg.Analytics.Enabled,
+		},
+		config.DeviceID(),
+		version,
+	)
+	analytics.Track("daemon_start", map[string]interface{}{
+		"version": version,
+	})
+
 	if !auth.IsLoggedIn() {
 		fmt.Println("Not logged in — starting login flow...")
 		dashURL := dashboardURL(cfg.Server.URL)
@@ -93,6 +106,12 @@ func runDaemon() {
 			os.Exit(1)
 		}
 		fmt.Printf("Logged in as %s\n\n", email)
+		analytics.Track("user_login", map[string]interface{}{
+			"email": email,
+		})
+		analytics.SetUserID(email)
+	} else {
+		analytics.SetUserID(auth.GetEmail())
 	}
 
 	logger.Info("TaskSquad daemon starting — tsq " + version)

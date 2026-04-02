@@ -379,14 +379,6 @@ export const TaskSquadPlugin = async ({ client }) => {
 						},
 					},
 				},
-				"Notification": []any{
-					map[string]any{
-						"matcher": "*",
-						"hooks": []any{
-							map[string]any{"type": "http", "url": fmt.Sprintf("http://localhost:%d/hooks/notification", port)},
-						},
-					},
-				},
 			}
 		}
 

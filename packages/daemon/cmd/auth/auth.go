@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/provider"
@@ -37,6 +38,7 @@ func RunLogout() error {
 		fmt.Fprintf(os.Stderr, "logout error: %v\n", err)
 		os.Exit(1)
 	}
+	analytics.Track("user_logout", nil)
 	fmt.Println("Logged out.")
 	return nil
 }

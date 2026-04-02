@@ -4,3 +4,7 @@ poll_interval = 60
 
 [hooks]
 port = 7374
+
+[analytics]
+enabled = false
+api_key  = "f9b76851c13dec7adb26c8552028913c"

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	_ "embed"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/fsnotify/fsnotify"
+	"github.com/google/uuid"
 )
 
 //go:embed defaults.toml
@@ -45,11 +47,17 @@ type FirebaseConfig struct {
 	AuthDomain string `toml:"auth_domain"`
 }
 
+type AnalyticsConfig struct {
+	APIKey  string `toml:"api_key"`
+	Enabled bool   `toml:"enabled"`
+}
+
 type Config struct {
-	Server   ServerConfig   `toml:"server"`
-	Agents   []AgentConfig  `toml:"agents"`
-	Hooks    HooksConfig    `toml:"hooks"`
-	Firebase FirebaseConfig `toml:"firebase"`
+	Server    ServerConfig    `toml:"server"`
+	Agents    []AgentConfig   `toml:"agents"`
+	Hooks     HooksConfig     `toml:"hooks"`
+	Firebase  FirebaseConfig  `toml:"firebase"`
+	Analytics AnalyticsConfig `toml:"analytics"`
 }
 
 func expandHome(path string) string {
@@ -63,6 +71,17 @@ func expandHome(path string) string {
 func DefaultPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".tasksquad", "config.toml")
+}
+
+func DeviceID() string {
+	home, _ := os.UserHomeDir()
+	idPath := filepath.Join(home, ".tasksquad", "device-id")
+	if data, err := os.ReadFile(idPath); err == nil {
+		return string(bytes.TrimSpace(data))
+	}
+	id := uuid.New().String()
+	os.WriteFile(idPath, []byte(id), 0600)
+	return id
 }
 
 func Load(path string) (*Config, error) {
