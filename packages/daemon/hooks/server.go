@@ -76,12 +76,26 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 		agentID := r.URL.Query().Get("agent")
 		taskIDParam := r.URL.Query().Get("task_id")
 		provider := r.URL.Query().Get("provider")
+		isFailure := r.URL.Query().Get("failure") == "true"
 
 		var transcriptPath string
 		var stopReason string
 		var crashed bool
 
-		if provider == "gemini" {
+		// StopFailure hook routes here with failure=true; treat as crashed regardless of payload.
+		if isFailure {
+			var payload struct {
+				ErrorType      string `json:"error_type"`
+				TranscriptPath string `json:"transcript_path"`
+			}
+			if err := json.Unmarshal(body, &payload); err != nil {
+				logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal StopFailure hook: %v", err))
+			}
+			transcriptPath = payload.TranscriptPath
+			stopReason = payload.ErrorType
+			crashed = true
+			logger.Warn(fmt.Sprintf("[hooks] StopFailure received: agent=%s task_id=%s error_type=%s", agentID, taskIDParam, stopReason))
+		} else if provider == "gemini" {
 			// Gemini payload: {"transcript_path": "...", "reason": "...", ...}
 			var payload struct {
 				Reason         string `json:"reason"`
@@ -470,7 +484,7 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
 	logger.Info(fmt.Sprintf("[hooks] Server listening on http://localhost:%d", cfg.Hooks.Port))
-	logger.Info("[hooks] Registered endpoints: /hooks/stop, /hooks/notification, /hooks/after_agent, /hooks/opencode, /hooks/skill, /hooks/supervisor")
+	logger.Info("[hooks] Registered endpoints: /hooks/stop (Stop + StopFailure), /hooks/notification, /hooks/after_agent, /hooks/opencode, /hooks/skill, /hooks/supervisor")
 	go http.ListenAndServe(addr, mux) //nolint:errcheck
 }
 

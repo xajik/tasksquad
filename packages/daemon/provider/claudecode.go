@@ -57,6 +57,16 @@ func (p *ClaudeCode) Setup(workDir string, hooksPort int, agentID string, taskID
 				},
 			},
 		},
+		"StopFailure": []any{
+			map[string]any{
+				"hooks": []any{
+					map[string]any{
+						"type": "http",
+						"url":  fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s&failure=true", hooksPort, agentID, taskID),
+					},
+				},
+			},
+		},
 		"Notification": []any{
 			map[string]any{
 				"matcher": "*",
