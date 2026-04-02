@@ -864,54 +864,41 @@ func (a *Agent) handleReset() {
 	logger.Info(fmt.Sprintf("[%s] Reset complete — idle, ready to pull new tasks on next heartbeat", a.Config.Name))
 }
 
-func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string, wasLearning bool) {
-	logger.Info(fmt.Sprintf("[%s] internalComplete called — status=%q taskID=%s transcriptPath=%q", a.Config.Name, status, taskID, transcriptPath))
-	if status == "" {
-		status = "closed"
+func (a *Agent) captureTerminalState(sess string) string {
+	if sess == "" || tmuxBin == "" {
+		return ""
 	}
-
-	// For tmux path: capture the full scrollback before killing the session.
-	// tmux capture-pane -S - reads from the beginning of the scrollback buffer,
-	// giving us everything Claude printed — loading, tool descriptions, final response.
-	// This must happen before kill-session which destroys the scrollback.
-	var tmuxCapture string
-	if sess != "" && tmuxBin != "" {
-		if out, err := exec.Command(tmuxBin, "capture-pane", "-t", sess, "-p", "-S", "-").Output(); err == nil {
-			tmuxCapture = strings.TrimSpace(string(out))
-			logger.Info(fmt.Sprintf("[%s] Captured %d chars from tmux scrollback", a.Config.Name, len(tmuxCapture)))
-		} else {
-			logger.Warn(fmt.Sprintf("[%s] tmux capture-pane failed: %v", a.Config.Name, err))
-		}
+	out, err := exec.Command(tmuxBin, "capture-pane", "-t", sess, "-p", "-S", "-").Output()
+	if err == nil {
+		result := strings.TrimSpace(string(out))
+		logger.Info(fmt.Sprintf("[%s] Captured %d chars from tmux scrollback", a.Config.Name, len(result)))
+		return result
 	}
+	logger.Warn(fmt.Sprintf("[%s] tmux capture-pane failed: %v", a.Config.Name, err))
+	return ""
+}
 
-	// For tmux path: kill the session so the FIFO writer (cat) closes, which
-	// causes streamOutput's scanner to get EOF and outputDone to be closed.
-	// For PTY path: close stdin so the process can exit cleanly.
+func (a *Agent) closeProcessResources(sess, fifo string, pw io.WriteCloser, outputDone chan struct{}) {
 	if sess != "" {
-		exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
+		exec.Command(tmuxBin, "kill-session", "-t", sess).Run()
 	} else if pw != nil {
 		pw.Close()
 	}
 
-	// Wait for stdout to finish draining before collecting output.
-	// This is critical when the Stop hook fires mid-execution: the process
-	// may still be writing its final response to stdout. Without this wait,
-	// outputLines is incomplete and final_text ends up empty.
 	if outputDone != nil {
 		select {
 		case <-outputDone:
 		case <-time.After(15 * time.Second):
-			logger.Warn(fmt.Sprintf("[%s] Timed out waiting for stdout drain (task %s)", a.Config.Name, taskID))
+			logger.Warn(fmt.Sprintf("[%s] Timed out waiting for stdout drain", a.Config.Name))
 		}
 	}
 
-	a.st.mu.Lock()
-	lines := append([]string(nil), a.st.outputLines...)
-	a.st.mu.Unlock()
+	if fifo != "" {
+		os.Remove(fifo)
+	}
+}
 
-	logger.Info(fmt.Sprintf("[%s] Completing task %s — status=%s", a.Config.Name, taskID, status))
-
-	// Emit lifecycle event based on final status.
+func (a *Agent) emitLifecycleEvent(status, taskID string, runLog *os.File, tmuxCapture string) {
 	if status == "closed" {
 		logger.Lifecycle(fmt.Sprintf("[%s] event=success task_id=%s", a.Config.Name, taskID))
 		if runLog != nil {
@@ -923,34 +910,24 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 			fmt.Fprintf(runLog, "\n[EVENT] event=failure status=%s\n# ended=%s\n", status, time.Now().Format(time.RFC3339))
 		}
 	}
-	// For tmux path: write the full scrollback to the local run log so the
-	// Control Panel log viewer shows real output instead of an empty file.
-	// The FIFO-streamed lines are stripped to nothing by cleanLine on Claude
-	// Code's TUI redraws, so tmuxCapture is the only source of visible output.
 	if runLog != nil && tmuxCapture != "" {
 		fmt.Fprintf(runLog, "\n# --- terminal scrollback ---\n%s\n", tmuxCapture)
 	}
 	if runLog != nil {
 		runLog.Close()
 	}
+}
 
-	all := strings.Join(lines, "\n")
+func (a *Agent) extractFinalText(hookMsg, transcriptPath string, outputLines []string, wasLearning bool) string {
+	if wasLearning {
+		return ""
+	}
 
-	// Prefer the transcript for final_text: Claude Code's TUI output captured via
-	// tmux pipe-pane contains raw VT100 sequences that cleanLine cannot fully
-	// reconstruct into readable text. The Stop hook provides transcript_path, a
-	// JSONL file with the clean conversation — we extract the last assistant turn.
-	// NOTE: Claude fires the Stop hook while still finishing the transcript write.
-	// We retry for up to 10 seconds to wait for the assistant response to appear.
-	// finalText priority: hook message (codex) → transcript → terminal output.
-	a.st.mu.Lock()
-	hookMsg := a.st.hookMessage
-	a.st.hookMessage = ""
-	a.st.mu.Unlock()
 	finalText := hookMsg
 	if finalText != "" {
 		logger.Info(fmt.Sprintf("[%s] Final text from hook message (%d chars)", a.Config.Name, len(finalText)))
 	}
+
 	if finalText == "" && transcriptPath != "" {
 		retryDeadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(retryDeadline) {
@@ -965,22 +942,20 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 			logger.Warn(fmt.Sprintf("[%s] Transcript read returned empty after 10s, falling back to terminal output", a.Config.Name))
 		}
 	}
+
 	if finalText == "" {
+		all := strings.Join(outputLines, "\n")
 		finalText = strings.TrimSpace(all)
 		if len(finalText) > 10000 {
 			finalText = finalText[len(finalText)-10000:]
 		}
 	}
 
-	// Learning sessions (end-of-task skill extraction) run in the agent's own
-	// tmux session and fire a Stop hook when done. Their "final_text" would be
-	// the skill-saving confirmation — not a task response. Suppress it so no
-	// spurious message appears in the task thread.
-	if wasLearning {
-		finalText = ""
-	}
+	return finalText
+}
 
-	closeResp, err := a.post(cfg, "/daemon/session/close", map[string]any{
+func (a *Agent) postSessionClose(cfg *config.Config, sessionID, agentID, status, finalText string) map[string]any {
+	resp, err := a.post(cfg, "/daemon/session/close", map[string]any{
 		"session_id": sessionID,
 		"agent_id":   agentID,
 		"status":     status,
@@ -988,52 +963,81 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 	})
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] Session close error: %v", a.Config.Name, err))
-	} else {
-		logger.Debug(fmt.Sprintf("[%s] Session close response: %v", a.Config.Name, closeResp))
+		return nil
+	}
+	logger.Debug(fmt.Sprintf("[%s] Session close response: %v", a.Config.Name, resp))
+	return resp
+}
 
-		// Asynchronously upload full log and transcript
-		msgID, _ := closeResp["message_id"].(string)
+func (a *Agent) uploadTaskArtifacts(cfg *config.Config, sessionID, msgID, logContent, tmuxCapture, transcriptPath string) {
+	go a.uploadAndAttachLog(cfg, sessionID, logContent)
 
-		// 1. Upload execution log — prefer tmux scrollback (complete terminal output
-		//    including tool descriptions), fall back to FIFO-captured cleaned lines.
-		logContent := all
+	if msgID != "" {
 		if tmuxCapture != "" {
-			logContent = tmuxCapture
-		}
-		go a.uploadAndAttachLog(cfg, sessionID, logContent)
-
-		// 2. Upload execution transcript for the portal viewer.
-		//    Prefer tmux scrollback (plain text, shows everything the terminal showed).
-		//    Fall back to the Claude Code JSONL (only has the final API response).
-		if msgID != "" {
-			if tmuxCapture != "" {
-				go a.uploadAndAttachContent(cfg, sessionID, msgID, "transcript.txt", []byte(tmuxCapture))
-			} else if transcriptPath != "" {
-				go a.uploadAndAttach(cfg, sessionID, msgID, "transcript.jsonl", transcriptPath)
-			}
+			go a.uploadAndAttachContent(cfg, sessionID, msgID, "transcript.txt", []byte(tmuxCapture))
+		} else if transcriptPath != "" {
+			go a.uploadAndAttach(cfg, sessionID, msgID, "transcript.jsonl", transcriptPath)
 		}
 	}
+}
 
-	// Push SSE "done" event to any portal viewers.
+func (a *Agent) pushSSEDone(agentID, finalText string) {
 	if agentID != "" {
-		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
+		a.post(nil, "/daemon/push/"+agentID, map[string]any{
 			"type":  "done",
 			"lines": []string{finalText},
 		})
 	}
+}
 
-	// Asynchronously extract skills from this session's terminal output.
-	// Skip when the agent already did explicit learning via /tsq-end-session-learning.
-	if tmuxCapture != "" && !wasLearning {
+func (a *Agent) doSkillExtraction(cfg *config.Config, agentID, tmuxCapture string) {
+	if tmuxCapture != "" {
 		go skills.ExtractFromSession(cfg, agentID, tmuxCapture)
 	}
+}
 
-	// Remove the FIFO now that all output has been drained.
-	if fifo != "" {
-		os.Remove(fifo)
+func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string, wasLearning bool) {
+	logger.Info(fmt.Sprintf("[%s] internalComplete called — status=%q taskID=%s transcriptPath=%q", a.Config.Name, status, taskID, transcriptPath))
+	if status == "" {
+		status = "closed"
 	}
 
-	// Write task_end event and close the per-task JSONL record.
+	tmuxCapture := a.captureTerminalState(sess)
+
+	a.closeProcessResources(sess, fifo, pw, outputDone)
+
+	a.st.mu.Lock()
+	lines := append([]string(nil), a.st.outputLines...)
+	a.st.mu.Unlock()
+
+	logger.Info(fmt.Sprintf("[%s] Completing task %s — status=%s", a.Config.Name, taskID, status))
+
+	a.emitLifecycleEvent(status, taskID, runLog, tmuxCapture)
+
+	a.st.mu.Lock()
+	hookMsg := a.st.hookMessage
+	a.st.hookMessage = ""
+	a.st.mu.Unlock()
+
+	finalText := a.extractFinalText(hookMsg, transcriptPath, lines, wasLearning)
+
+	closeResp := a.postSessionClose(cfg, sessionID, agentID, status, finalText)
+
+	msgID := ""
+	if closeResp != nil {
+		msgID, _ = closeResp["message_id"].(string)
+	}
+
+	logContent := strings.Join(lines, "\n")
+	if tmuxCapture != "" {
+		logContent = tmuxCapture
+	}
+	a.uploadTaskArtifacts(cfg, sessionID, msgID, logContent, tmuxCapture, transcriptPath)
+
+	a.pushSSEDone(agentID, finalText)
+
+	a.doSkillExtraction(cfg, agentID, tmuxCapture)
+
 	a.st.mu.Lock()
 	tlog := a.st.taskLog
 	a.st.taskLog = nil
@@ -1043,7 +1047,7 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		if closeResp != nil {
 			r2LogKey, _ = closeResp["r2_log_key"].(string)
 		}
-		tlog.Write(tasklog.EventTaskEnd{ //nolint:errcheck
+		tlog.Write(tasklog.EventTaskEnd{
 			Type:      "task_end",
 			Status:    status,
 			FinalText: finalText,
