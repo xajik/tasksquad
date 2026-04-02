@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -319,6 +320,45 @@ pre {
   word-break: break-all;
 }
 
+/* ── Task timeline ──────────────────────────────────────────────────────────── */
+.task-timeline { padding: 0; }
+.tl-event {
+  display: flex;
+  gap: 10px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  align-items: flex-start;
+}
+.tl-event:last-child { border-bottom: none; }
+.tl-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.tl-body { flex: 1; min-width: 0; }
+.tl-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted-fg);
+}
+.tl-text {
+  font-size: 12px;
+  color: var(--fg);
+  margin-top: 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.tl-ts { font-size: 10px; color: var(--muted-fg); margin-top: 2px; }
+.dot-user   { background: var(--accent-blue); }
+.dot-agent  { background: #16a34a; }
+.dot-end    { background: var(--muted-fg); }
+.dot-start  { background: #7c3aed; }
+
 /* ── Animation ──────────────────────────────────────────────────────────────── */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(6px); }
@@ -380,6 +420,27 @@ pre {
       <div id="sessions-list"><div class="empty"><span class="spinner"></span></div></div>
     </div>
 
+  </div>
+
+  <!-- Tasks -->
+  <div class="card animate-in" style="margin-top:16px;animation-delay:.1s">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Task History</div>
+        <div class="card-subtitle">local JSONL records · <span id="tasks-count">…</span></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="loadTasks()">Refresh</button>
+    </div>
+    <div id="tasks-list"><div class="empty"><span class="spinner"></span></div></div>
+  </div>
+
+  <!-- Task detail panel -->
+  <div class="log-panel" id="task-panel">
+    <div class="log-header">
+      <span class="log-title" id="task-title">task</span>
+      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%)" onclick="closeTaskPanel()">Close</button>
+    </div>
+    <div class="log-body" id="task-body"></div>
   </div>
 
   <!-- Log viewer -->
@@ -630,8 +691,89 @@ function showDaemonLog() {
   openLog('daemon · today', '/api/logs/daemon');
 }
 
+/* ── Task history ────────────────────────────────────────────────────────── */
+async function loadTasks() {
+  try {
+    const r = await fetch('/api/tasks');
+    if (!r.ok) { document.getElementById('tasks-list').innerHTML = '<div class="empty">No tasks yet</div>'; return; }
+    const tasks = await r.json();
+    document.getElementById('tasks-count').textContent = tasks.length + ' task' + (tasks.length === 1 ? '' : 's');
+    if (!tasks.length) { document.getElementById('tasks-list').innerHTML = '<div class="empty">No tasks recorded yet</div>'; return; }
+    document.getElementById('tasks-list').innerHTML = tasks.map(t => {
+      const sub = x(t.subject || '(no subject)');
+      const detail = x(t.agent || '') + (t.task_id ? ' · ' + t.task_id.slice(0,14) + '…' : '');
+      const ts = t.ts ? new Date(t.ts).toLocaleString() : '';
+      return '<div class="row" style="cursor:pointer" onclick="showTask(' + q(t.task_id) + ',' + q(t.subject||'') + ')">'
+        + '<div class="status-dot dot-start"></div>'
+        + '<div class="row-info"><div class="row-name">' + sub + '</div><div class="row-sub">' + detail + '</div></div>'
+        + '<div class="row-actions" style="font-size:11px;color:var(--muted-fg)">' + x(ts) + '</div>'
+        + '</div>';
+    }).join('');
+  } catch(e) { document.getElementById('tasks-list').innerHTML = '<div class="empty">Error loading tasks</div>'; }
+}
+
+async function showTask(taskId, subject) {
+  if (!taskId) return;
+  document.getElementById('task-title').textContent = (subject || taskId).slice(0, 60);
+  document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:hsl(210 40% 70%);font-size:12px"><span class="spinner"></span> Loading…</div>';
+  document.getElementById('task-panel').classList.add('open');
+  document.getElementById('task-panel').scrollIntoView({behavior:'smooth', block:'start'});
+  try {
+    const r = await fetch('/api/tasks/' + encodeURIComponent(taskId));
+    if (!r.ok) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Not found</div>'; return; }
+    const text = await r.text();
+    renderTaskTimeline(text);
+  } catch(e) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Error: ' + x(e.message) + '</div>'; }
+}
+
+function renderTaskTimeline(jsonl) {
+  const lines = jsonl.trim().split('\n').filter(Boolean);
+  const events = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  if (!events.length) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--muted-fg);font-size:12px">Empty record</div>'; return; }
+  const html = events.map(ev => {
+    let dotCls = 'dot-end', label = ev.type || '', bodyTxt = '', ts = ev.ts || '';
+    switch(ev.type) {
+      case 'task_start':
+        dotCls = 'dot-start'; label = 'Task started';
+        bodyTxt = (ev.subject||'') + (ev.log_path ? '\nLog: ' + ev.log_path : '');
+        break;
+      case 'message':
+        dotCls = ev.role === 'agent' ? 'dot-agent' : 'dot-user';
+        label = ev.role === 'agent' ? 'Agent' : 'User';
+        bodyTxt = ev.body || '';
+        break;
+      case 'agent_turn':
+        dotCls = 'dot-agent'; label = 'Agent (waiting)';
+        bodyTxt = ev.body || '';
+        break;
+      case 'user_reply':
+        dotCls = 'dot-user'; label = 'User reply';
+        bodyTxt = ev.body || '';
+        break;
+      case 'task_end':
+        dotCls = ev.status === 'closed' ? 'dot-agent' : 'dot-orphan';
+        label = 'Task ended · ' + (ev.status||'');
+        bodyTxt = ev.final_text || '';
+        break;
+    }
+    return '<div class="tl-event">'
+      + '<div class="tl-dot ' + dotCls + '"></div>'
+      + '<div class="tl-body">'
+      + '<div class="tl-label">' + x(label) + '</div>'
+      + (bodyTxt ? '<div class="tl-text">' + x(bodyTxt) + '</div>' : '')
+      + '<div class="tl-ts">' + x(new Date(ts).toLocaleString()) + '</div>'
+      + '</div></div>';
+  }).join('');
+  document.getElementById('task-body').innerHTML = '<div class="task-timeline">' + html + '</div>';
+}
+
+function closeTaskPanel() {
+  document.getElementById('task-panel').classList.remove('open');
+}
+
 load();
 showDaemonLog();
+loadTasks();
 setInterval(load, 5000);
 </script>
 </body>
@@ -848,6 +990,109 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write([]byte(strings.Join(lines, "\n"))) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		taskID := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
+		taskID = dashSanitize(taskID)
+		if taskID == "" {
+			http.Error(w, "missing task id", http.StatusBadRequest)
+			return
+		}
+		home, _ := os.UserHomeDir()
+		path := filepath.Join(home, ".tasksquad", "tasks", taskID+".jsonl")
+		content, err := os.ReadFile(path)
+		if err != nil {
+			http.Error(w, "task not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(content) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/tasks", func(w http.ResponseWriter, r *http.Request) {
+		home, _ := os.UserHomeDir()
+		dir := filepath.Join(home, ".tasksquad", "tasks")
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte("[]")) //nolint:errcheck
+			return
+		}
+
+		type taskSummary struct {
+			TaskID  string `json:"task_id"`
+			Agent   string `json:"agent"`
+			Subject string `json:"subject"`
+			LogPath string `json:"log_path"`
+			Ts      string `json:"ts"`
+		}
+
+		// Collect entries sorted newest-first (ReadDir returns alpha order; use ModTime).
+		type fileInfo struct {
+			name    string
+			modTime int64
+		}
+		var files []fileInfo
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			files = append(files, fileInfo{name: e.Name(), modTime: info.ModTime().UnixMilli()})
+		}
+		// Sort newest-first.
+		for i := 0; i < len(files); i++ {
+			for j := i + 1; j < len(files); j++ {
+				if files[j].modTime > files[i].modTime {
+					files[i], files[j] = files[j], files[i]
+				}
+			}
+		}
+		if len(files) > 100 {
+			files = files[:100]
+		}
+
+		var summaries []taskSummary
+		for _, fi := range files {
+			path := filepath.Join(dir, fi.name)
+			f, err := os.Open(path)
+			if err != nil {
+				continue
+			}
+			var first string
+			scanner := bufio.NewScanner(f)
+			if scanner.Scan() {
+				first = scanner.Text()
+			}
+			f.Close()
+			if first == "" {
+				continue
+			}
+			var ev struct {
+				Type    string `json:"type"`
+				TaskID  string `json:"task_id"`
+				Agent   string `json:"agent"`
+				Subject string `json:"subject"`
+				LogPath string `json:"log_path"`
+				Ts      string `json:"ts"`
+			}
+			if err := json.Unmarshal([]byte(first), &ev); err != nil || ev.Type != "task_start" {
+				continue
+			}
+			summaries = append(summaries, taskSummary{
+				TaskID:  ev.TaskID,
+				Agent:   ev.Agent,
+				Subject: ev.Subject,
+				LogPath: ev.LogPath,
+				Ts:      ev.Ts,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(summaries) //nolint:errcheck
 	})
 
 	mux.HandleFunc("/api/open", func(w http.ResponseWriter, r *http.Request) {

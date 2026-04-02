@@ -17,7 +17,9 @@ import (
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/skills"
+	"github.com/tasksquad/daemon/tasklog"
 	"github.com/tasksquad/daemon/tmux"
+	"github.com/tasksquad/daemon/upload"
 )
 
 // tmuxBin is the path to the tmux binary, or empty if tmux is not installed.
@@ -269,13 +271,17 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 			if sess != "" {
 				// tmux path: deliver reply via send-keys
 				time.Sleep(1 * time.Second)
-				tmux.SendKeys(sess, reply) //nolint:errcheck
+				tmux.SendKeys(sess, reply)        //nolint:errcheck
 				a.st.Transition(EventUserReplied) //nolint:errcheck
 				a.st.mu.Lock()
 				a.st.lastPrompt = reply
 				a.st.notifyPosted = false // reset for the next Notification+Stop pair
+				tlog := a.st.taskLog
 				a.st.mu.Unlock()
 				logger.Info(fmt.Sprintf("[%s] User replied — resuming via tmux", a.Config.Name))
+				if tlog != nil {
+					tlog.Write(tasklog.EventUserReply{Type: "user_reply", Body: reply, Ts: tasklog.Now()}) //nolint:errcheck
+				}
 			} else if pw != nil {
 				if _, err := fmt.Fprintln(pw, reply); err != nil {
 					logger.Warn(fmt.Sprintf("[%s] Failed to write reply to stdin: %v", a.Config.Name, err))
@@ -284,8 +290,12 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 					a.st.mu.Lock()
 					a.st.lastPrompt = reply
 					a.st.notifyPosted = false // reset for the next Notification+Stop pair
+					tlog := a.st.taskLog
 					a.st.mu.Unlock()
 					logger.Info(fmt.Sprintf("[%s] User replied — resuming", a.Config.Name))
+					if tlog != nil {
+						tlog.Write(tasklog.EventUserReply{Type: "user_reply", Body: reply, Ts: tasklog.Now()}) //nolint:errcheck
+					}
 				}
 			}
 		}
@@ -395,6 +405,41 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.st.mu.Lock()
 	a.st.sessionID = sessionID
 	a.st.mu.Unlock()
+
+	// Open per-task JSONL record.
+	tlog, tlErr := tasklog.Open(taskID)
+	if tlErr != nil {
+		logger.Warn(fmt.Sprintf("[%s] Could not open task log: %v", a.Config.Name, tlErr))
+	} else {
+		a.st.mu.Lock()
+		a.st.taskLog = tlog
+		logPath := a.st.lastLogPath
+		agentID := a.st.agentID
+		a.st.mu.Unlock()
+		tlog.Write(tasklog.EventTaskStart{ //nolint:errcheck
+			Type:      "task_start",
+			TaskID:    taskID,
+			Agent:     a.Config.Name,
+			AgentID:   agentID,
+			SessionID: sessionID,
+			Subject:   subject,
+			LogPath:   logPath,
+			Ts:        tasklog.Now(),
+		})
+		if msgs, ok := task["messages"].([]interface{}); ok {
+			for _, raw := range msgs {
+				m, _ := raw.(map[string]interface{})
+				role, _ := m["role"].(string)
+				body, _ := m["body"].(string)
+				tlog.Write(tasklog.EventMessage{ //nolint:errcheck
+					Type: "message",
+					Role: role,
+					Body: body,
+					Ts:   tasklog.Now(),
+				})
+			}
+		}
+	}
 
 	// Let the provider write any hook/config files it needs (e.g. .claude/settings.json).
 	if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port, a.Config.ID, taskID); err != nil {
@@ -684,54 +729,19 @@ func (a *Agent) uploadAndAttach(cfg *config.Config, sessionID, messageID, filena
 		return
 	}
 
-	// 1. Get presigned URL
-	resp, err := a.post(cfg, "/daemon/r2/presign", map[string]any{
-		"session_id": sessionID,
-		"filename":   filename,
-	})
+	uploader, err := upload.CreateAgentUploader(a, cfg)
 	if err != nil {
-		logger.Warn(fmt.Sprintf("[%s] Failed to get presigned URL for %s: %v", a.Config.Name, filename, err))
+		logger.Warn(fmt.Sprintf("[%s] Failed to create uploader: %v", a.Config.Name, err))
 		return
 	}
 
-	uploadURL, _ := resp["upload_url"].(string)
-	key, _ := resp["key"].(string)
-	dek, _ := resp["dek"].(string)
-	if uploadURL == "" || key == "" {
-		logger.Warn(fmt.Sprintf("[%s] Presign response missing URL or key for %s", a.Config.Name, filename))
-		return
-	}
-
-	// 2. Upload file directly to R2
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		logger.Warn(fmt.Sprintf("[%s] Could not read file for upload %s: %v", a.Config.Name, filePath, err))
-		return
-	}
-
-	// Optional encryption
-	if dek != "" {
-		data, err = api.EncryptGCM(dek, data)
-		if err != nil {
-			logger.Warn(fmt.Sprintf("[%s] Encryption failed for %s: %v", a.Config.Name, filename, err))
-			return
-		}
-	}
-
-	if err := api.PutBytes(uploadURL, data); err != nil {
-		logger.Warn(fmt.Sprintf("[%s] R2 upload failed for %s: %v", a.Config.Name, filename, err))
-		return
-	}
-	logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes to R2: %s", a.Config.Name, len(data), filename))
-
-	// 3. Attach key to message
-	_, err = a.post(cfg, "/daemon/messages/"+messageID+"/attach", map[string]any{
-		"transcript_key": key,
-	})
-	if err != nil {
-		logger.Warn(fmt.Sprintf("[%s] Failed to attach R2 key %s to message %s: %v", a.Config.Name, key, messageID, err))
-	} else {
-		logger.Debug(fmt.Sprintf("[%s] Attached R2 key %s to message %s", a.Config.Name, key, messageID))
+	if err := uploader.Attach(upload.AttachOptions{
+		SessionID: sessionID,
+		MessageID: messageID,
+		Filename:  filename,
+		FilePath:  filePath,
+	}); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Upload failed: %v", a.Config.Name, err))
 	}
 }
 
@@ -742,46 +752,19 @@ func (a *Agent) uploadAndAttachContent(cfg *config.Config, sessionID, messageID,
 		return
 	}
 
-	resp, err := a.post(cfg, "/daemon/r2/presign", map[string]any{
-		"session_id": sessionID,
-		"filename":   filename,
-	})
+	uploader, err := upload.CreateAgentUploader(a, cfg)
 	if err != nil {
-		logger.Warn(fmt.Sprintf("[%s] Failed to get presigned URL for %s: %v", a.Config.Name, filename, err))
+		logger.Warn(fmt.Sprintf("[%s] Failed to create uploader: %v", a.Config.Name, err))
 		return
 	}
 
-	uploadURL, _ := resp["upload_url"].(string)
-	key, _ := resp["key"].(string)
-	dek, _ := resp["dek"].(string)
-	if uploadURL == "" || key == "" {
-		logger.Warn(fmt.Sprintf("[%s] Presign response missing URL or key for %s", a.Config.Name, filename))
-		return
-	}
-
-	// Optional encryption
-	if dek != "" {
-		var err error
-		content, err = api.EncryptGCM(dek, content)
-		if err != nil {
-			logger.Warn(fmt.Sprintf("[%s] Encryption failed for %s: %v", a.Config.Name, filename, err))
-			return
-		}
-	}
-
-	if err := api.PutBytes(uploadURL, content); err != nil {
-		logger.Warn(fmt.Sprintf("[%s] R2 upload failed for %s: %v", a.Config.Name, filename, err))
-		return
-	}
-	logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes to R2: %s", a.Config.Name, len(content), filename))
-
-	_, err = a.post(cfg, "/daemon/messages/"+messageID+"/attach", map[string]any{
-		"transcript_key": key,
-	})
-	if err != nil {
-		logger.Warn(fmt.Sprintf("[%s] Failed to attach R2 key %s to message %s: %v", a.Config.Name, key, messageID, err))
-	} else {
-		logger.Debug(fmt.Sprintf("[%s] Attached R2 key %s to message %s", a.Config.Name, key, messageID))
+	if err := uploader.Attach(upload.AttachOptions{
+		SessionID: sessionID,
+		MessageID: messageID,
+		Filename:  filename,
+		Content:   content,
+	}); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Upload failed: %v", a.Config.Name, err))
 	}
 }
 
@@ -790,47 +773,14 @@ func (a *Agent) uploadAndAttachLog(cfg *config.Config, sessionID, logContent str
 		return
 	}
 
-	// 1. Get presigned URL
-	resp, err := a.post(cfg, "/daemon/r2/presign", map[string]any{
-		"session_id": sessionID,
-		"filename":   "full.log",
-	})
+	uploader, err := upload.CreateAgentUploader(a, cfg)
 	if err != nil {
-		logger.Warn(fmt.Sprintf("[%s] Failed to get presigned URL for log: %v", a.Config.Name, err))
+		logger.Warn(fmt.Sprintf("[%s] Failed to create uploader: %v", a.Config.Name, err))
 		return
 	}
 
-	uploadURL, _ := resp["upload_url"].(string)
-	key, _ := resp["key"].(string)
-	dek, _ := resp["dek"].(string)
-	if uploadURL == "" || key == "" {
-		logger.Warn(fmt.Sprintf("[%s] Presign response missing URL or key for log", a.Config.Name))
-		return
-	}
-
-	// 2. Upload log directly to R2
-	data := []byte(logContent)
-	if dek != "" {
-		var err error
-		data, err = api.EncryptGCM(dek, data)
-		if err != nil {
-			logger.Warn(fmt.Sprintf("[%s] Encryption failed for log: %v", a.Config.Name, err))
-			return
-		}
-	}
-
-	if err := api.PutBytes(uploadURL, data); err != nil {
-		logger.Warn(fmt.Sprintf("[%s] R2 log upload failed: %v", a.Config.Name, err))
-		return
-	}
-	logger.Info(fmt.Sprintf("[%s] Uploaded %d bytes log to R2", a.Config.Name, len(logContent)))
-
-	// 3. Attach key to session
-	_, err = a.post(cfg, "/daemon/sessions/"+sessionID+"/attach", map[string]any{
-		"r2_log_key": key,
-	})
-	if err != nil {
-		logger.Warn(fmt.Sprintf("[%s] Failed to attach R2 log key to session: %v", a.Config.Name, err))
+	if err := uploader.AttachLog(sessionID, logContent); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] Log upload failed: %v", a.Config.Name, err))
 	}
 }
 
@@ -1081,6 +1031,26 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 	// Remove the FIFO now that all output has been drained.
 	if fifo != "" {
 		os.Remove(fifo)
+	}
+
+	// Write task_end event and close the per-task JSONL record.
+	a.st.mu.Lock()
+	tlog := a.st.taskLog
+	a.st.taskLog = nil
+	a.st.mu.Unlock()
+	if tlog != nil {
+		r2LogKey := ""
+		if closeResp != nil {
+			r2LogKey, _ = closeResp["r2_log_key"].(string)
+		}
+		tlog.Write(tasklog.EventTaskEnd{ //nolint:errcheck
+			Type:      "task_end",
+			Status:    status,
+			FinalText: finalText,
+			R2LogKey:  r2LogKey,
+			Ts:        tasklog.Now(),
+		})
+		tlog.Close()
 	}
 
 	a.st.mu.Lock()
@@ -1459,5 +1429,17 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 
 	if err := a.st.Transition(EventHookNotification); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] SetWaitingInput: unexpected transition error: %v", a.Config.Name, err))
+	}
+
+	a.st.mu.Lock()
+	tlog := a.st.taskLog
+	a.st.mu.Unlock()
+	if tlog != nil {
+		tlog.Write(tasklog.EventAgentTurn{ //nolint:errcheck
+			Type:           "agent_turn",
+			Body:           notifyMsg,
+			TranscriptPath: transcriptPath,
+			Ts:             tasklog.Now(),
+		})
 	}
 }

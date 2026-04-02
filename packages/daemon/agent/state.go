@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/tasksquad/daemon/tasklog"
 )
 
 // AgentEvent describes a lifecycle event that drives a Mode transition.
@@ -111,6 +113,7 @@ type AgentState struct {
 	// Log handles
 	runLog      *os.File
 	lastLogPath string
+	taskLog     *tasklog.TaskLog
 }
 
 // Transition validates and applies a mode change driven by event.
