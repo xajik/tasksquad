@@ -134,8 +134,10 @@ missed heartbeat window.
 
 - [System Architecture](./concepts/architecture) — deeper look at how components connect
 - [Security & Encryption](./concepts/security) — how data is protected in transit and at rest
+- [Supervisor](./concepts/supervisor) — automated health-check for stuck tasks
 
 ## References
 
 - [System Architecture](./concepts/architecture)
 - [Security & Encryption](./concepts/security)
+- [Supervisor](./concepts/supervisor)
