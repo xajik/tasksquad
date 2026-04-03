@@ -81,8 +81,8 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 }
 
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
-  const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number }))
-  const { agent_id, subject, team_id, body: taskBody, scheduled_at } = body
+  const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean }))
+  const { agent_id, subject, team_id, body: taskBody, scheduled_at, auto_close } = body
   if (!agent_id || !subject?.trim() || !team_id) return err('missing_fields', 400)
 
   if (!(await requireMember(env.DB, team_id, auth.userId))) return err('forbidden', 403)
@@ -98,11 +98,13 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   const now = Date.now()
   const isScheduled = scheduled_at && scheduled_at > now
 
+  const autoCloseVal = auto_close ? 1 : 0
+
   if (isScheduled) {
     await env.DB.batch([
       // Use 'scheduled' status so the daemon doesn't pick it up before the scheduled time
-      env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'scheduled', now),
+      env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'scheduled', now, autoCloseVal),
       // Insert initial user message with scheduled_at
       env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now, scheduled_at),
@@ -111,8 +113,8 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   }
 
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'pending', now),
+    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'pending', now, autoCloseVal),
     // Insert initial user message — use body if provided, else fall back to subject
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now),

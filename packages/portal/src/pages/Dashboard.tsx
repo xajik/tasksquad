@@ -414,6 +414,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
   const [creating, setCreating] = useState(false)
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined)
+  const [autoClose, setAutoClose] = useState(false)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [activeFilter, setActiveFilter] = useState<'all' | 'system' | 'mine' | 'from-note' | 'scheduled'>('all')
@@ -461,20 +462,22 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
       if (scheduledDate && scheduledDate.getTime() > Date.now()) {
         scheduledAt = scheduledDate.getTime()
       }
-      await api.tasks.create({ 
-        agent_id: agentId, 
-        subject, 
-        team_id: teamId, 
+      await api.tasks.create({
+        agent_id: agentId,
+        subject,
+        team_id: teamId,
         body: taskBody || undefined,
-        scheduled_at: scheduledAt 
+        scheduled_at: scheduledAt,
+        auto_close: autoClose || undefined,
       })
-      trackEvent('task_created', { agent_id: agentId, team_id: teamId, scheduled: !!scheduledAt });
-      setShowCompose(false); 
-      setSubject(''); 
-      setTaskBody(''); 
+      trackEvent('task_created', { agent_id: agentId, team_id: teamId, scheduled: !!scheduledAt, auto_close: autoClose });
+      setShowCompose(false);
+      setSubject('');
+      setTaskBody('');
       setAgentId('')
       setShowSchedulePicker(false)
       setScheduledDate(undefined)
+      setAutoClose(false)
       load()
     } finally { setCreating(false) }
   }
@@ -627,6 +630,19 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
                 />
               </div>
               
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="auto-close"
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  checked={autoClose}
+                  onChange={e => setAutoClose(e.target.checked)}
+                />
+                <Label htmlFor="auto-close" className="font-normal cursor-pointer">
+                  Auto-close after first response
+                </Label>
+              </div>
+
               {/* Schedule picker */}
               {showSchedulePicker && (
                 <div className="border border-border rounded-lg p-3">
@@ -647,6 +663,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
               <Button type="button" variant="outline" onClick={() => {
                 setShowCompose(false)
                 setShowSchedulePicker(false)
+                setAutoClose(false)
                 setScheduledDate(undefined)
               }}>
                 Cancel

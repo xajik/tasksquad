@@ -45,6 +45,8 @@ import {
   Calendar,
   Bot,
   Loader2,
+  Pause,
+  Play,
 } from 'lucide-react'
 
 export function Conveyors({ teamId }: { teamId: string }) {
@@ -61,6 +63,7 @@ export function Conveyors({ teamId }: { teamId: string }) {
   const [dayOfMonth, setDayOfMonth] = useState('1')
   const [repeatCount, setRepeatCount] = useState('')
   const [endDate, setEndDate] = useState<Date | undefined>(undefined)
+  const [autoClose, setAutoClose] = useState(false)
   const [creating, setCreating] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [agentError, setAgentError] = useState(false)
@@ -77,6 +80,7 @@ export function Conveyors({ teamId }: { teamId: string }) {
   const [editDayOfMonth, setEditDayOfMonth] = useState('1')
   const [editRepeatCount, setEditRepeatCount] = useState('')
   const [editEndDate, setEditEndDate] = useState<Date | undefined>(undefined)
+  const [editAutoClose, setEditAutoClose] = useState(false)
   const [editAgentError, setEditAgentError] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -116,6 +120,7 @@ export function Conveyors({ teamId }: { teamId: string }) {
         repeat_count: repeatCount ? parseInt(repeatCount) : undefined,
         end_date: endDate ? endDate.getTime() : undefined,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        auto_close: autoClose || undefined,
       })
       trackEvent('conveyor_created', { agent_id: agentId, team_id: teamId, frequency })
       setShowCompose(false)
@@ -137,6 +142,7 @@ export function Conveyors({ teamId }: { teamId: string }) {
     setDayOfMonth('1')
     setRepeatCount('')
     setEndDate(undefined)
+    setAutoClose(false)
     setAgentError(false)
   }
 
@@ -147,6 +153,18 @@ export function Conveyors({ teamId }: { teamId: string }) {
       setConveyors(conveyors.filter(c => c.id !== id))
     } catch (e) {
       console.error('Failed to delete conveyor:', e)
+    }
+  }
+
+  async function handleTogglePause(c: Conveyor) {
+    const next = !c.paused
+    setConveyors(conveyors.map(x => x.id === c.id ? { ...x, paused: next } : x))
+    try {
+      await api.conveyors.pause(teamId, c.id, next)
+      trackEvent(next ? 'conveyor_paused' : 'conveyor_resumed', { conveyor_id: c.id })
+    } catch (e) {
+      console.error('Failed to toggle conveyor pause:', e)
+      setConveyors(conveyors.map(x => x.id === c.id ? { ...x, paused: c.paused } : x))
     }
   }
 
@@ -162,6 +180,7 @@ function openEdit(c: Conveyor) {
     setEditDayOfMonth(c.day_of_month?.toString() ?? '1')
     setEditRepeatCount(c.repeat_count?.toString() ?? '')
     setEditEndDate(c.end_date ? new Date(c.end_date) : undefined)
+    setEditAutoClose(!!c.auto_close)
     setEditAgentError(false)
   }
 
@@ -184,6 +203,7 @@ function openEdit(c: Conveyor) {
         repeat_count: editRepeatCount ? parseInt(editRepeatCount) : null,
         end_date: editEndDate ? editEndDate.getTime() : null,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        auto_close: editAutoClose,
       })
       trackEvent('conveyor_updated', { conveyor_id: editConveyor.id, team_id: teamId })
       setEditConveyor(null)
@@ -380,6 +400,19 @@ function openEdit(c: Conveyor) {
                 </div>
               </div>
 
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="auto-close-conveyor"
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  checked={autoClose}
+                  onChange={e => setAutoClose(e.target.checked)}
+                />
+                <Label htmlFor="auto-close-conveyor" className="font-normal cursor-pointer">
+                  Auto-close after first response
+                </Label>
+              </div>
+
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => { resetForm(); setShowCompose(false) }}>
@@ -534,6 +567,19 @@ function openEdit(c: Conveyor) {
                 </div>
               </div>
 
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="edit-auto-close-conveyor"
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  checked={editAutoClose}
+                  onChange={e => setEditAutoClose(e.target.checked)}
+                />
+                <Label htmlFor="edit-auto-close-conveyor" className="font-normal cursor-pointer">
+                  Auto-close after first response
+                </Label>
+              </div>
+
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditConveyor(null)}>
@@ -567,10 +613,17 @@ function openEdit(c: Conveyor) {
           </div>
         ) : (
           conveyors.map(c => (
-            <Card key={c.id}>
+            <Card key={c.id} className={c.paused ? 'opacity-60' : ''}>
               <CardContent className="p-4 flex items-center gap-4">
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{c.subject}</div>
+                  <div className="font-medium truncate flex items-center gap-2">
+                    {c.subject}
+                    {c.paused && (
+                      <span className="text-xs font-normal px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        Paused
+                      </span>
+                    )}
+                  </div>
                   <div className="text-sm text-muted-foreground flex items-center gap-2 mt-1">
                     <Repeat className="h-3 w-3" />
                     {formatSchedule(c)}
@@ -581,7 +634,7 @@ function openEdit(c: Conveyor) {
                   <div className="text-xs text-muted-foreground mt-2 flex items-center gap-3">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
-                      Next: {new Date(c.next_run_at).toLocaleString()}
+                      Next: {c.paused ? '—' : new Date(c.next_run_at).toLocaleString()}
                     </span>
                     <span className="flex items-center gap-1">
                       <RefreshCw className="h-3 w-3" />
@@ -595,6 +648,17 @@ function openEdit(c: Conveyor) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleTogglePause(c)}
+                    title={c.paused ? 'Resume' : 'Pause'}
+                  >
+                    {c.paused
+                      ? <Play className="h-4 w-4 text-muted-foreground" />
+                      : <Pause className="h-4 w-4 text-muted-foreground" />
+                    }
+                  </Button>
                   <Button variant="ghost" size="icon" onClick={() => openEdit(c)} title="Edit">
                     <Pencil className="h-4 w-4 text-muted-foreground" />
                   </Button>

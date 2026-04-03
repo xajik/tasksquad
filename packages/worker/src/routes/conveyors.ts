@@ -30,6 +30,8 @@ export interface ConveyorRow {
   next_run_at: number
   created_at: number
   timezone: string
+  paused: number
+  auto_close: number
 }
 
 /**
@@ -153,9 +155,10 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     repeat_count?: number
     end_date?: number
     timezone?: string
+    auto_close?: boolean
   }>().catch(() => ({} as any))
 
-  const { agent_id, subject, body: taskBody, frequency, hour, minute, day_of_week, day_of_month, repeat_count, end_date, timezone } = body
+  const { agent_id, subject, body: taskBody, frequency, hour, minute, day_of_week, day_of_month, repeat_count, end_date, timezone, auto_close } = body
 
   if (!agent_id || !subject?.trim() || !taskBody?.trim() || !frequency || hour === undefined) {
     return err('missing_fields', 400)
@@ -184,18 +187,20 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     tz
   )
 
+  const autoCloseVal = auto_close ? 1 : 0
+
   await env.DB
     .prepare(`
       INSERT INTO conveyors (
         id, team_id, agent_id, sender_id, subject, body,
         frequency, hour, minute, day_of_week, day_of_month,
-        repeat_count, end_date, next_run_at, created_at, timezone
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        repeat_count, end_date, next_run_at, created_at, timezone, auto_close
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .bind(
       id, teamId, agent_id, auth.userId, subject.trim(), taskBody.trim(),
       frequency, hour, minuteVal, day_of_week ?? null, day_of_month ?? null,
-      repeat_count ?? null, end_date ?? null, nextRunAt, now, tz
+      repeat_count ?? null, end_date ?? null, nextRunAt, now, tz, autoCloseVal
     )
     .run()
 
@@ -228,6 +233,8 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     repeat_count?: number | null
     end_date?: number | null
     timezone?: string
+    paused?: boolean
+    auto_close?: boolean
   }>().catch(() => ({} as any))
 
   const agent_id = body.agent_id ?? existing.agent_id
@@ -241,6 +248,8 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   const repeat_count = 'repeat_count' in body ? (body.repeat_count ?? null) : existing.repeat_count
   const end_date = 'end_date' in body ? (body.end_date ?? null) : existing.end_date
   const tz = body.timezone ?? existing.timezone ?? 'UTC'
+  const paused = 'paused' in body ? (body.paused ? 1 : 0) : existing.paused
+  const auto_close = 'auto_close' in body ? (body.auto_close ? 1 : 0) : existing.auto_close
 
   const nextRunAt = calculateNextRun(Date.now(), frequency, day_of_week, day_of_month, hour, minute, tz)
 
@@ -249,18 +258,18 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
       UPDATE conveyors SET
         agent_id = ?, subject = ?, body = ?, frequency = ?,
         hour = ?, minute = ?, day_of_week = ?, day_of_month = ?,
-        repeat_count = ?, end_date = ?, next_run_at = ?, timezone = ?
+        repeat_count = ?, end_date = ?, next_run_at = ?, timezone = ?, paused = ?, auto_close = ?
       WHERE id = ? AND team_id = ?
     `)
     .bind(
       agent_id, subject, taskBody, frequency,
       hour, minute, day_of_week, day_of_month,
-      repeat_count, end_date, nextRunAt, tz,
+      repeat_count, end_date, nextRunAt, tz, paused, auto_close,
       conveyorId, teamId
     )
     .run()
 
-  return json({ id: conveyorId, next_run_at: nextRunAt })
+  return json({ id: conveyorId, next_run_at: nextRunAt, paused: !!paused, auto_close: !!auto_close })
 }
 
 export async function remove(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

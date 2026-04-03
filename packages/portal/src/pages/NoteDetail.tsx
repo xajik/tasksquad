@@ -295,6 +295,7 @@ function NoteToInboxDialog({ noteId, teamId, isOpen, onOpenChange, onSuccess }: 
   const [agentId, setAgentId] = useState('')
   const [includeComments, setIncludeComments] = useState(false)
   const [instructions, setInstructions] = useState('')
+  const [autoClose, setAutoClose] = useState(false)
   const [sending, setSending] = useState(false)
 
   useEffect(() => {
@@ -305,7 +306,7 @@ function NoteToInboxDialog({ noteId, teamId, isOpen, onOpenChange, onSuccess }: 
     if (!agentId) return
     setSending(true)
     try {
-      await api.notes.convertToInbox(teamId, noteId, { agent_id: agentId, include_comments: includeComments, instructions })
+      await api.notes.convertToInbox(teamId, noteId, { agent_id: agentId, include_comments: includeComments, instructions, auto_close: autoClose || undefined })
       trackEvent('note_to_inbox', { team_id: teamId, agent_id: agentId })
       onOpenChange(false)
       onSuccess?.()
@@ -342,6 +343,16 @@ function NoteToInboxDialog({ noteId, teamId, isOpen, onOpenChange, onSuccess }: 
               onChange={e => setIncludeComments(e.target.checked)}
             />
             <Label htmlFor="include-comments" className="font-normal cursor-pointer">Include comments in context</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="auto-close-note"
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              checked={autoClose}
+              onChange={e => setAutoClose(e.target.checked)}
+            />
+            <Label htmlFor="auto-close-note" className="font-normal cursor-pointer">Auto-close after first response</Label>
           </div>
           <div className="grid gap-2">
             <Label>Instructions (Optional)</Label>

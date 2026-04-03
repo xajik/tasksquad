@@ -208,6 +208,7 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
           AND next_run_at <= ?
           AND (repeat_count IS NULL OR repeat_counter < repeat_count)
           AND (end_date IS NULL OR next_run_at <= end_date)
+          AND paused = 0
       `)
       .bind(teamId, now + CONVEYOR_CHECK_INTERVAL)
       .all<ConveyorRow>()
@@ -227,8 +228,8 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
       )
 
       await env.DB.batch([
-        env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .bind(taskId, teamId, conveyor.agent_id, conveyor.sender_id, conveyor.subject, 'scheduled', now),
+        env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(taskId, teamId, conveyor.agent_id, conveyor.sender_id, conveyor.subject, 'scheduled', now, conveyor.auto_close ?? 0),
         env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
           .bind(msgId, taskId, conveyor.sender_id, 'user', conveyor.body, now, conveyor.next_run_at),
         env.DB.prepare('UPDATE conveyors SET repeat_counter = repeat_counter + 1, next_run_at = ? WHERE id = ?')
@@ -425,13 +426,16 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   if (!session_id) return err('missing_fields', 400)
 
   const session = await env.DB
-    .prepare('SELECT s.task_id, t.subject, a.name as agent_name FROM sessions s JOIN tasks t ON t.id = s.task_id JOIN agents a ON a.id = s.agent_id WHERE s.id = ? AND s.agent_id = ?')
+    .prepare('SELECT s.task_id, t.subject, t.auto_close, a.name as agent_name FROM sessions s JOIN tasks t ON t.id = s.task_id JOIN agents a ON a.id = s.agent_id WHERE s.id = ? AND s.agent_id = ?')
     .bind(session_id, agentId)
-    .first<{ task_id: string; subject: string; agent_name: string }>()
+    .first<{ task_id: string; subject: string; auto_close: number; agent_name: string }>()
   if (!session) return err('not_found', 404)
 
-  const taskStatus = status === 'closed' ? 'done'
-    : status === 'waiting_input' ? 'waiting_input'
+  // If auto_close is set and the agent finished its first turn (waiting_input), close automatically
+  const effectiveStatus = (status === 'waiting_input' && session.auto_close) ? 'closed' : status
+
+  const taskStatus = effectiveStatus === 'closed' ? 'done'
+    : effectiveStatus === 'waiting_input' ? 'waiting_input'
     : 'failed'
 
   const agentStatus = taskStatus === 'waiting_input' ? 'waiting_input' : 'idle'
@@ -440,7 +444,7 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
 
   const ops = [
     env.DB.prepare('UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?')
-      .bind(status, now, session_id),
+      .bind(effectiveStatus, now, session_id),
     env.DB.prepare('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?')
       .bind(taskStatus, now, session.task_id),
     env.DB.prepare('UPDATE agents SET status = ? WHERE id = ?')

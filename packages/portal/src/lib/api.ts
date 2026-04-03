@@ -76,7 +76,7 @@ export const api = {
   tasks: {
     list: (teamId: string) => request<{ tasks: Task[] }>(`/tasks?team_id=${teamId}`),
     get: (id: string) => request<Task>(`/tasks/${id}`),
-    create: (body: { agent_id: string; subject: string; team_id: string; body?: string; scheduled_at?: number }) =>
+    create: (body: { agent_id: string; subject: string; team_id: string; body?: string; scheduled_at?: number; auto_close?: boolean }) =>
       request<{ id: string; status: string }>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
     update: (taskId: string, body: { status: string }) =>
       request<{ ok: boolean }>(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify(body) }),
@@ -105,6 +105,7 @@ export const api = {
       repeat_count?: number;
       end_date?: number;
       timezone?: string;
+      auto_close?: boolean;
     }) =>
       request<{ id: string; next_run_at: number }>(`/teams/${teamId}/conveyors`, {
         method: 'POST',
@@ -122,6 +123,7 @@ export const api = {
       repeat_count?: number | null;
       end_date?: number | null;
       timezone?: string;
+      auto_close?: boolean;
     }) =>
       request<{ id: string; next_run_at: number }>(`/teams/${teamId}/conveyors/${conveyorId}`, {
         method: 'PUT',
@@ -129,6 +131,11 @@ export const api = {
       }),
     delete: (teamId: string, conveyorId: string) =>
       del(`/teams/${teamId}/conveyors/${conveyorId}`),
+    pause: (teamId: string, conveyorId: string, paused: boolean) =>
+      request<{ id: string; next_run_at: number; paused: boolean }>(
+        `/teams/${teamId}/conveyors/${conveyorId}`,
+        { method: 'PUT', body: JSON.stringify({ paused }) }
+      ),
   },
   messages: {
     list: (taskId: string) => request<{ messages: Message[] }>(`/tasks/${taskId}/messages`),
@@ -178,7 +185,7 @@ export const api = {
       }),
     deleteComment: (teamId: string, noteId: string, commentId: string) =>
       request<void>(`/teams/${teamId}/notes/${noteId}/comments/${commentId}`, { method: 'DELETE' }),
-    convertToInbox: (teamId: string, noteId: string, body: { agent_id: string; include_comments?: boolean; instructions?: string }) =>
+    convertToInbox: (teamId: string, noteId: string, body: { agent_id: string; include_comments?: boolean; instructions?: string; auto_close?: boolean }) =>
       request<{ task_id: string }>(`/teams/${teamId}/notes/${noteId}/convert`, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -258,6 +265,8 @@ export interface Conveyor {
   end_date: number | null
   next_run_at: number
   created_at: number
+  paused: boolean
+  auto_close: boolean
 }
 
 export interface Task {
@@ -272,6 +281,7 @@ export interface Task {
   first_message_role?: 'user' | 'agent' | 'system'
   first_message_type?: string | null
   scheduled_at?: number | null
+  auto_close?: boolean
 }
 
 export interface Message {

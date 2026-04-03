@@ -301,8 +301,8 @@ export async function convertToInbox(req: Request, env: Env, _ctx: unknown, auth
   const note = await env.DB.prepare('SELECT * FROM notes WHERE id = ? AND team_id = ?').bind(noteId, teamId).first<{ title: string; content: string }>()
   if (!note) return err('not_found', 404)
 
-  const body = await req.json<{ agent_id: string; include_comments?: boolean; instructions?: string }>()
-  const { agent_id, include_comments, instructions } = body
+  const body = await req.json<{ agent_id: string; include_comments?: boolean; instructions?: string; auto_close?: boolean }>()
+  const { agent_id, include_comments, instructions, auto_close } = body
   if (!agent_id) return err('agent_required', 400)
 
   // Verify agent belongs to this team
@@ -329,10 +329,12 @@ export async function convertToInbox(req: Request, env: Env, _ctx: unknown, auth
   const now = Date.now()
   const payload = JSON.stringify({ note_id: noteId, note_title: note.title, instructions: instructions || '' })
 
+  const autoCloseVal = auto_close ? 1 : 0
+
   await env.DB.batch([
     // Task
-    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(taskId, teamId, agent_id, auth.userId, `Note: ${note.title}`, 'pending', now),
+    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(taskId, teamId, agent_id, auth.userId, `Note: ${note.title}`, 'pending', now, autoCloseVal),
     // System message — portal displays this as a pill showing the conversion event
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(ulid(), taskId, auth.userId, 'system', 'note-to-inbox', `Note "${note.title}" sent to inbox`, payload, now),
