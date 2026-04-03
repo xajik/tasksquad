@@ -1,0 +1,277 @@
+package agent
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+
+	"github.com/tasksquad/daemon/agentmode"
+	"github.com/tasksquad/daemon/config"
+	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/tmux"
+)
+
+// learningTimeout is the maximum time the agent may spend in the learning phase
+// before the daemon forces completion. Keeps tasks from hanging if the agent
+// never fires the Stop hook after the learning prompt is injected.
+const learningTimeout = 10 * time.Minute
+
+// Complete is called by the hook server when the provider emits a Stop event.
+// For the tmux path it kills the tmux session (which closes the FIFO writer,
+// draining the last output) and then calls complete() with the hook-supplied
+// status. For the PTY path it closes stdin and lets cmd.Wait() in startTask
+// determine the exit code and call complete() from there.
+func (a *Agent) Complete(cfg *config.Config, status string, transcriptPath string) {
+	a.st.mu.Lock()
+	if a.st.completing || a.st.sessionID == "" {
+		a.st.mu.Unlock()
+		return
+	}
+	a.st.completing = true
+	wasLearning := a.st.mode == ModeLearning
+	sessionID := a.st.sessionID
+	agentID := a.st.agentID
+	taskID := a.st.taskID
+	pw := a.st.stdinWrite
+	a.st.stdinWrite = nil
+	runLog := a.st.runLog
+	a.st.runLog = nil
+	outputDone := a.st.outputDone
+	sess := a.st.tmuxSession
+	fifo := a.st.fifoPath
+	if transcriptPath == "" {
+		transcriptPath = a.st.transcriptPath
+	}
+	a.st.tmuxSession = ""
+	a.st.fifoPath = ""
+	a.st.transcriptPath = ""
+	a.st.mu.Unlock()
+
+	go a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath, wasLearning)
+}
+
+// StopAndPause is called by the hook server when Claude Code's Stop hook fires
+// and the stop_reason is not "error". Instead of killing the tmux session and
+// closing the task, it posts the final response as an agent message and moves
+// to waiting_input — keeping the tmux session alive so the user can send a
+// follow-up or click "Complete session" to cleanly shut down.
+func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath string) {
+	a.st.mu.Lock()
+	mode := a.st.mode
+	completing := a.st.completing
+	notifyPosted := a.st.notifyPosted
+	sessionID := a.st.sessionID
+	agentID := a.st.agentID
+	sess := a.st.tmuxSession
+	a.st.mu.Unlock()
+
+	if mode != ModeRunning || completing {
+		logger.Debug(fmt.Sprintf("[%s] StopAndPause ignored: mode=%s completing=%v", a.Config.Name, mode, completing))
+		return
+	}
+
+	// SetWaitingInput already posted a notify for this turn (Claude Code fires
+	// Notification then Stop for question turns). Save the updated transcriptPath
+	// (Claude may have finished writing it by now) and return without a second notify.
+	if notifyPosted {
+		if transcriptPath != "" {
+			a.st.mu.Lock()
+			a.st.transcriptPath = transcriptPath
+			a.st.mu.Unlock()
+		}
+		logger.Debug(fmt.Sprintf("[%s] StopAndPause: skipping duplicate notify (Notification hook already posted)", a.Config.Name))
+		return
+	}
+
+	// Wait briefly for FIFO output to drain.
+	time.Sleep(300 * time.Millisecond)
+
+	// Capture full tmux scrollback for the transcript upload.
+	var tmuxCapture string
+	if sess != "" && tmuxBin != "" {
+		if out, err := exec.Command(tmuxBin, "capture-pane", "-t", sess, "-p", "-S", "-").Output(); err == nil {
+			tmuxCapture = strings.TrimSpace(string(out))
+			logger.Info(fmt.Sprintf("[%s] Captured %d chars from tmux scrollback", a.Config.Name, len(tmuxCapture)))
+		} else {
+			logger.Warn(fmt.Sprintf("[%s] tmux capture-pane failed: %v", a.Config.Name, err))
+		}
+	}
+
+	// Extract final response text.
+	// Priority: hookMessage → transcript → tmux scrollback → outputLines.
+	finalText := hookMessage
+	if finalText == "" && transcriptPath != "" {
+		retryDeadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(retryDeadline) {
+			finalText = a.extractTranscriptResponse(transcriptPath)
+			if finalText != "" {
+				logger.Info(fmt.Sprintf("[%s] Final text from transcript (%d chars)", a.Config.Name, len(finalText)))
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+	if finalText == "" && tmuxCapture != "" {
+		finalText = tmuxCapture
+		if len(finalText) > 10000 {
+			finalText = finalText[len(finalText)-10000:]
+		}
+	}
+	if finalText == "" {
+		a.st.mu.Lock()
+		lines := append([]string(nil), a.st.outputLines...)
+		a.st.mu.Unlock()
+		finalText = strings.TrimSpace(strings.Join(lines, "\n"))
+		if len(finalText) > 10000 {
+			finalText = finalText[len(finalText)-10000:]
+		}
+	}
+
+	notifyResp, err := a.post(cfg, "/daemon/session/notify", map[string]any{
+		"session_id": sessionID,
+		"agent_id":   agentID,
+		"message":    finalText,
+	})
+	if err != nil {
+		logger.Error(fmt.Sprintf("[%s] StopAndPause notify error: %v", a.Config.Name, err))
+	} else if notifyResp != nil {
+		msgID, _ := notifyResp["message_id"].(string)
+		if msgID != "" {
+			if tmuxCapture != "" {
+				go a.uploadAndAttachContent(cfg, sessionID, msgID, "transcript.txt", []byte(tmuxCapture))
+			} else if transcriptPath != "" {
+				go a.uploadAndAttach(cfg, sessionID, msgID, "transcript.jsonl", transcriptPath)
+			}
+		}
+	}
+
+	a.st.mu.Lock()
+	lines := append([]string(nil), a.st.outputLines...)
+	a.st.mu.Unlock()
+	logContent := strings.Join(lines, "\n")
+	if tmuxCapture != "" {
+		logContent = tmuxCapture
+	}
+	go a.uploadAndAttachLog(cfg, sessionID, logContent)
+
+	if agentID != "" {
+		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
+			"type":  "waiting_input",
+			"lines": []string{finalText},
+		})
+	}
+
+	a.st.mu.Lock()
+	if transcriptPath != "" {
+		a.st.transcriptPath = transcriptPath
+	}
+	a.st.mu.Unlock()
+	if err := a.st.Transition(EventHookStop); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] StopAndPause: unexpected transition error: %v", a.Config.Name, err))
+	}
+
+	logger.Info(fmt.Sprintf("[%s] Paused after response — tmux session kept alive, waiting for reply or close", a.Config.Name))
+}
+
+// handleReset kills any running tmux session and returns the agent to idle.
+func (a *Agent) handleReset() {
+	a.st.mu.Lock()
+	sess := a.st.tmuxSession
+	fifo := a.st.fifoPath
+	pw := a.st.stdinWrite
+	a.st.stdinWrite = nil
+	a.st.tmuxSession = ""
+	a.st.fifoPath = ""
+	a.st.transcriptPath = ""
+	a.st.sessionID = ""
+	a.st.taskID = ""
+	a.st.completing = false
+	a.st.mode = ModeIdle
+	a.st.mu.Unlock()
+
+	if sess != "" && tmuxBin != "" {
+		exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
+		logger.Info(fmt.Sprintf("[%s] Reset: killed tmux session %s", a.Config.Name, sess))
+	} else if pw != nil {
+		pw.Close()
+	}
+	if fifo != "" {
+		os.Remove(fifo) //nolint:errcheck
+	}
+
+	logger.Info(fmt.Sprintf("[%s] Reset complete — idle, ready to pull new tasks on next heartbeat", a.Config.Name))
+}
+
+// closeSession is called by heartbeat when the server sends a "close" signal,
+// meaning the user clicked "Complete session" in the portal. It kills the tmux
+// session and resets the agent to idle WITHOUT calling /daemon/session/close
+// (the server already closed the session and task).
+func (a *Agent) closeSession(cfg *config.Config) {
+	a.st.mu.Lock()
+	sess := a.st.tmuxSession
+	fifo := a.st.fifoPath
+	runLog := a.st.runLog
+	agentID := a.st.agentID
+	a.st.tmuxSession = ""
+	a.st.fifoPath = ""
+	a.st.sessionID = ""
+	a.st.transcriptPath = ""
+	a.st.mode = ModeIdle
+	a.st.outputLines = nil
+	a.st.runLog = nil
+	a.st.mu.Unlock()
+
+	if runLog != nil {
+		fmt.Fprintf(runLog, "\n[EVENT] event=closed_by_user\n# ended=%s\n", time.Now().Format(time.RFC3339))
+		runLog.Close()
+	}
+	if sess != "" {
+		exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
+	}
+	if fifo != "" {
+		os.Remove(fifo)
+	}
+	logger.Info(fmt.Sprintf("[%s] Session closed by user — tmux killed, agent reset to idle", a.Config.Name))
+
+	if agentID != "" {
+		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
+			"type": "done",
+		})
+	}
+}
+
+// startLearning transitions the agent to ModeLearning, injects the learning
+// prompt into the active tmux session, and starts a safety timer that forces
+// Complete("closed") after learningTimeout if the Stop hook never fires.
+func (a *Agent) startLearning(cfg *config.Config) {
+	if err := a.st.Transition(EventLearnStart); err != nil {
+		logger.Warn(fmt.Sprintf("[%s] startLearning: unexpected transition error: %v", a.Config.Name, err))
+		return
+	}
+
+	if a.TmuxSession() == "" || tmuxBin == "" {
+		logger.Warn(fmt.Sprintf("[%s] startLearning: no tmux session — completing task directly", a.Config.Name))
+		go a.Complete(cfg, string(agentmode.StatusClosed), "")
+		return
+	}
+
+	sess := a.TmuxSession()
+	logger.Info(fmt.Sprintf("[%s] Injecting learning prompt into %s", a.Config.Name, sess))
+	time.Sleep(500 * time.Millisecond)
+	tmux.SendKeys(sess, "We are closing this session. Load /tsq-end-session-learning and provide any learnings.") //nolint:errcheck
+
+	go func() {
+		timer := time.NewTimer(learningTimeout)
+		defer timer.Stop()
+		<-timer.C
+		a.st.mu.Lock()
+		stillLearning := a.st.mode == ModeLearning
+		a.st.mu.Unlock()
+		if stillLearning {
+			logger.Warn(fmt.Sprintf("[%s] Learning phase timed out after %s — forcing Complete(closed)", a.Config.Name, learningTimeout))
+			a.Complete(cfg, string(agentmode.StatusClosed), "")
+		}
+	}()
+}

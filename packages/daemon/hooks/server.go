@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tasksquad/daemon/agentkit"
+	"github.com/tasksquad/daemon/agentmode"
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
@@ -50,13 +51,6 @@ type SupervisorReporter interface {
 	CancelForTask(taskID string)
 }
 
-// agentMode* constants mirror the Mode values in agent/agent.go.
-// Duplicated here to avoid a circular import between hooks ↔ agent.
-const (
-	agentModeRunning      = "running"
-	agentModeWaitingInput = "waiting_input"
-	agentModeLearning     = "learning"
-)
 
 // StartHookServer starts a local HTTP server that receives lifecycle events from
 // CLI providers and dispatches them to the appropriate agent.
@@ -94,32 +88,22 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 		logger.Info(fmt.Sprintf("[hooks] Stop received: provider=%s stop_reason=%s transcript_path=%s",
 			provider, ev.Reason, ev.TranscriptPath))
 
-		found := false
-		for _, a := range agents {
-			if agentID != "" && a.ID() != agentID {
-				continue
-			}
-			if currentTaskID := a.GetTaskID(); taskIDParam != "" && currentTaskID != taskIDParam {
-				logger.Warn(fmt.Sprintf("[hooks] Stop hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
-				continue
-			}
-			mode := a.GetMode()
-			if mode == agentModeRunning || mode == agentModeWaitingInput || mode == agentModeLearning {
-				if mode == agentModeLearning {
-					// Agent finished the learning skill — fully complete the session.
-					logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(closed) to learning agent %s", a.Name()))
-					go a.Complete(cfg, "closed", ev.TranscriptPath)
-				} else if ev.IsFailure {
+		found := findAndDispatch(agents, agentID, taskIDParam, func(a Agent) {
+			switch agentmode.Mode(a.GetMode()) {
+			case agentmode.ModeLearning:
+				// Agent finished the learning skill — fully complete the session.
+				logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(closed) to learning agent %s", a.Name()))
+				go a.Complete(cfg, string(agentmode.StatusClosed), ev.TranscriptPath)
+			case agentmode.ModeRunning, agentmode.ModeWaitingInput:
+				if ev.IsFailure {
 					logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(crashed) to agent %s", a.Name()))
-					go a.Complete(cfg, "crashed", ev.TranscriptPath)
+					go a.Complete(cfg, string(agentmode.StatusCrashed), ev.TranscriptPath)
 				} else {
 					logger.Debug(fmt.Sprintf("[hooks] Dispatching StopAndPause to agent %s", a.Name()))
 					go a.StopAndPause(cfg, ev.HookMessage, ev.TranscriptPath)
 				}
-				found = true
-				break
 			}
-		}
+		})
 		if !found {
 			logger.Warn(fmt.Sprintf("[hooks] Stop received but no matching active agent found (agent=%q task_id=%q)", agentID, taskIDParam))
 		}
@@ -159,22 +143,12 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 		logger.Info(fmt.Sprintf("[hooks] Notification received: provider=%s msg=%q transcript_path=%s",
 			provider, msg, nev.TranscriptPath))
 
-		found := false
-		for _, a := range agents {
-			if agentID != "" && a.ID() != agentID {
-				continue
-			}
-			if currentTaskID := a.GetTaskID(); taskIDParam != "" && currentTaskID != taskIDParam {
-				logger.Warn(fmt.Sprintf("[hooks] Notification hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
-				continue
-			}
-			if a.GetMode() == agentModeRunning {
+		found := findAndDispatch(agents, agentID, taskIDParam, func(a Agent) {
+			if agentmode.Mode(a.GetMode()) == agentmode.ModeRunning {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching SetWaitingInput to agent %s", a.Name()))
 				go a.SetWaitingInput(cfg, msg, nev.TranscriptPath)
-				found = true
-				break
 			}
-		}
+		})
 		if !found {
 			logger.Warn(fmt.Sprintf("[hooks] Notification received but no matching active agent (agent=%q task_id=%q modes: %s)", agentID, taskIDParam, getAgentModes(agents)))
 		}
@@ -203,23 +177,13 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 		logger.Info(fmt.Sprintf("[hooks] AfterAgent received: provider=%s transcript_path=%s prompt_response_len=%d",
 			provider, aev.TranscriptPath, len(aev.PromptResponse)))
 
-		found := false
-		for _, a := range agents {
-			if agentID != "" && a.ID() != agentID {
-				continue
-			}
-			if currentTaskID := a.GetTaskID(); taskIDParam != "" && currentTaskID != taskIDParam {
-				logger.Debug(fmt.Sprintf("[hooks] AfterAgent hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
-				continue
-			}
-			mode := a.GetMode()
-			if mode == agentModeRunning || mode == agentModeWaitingInput {
+		found := findAndDispatch(agents, agentID, taskIDParam, func(a Agent) {
+			mode := agentmode.Mode(a.GetMode())
+			if mode == agentmode.ModeRunning || mode == agentmode.ModeWaitingInput {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching PushIntermediateResponse to agent %s", a.Name()))
 				go a.PushIntermediateResponse(cfg, aev.PromptResponse, aev.TranscriptPath)
-				found = true
-				break
 			}
-		}
+		})
 		if !found {
 			logger.Debug(fmt.Sprintf("[hooks] AfterAgent ignored: agent %q task_id=%q not in 'running' state", agentID, taskIDParam))
 		}
@@ -264,22 +228,12 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 			return
 		}
 
-		found := false
-		for _, a := range agents {
-			if agentID != "" && a.ID() != agentID {
-				continue
-			}
-			if currentTaskID := a.GetTaskID(); taskIDParam != "" && currentTaskID != taskIDParam {
-				logger.Debug(fmt.Sprintf("[hooks] Codex hook task_id=%q does not match agent %s current task %q — ignoring stale hook", taskIDParam, a.Name(), currentTaskID))
-				continue
-			}
-			if a.GetMode() == agentModeRunning {
+		found := findAndDispatch(agents, agentID, taskIDParam, func(a Agent) {
+			if agentmode.Mode(a.GetMode()) == agentmode.ModeRunning {
 				a.SetHookMessage(payload.LastAssistantMessage)
 				logger.Info(fmt.Sprintf("[hooks] Codex turn complete for agent %s (turn-id=%s msg_len=%d)", a.Name(), payload.TurnID, len(payload.LastAssistantMessage)))
-				found = true
 			}
-			break
-		}
+		})
 		if !found {
 			logger.Debug(fmt.Sprintf("[hooks] Codex hook: no matching running agent for agent=%q task_id=%q", agentID, taskIDParam))
 		}
@@ -371,8 +325,10 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 			http.Error(w, "invalid payload: task_id required", http.StatusBadRequest)
 			return
 		}
-		validStatus := map[string]bool{"working_fine": true, "resolved": true, "cannot_help": true}
-		if !validStatus[payload.Status] {
+		switch payload.Status {
+		case "working_fine", "resolved", "cannot_help":
+			// valid
+		default:
 			http.Error(w, "status must be working_fine|resolved|cannot_help", http.StatusBadRequest)
 			return
 		}
@@ -393,6 +349,24 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 	logger.Info(fmt.Sprintf("[hooks] Server listening on http://localhost:%d", cfg.Hooks.Port))
 	logger.Info("[hooks] Registered endpoints: /hooks/stop (Stop + StopFailure), /hooks/notification, /hooks/after_agent, /hooks/opencode, /hooks/skill, /hooks/supervisor")
 	go http.ListenAndServe(addr, mux) //nolint:errcheck
+}
+
+// findAndDispatch iterates agents, applies agentID/taskID filters, and calls fn
+// on the first matching agent. Returns true if a match was found.
+// A mismatched taskID is logged as a stale-hook warning and the agent is skipped.
+func findAndDispatch(agents []Agent, agentID, taskIDParam string, fn func(Agent)) bool {
+	for _, a := range agents {
+		if agentID != "" && a.ID() != agentID {
+			continue
+		}
+		if currentTaskID := a.GetTaskID(); taskIDParam != "" && currentTaskID != taskIDParam {
+			logger.Warn(fmt.Sprintf("[hooks] stale hook task_id=%q does not match agent %s current task %q — ignoring", taskIDParam, a.Name(), currentTaskID))
+			continue
+		}
+		fn(a)
+		return true
+	}
+	return false
 }
 
 func getAgentModes(agents []Agent) string {

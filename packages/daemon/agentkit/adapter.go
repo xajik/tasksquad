@@ -48,22 +48,23 @@ type Adapter interface {
 	ExtractTranscript(path string) string
 }
 
+// adapterRegistry maps provider names to their Adapter implementations.
+// Unknown names (including "") fall back to ClaudeAdapter via For().
+var adapterRegistry = map[string]Adapter{
+	"gemini":   GeminiAdapter{},
+	"codex":    CodexAdapter{},
+	"opencode": OpenCodeAdapter{},
+	"stdout":   StdoutAdapter{},
+}
+
 // For returns the Adapter for the given provider name.
 // The name matches the values returned by provider.Provider.Name():
 // "claude-code", "gemini", "codex", "opencode", "stdout".
 // Unknown names (including "") fall back to ClaudeAdapter, which matches the
 // existing default behaviour for StopFailure hooks that omit ?provider=.
 func For(providerName string) Adapter {
-	switch providerName {
-	case "gemini":
-		return GeminiAdapter{}
-	case "codex":
-		return CodexAdapter{}
-	case "opencode":
-		return OpenCodeAdapter{}
-	case "stdout":
-		return StdoutAdapter{}
-	default: // "claude-code", "claude", or any unknown name
-		return ClaudeAdapter{}
+	if a, ok := adapterRegistry[providerName]; ok {
+		return a
 	}
+	return ClaudeAdapter{} // "claude-code", "claude", or any unknown name
 }

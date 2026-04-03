@@ -31,21 +31,24 @@ type Provider interface {
 	ExtraArgs() []string
 }
 
+// registry maps canonical provider name strings to factory functions.
+// It is the single source of truth for provider lookup — used by both
+// override detection and binary-name auto-detection in Detect().
+var registry = map[string]func() Provider{
+	"claude-code": func() Provider { return &ClaudeCode{} },
+	"claude":      func() Provider { return &ClaudeCode{} },
+	"gemini":      func() Provider { return &Gemini{} },
+	"opencode":    func() Provider { return &OpenCode{} },
+	"codex":       func() Provider { return &Codex{} },
+	"stdout":      func() Provider { return &Stdout{} },
+}
+
 // Detect returns the provider for the given command.
 // override (from agents[].provider in config) takes precedence over auto-detection.
 func Detect(command, override string) Provider {
 	if override != "" {
-		switch strings.ToLower(override) {
-		case "claude-code", "claude":
-			return &ClaudeCode{}
-		case "gemini":
-			return &Gemini{}
-		case "opencode":
-			return &OpenCode{}
-		case "codex":
-			return &Codex{}
-		case "stdout":
-			return &Stdout{}
+		if factory, ok := registry[strings.ToLower(override)]; ok {
+			return factory()
 		}
 	}
 
@@ -53,17 +56,9 @@ func Detect(command, override string) Provider {
 	if fields := strings.Fields(command); len(fields) > 0 {
 		bin = filepath.Base(fields[0])
 	}
-	switch strings.ToLower(bin) {
-	case "claude":
-		return &ClaudeCode{}
-	case "opencode":
-		return &OpenCode{}
-	case "gemini":
-		return &Gemini{}
-	case "codex":
-		return &Codex{}
-	default:
-		// Default to Claude as requested.
-		return &ClaudeCode{}
+	if factory, ok := registry[strings.ToLower(bin)]; ok {
+		return factory()
 	}
+	// Default to Claude as requested.
+	return &ClaudeCode{}
 }

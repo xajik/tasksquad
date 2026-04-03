@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TaskSquad — Control Panel</title>
+<style>
+/* ── Design tokens (mirrors packages/portal/src/index.css @theme) ─────────── */
+:root {
+  --bg:           hsl(0 0% 100%);
+  --fg:           hsl(222.2 84% 4.9%);
+  --card:         hsl(0 0% 100%);
+  --primary:      hsl(222.2 47.4% 11.2%);
+  --primary-fg:   hsl(210 40% 98%);
+  --secondary:    hsl(210 40% 96.1%);
+  --secondary-fg: hsl(222.2 47.4% 11.2%);
+  --muted:        hsl(210 40% 96.1%);
+  --muted-fg:     hsl(215.4 16.3% 46.9%);
+  --border:       hsl(214.3 31.8% 91.4%);
+  --destructive:  hsl(0 84.2% 60.2%);
+  --destructive-fg: hsl(210 40% 98%);
+  --accent-blue:  #2563eb;
+  --radius:       0.5rem;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--muted);
+  color: var(--fg);
+  min-height: 100vh;
+}
+
+/* ── Header ────────────────────────────────────────────────────────────────── */
+header {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  flex-shrink: 0;
+}
+.brand-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+  letter-spacing: -0.2px;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.email-label {
+  font-size: 13px;
+  color: var(--muted-fg);
+}
+.refresh-label {
+  font-size: 12px;
+  color: var(--muted-fg);
+}
+
+/* ── Buttons (mirrors portal button.tsx) ───────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 32px;
+  border-radius: var(--radius);
+  border: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
+.btn-default  { background: var(--primary); color: var(--primary-fg); }
+.btn-default:hover { opacity: 0.9; }
+.btn-secondary { background: var(--secondary); color: var(--secondary-fg); }
+.btn-secondary:hover { background: hsl(210 40% 92%); }
+.btn-ghost { background: transparent; color: var(--fg); }
+.btn-ghost:hover { background: var(--secondary); }
+.btn-destructive { background: var(--destructive); color: var(--destructive-fg); }
+.btn-destructive:hover { opacity: 0.9; }
+.btn-sm { height: 28px; padding: 0 10px; font-size: 12px; }
+
+/* ── Layout ────────────────────────────────────────────────────────────────── */
+.page { max-width: 960px; margin: 0 auto; padding: 20px 24px; }
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* ── Card (mirrors portal card.tsx) ────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  overflow: hidden;
+}
+.card-header {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.card-subtitle {
+  font-size: 12px;
+  color: var(--muted-fg);
+  margin-top: 1px;
+}
+
+/* ── Row items ──────────────────────────────────────────────────────────────── */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.row:last-child { border-bottom: none; }
+.row:hover { background: var(--muted); }
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-running  { background: #16a34a; }
+.dot-waiting  { background: #d97706; }
+.dot-idle     { background: hsl(215.4 16.3% 70%); }
+.dot-orphan   { background: var(--destructive); }
+
+.row-info { flex: 1; min-width: 0; }
+.row-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row-sub {
+  font-size: 12px;
+  color: var(--muted-fg);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+
+/* ── Badges ─────────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+.badge-running    { background: #dcfce7; color: #166534; }
+.badge-waiting    { background: #fef3c7; color: #92400e; }
+.badge-idle       { background: var(--secondary); color: var(--muted-fg); }
+.badge-orphan     { background: #fee2e2; color: #991b1b; }
+.badge-linked     { background: #dbeafe; color: #1e40af; }
+.badge-supervisor { background: #ede9fe; color: #5b21b6; }
+.dot-supervisor   { background: #7c3aed; }
+
+/* ── Empty state ────────────────────────────────────────────────────────────── */
+.empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--muted-fg);
+  font-size: 13px;
+}
+
+/* ── Log panel ──────────────────────────────────────────────────────────────── */
+.log-panel {
+  display: none;
+  margin-top: 16px;
+  background: hsl(222.2 47.4% 7%);
+  border: 1px solid hsl(222.2 30% 18%);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+}
+.log-panel.open { display: block; animation: fade-in 0.2s ease-out; }
+.log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid hsl(222.2 30% 18%);
+  background: hsl(222.2 47.4% 9%);
+}
+.log-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(210 40% 70%);
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+.log-body {
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 14px 16px;
+}
+pre {
+  font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace;
+  font-size: 11.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: hsl(210 40% 88%);
+}
+
+/* ── Agent groups & detail rows ─────────────────────────────────────────────── */
+.group-header {
+  padding: 7px 16px;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-fg);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row.expandable { cursor: pointer; }
+.expand-icon {
+  font-size: 9px;
+  color: var(--muted-fg);
+  transition: transform 0.15s;
+  display: inline-block;
+  margin-right: 2px;
+  flex-shrink: 0;
+  user-select: none;
+}
+.expand-icon.open { transform: rotate(90deg); }
+.agent-detail {
+  display: none;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px 8px 40px;
+}
+.agent-detail.open { display: block; }
+.detail-row {
+  display: flex;
+  gap: 8px;
+  font-size: 11.5px;
+  line-height: 1.8;
+}
+.detail-key {
+  font-weight: 500;
+  color: var(--fg);
+  min-width: 68px;
+  flex-shrink: 0;
+}
+.detail-val {
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted-fg);
+  word-break: break-all;
+}
+
+/* ── Task timeline ──────────────────────────────────────────────────────────── */
+.task-timeline { padding: 0; }
+.tl-event {
+  display: flex;
+  gap: 10px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  align-items: flex-start;
+}
+.tl-event:last-child { border-bottom: none; }
+.tl-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.tl-body { flex: 1; min-width: 0; }
+.tl-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted-fg);
+}
+.tl-text {
+  font-size: 12px;
+  color: var(--fg);
+  margin-top: 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.tl-ts { font-size: 10px; color: var(--muted-fg); margin-top: 2px; }
+.dot-user   { background: var(--accent-blue); }
+.dot-agent  { background: #16a34a; }
+.dot-end    { background: var(--muted-fg); }
+.dot-start  { background: #7c3aed; }
+
+/* ── Animation ──────────────────────────────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-in { animation: fade-in 0.2s ease-out; }
+
+/* ── Spinner ─────────────────────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <div class="brand-dot"></div>
+    <span class="brand-name">TaskSquad Control Panel</span>
+  </div>
+  <div class="header-right">
+    <span class="email-label" id="email-label"></span>
+    <span class="refresh-label" id="refresh-label"></span>
+    <button class="btn btn-secondary" onclick="showDaemonLog()">Daemon Logs</button>
+    <button class="btn btn-default" onclick="openPortal()">Open Web Portal</button>
+  </div>
+</header>
+
+<div class="page">
+  <div class="grid-2">
+
+    <!-- Agents -->
+    <div class="card animate-in">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Agents</div>
+          <div class="card-subtitle" id="agents-subtitle"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="openConfigFolder()">Edit</button>
+      </div>
+      <div id="agents-list"><div class="empty"><span class="spinner"></span></div></div>
+    </div>
+
+    <!-- Sessions -->
+    <div class="card animate-in" style="animation-delay:.05s">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Sessions</div>
+          <div class="card-subtitle">tmux managed</div>
+        </div>
+      </div>
+      <div id="sessions-list"><div class="empty"><span class="spinner"></span></div></div>
+    </div>
+
+  </div>
+
+  <!-- Tasks -->
+  <div class="card animate-in" style="margin-top:16px;animation-delay:.1s">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Task History</div>
+        <div class="card-subtitle">local JSONL records · <span id="tasks-count">…</span></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="loadTasks()">Refresh</button>
+    </div>
+    <div id="tasks-list"><div class="empty"><span class="spinner"></span></div></div>
+  </div>
+
+  <!-- Task detail panel -->
+  <div class="log-panel" id="task-panel">
+    <div class="log-header">
+      <span class="log-title" id="task-title">task</span>
+      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%)" onclick="closeTaskPanel()">Close</button>
+    </div>
+    <div class="log-body" id="task-body"></div>
+  </div>
+
+  <!-- Log viewer -->
+  <div class="log-panel" id="log-panel">
+    <div class="log-header">
+      <span class="log-title" id="log-title">log</span>
+      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%)" onclick="closeLog()">Close</button>
+    </div>
+    <div class="log-body" id="log-body"><pre id="log-pre"></pre></div>
+  </div>
+</div>
+
+<script>
+let DASH_URL = '';
+let PORTAL_URL = '';
+let CONFIG_DIR = '';
+let activeLog = null; // {url: string} | null
+let logTimer = null;
+
+async function load() {
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok) return;
+    const d = await r.json();
+    DASH_URL = d.dash_url || '';
+    PORTAL_URL = d.portal_url || '';
+    CONFIG_DIR = d.config_dir || '';
+    document.getElementById('email-label').textContent = d.email || '';
+    document.getElementById('refresh-label').textContent = 'updated ' + ago(d.updated_at);
+    renderAgents(d.agents || []);
+    renderSessions(d.sessions || []);
+  } catch(e) { console.error(e); }
+}
+
+function ago(ms) {
+  const s = Math.round((Date.now() - ms) / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return s + 's ago';
+  return Math.round(s / 60) + 'm ago';
+}
+
+function dotClass(mode) {
+  return {running:'dot-running', waiting_input:'dot-waiting', idle:'dot-idle'}[mode] || 'dot-idle';
+}
+function badgeClass(mode) {
+  return {running:'badge-running', waiting_input:'badge-waiting', idle:'badge-idle'}[mode] || 'badge-idle';
+}
+function modeLabel(mode) {
+  return {running:'running', waiting_input:'waiting', idle:'idle'}[mode] || (mode || 'idle');
+}
+
+function renderAgents(agents) {
+  const el = document.getElementById('agents-list');
+  const subEl = document.getElementById('agents-subtitle');
+  const running = agents.filter(a => a.mode === 'running').length;
+  const waiting = agents.filter(a => a.mode === 'waiting_input').length;
+  subEl.textContent = running + ' running · ' + waiting + ' waiting · ' + (agents.length - running - waiting) + ' idle';
+  if (!agents.length) { el.innerHTML = '<div class="empty">No agents configured</div>'; return; }
+
+  // Group by work_dir
+  const groups = {};
+  const groupOrder = [];
+  for (const a of agents) {
+    const dir = a.work_dir || '(unknown)';
+    if (!groups[dir]) { groups[dir] = []; groupOrder.push(dir); }
+    groups[dir].push(a);
+  }
+
+  let html = '';
+  let idx = 0;
+  for (const dir of groupOrder) {
+    html += '<div class="group-header" title="' + x(dir) + '">' + x(dir) + '</div>';
+    for (const a of groups[dir]) {
+      const i = idx++;
+      const logBtn = a.task_id
+        ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ')">Logs</button>'
+        : '';
+      const subTxt = a.task_id
+        ? 'task ' + a.task_id.slice(0,10) + '… · pull ' + a.pull_ago
+        : 'pull ' + a.pull_ago;
+      html += '<div class="row expandable" onclick="toggleAgentDetail(' + i + ')">'
+        + '<span class="expand-icon" id="ei-' + i + '">▶</span>'
+        + '<div class="status-dot ' + dotClass(a.mode) + '"></div>'
+        + '<div class="row-info"><div class="row-name">' + x(a.name) + '</div><div class="row-sub">' + x(subTxt) + '</div></div>'
+        + '<div class="row-actions"><span class="badge ' + badgeClass(a.mode) + '">' + modeLabel(a.mode) + '</span>' + logBtn + '</div>'
+        + '</div>'
+        + '<div class="agent-detail" id="ad-' + i + '">'
+        + (a.command  ? '<div class="detail-row"><span class="detail-key">Command</span><span class="detail-val">' + x(a.command)  + '</span></div>' : '')
+        + (a.provider ? '<div class="detail-row"><span class="detail-key">Provider</span><span class="detail-val">' + x(a.provider) + '</span></div>' : '')
+        + (a.id       ? '<div class="detail-row"><span class="detail-key">Agent ID</span><span class="detail-val">' + x(a.id)       + '</span></div>' : '')
+        + '</div>';
+    }
+  }
+  el.innerHTML = html;
+}
+
+function toggleAgentDetail(i) {
+  const det  = document.getElementById('ad-' + i);
+  const icon = document.getElementById('ei-' + i);
+  if (!det) return;
+  det.classList.toggle('open');
+  if (icon) icon.classList.toggle('open');
+}
+
+function renderSessions(sessions) {
+  const el = document.getElementById('sessions-list');
+  if (!sessions.length) { el.innerHTML = '<div class="empty">No active sessions</div>'; return; }
+  el.innerHTML = sessions.map(s => {
+    let dotCls, badgeCls, badgeTxt, sub, logBtn;
+    if (s.is_supervisor) {
+      dotCls  = 'dot-supervisor';
+      badgeCls = 'badge-supervisor';
+      badgeTxt = 'supervisor';
+      sub = s.agent_name ? 'watching: ' + x(s.agent_name) : 'no linked agent';
+      logBtn = s.task_id
+        ? '<button class="btn btn-secondary btn-sm" onclick="showSupervisorLog(event,' + q(s.task_id) + ',' + q(s.agent_name||'') + ')">Logs</button>'
+        : '';
+    } else if (s.orphan) {
+      dotCls  = 'dot-orphan';
+      badgeCls = 'badge-orphan';
+      badgeTxt = 'orphan';
+      sub = 'no linked agent';
+      logBtn = '';
+    } else {
+      dotCls  = 'dot-running';
+      badgeCls = 'badge-linked';
+      badgeTxt = 'linked';
+      sub = 'agent: ' + x(s.agent_name);
+      logBtn = s.task_id
+        ? '<button class="btn btn-secondary btn-sm" onclick="showSessionLog(event,' + x(JSON.stringify(s)) + ')">Logs</button>'
+        : '';
+    }
+    const killBtn = '<button class="btn btn-destructive btn-sm" onclick="killSession(event,' + q(s.name) + ')">Kill</button>';
+    return row(
+      '<div class="status-dot ' + dotCls + '"></div>',
+      x(s.name), sub,
+      '<span class="badge ' + badgeCls + '">' + badgeTxt + '</span>' + logBtn + killBtn
+    );
+  }).join('');
+}
+
+function row(icon, name, sub, actions) {
+  return '<div class="row">' + icon +
+    '<div class="row-info"><div class="row-name">' + name + '</div><div class="row-sub">' + sub + '</div></div>' +
+    '<div class="row-actions">' + actions + '</div>' +
+    '</div>';
+}
+
+async function showAgentLog(e, agentName, taskId) {
+  e.stopPropagation();
+  if (!taskId) return;
+  const url = '/api/logs?agent=' + encodeURIComponent(agentName) + '&task=' + encodeURIComponent(taskId);
+  openLog(agentName + ' · ' + taskId.slice(0, 14) + '…', url, true);
+}
+
+async function showSessionLog(e, session) {
+  e.stopPropagation();
+  if (!session.task_id || !session.agent_name) {
+    openLog(session.name, null);
+    setLog('No log available for orphan sessions.');
+    return;
+  }
+  await showAgentLog(e, session.agent_name, session.task_id);
+}
+
+async function showSupervisorLog(e, taskId, agentName) {
+  e.stopPropagation();
+  if (!taskId) return;
+  const label = 'supervisor · ' + (agentName || taskId.slice(0, 14) + '…');
+  const url = '/api/logs/supervisor?task=' + encodeURIComponent(taskId);
+  openLog(label, url, true);
+}
+
+async function killSession(e, name) {
+  e.stopPropagation();
+  if (!confirm('Kill session ' + name + '?\n\nThe task will remain on the server; the daemon will clean up on the next heartbeat.')) return;
+  try {
+    const r = await fetch('/api/session/kill', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name}),
+    });
+    if (r.ok || r.status === 204) load();
+    else alert('Kill failed: ' + await r.text());
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+function openPortal() { if (PORTAL_URL) window.open(PORTAL_URL, '_blank'); }
+function openConfigFolder() { if (CONFIG_DIR) openFolder(CONFIG_DIR); }
+
+async function openFolder(path) {
+  try {
+    await fetch('/api/open', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path}),
+    });
+  } catch(e) { console.error('openFolder:', e); }
+}
+
+function openLog(title, url, poll = false) {
+  activeLog = (url && poll) ? {url} : null;
+  if (logTimer) { clearInterval(logTimer); logTimer = null; }
+  document.getElementById('log-title').textContent = title;
+  document.getElementById('log-pre').textContent = 'Loading…';
+  const panel = document.getElementById('log-panel');
+  panel.classList.add('open');
+  panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+  if (url) fetchLog(url);
+  if (poll) startLogPolling();
+}
+
+async function fetchLog(url) {
+  try {
+    const r = await fetch(url);
+    setLog(r.ok ? await r.text() : 'Log not found.');
+  } catch(e) { setLog('Error: ' + e.message); }
+}
+
+function setLog(text) {
+  const pre = document.getElementById('log-pre');
+  const body = document.getElementById('log-body');
+  const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+  pre.textContent = text;
+  if (atBottom) body.scrollTop = body.scrollHeight;
+}
+
+function startLogPolling() {
+  if (logTimer) clearInterval(logTimer);
+  logTimer = setInterval(() => {
+    if (activeLog) fetchLog(activeLog.url);
+  }, 2000);
+}
+
+function closeLog() {
+  document.getElementById('log-panel').classList.remove('open');
+  activeLog = null;
+  if (logTimer) { clearInterval(logTimer); logTimer = null; }
+}
+
+/* XSS-safe string escaping */
+function x(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function q(s) { return x(JSON.stringify(String(s || ''))); }
+
+function showDaemonLog() {
+  openLog('daemon · today', '/api/logs/daemon');
+}
+
+/* ── Task history ────────────────────────────────────────────────────────── */
+async function loadTasks() {
+  try {
+    const r = await fetch('/api/tasks');
+    if (!r.ok) { document.getElementById('tasks-list').innerHTML = '<div class="empty">No tasks yet</div>'; return; }
+    const tasks = await r.json();
+    document.getElementById('tasks-count').textContent = tasks.length + ' task' + (tasks.length === 1 ? '' : 's');
+    if (!tasks.length) { document.getElementById('tasks-list').innerHTML = '<div class="empty">No tasks recorded yet</div>'; return; }
+    document.getElementById('tasks-list').innerHTML = tasks.map(t => {
+      const sub = x(t.subject || '(no subject)');
+      const detail = x(t.agent || '') + (t.task_id ? ' · ' + t.task_id.slice(0,14) + '…' : '');
+      const ts = t.ts ? new Date(t.ts).toLocaleString() : '';
+      return '<div class="row" style="cursor:pointer" onclick="showTask(' + q(t.task_id) + ',' + q(t.subject||'') + ')">'
+        + '<div class="status-dot dot-start"></div>'
+        + '<div class="row-info"><div class="row-name">' + sub + '</div><div class="row-sub">' + detail + '</div></div>'
+        + '<div class="row-actions" style="font-size:11px;color:var(--muted-fg)">' + x(ts) + '</div>'
+        + '</div>';
+    }).join('');
+  } catch(e) { document.getElementById('tasks-list').innerHTML = '<div class="empty">Error loading tasks</div>'; }
+}
+
+async function showTask(taskId, subject) {
+  if (!taskId) return;
+  document.getElementById('task-title').textContent = (subject || taskId).slice(0, 60);
+  document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:hsl(210 40% 70%);font-size:12px"><span class="spinner"></span> Loading…</div>';
+  document.getElementById('task-panel').classList.add('open');
+  document.getElementById('task-panel').scrollIntoView({behavior:'smooth', block:'start'});
+  try {
+    const r = await fetch('/api/tasks/' + encodeURIComponent(taskId));
+    if (!r.ok) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Not found</div>'; return; }
+    const text = await r.text();
+    renderTaskTimeline(text);
+  } catch(e) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Error: ' + x(e.message) + '</div>'; }
+}
+
+function renderTaskTimeline(jsonl) {
+  const lines = jsonl.trim().split('\n').filter(Boolean);
+  const events = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  if (!events.length) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--muted-fg);font-size:12px">Empty record</div>'; return; }
+  const html = events.map(ev => {
+    let dotCls = 'dot-end', label = ev.type || '', bodyTxt = '', ts = ev.ts || '';
+    switch(ev.type) {
+      case 'task_start':
+        dotCls = 'dot-start'; label = 'Task started';
+        bodyTxt = (ev.subject||'') + (ev.log_path ? '\nLog: ' + ev.log_path : '');
+        break;
+      case 'message':
+        dotCls = ev.role === 'agent' ? 'dot-agent' : 'dot-user';
+        label = ev.role === 'agent' ? 'Agent' : 'User';
+        bodyTxt = ev.body || '';
+        break;
+      case 'agent_turn':
+        dotCls = 'dot-agent'; label = 'Agent (waiting)';
+        bodyTxt = ev.body || '';
+        break;
+      case 'user_reply':
+        dotCls = 'dot-user'; label = 'User reply';
+        bodyTxt = ev.body || '';
+        break;
+      case 'task_end':
+        dotCls = ev.status === 'closed' ? 'dot-agent' : 'dot-orphan';
+        label = 'Task ended · ' + (ev.status||'');
+        bodyTxt = ev.final_text || '';
+        break;
+    }
+    return '<div class="tl-event">'
+      + '<div class="tl-dot ' + dotCls + '"></div>'
+      + '<div class="tl-body">'
+      + '<div class="tl-label">' + x(label) + '</div>'
+      + (bodyTxt ? '<div class="tl-text">' + x(bodyTxt) + '</div>' : '')
+      + '<div class="tl-ts">' + x(new Date(ts).toLocaleString()) + '</div>'
+      + '</div></div>';
+  }).join('');
+  document.getElementById('task-body').innerHTML = '<div class="task-timeline">' + html + '</div>';
+}
+
+function closeTaskPanel() {
+  document.getElementById('task-panel').classList.remove('open');
+}
+
+load();
+showDaemonLog();
+loadTasks();
+setInterval(load, 5000);
+</script>
+</body>
+</html>
