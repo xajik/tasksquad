@@ -2,17 +2,17 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { trackEvent } from '../lib/analytics'
-import TopNav from '../components/TopNav'
+import Header from '../components/Header'
 
 export default function HowTo() {
   const nav = useNavigate()
   return (
-    <div className="max-w-[800px] mx-auto px-4 sm:px-6 pt-[calc(2.5rem+env(safe-area-inset-top,0px))] pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] sm:py-16">
-      <TopNav source="howto_nav" />
-
-      <h1 className="text-3xl sm:text-5xl font-bold leading-tight mb-6">
-        Getting Started with TaskSquad
-      </h1>
+    <div className="min-h-screen bg-background">
+      <Header source="howto_nav" />
+      <div className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] sm:pb-16">
+        <h1 className="text-3xl sm:text-5xl font-bold leading-tight mb-6">
+          Getting Started with TaskSquad
+        </h1>
       
       <div className="space-y-12">
         <section>
@@ -114,5 +114,6 @@ work_dir = "~/Projects/my-tasksquad-project"`}
         <a href="mailto:contact@tasksquad.ai" className="underline">contact@tasksquad.ai</a> © 2026 TaskSquad
       </div>
     </div>
+  </div>
   )
 }

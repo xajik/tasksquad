@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { trackEvent } from '../lib/analytics'
-import TopNav from '../components/TopNav'
+import Header from '../components/Header'
 import {
   Card,
   CardContent,
@@ -35,11 +35,9 @@ export default function Pricing() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-[800px] mx-auto px-4 sm:px-6 pt-[calc(1.25rem+env(safe-area-inset-top,0px))]">
-        <TopNav source="pricing_nav" />
-      </div>
+      <Header source="pricing_nav" />
 
-      <div className="max-w-[800px] mx-auto px-4 sm:px-6 py-10 sm:py-16 text-center">
+      <div className="max-w-[800px] mx-auto px-4 sm:px-6 pb-10 sm:pb-16 text-center">
         <h1 className="text-4xl font-bold mb-4">Simple, honest pricing</h1>
         <p className="text-muted-foreground text-lg mb-16">Start free. Upgrade when you need more.</p>
 

@@ -103,9 +103,7 @@ export default function DocsLayout() {
             )}
           </div>
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-             <Button variant="ghost" size="sm" onClick={() => navigate('/howto')}>Back to App</Button>
-          </div>
-        </header>
+          </div>        </header>
 
         {/* Content area */}
         <ScrollArea className="flex-1">

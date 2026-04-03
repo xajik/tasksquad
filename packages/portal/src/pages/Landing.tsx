@@ -1,17 +1,17 @@
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { trackEvent } from '../lib/analytics'
-import TopNav from '../components/TopNav'
+import Header from '../components/Header'
 
 export default function Landing() {
   const nav = useNavigate()
   return (
-    <div className="max-w-[800px] mx-auto px-4 sm:px-6 pt-[calc(2.5rem+env(safe-area-inset-top,0px))] pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] sm:py-16">
-      <TopNav source="landing_nav" />
-
-      <h1 className="text-3xl sm:text-5xl font-bold leading-tight mb-6">
-        Your machine has the best agentic setup.
-      </h1>
+    <div className="min-h-screen bg-background">
+      <Header source="landing_nav" />
+      <div className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] sm:pb-16">
+        <h1 className="text-3xl sm:text-5xl font-bold leading-tight mb-6">
+          Your machine has the best agentic setup.
+        </h1>
       <p className="text-base sm:text-lg text-muted-foreground mb-8 sm:mb-10 max-w-xl">
         Connect to your agentic AI setup on your local machine anywhere, any time. Collaborate with friends and agents across the team.
       </p>
@@ -42,5 +42,6 @@ export default function Landing() {
         <a href="mailto:contact@tasksquad.ai" className="underline">contact@tasksquad.ai</a> © 2026 TaskSquad
       </div>
     </div>
+  </div>
   )
 }

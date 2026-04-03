@@ -523,9 +523,6 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" className="text-muted-foreground" onClick={() => { trackEvent('docs_clicked', { source: 'dashboard_topbar' }); nav('/docs') }}>
-            Docs
-          </Button>
           <Button onClick={() => setShowCompose(true)}>
             New message
           </Button>
@@ -2589,6 +2586,10 @@ export default function Dashboard() {
           )}
         </div>
         <div className="p-2">
+          <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { trackEvent('docs_clicked', { source: 'dashboard_sidebar' }); nav('/docs') }}>
+            <BookMarked className="mr-2 h-4 w-4" />
+            Docs
+          </Button>
           <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { trackEvent('user_logged_out'); signOut(auth); }}>
             <LogOut className="mr-2 h-4 w-4" />
             Sign out
@@ -2609,13 +2610,6 @@ export default function Dashboard() {
           </button>
           <img src="/tasksquad-dark.svg" alt="TaskSquad" className="h-5 w-5" />
           <span className="font-bold">TaskSquad</span>
-          <button
-            onClick={() => { trackEvent('docs_clicked', { source: 'dashboard_topbar' }); nav('/docs') }}
-            className="ml-auto rounded-md p-1.5 hover:bg-muted transition-colors"
-            aria-label="Documentation"
-          >
-            <BookMarked className="h-5 w-5" />
-          </button>
         </div>
         <main className="flex-1 overflow-auto p-4 sm:p-8 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
         <Routes>
