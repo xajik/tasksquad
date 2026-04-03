@@ -2,19 +2,13 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { trackEvent } from '../lib/analytics'
+import TopNav from '../components/TopNav'
 
 export default function HowTo() {
   const nav = useNavigate()
   return (
     <div className="max-w-[800px] mx-auto px-4 sm:px-6 pt-[calc(2.5rem+env(safe-area-inset-top,0px))] pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] sm:py-16">
-      <nav className="flex justify-between items-center mb-10 sm:mb-20">
-        <strong className="text-xl cursor-pointer" onClick={() => nav('/')}>TaskSquad</strong>
-        <div className="flex gap-4 sm:gap-6 items-center">
-          <button onClick={() => { trackEvent('howto_clicked', { source: 'howto_nav' }); nav('/howto') }} className="text-foreground hover:underline">How To</button>
-          <button onClick={() => { trackEvent('pricing_clicked', { source: 'howto_nav' }); nav('/pricing') }} className="text-foreground hover:underline">Pricing</button>
-          <Button onClick={() => { trackEvent('sign_in_clicked', { source: 'howto_nav' }); nav('/auth') }}>Sign in</Button>
-        </div>
-      </nav>
+      <TopNav source="howto_nav" />
 
       <h1 className="text-3xl sm:text-5xl font-bold leading-tight mb-6">
         Getting Started with TaskSquad

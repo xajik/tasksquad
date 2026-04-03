@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { api, type Skill } from '../lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +17,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Loader2, Plus, BookOpen, Trash2, Edit, X, Save, Shield, Zap, RefreshCw } from 'lucide-react'
+import { Loader2, Plus, BookOpen, Trash2, Edit, X, Save, Shield, Zap, RefreshCw, HelpCircle, ChevronUp, ChevronDown, ExternalLink } from 'lucide-react'
+import { SkillWorkflow } from '../components/SkillWorkflow'
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts
@@ -277,6 +279,7 @@ export function Skills({ teamId }: { teamId: string }) {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Skill | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [showHowItWorks, setShowHowItWorks] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newContent, setNewContent] = useState('')
@@ -345,11 +348,45 @@ export function Skills({ teamId }: { teamId: string }) {
             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={load} disabled={loading} title="Refresh">
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className={`h-7 px-2 text-xs gap-1.5 ${showHowItWorks ? 'bg-primary/5 text-primary' : 'text-muted-foreground'}`}
+              onClick={() => setShowHowItWorks(!showHowItWorks)}
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+              How it works
+              {showHowItWorks ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </Button>
           </div>
           <Button size="sm" onClick={() => setShowCreate(true)}>
             <Plus className="h-4 w-4 mr-1" /> New Skill
           </Button>
         </div>
+
+        {/* How it works section */}
+        {showHowItWorks && (
+          <div className="mx-6 mb-6 p-4 rounded-xl border bg-muted/30 relative group overflow-hidden">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                <Zap className="h-4 w-4 text-primary" />
+                Autonomous Learning Loop
+              </h3>
+              <Link 
+                to="/docs/concepts/skills" 
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                Full Documentation <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
+            <SkillWorkflow />
+            <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+              TaskSquad agents automatically learn new skills by analyzing completed tasks. 
+              Skills prefixed with <code className="text-primary font-mono font-bold px-1 py-0.5 bg-primary/5 rounded">tsq-</code> are 
+              extracted and shared back to your team, where you can enable auto-install for all agents.
+            </p>
+          </div>
+        )}
 
         {/* Filters row */}
         <div className="flex items-center gap-1.5 mb-4 shrink-0">

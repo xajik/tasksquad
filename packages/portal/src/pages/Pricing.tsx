@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { trackEvent } from '../lib/analytics'
+import TopNav from '../components/TopNav'
 import {
   Card,
   CardContent,
@@ -34,14 +35,9 @@ export default function Pricing() {
 
   return (
     <div className="min-h-screen bg-background">
-      <nav className="max-w-[800px] mx-auto px-4 sm:px-6 pt-[calc(1.25rem+env(safe-area-inset-top,0px))] pb-5 flex justify-between items-center sm:py-5">
-        <button onClick={() => nav('/')} className="font-bold text-xl">TaskSquad</button>
-        <div className="flex gap-6 items-center">
-          <button onClick={() => { trackEvent('howto_clicked', { source: 'pricing_nav' }); nav('/howto') }} className="text-foreground hover:underline">How To</button>
-          <button onClick={() => { trackEvent('pricing_clicked', { source: 'pricing_nav' }); nav('/pricing') }} className="text-foreground hover:underline">Pricing</button>
-          <Button onClick={() => { trackEvent('sign_in_clicked', { source: 'pricing_nav' }); nav('/auth') }}>Sign in</Button>
-        </div>
-      </nav>
+      <div className="max-w-[800px] mx-auto px-4 sm:px-6 pt-[calc(1.25rem+env(safe-area-inset-top,0px))]">
+        <TopNav source="pricing_nav" />
+      </div>
 
       <div className="max-w-[800px] mx-auto px-4 sm:px-6 py-10 sm:py-16 text-center">
         <h1 className="text-4xl font-bold mb-4">Simple, honest pricing</h1>

@@ -87,6 +87,7 @@ import {
   ChevronRight,
   ShieldAlert,
   BookOpen,
+  BookMarked,
 } from 'lucide-react'
 
 import { Notes } from './Notes'
@@ -521,9 +522,14 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
             <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
-        <Button onClick={() => setShowCompose(true)}>
-          New message
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" className="text-muted-foreground" onClick={() => { trackEvent('docs_clicked', { source: 'dashboard_topbar' }); nav('/docs') }}>
+            Docs
+          </Button>
+          <Button onClick={() => setShowCompose(true)}>
+            New message
+          </Button>
+        </div>
       </div>
 
       {(hasSystem || hasMine || hasNotes || hasScheduled) && (
@@ -2507,7 +2513,7 @@ export default function Dashboard() {
             <BookOpen className="mr-2 h-4 w-4" />
             Skills
             </Button>
-            <Button
+<Button
             variant={isAgents ? 'secondary' : 'ghost'}            className="w-full justify-start mb-1"
             onClick={() => handleNav('/dashboard/agents')}
           >
@@ -2603,6 +2609,13 @@ export default function Dashboard() {
           </button>
           <img src="/tasksquad-dark.svg" alt="TaskSquad" className="h-5 w-5" />
           <span className="font-bold">TaskSquad</span>
+          <button
+            onClick={() => { trackEvent('docs_clicked', { source: 'dashboard_topbar' }); nav('/docs') }}
+            className="ml-auto rounded-md p-1.5 hover:bg-muted transition-colors"
+            aria-label="Documentation"
+          >
+            <BookMarked className="h-5 w-5" />
+          </button>
         </div>
         <main className="flex-1 overflow-auto p-4 sm:p-8 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
         <Routes>

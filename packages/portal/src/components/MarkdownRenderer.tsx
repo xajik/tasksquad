@@ -2,16 +2,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
-import rehypePrettyCode from 'rehype-pretty-code';
+import rehypeHighlight from 'rehype-highlight';
+import 'highlight.js/styles/github-dark.css';
 
 interface MarkdownRendererProps {
   content: string;
 }
-
-const prettyCodeOptions = {
-  theme: 'github-dark',
-  keepBackground: true,
-};
 
 export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
   return (
@@ -21,7 +17,7 @@ export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
         rehypePlugins={[
           rehypeSlug,
           [rehypeAutolinkHeadings, { behavior: 'wrap' }],
-          [rehypePrettyCode, prettyCodeOptions],
+          rehypeHighlight,
         ]}
       >
         {content}

@@ -1,5 +1,29 @@
-import matter from 'gray-matter';
 import Fuse from 'fuse.js';
+
+function parseFrontmatter(raw: string): { data: Record<string, any>; content: string } {
+  if (!raw.startsWith('---')) return { data: {}, content: raw };
+  const end = raw.indexOf('\n---', 3);
+  if (end === -1) return { data: {}, content: raw };
+  const yamlBlock = raw.slice(4, end);
+  const body = raw.slice(end + 4).trimStart();
+  const data: Record<string, any> = {};
+  for (const line of yamlBlock.split('\n')) {
+    const colon = line.indexOf(':');
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim();
+    const val = line.slice(colon + 1).trim();
+    if (val.startsWith('[') && val.endsWith(']')) {
+      data[key] = val.slice(1, -1).split(',').map(v => v.trim().replace(/^['"]|['"]$/g, ''));
+    } else if (val === 'true' || val === 'false') {
+      data[key] = val === 'true';
+    } else if (val !== '' && !isNaN(Number(val))) {
+      data[key] = Number(val);
+    } else {
+      data[key] = val.replace(/^['"]|['"]$/g, '');
+    }
+  }
+  return { data, content: body };
+}
 
 export interface DocMetadata {
   title: string;
@@ -30,7 +54,7 @@ export function parseDocsTree(): DocNode[] {
 
   for (const [filePath, module] of Object.entries(rawDocs)) {
     const content = (module as any).default as string;
-    const { data, content: body } = matter(content);
+    const { data, content: body } = parseFrontmatter(content);
     
     // Convert path: ../docs/concepts/architecture.md -> concepts/architecture
     const cleanPath = filePath
