@@ -252,7 +252,10 @@ work_dir = "/Users/alice/Projects/myapp"
 | `opencode` | `opencode` | Stop → complete; Notification → waiting_input |
 | `gemini` | `gemini` | AfterAgent → intermediate response; SessionEnd → complete; Notification → waiting_input |
 | `codex` | `codex` | Hook integration in progress |
-| `stdout` | anything else | No hooks; stdout-only |
+| `stdout` | set `provider = "stdout"` explicitly | No hooks; stdout-only |
+
+> **Default fallback:** Unknown command names default to `claude-code`, not `stdout`.
+> Set `provider = "stdout"` explicitly if you need process-exit-only detection.
 
 Config is **hot-reloaded** — the daemon watches `~/.tasksquad/config.toml` for changes and applies them without restart.
 

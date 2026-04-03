@@ -10,6 +10,7 @@ Select a topic from the sidebar to get started.
 - [Introduction](/docs/intro)
 - [System Architecture](/docs/concepts/architecture)
 - [Security](/docs/concepts/security)
+- [Lifecycle Hooks](/docs/concepts/hooks)
 
 ## Need help?
 

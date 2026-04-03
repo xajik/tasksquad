@@ -154,9 +154,12 @@ From the portal:
 2. Click "Close Task" to end the current attempt
 3. Send a new task to retry
 
-Or via CLI (if available):
+Or via CLI:
 ```bash
-tsq agents restart <agent-name>
+# Attach to inspect the session state
+tsq attach <taskID>
+# Capture pane output without attaching
+tsq pane tsq-<taskID8> --lines 100
 ```
 
 ## Configuration
