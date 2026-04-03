@@ -4,4 +4,5 @@ daemon
 tsq-daemon
 dist/
 logs/
+!cmd/logs/
 tmp/
