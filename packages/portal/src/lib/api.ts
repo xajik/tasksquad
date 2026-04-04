@@ -58,6 +58,11 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ role }),
       }),
+    updateLearnFromSession: (teamId: string, agentId: string, learn_from_session: boolean) =>
+      request<{ ok: boolean; learn_from_session: boolean }>(`/teams/${teamId}/agents/${agentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ learn_from_session }),
+      }),
     createToken: (teamId: string, agentId: string, label: string) =>
       request<{ id: string; token: string; label: string }>(`/teams/${teamId}/tokens`, {
         method: 'POST',
@@ -231,6 +236,7 @@ export interface Agent {
   created_at: number
   paused: boolean
   reset_pending: boolean
+  learn_from_session: boolean
 }
 
 export interface Team {

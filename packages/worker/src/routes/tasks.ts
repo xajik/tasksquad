@@ -140,14 +140,18 @@ export async function closeTask(req: Request, env: Env, _ctx: unknown, auth: Aut
 
   // Check if agent is in waiting_input — if so, put task into "learning" mode
   // so the daemon injects the learning prompt before killing the session.
+  // Skip learning phase if the agent has learn_from_session disabled.
   const agent = await env.DB
-    .prepare("SELECT status FROM agents WHERE id = ?")
+    .prepare("SELECT status, learn_from_session FROM agents WHERE id = ?")
     .bind(task.agent_id)
-    .first<{ status: string }>()
+    .first<{ status: string; learn_from_session: number }>()
 
   if (agent?.status === 'waiting_input') {
-    await env.DB.prepare("UPDATE tasks SET status = 'learning' WHERE id = ?").bind(taskId).run()
-    return json({ ok: true })
+    if (agent.learn_from_session !== 0) {
+      await env.DB.prepare("UPDATE tasks SET status = 'learning' WHERE id = ?").bind(taskId).run()
+      return json({ ok: true })
+    }
+    // learning disabled — fall through to immediate close
   }
 
   // Agent is not waiting_input (running, idle, etc.) — use original close flow.

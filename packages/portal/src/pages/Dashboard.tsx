@@ -1654,6 +1654,11 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
     } finally { setSavingRole(false) }
   }
 
+  async function toggleLearnFromSession(agentId: string, current: boolean) {
+    await api.agents.updateLearnFromSession(teamId, agentId, !current)
+    load()
+  }
+
   return (
     <div className="animate-fade-in">
       {/* Edit role dialog */}
@@ -1750,9 +1755,28 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
                     </button>
                   ) : null}
                   <div className="text-xs text-muted-foreground font-mono truncate">ID: {a.id}</div>
-                  <div className="text-xs text-muted-foreground mb-4">
+                  <div className="text-xs text-muted-foreground">
                     Last seen: {a.last_seen ? new Date(a.last_seen).toLocaleString() : 'Never'}
                   </div>
+                  {isMaintainer && (
+                    <div className="flex items-center gap-2 mt-2 mb-2">
+                      <button
+                        role="switch"
+                        aria-checked={a.learn_from_session !== false}
+                        onClick={() => toggleLearnFromSession(a.id, a.learn_from_session !== false)}
+                        className={cn(
+                          "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                          a.learn_from_session !== false ? "bg-primary" : "bg-muted-foreground/30"
+                        )}
+                      >
+                        <span className={cn(
+                          "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
+                          a.learn_from_session !== false ? "translate-x-3" : "translate-x-0"
+                        )} />
+                      </button>
+                      <span className="text-xs text-muted-foreground">Learn from session</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex gap-2">
                       {isMaintainer && (
