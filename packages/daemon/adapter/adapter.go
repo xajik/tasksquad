@@ -1,11 +1,11 @@
-// Package agentkit provides per-agent runtime adapters for parsing hook payloads
+// Package adapter provides per-agent runtime adapters for parsing hook payloads
 // and extracting responses from provider-specific transcript files.
 //
 // This is the runtime counterpart to the provider package (which handles
 // setup-time concerns like writing config files and setting environment variables).
 // Each agent type has its own small file; adding a new agent only requires
 // creating that file and registering it in For().
-package agentkit
+package adapter
 
 // StopEvent is the normalized result of parsing a /hooks/stop payload.
 type StopEvent struct {

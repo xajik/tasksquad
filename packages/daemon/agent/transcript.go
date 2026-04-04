@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tasksquad/daemon/agentkit"
+	"github.com/tasksquad/daemon/adapter"
 	"github.com/tasksquad/daemon/logger"
 )
 
@@ -17,16 +17,16 @@ import (
 // (single-JSON), preserving the original behaviour for tests that have no agent context.
 // Agent methods should use a.extractTranscriptResponse instead.
 func ExtractTranscriptResponse(path string) string {
-	if text := (agentkit.ClaudeAdapter{}).ExtractTranscript(path); text != "" {
+	if text := (adapter.ClaudeAdapter{}).ExtractTranscript(path); text != "" {
 		return text
 	}
-	return (agentkit.GeminiAdapter{}).ExtractTranscript(path)
+	return (adapter.GeminiAdapter{}).ExtractTranscript(path)
 }
 
 // extractTranscriptResponse delegates to the provider-specific adapter so each
 // agent type reads only the format it actually produces.
 func (a *Agent) extractTranscriptResponse(path string) string {
-	return agentkit.For(a.prov.Name()).ExtractTranscript(path)
+	return adapter.For(a.prov.Name()).ExtractTranscript(path)
 }
 
 // extractFinalText chooses the best available text for the session's final reply.

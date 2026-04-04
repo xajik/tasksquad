@@ -9,7 +9,10 @@ import (
 	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/autostart"
-	"github.com/tasksquad/daemon/cmd"
+	authcmd "github.com/tasksquad/daemon/cmd/auth"
+	hookscmd "github.com/tasksquad/daemon/cmd/hooks"
+	logscmd "github.com/tasksquad/daemon/cmd/logs"
+	tmuxcmd "github.com/tasksquad/daemon/cmd/tmux"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
@@ -25,34 +28,34 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "init":
-			cmd.RunInit()
+			authcmd.RunInit()   //nolint:errcheck
 			return
 		case "login":
-			cmd.RunLogin()
+			authcmd.RunLogin()  //nolint:errcheck
 			return
 		case "logout":
-			cmd.RunLogout()
+			authcmd.RunLogout() //nolint:errcheck
 			return
 		case "sessions":
-			cmd.RunSessions()
+			tmuxcmd.RunSessions()
 			return
 		case "attach":
-			cmd.RunAttach(os.Args[2:])
+			tmuxcmd.RunAttach(os.Args[2:])
 			return
 		case "logs":
-			cmd.RunLogs(os.Args[2:])
+			logscmd.RunLogs(os.Args[2:])
 			return
 		case "pane":
-			cmd.RunPane(os.Args[2:])
+			tmuxcmd.RunPane(os.Args[2:])
 			return
 		case "send":
-			cmd.RunSend(os.Args[2:])
+			tmuxcmd.RunSend(os.Args[2:])
 			return
 		case "report":
-			cmd.RunReport(os.Args[2:])
+			hookscmd.RunReport(os.Args[2:]) //nolint:errcheck
 			return
 		case "skill":
-			cmd.RunSkill(os.Args[2:])
+			hookscmd.RunSkill(os.Args[2:]) //nolint:errcheck
 			return
 		}
 	}
@@ -170,50 +173,15 @@ func runDaemon() {
 	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, autostartCtrl, skillsSyncer, batchCtrl, dashboardURL(cfg.Server.URL), *cfgPath, version)
 }
 
-type mainAuthController struct{}
-
-func (c *mainAuthController) Email() string { return auth.GetEmail() }
-func (c *mainAuthController) Logout() error { return auth.Logout() }
-
-type mainAutostartController struct{ execPath string }
-
-func (c *mainAutostartController) IsEnabled() bool { return autostart.IsEnabled() }
-func (c *mainAutostartController) Enable() error   { return autostart.Enable(c.execPath) }
-func (c *mainAutostartController) Disable() error  { return autostart.Disable() }
-
-type agentController struct {
-	agents []*agent.Agent
-}
-
-func (c *agentController) Pause() {
-	for _, a := range c.agents {
-		a.Pause()
-	}
-}
-
-func (c *agentController) Resume() {
-	for _, a := range c.agents {
-		a.Resume()
-	}
-}
-
-func (c *agentController) IsPaused() bool {
-	if len(c.agents) == 0 {
-		return false
-	}
-	return c.agents[0].IsPaused()
-}
-
 func dashboardURL(cfgServerURL string) string {
 	if u := os.Getenv("TSQ_DASHBOARD_URL"); u != "" {
 		return u
 	}
-	dashURL := trimSuffix(cfgServerURL, "/api")
 	if hasSuffix(cfgServerURL, ".api.tasksquad.ai") ||
 		cfgServerURL == "https://api.tasksquad.ai" {
 		return "https://tasksquad.ai"
 	}
-	return dashURL
+	return trimSuffix(cfgServerURL, "/api")
 }
 
 func trimSuffix(s, suffix string) string {

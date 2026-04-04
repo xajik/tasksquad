@@ -1,4 +1,4 @@
-package agentkit
+package adapter
 
 import (
 	"bufio"

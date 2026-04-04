@@ -1,11 +1,11 @@
-package agentkit_test
+package adapter_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/tasksquad/daemon/agentkit"
+	"github.com/tasksquad/daemon/adapter"
 )
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -26,17 +26,17 @@ func TestFor_KnownProviders(t *testing.T) {
 		name     string
 		wantType string
 	}{
-		{"claude-code", "agentkit.ClaudeAdapter"},
-		{"claude", "agentkit.ClaudeAdapter"},
-		{"gemini", "agentkit.GeminiAdapter"},
-		{"codex", "agentkit.CodexAdapter"},
-		{"opencode", "agentkit.OpenCodeAdapter"},
-		{"stdout", "agentkit.StdoutAdapter"},
-		{"", "agentkit.ClaudeAdapter"},         // unknown → Claude default
-		{"unknown-xyz", "agentkit.ClaudeAdapter"}, // unknown → Claude default
+		{"claude-code", "adapter.ClaudeAdapter"},
+		{"claude", "adapter.ClaudeAdapter"},
+		{"gemini", "adapter.GeminiAdapter"},
+		{"codex", "adapter.CodexAdapter"},
+		{"opencode", "adapter.OpenCodeAdapter"},
+		{"stdout", "adapter.StdoutAdapter"},
+		{"", "adapter.ClaudeAdapter"},          // unknown → Claude default
+		{"unknown-xyz", "adapter.ClaudeAdapter"}, // unknown → Claude default
 	}
 	for _, tc := range cases {
-		a := agentkit.For(tc.name)
+		a := adapter.For(tc.name)
 		if a == nil {
 			t.Errorf("For(%q) returned nil", tc.name)
 		}
@@ -54,7 +54,7 @@ const claudeTranscript = `{"type":"user","message":{"role":"user","content":[{"t
 
 func TestClaudeAdapter_ParseStop_Normal(t *testing.T) {
 	body := []byte(`{"stop_reason":"end_turn","transcript_path":"/tmp/t.jsonl"}`)
-	ev, err := agentkit.ClaudeAdapter{}.ParseStop(body, false)
+	ev, err := adapter.ClaudeAdapter{}.ParseStop(body, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestClaudeAdapter_ParseStop_Normal(t *testing.T) {
 
 func TestClaudeAdapter_ParseStop_ErrorReason(t *testing.T) {
 	body := []byte(`{"stop_reason":"error","transcript_path":""}`)
-	ev, err := agentkit.ClaudeAdapter{}.ParseStop(body, false)
+	ev, err := adapter.ClaudeAdapter{}.ParseStop(body, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestClaudeAdapter_ParseStop_ErrorReason(t *testing.T) {
 
 func TestClaudeAdapter_ParseStop_Failure(t *testing.T) {
 	body := []byte(`{"error_type":"crash","transcript_path":"/tmp/t.jsonl"}`)
-	ev, err := agentkit.ClaudeAdapter{}.ParseStop(body, true)
+	ev, err := adapter.ClaudeAdapter{}.ParseStop(body, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestClaudeAdapter_ParseStop_Failure(t *testing.T) {
 
 func TestClaudeAdapter_ParseNotification(t *testing.T) {
 	body := []byte(`{"message":"need input","transcript_path":"/tmp/t.jsonl"}`)
-	ev, err := agentkit.ClaudeAdapter{}.ParseNotification(body)
+	ev, err := adapter.ClaudeAdapter{}.ParseNotification(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestClaudeAdapter_ParseNotification(t *testing.T) {
 }
 
 func TestClaudeAdapter_ParseAfterAgent_Noop(t *testing.T) {
-	ev, err := agentkit.ClaudeAdapter{}.ParseAfterAgent([]byte(`{}`))
+	ev, err := adapter.ClaudeAdapter{}.ParseAfterAgent([]byte(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,14 +117,14 @@ func TestClaudeAdapter_ParseAfterAgent_Noop(t *testing.T) {
 
 func TestClaudeAdapter_ExtractTranscript_LastTurn(t *testing.T) {
 	path := writeTempFile(t, "t.jsonl", claudeTranscript)
-	got := agentkit.ClaudeAdapter{}.ExtractTranscript(path)
+	got := adapter.ClaudeAdapter{}.ExtractTranscript(path)
 	if got != "Last turn" {
 		t.Errorf("got %q, want %q", got, "Last turn")
 	}
 }
 
 func TestClaudeAdapter_ExtractTranscript_Missing(t *testing.T) {
-	got := agentkit.ClaudeAdapter{}.ExtractTranscript("/nonexistent/path.jsonl")
+	got := adapter.ClaudeAdapter{}.ExtractTranscript("/nonexistent/path.jsonl")
 	if got != "" {
 		t.Errorf("expected empty string for missing file, got %q", got)
 	}
@@ -137,7 +137,7 @@ const geminiTranscriptArray = `{"messages":[{"type":"gemini","content":[{"text":
 
 func TestGeminiAdapter_ParseStop(t *testing.T) {
 	body := []byte(`{"reason":"end_turn","transcript_path":"/tmp/g.json"}`)
-	ev, err := agentkit.GeminiAdapter{}.ParseStop(body, false)
+	ev, err := adapter.GeminiAdapter{}.ParseStop(body, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestGeminiAdapter_ParseStop(t *testing.T) {
 
 func TestGeminiAdapter_ParseStop_ErrorReason(t *testing.T) {
 	body := []byte(`{"reason":"error","transcript_path":""}`)
-	ev, _ := agentkit.GeminiAdapter{}.ParseStop(body, false)
+	ev, _ := adapter.GeminiAdapter{}.ParseStop(body, false)
 	if !ev.IsFailure {
 		t.Error("IsFailure should be true when reason=error")
 	}
@@ -159,7 +159,7 @@ func TestGeminiAdapter_ParseStop_ErrorReason(t *testing.T) {
 
 func TestGeminiAdapter_ParseAfterAgent(t *testing.T) {
 	body := []byte(`{"prompt_response":"per-turn text","transcript_path":"/tmp/g.json"}`)
-	ev, err := agentkit.GeminiAdapter{}.ParseAfterAgent(body)
+	ev, err := adapter.GeminiAdapter{}.ParseAfterAgent(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestGeminiAdapter_ParseAfterAgent(t *testing.T) {
 
 func TestGeminiAdapter_ExtractTranscript_String(t *testing.T) {
 	path := writeTempFile(t, "t.json", geminiTranscript)
-	got := agentkit.GeminiAdapter{}.ExtractTranscript(path)
+	got := adapter.GeminiAdapter{}.ExtractTranscript(path)
 	if got != "Gemini reply" {
 		t.Errorf("got %q, want %q", got, "Gemini reply")
 	}
@@ -178,7 +178,7 @@ func TestGeminiAdapter_ExtractTranscript_String(t *testing.T) {
 
 func TestGeminiAdapter_ExtractTranscript_ArrayContent(t *testing.T) {
 	path := writeTempFile(t, "t.json", geminiTranscriptArray)
-	got := agentkit.GeminiAdapter{}.ExtractTranscript(path)
+	got := adapter.GeminiAdapter{}.ExtractTranscript(path)
 	if got != "part1\npart2" {
 		t.Errorf("got %q, want %q", got, "part1\npart2")
 	}
@@ -188,7 +188,7 @@ func TestGeminiAdapter_ExtractTranscript_ArrayContent(t *testing.T) {
 
 func TestOpenCodeAdapter_ParseStop_HookMessage(t *testing.T) {
 	body := []byte(`{"stop_reason":"end_turn","message":"Clean response","transcript_path":"/tmp/oc.json"}`)
-	ev, err := agentkit.OpenCodeAdapter{}.ParseStop(body, false)
+	ev, err := adapter.OpenCodeAdapter{}.ParseStop(body, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestOpenCodeAdapter_ParseStop_HookMessage(t *testing.T) {
 }
 
 func TestOpenCodeAdapter_ParseAfterAgent_Noop(t *testing.T) {
-	ev, err := agentkit.OpenCodeAdapter{}.ParseAfterAgent([]byte(`{}`))
+	ev, err := adapter.OpenCodeAdapter{}.ParseAfterAgent([]byte(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestOpenCodeAdapter_ExtractTranscript_DelegatesGemini(t *testing.T) {
 	// OpenCode transcript is Gemini-compatible JSON format
 	content := `{"messages":[{"type":"assistant","content":"DONE"}]}`
 	path := writeTempFile(t, "t.json", content)
-	got := agentkit.OpenCodeAdapter{}.ExtractTranscript(path)
+	got := adapter.OpenCodeAdapter{}.ExtractTranscript(path)
 	if got != "DONE" {
 		t.Errorf("got %q, want DONE", got)
 	}
@@ -224,7 +224,7 @@ func TestOpenCodeAdapter_ExtractTranscript_DelegatesGemini(t *testing.T) {
 
 func TestCodexAdapter_ParseStop_Normal_Noop(t *testing.T) {
 	// Codex normal completion goes via /hooks/codex, not /hooks/stop
-	ev, err := agentkit.CodexAdapter{}.ParseStop([]byte(`{}`), false)
+	ev, err := adapter.CodexAdapter{}.ParseStop([]byte(`{}`), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestCodexAdapter_ParseStop_Normal_Noop(t *testing.T) {
 
 func TestCodexAdapter_ParseStop_Failure(t *testing.T) {
 	body := []byte(`{"error_type":"crash","transcript_path":""}`)
-	ev, err := agentkit.CodexAdapter{}.ParseStop(body, true)
+	ev, err := adapter.CodexAdapter{}.ParseStop(body, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestCodexAdapter_ParseStop_Failure(t *testing.T) {
 }
 
 func TestCodexAdapter_ExtractTranscript_AlwaysEmpty(t *testing.T) {
-	got := agentkit.CodexAdapter{}.ExtractTranscript("/any/path")
+	got := adapter.CodexAdapter{}.ExtractTranscript("/any/path")
 	if got != "" {
 		t.Errorf("Codex should never return transcript text, got %q", got)
 	}
@@ -257,14 +257,14 @@ func TestCodexAdapter_ExtractTranscript_AlwaysEmpty(t *testing.T) {
 // ── StdoutAdapter ─────────────────────────────────────────────────────────────
 
 func TestStdoutAdapter_AllNoops(t *testing.T) {
-	a := agentkit.StdoutAdapter{}
-	if ev, _ := a.ParseStop(nil, false); ev != (agentkit.StopEvent{}) {
+	a := adapter.StdoutAdapter{}
+	if ev, _ := a.ParseStop(nil, false); ev != (adapter.StopEvent{}) {
 		t.Error("StopEvent should be zero")
 	}
-	if ev, _ := a.ParseNotification(nil); ev != (agentkit.NotificationEvent{}) {
+	if ev, _ := a.ParseNotification(nil); ev != (adapter.NotificationEvent{}) {
 		t.Error("NotificationEvent should be zero")
 	}
-	if ev, _ := a.ParseAfterAgent(nil); ev != (agentkit.AfterAgentEvent{}) {
+	if ev, _ := a.ParseAfterAgent(nil); ev != (adapter.AfterAgentEvent{}) {
 		t.Error("AfterAgentEvent should be zero")
 	}
 	if got := a.ExtractTranscript("/any"); got != "" {
