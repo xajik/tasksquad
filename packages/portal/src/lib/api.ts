@@ -190,6 +190,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    critique: (teamId: string, noteId: string, body: { agent_id: string; context?: string; include_comments?: boolean }) =>
+      request<{ task_id: string }>(`/teams/${teamId}/notes/${noteId}/critique`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     listLinkedTasks: (teamId: string, noteId: string) =>
       request<{ tasks: LinkedTask[] }>(`/teams/${teamId}/notes/${noteId}/tasks`),
   },
@@ -326,7 +331,9 @@ export interface LinkedTask {
 export interface NoteComment {
   id: string
   note_id: string
-  author_id: string
+  author_id: string | null
+  agent_id?: string | null
+  agent_name?: string | null
   content: string
   created_at: number
 }

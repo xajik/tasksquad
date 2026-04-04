@@ -463,6 +463,24 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   await env.DB.batch(ops)
 
   const agentName = session.agent_name ?? 'Agent'
+
+  // If this is a note-critique task that just completed, post agent response as note comment
+  if (taskStatus === 'done' && final_text) {
+    const critiqueMsg = await env.DB
+      .prepare("SELECT json_payload FROM messages WHERE task_id = ? AND type = 'note-critique' AND role = 'system' LIMIT 1")
+      .bind(session.task_id)
+      .first<{ json_payload: string }>()
+
+    if (critiqueMsg) {
+      try {
+        const payload = JSON.parse(critiqueMsg.json_payload) as { note_id: string; agent_name: string }
+        await env.DB
+          .prepare('INSERT INTO note_comments (id, note_id, author_id, agent_id, agent_name, content, created_at) VALUES (?, ?, NULL, ?, ?, ?, ?)')
+          .bind(ulid(), payload.note_id, agentId, payload.agent_name ?? agentName, final_text, now)
+          .run()
+      } catch {}
+    }
+  }
   const notifTitle = taskStatus === 'done' ? `${agentName} completed a task`
     : taskStatus === 'waiting_input' ? `${agentName} needs your input`
     : `${agentName} failed`
@@ -504,6 +522,24 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
   }
 
   await env.DB.batch(ops)
+
+  // If this is a note-critique task, post agent output as a note comment
+  if (output) {
+    const critiqueMsg = await env.DB
+      .prepare("SELECT json_payload FROM messages WHERE task_id = ? AND type = 'note-critique' AND role = 'system' LIMIT 1")
+      .bind(session.task_id)
+      .first<{ json_payload: string }>()
+
+    if (critiqueMsg) {
+      try {
+        const payload = JSON.parse(critiqueMsg.json_payload) as { note_id: string; agent_name: string }
+        await env.DB
+          .prepare('INSERT INTO note_comments (id, note_id, author_id, agent_id, agent_name, content, created_at) VALUES (?, ?, NULL, ?, ?, ?, ?)')
+          .bind(ulid(), payload.note_id, agentId, payload.agent_name, output, now)
+          .run()
+      } catch {}
+    }
+  }
 
   await notifyTeamMembers(env, session.task_id, 'Task completed', `Completed: ${session.subject}`)
 

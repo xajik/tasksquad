@@ -49,6 +49,7 @@ import {
   Bold, Italic, Strikethrough, Code, Code2, List, ListOrdered,
   ListTodo, Quote, Minus, Undo, Redo, Heading1, Heading2, Heading3,
   Link2, CheckCircle2, Clock, XCircle, CircleDot, Archive, ArchiveRestore,
+  BrainCircuit, Bot,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -376,6 +377,87 @@ function NoteToInboxDialog({ noteId, teamId, isOpen, onOpenChange, onSuccess }: 
   )
 }
 
+// ─── Critique Dialog ──────────────────────────────────────────────────────────
+
+function CritiqueDialog({ noteId, teamId, isOpen, onOpenChange, onSuccess }: {
+  noteId: string; teamId: string; isOpen: boolean; onOpenChange: (open: boolean) => void; onSuccess?: () => void
+}) {
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [agentId, setAgentId] = useState('')
+  const [context, setContext] = useState('')
+  const [includeComments, setIncludeComments] = useState(false)
+  const [sending, setSending] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) api.agents.list(teamId).then(d => setAgents(d.agents ?? []))
+  }, [isOpen, teamId])
+
+  async function handleSend() {
+    if (!agentId) return
+    setSending(true)
+    try {
+      await api.notes.critique(teamId, noteId, { agent_id: agentId, context: context || undefined, include_comments: includeComments })
+      trackEvent('note_critique', { team_id: teamId, agent_id: agentId })
+      onOpenChange(false)
+      onSuccess?.()
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Critique with Agent</DialogTitle>
+          <DialogDescription>
+            Invite an agent to review and comment on this note. The agent&apos;s response will be added as a comment.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-2">
+            <Label>Agent</Label>
+            <Select value={agentId} onValueChange={setAgentId}>
+              <SelectTrigger><SelectValue placeholder="Select agent..." /></SelectTrigger>
+              <SelectContent>
+                {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label>Context (Optional)</Label>
+            <Textarea
+              placeholder="e.g. Can you review this for inconsistencies with the codebase?"
+              value={context}
+              onChange={e => setContext(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="critique-include-comments"
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              checked={includeComments}
+              onChange={e => setIncludeComments(e.target.checked)}
+            />
+            <Label htmlFor="critique-include-comments" className="font-normal cursor-pointer">Include comments in context</Label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSend} disabled={!agentId || sending}>
+            {sending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <BrainCircuit className="h-4 w-4 mr-2" />}
+            Critique
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Note Detail ──────────────────────────────────────────────────────────────
 
 export function NoteDetail({ teamId }: { teamId: string }) {
@@ -391,6 +473,7 @@ export function NoteDetail({ teamId }: { teamId: string }) {
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<number | null>(null)
   const [showInboxDialog, setShowInboxDialog] = useState(false)
+  const [showCritiqueDialog, setShowCritiqueDialog] = useState(false)
   const [showMobileComments, setShowMobileComments] = useState(false)
   const [sidebarTab, setSidebarTab] = useState<'comments' | 'tasks'>('comments')
 
@@ -528,11 +611,13 @@ export function NoteDetail({ teamId }: { teamId: string }) {
     }
   }
 
-  const authorLabel = (authorId: string): string => {
-    if (authorId === currentUserId) {
+  const authorLabel = (c: NoteComment): string => {
+    if (c.agent_name) return c.agent_name
+    if (!c.author_id) return 'Agent'
+    if (c.author_id === currentUserId) {
       return auth.currentUser?.displayName || auth.currentUser?.email || 'You'
     }
-    return members.find(m => m.id === authorId)?.email ?? 'Unknown'
+    return members.find(m => m.id === c.author_id)?.email ?? 'Unknown'
   }
 
   const getInitials = (name: string): string => {
@@ -571,14 +656,20 @@ export function NoteDetail({ teamId }: { teamId: string }) {
                 )}
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="h-6 w-6 rounded-full bg-primary/20 text-primary text-[10px] font-medium flex items-center justify-center shrink-0">
-                    {getInitials(authorLabel(c.author_id))}
+                  <div className={cn(
+                    'h-6 w-6 rounded-full text-[10px] font-medium flex items-center justify-center shrink-0',
+                    c.agent_id ? 'bg-violet-500/15 text-violet-600' : 'bg-primary/20 text-primary'
+                  )}>
+                    {c.agent_id ? <Bot className="h-3.5 w-3.5" /> : getInitials(authorLabel(c))}
                   </div>
-                  <span className="font-semibold text-xs text-foreground">{authorLabel(c.author_id)}</span>
+                  <span className="font-semibold text-xs text-foreground">{authorLabel(c)}</span>
+                  {c.agent_id && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-violet-500/10 text-violet-600 font-medium">Agent</span>
+                  )}
                   <span className="text-[10px] text-muted-foreground ml-auto">
                     {formatTimestamp(c.created_at)}
                   </span>
-                  {c.author_id === currentUserId && (
+                  {c.author_id === currentUserId && !c.agent_id && (
                     <button
                       onClick={() => deleteComment(c.id)}
                       className="text-muted-foreground hover:text-destructive transition-colors"
@@ -704,6 +795,12 @@ export function NoteDetail({ teamId }: { teamId: string }) {
             )}
           </Button>
 
+          {!note?.archived_at && (
+            <Button variant="outline" size="sm" onClick={() => setShowCritiqueDialog(true)}>
+              <BrainCircuit className="h-3.5 w-3.5 mr-1.5" />
+              Critique
+            </Button>
+          )}
           {!note?.archived_at && (
             <Button variant="outline" size="sm" onClick={() => setShowInboxDialog(true)}>
               <Send className="h-3.5 w-3.5 mr-1.5" />
@@ -883,6 +980,13 @@ export function NoteDetail({ teamId }: { teamId: string }) {
         isOpen={showInboxDialog}
         onOpenChange={setShowInboxDialog}
         onSuccess={() => { loadLinkedTasks(); setSidebarTab('tasks') }}
+      />
+      <CritiqueDialog
+        noteId={noteId!}
+        teamId={teamId}
+        isOpen={showCritiqueDialog}
+        onOpenChange={setShowCritiqueDialog}
+        onSuccess={() => loadComments()}
       />
     </div>
   )

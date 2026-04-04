@@ -417,7 +417,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
   const [autoClose, setAutoClose] = useState(false)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
-  const [activeFilter, setActiveFilter] = useState<'all' | 'system' | 'mine' | 'from-note' | 'scheduled'>('all')
+  const [activeFilter, setActiveFilter] = useState<'all' | 'system' | 'mine' | 'from-note' | 'note-critique' | 'scheduled'>('all')
   const nav = useNavigate()
 
   const prevTaskStatusesRef = useRef<Record<string, string>>({})
@@ -504,6 +504,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
     if (activeFilter === 'system') return tasks.filter(t => t.first_message_role === 'system' && t.first_message_type !== 'note-to-inbox')
     if (activeFilter === 'mine') return tasks.filter(t => t.first_message_role === 'user' && t.sender_id === internalUserId && t.first_message_type !== 'note-to-inbox')
     if (activeFilter === 'from-note') return tasks.filter(t => t.first_message_type === 'note-to-inbox')
+    if (activeFilter === 'note-critique') return tasks.filter(t => t.first_message_type === 'note-critique')
     if (activeFilter === 'scheduled') return tasks.filter(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
     return tasks
   }, [tasks, activeFilter, internalUserId])
@@ -511,6 +512,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
   const hasSystem = useMemo(() => tasks.some(t => t.first_message_role === 'system' && t.first_message_type !== 'note-to-inbox'), [tasks])
   const hasMine = useMemo(() => tasks.some(t => t.first_message_role === 'user' && t.sender_id === internalUserId && t.first_message_type !== 'note-to-inbox'), [tasks])
   const hasNotes = useMemo(() => tasks.some(t => t.first_message_type === 'note-to-inbox'), [tasks])
+  const hasCritiques = useMemo(() => tasks.some(t => t.first_message_type === 'note-critique'), [tasks])
   const hasScheduled = useMemo(() => {
     const now = Date.now()
     return tasks.some(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
@@ -532,7 +534,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
         </div>
       </div>
 
-      {(hasSystem || hasMine || hasNotes || hasScheduled) && (
+      {(hasSystem || hasMine || hasNotes || hasCritiques || hasScheduled) && (
         <div className="flex items-center gap-1.5 mb-6 flex-wrap">
           <Button
             variant={activeFilter === 'all' ? 'default' : 'outline'}
@@ -570,6 +572,16 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
               onClick={() => setActiveFilter(activeFilter === 'from-note' ? 'all' : 'from-note')}
             >
               From Note
+            </Button>
+          )}
+          {hasCritiques && (
+            <Button
+              variant={activeFilter === 'note-critique' ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 rounded-full px-3 text-xs"
+              onClick={() => setActiveFilter(activeFilter === 'note-critique' ? 'all' : 'note-critique')}
+            >
+              Note Comments
             </Button>
           )}
           {hasScheduled && (

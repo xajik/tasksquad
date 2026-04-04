@@ -288,6 +288,75 @@ export async function listLinkedTasks(req: Request, env: Env, _ctx: unknown, aut
   return json({ tasks: tasks.results })
 }
 
+// ─── Critique with Agent ──────────────────────────────────────────────────────
+
+export async function critique(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const parts = url.pathname.split('/')
+  const teamId = parts[2]
+  const noteId = parts[4]
+
+  if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
+
+  const note = await env.DB.prepare('SELECT * FROM notes WHERE id = ? AND team_id = ?').bind(noteId, teamId).first<{ title: string; content: string }>()
+  if (!note) return err('not_found', 404)
+
+  const body = await req.json<{ agent_id: string; context?: string; include_comments?: boolean }>()
+  const { agent_id, context, include_comments } = body
+  if (!agent_id) return err('agent_required', 400)
+
+  const agentRow = await env.DB.prepare('SELECT id, name FROM agents WHERE id = ? AND team_id = ?').bind(agent_id, teamId).first<{ id: string; name: string }>()
+  if (!agentRow) return err('agent_not_found', 404)
+
+  // Build prompt: Context → Note → Comments (per spec)
+  const sections: string[] = [`# ${note.title}`]
+
+  if (context?.trim()) {
+    sections.push(`\n## Context\n${context.trim()}`)
+  }
+
+  sections.push(`\n## Content\n${note.content}`)
+
+  if (include_comments) {
+    const comments = await env.DB
+      .prepare(`
+        SELECT nc.content, nc.agent_name,
+               COALESCE(u.email, nc.agent_name, 'Unknown') as author_label
+        FROM note_comments nc
+        LEFT JOIN users u ON u.id = nc.author_id
+        WHERE nc.note_id = ?
+        ORDER BY nc.created_at ASC
+      `)
+      .bind(noteId)
+      .all<{ content: string; author_label: string }>()
+
+    if (comments.results.length > 0) {
+      const commentLines = comments.results.map(c => `${c.author_label}:\n"${c.content}"`).join('\n\n')
+      sections.push(`\n## Comments\n${commentLines}`)
+    }
+  }
+
+  const agentBody = sections.join('\n')
+  const taskId = ulid()
+  const now = Date.now()
+  const payload = JSON.stringify({ note_id: noteId, note_title: note.title, agent_id, agent_name: agentRow.name })
+
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, 1)')
+      .bind(taskId, teamId, agent_id, auth.userId, `Critique: ${note.title}`, 'pending', now),
+    // System message — tracks this as a critique task and stores note reference
+    env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(ulid(), taskId, auth.userId, 'system', 'note-critique', `Critique requested for "${note.title}"`, payload, now),
+    // User message — the formatted prompt delivered to the agent
+    env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(ulid(), taskId, auth.userId, 'user', 'note-critique', agentBody, payload, now),
+  ])
+
+  await bumpInboxVersion(env, agent_id)
+
+  return json({ task_id: taskId })
+}
+
 // ─── Convert to Inbox ─────────────────────────────────────────────────────────
 
 export async function convertToInbox(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
