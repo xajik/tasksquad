@@ -12,12 +12,12 @@ import (
 
 // Gemini is the provider for Google's Gemini CLI.
 //
-// Completion is signalled via hooks written to <workDir>/.gemini/settings.json:
-//   - SessionEnd hook   → POST /hooks/stop        (task finished)
-//   - Notification hook → POST /hooks/notification (waiting for input)
+// Completion is signalled via AfterAgent hook written to <workDir>/.gemini/settings.json:
+//   - AfterAgent hook → POST /hooks/stop (task finished)
 //
-// The daemon hook server (hooks/server.go) receives these and calls
-// agent.Complete() / agent.SetWaitingInput() accordingly.
+// The daemon hook server (hooks/server.go) receives this and calls
+// agent.StopAndPause() which posts the final message and moves to waiting_input.
+// With auto_close enabled, the worker converts waiting_input to closed (done).
 type Gemini struct{}
 
 func (p *Gemini) Name() string    { return "gemini" }
@@ -33,7 +33,7 @@ func (p *Gemini) Stdin(prompt string) string { return prompt }
 func (p *Gemini) ExtraArgs() []string        { return nil }
 func (p *Gemini) TmuxReadyIndicator() string { return "Ready" }
 
-// Setup writes .gemini/settings.json into workDir with SessionEnd and Notification hooks
+// Setup writes .gemini/settings.json into workDir with AfterAgent hook
 // pointing to the daemon's local hook server on hooksPort.
 func (p *Gemini) Setup(workDir string, hooksPort int, agentID string, taskID string) error {
 	geminiDir := filepath.Join(workDir, ".gemini")
@@ -49,13 +49,13 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentID string, taskID str
 		_ = json.Unmarshal(data, &existing)
 	}
 
+	// AfterAgent triggers on every model turn. We use it as the completion signal
+	// to align with Claude Code's Stop hook behavior.
 	stopURL := fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
-	notifURL := fmt.Sprintf("http://localhost:%d/hooks/notification?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
-	afterAgentURL := fmt.Sprintf("http://localhost:%d/hooks/after_agent?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
 
 	// Gemini CLI hooks structure: {"hooks": {"EventName": [{"matcher": "*", "hooks": [...]}]}}
 	existing["hooks"] = map[string]any{
-		"SessionEnd": []any{
+		"AfterAgent": []any{
 			map[string]any{
 				"matcher": "*",
 				"hooks": []any{
@@ -63,32 +63,6 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentID string, taskID str
 						"name":    "tasksquad-stop",
 						"type":    "command",
 						"command": geminiHookCmd(stopURL),
-						"timeout": 5000,
-					},
-				},
-			},
-		},
-		"Notification": []any{
-			map[string]any{
-				"matcher": "*",
-				"hooks": []any{
-					map[string]any{
-						"name":    "tasksquad-notif",
-						"type":    "command",
-						"command": geminiHookCmd(notifURL),
-						"timeout": 5000,
-					},
-				},
-			},
-		},
-		"AfterAgent": []any{
-			map[string]any{
-				"matcher": "*",
-				"hooks": []any{
-					map[string]any{
-						"name":    "tasksquad-after-agent",
-						"type":    "command",
-						"command": geminiHookCmd(afterAgentURL),
 						"timeout": 5000,
 					},
 				},

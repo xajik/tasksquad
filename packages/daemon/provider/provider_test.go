@@ -1,6 +1,11 @@
 package provider
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"strings"
+	"testing"
+)
 
 func TestDetect_ByBinaryName(t *testing.T) {
 	cases := []struct {
@@ -83,6 +88,74 @@ func TestProvider_Gemini_Basics(t *testing.T) {
 	}
 	if !p.UsesHooks() {
 		t.Error("Gemini should use hooks")
+	}
+}
+
+func TestProvider_Gemini_SetsUpAfterAgentHook(t *testing.T) {
+	// Create a temp directory for the test
+	tmpDir := t.TempDir()
+
+	p := &Gemini{}
+	err := p.Setup(tmpDir, 7374, "agent-123", "task-456")
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	// Read the generated settings.json
+	settingsPath := tmpDir + "/.gemini/settings.json"
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("Failed to read settings.json: %v", err)
+	}
+
+	// Parse and verify the hooks
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("Failed to parse settings.json: %v", err)
+	}
+
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		t.Fatal("settings.json missing 'hooks' key")
+	}
+
+	// Should only have AfterAgent hook (no SessionEnd, no Notification)
+	if _, hasSessionEnd := hooks["SessionEnd"]; hasSessionEnd {
+		t.Error("不应该有 SessionEnd hook")
+	}
+	if _, hasNotif := hooks["Notification"]; hasNotif {
+		t.Error("不应该有 Notification hook")
+	}
+
+	afterAgent, ok := hooks["AfterAgent"].([]any)
+	if !ok || len(afterAgent) == 0 {
+		t.Fatal("缺少 AfterAgent hook")
+	}
+
+	// Verify the hook calls /hooks/stop
+	hookConfig, ok := afterAgent[0].(map[string]any)
+	if !ok {
+		t.Fatal("AfterAgent hook config 格式错误")
+	}
+	hooksList, ok := hookConfig["hooks"].([]any)
+	if len(hooksList) == 0 {
+		t.Fatal("AfterAgent hooks list 为空")
+	}
+	cmdHook, ok := hooksList[0].(map[string]any)
+	if !ok {
+		t.Fatal("AfterAgent hook 格式错误")
+	}
+
+	cmd, ok := cmdHook["command"].(string)
+	if !ok {
+		t.Fatal("缺少 command 字段")
+	}
+	// Verify it points to /hooks/stop, not /hooks/after_agent
+	if !strings.Contains(cmd, "/hooks/stop") {
+		t.Errorf("hook command 应该包含 /hooks/stop，实际: %s", cmd)
+	}
+	if strings.Contains(cmd, "/hooks/after_agent") {
+		t.Error("hook command 不应该包含 /hooks/after_agent")
 	}
 }
 
