@@ -847,3 +847,41 @@ export async function userAgents(req: Request, env: Env, _ctx: unknown): Promise
   return json({ agents })
 }
 
+/**
+ * POST /daemon/session/state
+ *
+ * Request:  { "sessions": ["sessionID1", "sessionID2", ...] }
+ * Response: { "states": { "sessionID1": { "task_id": "...", "task_status": "done", "session_status": "closed" }, ... } }
+ *
+ * Used by orphan cleanup to detect stale tmux sessions.
+ * Uses Firebase auth - validates user via Firebase JWT.
+ */
+export async function sessionState(req: Request, env: Env, _ctx: unknown): Promise<Response> {
+  const body = await req.json<{ sessions?: string[] }>().catch(() => ({} as { sessions?: string[] }))
+  const sessions = body.sessions ?? []
+  if (!sessions.length) return err('missing_fields', 400)
+
+  // Firebase auth - just verify user is logged in
+  const authResult = await withFirebaseAuth(req, env)
+  if (authResult instanceof Response) return authResult
+
+  const placeholders = sessions.map(() => '?').join(',')
+  const rows = await env.DB.prepare(`
+    SELECT s.id, s.task_id, s.status AS session_status, t.status AS task_status
+    FROM sessions s
+    JOIN tasks t ON t.id = s.task_id
+    WHERE s.id IN (${placeholders})
+  `).bind(...sessions).all<{ id: string; task_id: string; session_status: string; task_status: string }>()
+
+  const states: Record<string, { task_id: string; task_status: string; session_status: string }> = {}
+  for (const row of rows.results) {
+    states[row.id] = {
+      task_id: row.task_id,
+      task_status: row.task_status,
+      session_status: row.session_status,
+    }
+  }
+
+  return json({ states })
+}
+

@@ -16,6 +16,7 @@ import (
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/orphan"
 	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/skills"
 	"github.com/tasksquad/daemon/supervisor"
@@ -28,10 +29,10 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "init":
-			authcmd.RunInit()   //nolint:errcheck
+			authcmd.RunInit() //nolint:errcheck
 			return
 		case "login":
-			authcmd.RunLogin()  //nolint:errcheck
+			authcmd.RunLogin() //nolint:errcheck
 			return
 		case "logout":
 			authcmd.RunLogout() //nolint:errcheck
@@ -141,6 +142,15 @@ func runDaemon() {
 
 	batchCtrl := agent.NewBatchController()
 	go agent.RunBatch(cfg, rawAgents, batchCtrl)
+
+	// Start orphan cleanup (runs on startup + hourly)
+	token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)
+	if err == nil && token != "" {
+		orphanCtrl := orphan.New(cfg, token)
+		go orphanCtrl.Run()
+	} else {
+		logger.Warn("[orphan] skipped: no auth token")
+	}
 
 	supAgents := make([]supervisor.MonitoredAgent, len(rawAgents))
 	for i, a := range rawAgents {
