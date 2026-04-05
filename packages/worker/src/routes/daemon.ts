@@ -579,6 +579,22 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
       env.DB.prepare("UPDATE agents SET status = 'idle' WHERE id = ?").bind(agentId),
       env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
     ])
+
+    // If this is a note-critique task, post agent response as note comment
+    const critiqueMsg = await env.DB
+      .prepare("SELECT json_payload FROM messages WHERE task_id = ? AND type = 'note-critique' AND role = 'system' LIMIT 1")
+      .bind(session.task_id)
+      .first<{ json_payload: string }>()
+    if (critiqueMsg) {
+      try {
+        const payload = JSON.parse(critiqueMsg.json_payload) as { note_id: string; agent_name: string }
+        await env.DB
+          .prepare('INSERT INTO note_comments (id, note_id, author_id, agent_id, agent_name, content, created_at) VALUES (?, ?, NULL, ?, ?, ?, ?)')
+          .bind(ulid(), payload.note_id, agentId, payload.agent_name ?? agentName, message, now)
+          .run()
+      } catch {}
+    }
+
     await notifyTeamMembers(env, session.task_id, `${agentName} completed a task`, session.subject)
     return json({ ok: true, close: true, session_id, message_id: msgId })
   }
