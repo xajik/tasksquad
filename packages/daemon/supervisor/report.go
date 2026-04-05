@@ -72,11 +72,7 @@ func (s *Supervisor) cleanOrphans() {
 		suffix := strings.TrimPrefix(name, "tsq-sup-")
 		isActive := false
 		for taskID := range s.activeForTask {
-			taskSuffix := taskID
-			if len(taskSuffix) > 8 {
-				taskSuffix = taskSuffix[:8]
-			}
-			if taskSuffix == suffix {
+			if taskID == suffix {
 				isActive = true
 				break
 			}

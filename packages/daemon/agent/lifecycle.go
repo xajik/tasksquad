@@ -188,12 +188,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 			return
 		}
 
-		sessionSuffix := sessionID
-		if len(sessionSuffix) > 8 {
-			sessionSuffix = sessionSuffix[:8]
-		}
-		sessionName := fmt.Sprintf("tsq-%s", sessionSuffix)
-		fifoPath := fmt.Sprintf("/tmp/tsq-%s.fifo", sessionSuffix)
+		sessionName := fmt.Sprintf("tsq-%s", sessionID)
+		fifoPath := fmt.Sprintf("/tmp/tsq-%s.fifo", sessionID)
 		os.Remove(fifoPath)
 
 		if err := mkfifo(fifoPath, 0644); err != nil {

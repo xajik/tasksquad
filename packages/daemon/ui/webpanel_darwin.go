@@ -6,8 +6,39 @@ package ui
 #cgo CFLAGS: -x objective-c -fblocks
 #cgo LDFLAGS: -framework Cocoa -framework WebKit
 #include <stdlib.h>
+#include <objc/runtime.h>
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
+
+// TSQUIDelegate forwards JS confirm/alert/prompt dialogs to native NSAlert sheets.
+@interface TSQUIDelegate : NSObject <WKUIDelegate>
+@end
+
+@implementation TSQUIDelegate
+
+- (void)webView:(WKWebView*)webView
+    runJavaScriptConfirmPanelWithMessage:(NSString*)message
+    initiatedByFrame:(WKFrameInfo*)frame
+    completionHandler:(void (^)(BOOL))completionHandler {
+    NSAlert* alert = [[NSAlert alloc] init];
+    alert.messageText = message;
+    [alert addButtonWithTitle:@"OK"];
+    [alert addButtonWithTitle:@"Cancel"];
+    completionHandler([alert runModal] == NSAlertFirstButtonReturn);
+}
+
+- (void)webView:(WKWebView*)webView
+    runJavaScriptAlertPanelWithMessage:(NSString*)message
+    initiatedByFrame:(WKFrameInfo*)frame
+    completionHandler:(void (^)(void))completionHandler {
+    NSAlert* alert = [[NSAlert alloc] init];
+    alert.messageText = message;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    completionHandler();
+}
+
+@end
 
 void tsq_open_panel(const char* url, const char* title, int w, int h) {
     NSString* nsURL   = [[NSString alloc] initWithUTF8String:url];
@@ -33,6 +64,11 @@ void tsq_open_panel(const char* url, const char* title, int w, int h) {
         WKWebViewConfiguration* cfg = [[WKWebViewConfiguration alloc] init];
         WKWebView* wv = [[WKWebView alloc] initWithFrame:frame configuration:cfg];
         wv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+
+        TSQUIDelegate* delegate = [[TSQUIDelegate alloc] init];
+        wv.UIDelegate = delegate;
+        // Retain delegate for the lifetime of the window via associated objects.
+        objc_setAssociatedObject(win, "tsq_ui_delegate", delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
         NSURL* loadURL = [NSURL URLWithString:nsURL];
         [wv loadRequest:[NSURLRequest requestWithURL:loadURL]];

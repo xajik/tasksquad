@@ -306,7 +306,7 @@ pre {
   display: flex;
   gap: 10px;
   padding: 9px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid hsl(222.2 47.4% 13%);
   align-items: flex-start;
 }
 .tl-event:last-child { border-bottom: none; }
@@ -322,18 +322,18 @@ pre {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: var(--muted-fg);
+  color: hsl(210 40% 55%);
 }
 .tl-text {
   font-size: 12px;
-  color: var(--fg);
+  color: hsl(210 40% 88%);
   margin-top: 2px;
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 120px;
   overflow-y: auto;
 }
-.tl-ts { font-size: 10px; color: var(--muted-fg); margin-top: 2px; }
+.tl-ts { font-size: 10px; color: hsl(210 40% 45%); margin-top: 2px; }
 .dot-user   { background: var(--accent-blue); }
 .dot-agent  { background: #16a34a; }
 .dot-end    { background: var(--muted-fg); }
@@ -597,6 +597,9 @@ async function showSupervisorLog(e, taskId, agentName) {
 async function killSession(e, name) {
   e.stopPropagation();
   if (!confirm('Kill session ' + name + '?\n\nThe task will remain on the server; the daemon will clean up on the next heartbeat.')) return;
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = 'Killing…';
   try {
     const r = await fetch('/api/session/kill', {
       method: 'POST',
@@ -604,8 +607,8 @@ async function killSession(e, name) {
       body: JSON.stringify({name}),
     });
     if (r.ok || r.status === 204) load();
-    else alert('Kill failed: ' + await r.text());
-  } catch(e) { alert('Error: ' + e.message); }
+    else { alert('Kill failed: ' + await r.text()); btn.disabled = false; btn.textContent = 'Kill'; }
+  } catch(err) { alert('Error: ' + err.message); btn.disabled = false; btn.textContent = 'Kill'; }
 }
 
 function openPortal() { if (PORTAL_URL) window.open(PORTAL_URL, '_blank'); }

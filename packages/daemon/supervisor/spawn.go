@@ -57,11 +57,7 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 		return
 	}
 
-	suffix := taskID
-	if len(suffix) > 8 {
-		suffix = suffix[:8]
-	}
-	sessionName := "tsq-sup-" + suffix
+	sessionName := "tsq-sup-" + taskID
 	workDir := a.WorkDir()
 	agentTmux := a.TmuxSession()
 	agentID := a.AgentID()

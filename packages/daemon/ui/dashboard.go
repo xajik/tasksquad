@@ -66,19 +66,19 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 	})
 
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
-		// Map session suffix → (agentName, taskID) for linked sessions.
+		// Build lookup maps for matching tmux sessions to agents.
+		// Task sessions:       tsq-<sessionID>      — matched by agent's TmuxSession() value.
+		// Supervisor sessions: tsq-sup-<taskID>     — matched by agent's task ID.
 		type linked struct{ agent, task string }
-		byPrefix := map[string]linked{}
+		bySession := map[string]linked{} // full tmux session name → linked
+		byTaskID := map[string]linked{}  // full task ID → linked
 		for _, a := range agents {
-			tid := a.GetTaskID()
-			if tid == "" {
-				continue
+			if sess := a.TmuxSession(); sess != "" {
+				bySession[sess] = linked{a.Name(), a.GetTaskID()}
 			}
-			prefix := tid
-			if len(prefix) > 8 {
-				prefix = prefix[:8]
+			if tid := a.GetTaskID(); tid != "" {
+				byTaskID[tid] = linked{a.Name(), tid}
 			}
-			byPrefix[prefix] = linked{a.Name(), tid}
 		}
 
 		var agts []dashAgent
@@ -109,10 +109,10 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 				if !strings.HasPrefix(line, "tsq-") || line == "" {
 					continue
 				}
-				// Supervisor sessions: tsq-sup-<taskID[:8]>
+				// Supervisor sessions: tsq-sup-<taskID>
 				if strings.HasPrefix(line, "tsq-sup-") {
-					taskSuffix := strings.TrimPrefix(line, "tsq-sup-")
-					lnk, ok := byPrefix[taskSuffix]
+					taskID := strings.TrimPrefix(line, "tsq-sup-")
+					lnk, ok := byTaskID[taskID]
 					sessions = append(sessions, dashSession{
 						Name:         line,
 						AgentName:    lnk.agent,
@@ -122,9 +122,8 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 					})
 					continue
 				}
-				// Regular agent sessions: tsq-<taskID[:8]>
-				suffix := strings.TrimPrefix(line, "tsq-")
-				lnk, ok := byPrefix[suffix]
+				// Regular agent sessions: tsq-<sessionID>
+				lnk, ok := bySession[line]
 				sessions = append(sessions, dashSession{
 					Name:      line,
 					AgentName: lnk.agent,
