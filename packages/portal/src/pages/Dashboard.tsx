@@ -381,6 +381,11 @@ function useTeam() {
     loadTeams()
   }, [])
 
+  async function refreshTeams() {
+    const data = await api.teams.list()
+    setTeams(data.teams ?? [])
+  }
+
   async function createTeam(name: string) {
     const t = await api.teams.create(name)
     trackEvent('team_created', { team_id: t.id, name: t.name });
@@ -401,7 +406,7 @@ function useTeam() {
     window.location.reload()
   }
 
-  return { teamId, teamName, teams, isLoadingTeams, createTeam, switchTeam }
+  return { teamId, teamName, teams, isLoadingTeams, createTeam, switchTeam, refreshTeams }
 }
 
 function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId: string | null }) {
@@ -581,7 +586,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
               className="h-7 rounded-full px-3 text-xs"
               onClick={() => setActiveFilter(activeFilter === 'note-critique' ? 'all' : 'note-critique')}
             >
-              Note Comments
+              Critique
             </Button>
           )}
           {hasScheduled && (
@@ -1654,11 +1659,6 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
     } finally { setSavingRole(false) }
   }
 
-  async function toggleLearnFromSession(agentId: string, current: boolean) {
-    await api.agents.updateLearnFromSession(teamId, agentId, !current)
-    load()
-  }
-
   return (
     <div className="animate-fade-in">
       {/* Edit role dialog */}
@@ -1758,25 +1758,6 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
                   <div className="text-xs text-muted-foreground">
                     Last seen: {a.last_seen ? new Date(a.last_seen).toLocaleString() : 'Never'}
                   </div>
-                  {isMaintainer && (
-                    <div className="flex items-center gap-2 mt-2 mb-2">
-                      <button
-                        role="switch"
-                        aria-checked={a.learn_from_session !== false}
-                        onClick={() => toggleLearnFromSession(a.id, a.learn_from_session !== false)}
-                        className={cn(
-                          "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-                          a.learn_from_session !== false ? "bg-primary" : "bg-muted-foreground/30"
-                        )}
-                      >
-                        <span className={cn(
-                          "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
-                          a.learn_from_session !== false ? "translate-x-3" : "translate-x-0"
-                        )} />
-                      </button>
-                      <span className="text-xs text-muted-foreground">Learn from session</span>
-                    </div>
-                  )}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex gap-2">
                       {isMaintainer && (
@@ -2226,10 +2207,16 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
   )
 }
 
-export function SettingsView({ teamName, onDelete, onLeave, plan: _plan, isOwner }: { teamName: string; onDelete: () => Promise<void>; onLeave: () => Promise<void>; plan: 'free' | 'pro'; isOwner: boolean }) {
+export function SettingsView({ teamName, currentTeam, onDelete, onLeave, plan: _plan, isOwner, isMaintainer, onRefresh }: { teamName: string; currentTeam: Team | undefined; onDelete: () => Promise<void>; onLeave: () => Promise<void>; plan: 'free' | 'pro'; isOwner: boolean; isMaintainer: boolean; onRefresh: () => Promise<void> }) {
   const [confirmName, setConfirmName] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [leaving, setLeaving] = useState(false)
+
+  async function toggleLearnFromSession() {
+    if (!currentTeam) return
+    await api.teams.updateSettings(currentTeam.id, { learn_from_session: !currentTeam.learn_from_session })
+    await onRefresh()
+  }
 
   return (
     <div className="animate-fade-in">
@@ -2260,6 +2247,35 @@ export function SettingsView({ teamName, onDelete, onLeave, plan: _plan, isOwner
           <div className="text-sm text-muted-foreground mb-1 font-medium">Project name</div>
           <div className="text-lg font-semibold">{teamName}</div>
         </div>
+
+        {isMaintainer && (
+          <div className="flex items-start justify-between gap-4 py-4 border-t">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Brain className="h-4 w-4" />
+                Learning from session
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                When enabled, agents automatically review completed sessions and extract reusable skills for this project. Disable to skip skill extraction and close sessions immediately.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={currentTeam?.learn_from_session ?? true}
+              aria-label="Learning from session"
+              onClick={toggleLearnFromSession}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mt-0.5",
+                currentTeam?.learn_from_session ?? true ? "bg-primary" : "bg-muted-foreground/30"
+              )}
+            >
+              <span className={cn(
+                "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                currentTeam?.learn_from_session ?? true ? "translate-x-4" : "translate-x-0"
+              )} />
+            </button>
+          </div>
+        )}
 
         {!isOwner && (
           <div className="space-y-4 pt-4 border-t">
@@ -2416,7 +2432,7 @@ function CreateTeam({ onCreated }: { onCreated: (name: string) => void }) {
 const FREE_TEAM_LIMIT = 3
 
 export default function Dashboard() {
-  const { teamId, teamName, teams, isLoadingTeams, createTeam, switchTeam } = useTeam()
+  const { teamId, teamName, teams, isLoadingTeams, createTeam, switchTeam, refreshTeams } = useTeam()
   const location = useLocation()
   const nav = useNavigate()
 
@@ -2673,7 +2689,7 @@ export default function Dashboard() {
           <Route path="/conveyor" element={<Conveyors teamId={teamId} />} />
           <Route path="/skills" element={<Skills teamId={teamId} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />
-          <Route path="/settings" element={<SettingsView teamName={teamName} onDelete={handleDeleteProject} onLeave={handleLeaveProject} plan={plan} isOwner={isOwner} />} />
+          <Route path="/settings" element={<SettingsView teamName={teamName} currentTeam={currentTeam} onDelete={handleDeleteProject} onLeave={handleLeaveProject} plan={plan} isOwner={isOwner} isMaintainer={isMaintainer} onRefresh={refreshTeams} />} />
         </Routes>
       </main>
       </div>

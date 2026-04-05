@@ -34,6 +34,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ name }),
       }),
+    updateSettings: (teamId: string, body: { learn_from_session?: boolean }) =>
+      request<{ ok: boolean }>(`/teams/${teamId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
     delete: (teamId: string) =>
       request<{ ok: boolean }>(`/teams/${teamId}`, { method: 'DELETE' }),
   },
@@ -57,11 +62,6 @@ export const api = {
       request<{ ok: boolean; role: string | null }>(`/teams/${teamId}/agents/${agentId}`, {
         method: 'PATCH',
         body: JSON.stringify({ role }),
-      }),
-    updateLearnFromSession: (teamId: string, agentId: string, learn_from_session: boolean) =>
-      request<{ ok: boolean; learn_from_session: boolean }>(`/teams/${teamId}/agents/${agentId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ learn_from_session }),
       }),
     createToken: (teamId: string, agentId: string, label: string) =>
       request<{ id: string; token: string; label: string }>(`/teams/${teamId}/tokens`, {
@@ -236,13 +236,13 @@ export interface Agent {
   created_at: number
   paused: boolean
   reset_pending: boolean
-  learn_from_session: boolean
 }
 
 export interface Team {
   id: string
   name: string
   role: string
+  learn_from_session: boolean
 }
 
 export interface Skill {

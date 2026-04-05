@@ -134,9 +134,10 @@ func (a *Agent) pushSSEDone(agentID, finalText string) {
 }
 
 func (a *Agent) doSkillExtraction(cfg *config.Config, agentID, tmuxCapture string) {
-	if tmuxCapture != "" {
-		go skills.ExtractFromSession(cfg, agentID, tmuxCapture)
+	if tmuxCapture == "" || !a.st.Learnings() {
+		return
 	}
+	go skills.ExtractFromSession(cfg, agentID, tmuxCapture)
 }
 
 func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string, wasLearning bool) {

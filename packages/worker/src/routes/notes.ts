@@ -277,7 +277,7 @@ export async function listLinkedTasks(req: Request, env: Env, _ctx: unknown, aut
       JOIN messages m ON m.task_id = t.id
       LEFT JOIN agents a ON a.id = t.agent_id
       WHERE t.team_id = ?
-        AND m.type = 'note-to-inbox'
+        AND m.type IN ('note-to-inbox', 'note-critique')
         AND m.role = 'system'
         AND json_extract(m.json_payload, '$.note_id') = ?
       ORDER BY t.created_at DESC

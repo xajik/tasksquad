@@ -94,6 +94,8 @@ type AgentState struct {
 	// Prompt tracking
 	lastPrompt string // the initial prompt or latest reply sent to the process
 
+	learnings bool
+
 	// notifyPosted is set to true at the start of SetWaitingInput so that
 	// StopAndPause can detect a concurrent Notification+Stop pair (Claude Code
 	// fires both hooks for the same turn) and skip the duplicate notify call.
@@ -183,4 +185,10 @@ func (s *AgentState) Paused() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.paused
+}
+
+func (s *AgentState) Learnings() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.learnings
 }

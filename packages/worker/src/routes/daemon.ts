@@ -168,19 +168,26 @@ async function processAgentHeartbeat(
 
   // Idle: query for pending task
   const task = await env.DB
-    .prepare("SELECT id, subject FROM tasks WHERE agent_id = ? AND status = 'pending' ORDER BY created_at ASC LIMIT 1")
+    .prepare("SELECT t.id, t.subject, t.team_id FROM tasks t WHERE t.agent_id = ? AND t.status = 'pending' ORDER BY t.created_at ASC LIMIT 1")
     .bind(agentId)
-    .first<{ id: string; subject: string }>()
+    .first<{ id: string; subject: string; team_id: string }>()
 
   if (task) {
-    const msgRows = await env.DB
-      .prepare("SELECT role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') AND (scheduled_at IS NULL OR scheduled_at <= ?) ORDER BY created_at ASC")
-      .bind(task.id, now)
-      .all<{ role: string; body: string }>()
+    const [msgRows, teamRow] = await Promise.all([
+      env.DB
+        .prepare("SELECT role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') AND (scheduled_at IS NULL OR scheduled_at <= ?) ORDER BY created_at ASC")
+        .bind(task.id, now)
+        .all<{ role: string; body: string }>(),
+      env.DB
+        .prepare("SELECT learn_from_session FROM teams WHERE id = ?")
+        .bind(task.team_id)
+        .first<{ learn_from_session: number }>(),
+    ])
+    const learnings = teamRow?.learn_from_session !== 0
     return {
       agent_id: agentId,
       ok: true,
-      task: { id: task.id, subject: task.subject, messages: msgRows.results },
+      task: { id: task.id, subject: task.subject, messages: msgRows.results, learnings },
       next_poll_ms: nextPollMs,
     }
   }

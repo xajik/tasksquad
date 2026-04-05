@@ -26,9 +26,9 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
   const rows = await env.DB
-    .prepare('SELECT id, name, role, status, last_seen, created_at, paused, reset_pending, learn_from_session FROM agents WHERE team_id = ? ORDER BY created_at ASC')
+    .prepare('SELECT id, name, role, status, last_seen, created_at, paused, reset_pending FROM agents WHERE team_id = ? ORDER BY created_at ASC')
     .bind(teamId)
-    .all<{ id: string; name: string; role: string | null; status: string; last_seen: number | null; created_at: number; paused: number; reset_pending: number; learn_from_session: number }>()
+    .all<{ id: string; name: string; role: string | null; status: string; last_seen: number | null; created_at: number; paused: number; reset_pending: number }>()
 
   return json({ agents: rows.results })
 }
@@ -184,13 +184,7 @@ export async function updateAgent(req: Request, env: Env, _ctx: unknown, auth: A
     .first<{ id: string }>()
   if (!agent) return err('not_found', 404)
 
-  const body = await req.json<{ role?: string; learn_from_session?: boolean }>().catch(() => ({} as { role?: string; learn_from_session?: boolean }))
-
-  if (body.learn_from_session !== undefined) {
-    const val = body.learn_from_session ? 1 : 0
-    await env.DB.prepare('UPDATE agents SET learn_from_session = ? WHERE id = ?').bind(val, agentId).run()
-    return json({ ok: true, learn_from_session: !!val })
-  }
+  const body = await req.json<{ role?: string }>().catch(() => ({} as { role?: string }))
 
   const role = body.role?.trim() ?? null
   await env.DB.prepare('UPDATE agents SET role = ? WHERE id = ?').bind(role, agentId).run()
