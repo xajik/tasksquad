@@ -421,6 +421,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
   const [autoClose, setAutoClose] = useState(false)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'queued' | 'running' | 'waiting_input' | 'done' | 'failed' | 'scheduled'>('all')
   const [activeFilter, setActiveFilter] = useState<'all' | 'system' | 'mine' | 'from-note' | 'note-critique' | 'scheduled'>('all')
   const nav = useNavigate()
 
@@ -504,14 +505,17 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
 
   const filteredTasks = useMemo(() => {
     const now = Date.now()
-    if (activeFilter === 'all') return tasks
-    if (activeFilter === 'system') return tasks.filter(t => t.first_message_role === 'system' && t.first_message_type !== 'note-to-inbox')
-    if (activeFilter === 'mine') return tasks.filter(t => t.first_message_role === 'user' && t.sender_id === internalUserId && t.first_message_type !== 'note-to-inbox')
-    if (activeFilter === 'from-note') return tasks.filter(t => t.first_message_type === 'note-to-inbox')
-    if (activeFilter === 'note-critique') return tasks.filter(t => t.first_message_type === 'note-critique')
-    if (activeFilter === 'scheduled') return tasks.filter(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
-    return tasks
-  }, [tasks, activeFilter, internalUserId])
+    let result = tasks
+    if (statusFilter !== 'all') {
+      result = result.filter(t => taskStatus(t) === statusFilter)
+    }
+    if (activeFilter === 'system') return result.filter(t => t.first_message_role === 'system' && t.first_message_type !== 'note-to-inbox')
+    if (activeFilter === 'mine') return result.filter(t => t.first_message_role === 'user' && t.sender_id === internalUserId && t.first_message_type !== 'note-to-inbox')
+    if (activeFilter === 'from-note') return result.filter(t => t.first_message_type === 'note-to-inbox')
+    if (activeFilter === 'note-critique') return result.filter(t => t.first_message_type === 'note-critique')
+    if (activeFilter === 'scheduled') return result.filter(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
+    return result
+  }, [tasks, statusFilter, activeFilter, internalUserId, agentMap])
 
   const hasSystem = useMemo(() => tasks.some(t => t.first_message_role === 'system' && t.first_message_type !== 'note-to-inbox'), [tasks])
   const hasMine = useMemo(() => tasks.some(t => t.first_message_role === 'user' && t.sender_id === internalUserId && t.first_message_type !== 'note-to-inbox'), [tasks])
@@ -538,68 +542,38 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
         </div>
       </div>
 
-      {(hasSystem || hasMine || hasNotes || hasCritiques || hasScheduled) && (
-        <div className="flex items-center gap-1.5 mb-6 flex-wrap">
-          <Button
-            variant={activeFilter === 'all' ? 'default' : 'outline'}
-            size="sm"
-            className="h-7 rounded-full px-3 text-xs"
-            onClick={() => setActiveFilter('all')}
-          >
-            All
-          </Button>
-          {hasSystem && (
-            <Button
-              variant={activeFilter === 'system' ? 'default' : 'outline'}
-              size="sm"
-              className="h-7 rounded-full px-3 text-xs"
-              onClick={() => setActiveFilter(activeFilter === 'system' ? 'all' : 'system')}
-            >
-              System
-            </Button>
-          )}
-          {hasMine && (
-            <Button
-              variant={activeFilter === 'mine' ? 'default' : 'outline'}
-              size="sm"
-              className="h-7 rounded-full px-3 text-xs"
-              onClick={() => setActiveFilter(activeFilter === 'mine' ? 'all' : 'mine')}
-            >
-              Mine
-            </Button>
-          )}
-          {hasNotes && (
-            <Button
-              variant={activeFilter === 'from-note' ? 'default' : 'outline'}
-              size="sm"
-              className="h-7 rounded-full px-3 text-xs"
-              onClick={() => setActiveFilter(activeFilter === 'from-note' ? 'all' : 'from-note')}
-            >
-              From Note
-            </Button>
-          )}
-          {hasCritiques && (
-            <Button
-              variant={activeFilter === 'note-critique' ? 'default' : 'outline'}
-              size="sm"
-              className="h-7 rounded-full px-3 text-xs"
-              onClick={() => setActiveFilter(activeFilter === 'note-critique' ? 'all' : 'note-critique')}
-            >
-              Critique
-            </Button>
-          )}
-          {hasScheduled && (
-            <Button
-              variant={activeFilter === 'scheduled' ? 'default' : 'outline'}
-              size="sm"
-              className="h-7 rounded-full px-3 text-xs"
-              onClick={() => setActiveFilter(activeFilter === 'scheduled' ? 'all' : 'scheduled')}
-            >
-              Scheduled
-            </Button>
-          )}
+      <div className="flex items-center gap-1.5 mb-6 flex-wrap">
+          <span className="text-xs text-muted-foreground">Status:</span>
+          <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+            <SelectTrigger className="h-7 w-28 text-xs">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="queued">Queued</SelectItem>
+              <SelectItem value="running">Running</SelectItem>
+              <SelectItem value="waiting_input">Waiting</SelectItem>
+              <SelectItem value="done">Done</SelectItem>
+              <SelectItem value="failed">Failed</SelectItem>
+              <SelectItem value="scheduled">Scheduled</SelectItem>
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground ml-2">Origin:</span>
+          <Select value={activeFilter} onValueChange={(v: any) => setActiveFilter(v)}>
+            <SelectTrigger className="h-7 w-28 text-xs">
+              <SelectValue placeholder="Origin" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {hasSystem && <SelectItem value="system">System</SelectItem>}
+              {hasMine && <SelectItem value="mine">Mine</SelectItem>}
+              {hasNotes && <SelectItem value="from-note">From Note</SelectItem>}
+              {hasCritiques && <SelectItem value="note-critique">Critique</SelectItem>}
+              {hasScheduled && <SelectItem value="scheduled">Scheduled</SelectItem>}
+            </SelectContent>
+          </Select>
         </div>
-      )}
 
       <Dialog open={showCompose} onOpenChange={setShowCompose}>
         <DialogContent className="sm:max-w-[500px]">
