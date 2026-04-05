@@ -3,7 +3,6 @@ export interface Env {
   LOGS: R2Bucket
   JWKS_CACHE: KVNamespace
   POLL_CACHE: KVNamespace
-  AGENT_RELAY: DurableObjectNamespace
   FIREBASE_PROJECT_ID: string
   FIREBASE_SERVICE_ACCOUNT_KEY: string
   DAEMON_SECRET: string

@@ -553,33 +553,6 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
   return json({ ok: true, session_id, message_id: output ? msgId : null })
 }
 
-export async function viewers(_req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
-  const agentId = daemon.agentId
-
-  // Proxy to the AgentRelay DO which tracks live SSE connections
-  const doId = env.AGENT_RELAY.idFromName(agentId)
-  const stub = env.AGENT_RELAY.get(doId)
-  return stub.fetch(new Request('https://relay/viewers'))
-}
-
-export async function push(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
-  const agentId = daemon.agentId
-
-  const body = await req.json<{ type?: string; lines?: string[] }>().catch(() => ({} as { type?: string; lines?: string[] }))
-  if (!body.type || !body.lines) return err('missing_fields', 400)
-
-  // Forward to AgentRelay Durable Object
-  const doId = env.AGENT_RELAY.idFromName(agentId)
-  const stub = env.AGENT_RELAY.get(doId)
-  await stub.fetch(new Request('https://relay/push', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }))
-
-  return json({ ok: true })
-}
-
 export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const body = await req.json<{ session_id?: string; agent_id?: string; message?: string }>()
     .catch(() => ({} as { session_id?: string; agent_id?: string; message?: string }))

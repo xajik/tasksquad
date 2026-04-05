@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { signOut } from 'firebase/auth'
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom'
-import { auth, getToken } from '../lib/firebase'
+import { auth } from '../lib/firebase'
 import { trackEvent } from '../lib/analytics'
 import { api, type Agent, type Task, type Message, type Team, type Member } from '../lib/api'
 import { requestNotificationPermission, notify, STATUS_NOTIF, registerPushToken } from '../lib/notifications'
@@ -60,7 +60,6 @@ import {
   Copy,
   ChevronDown,
   ChevronUp,
-  Play,
   Loader2,
   FileText,
   Code2,
@@ -1025,9 +1024,6 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
   const [agents, setAgents] = useState<Agent[]>([])
   const [reply, setReply] = useState('')
   const [sending, setSending] = useState(false)
-  const [liveLines, setLiveLines] = useState<string[]>([])
-  const [watching, setWatching] = useState(false)
-  const [showLog, setShowLog] = useState(false)
   const [showForward, setShowForward] = useState(false)
   const [forwardAgentId, setForwardAgentId] = useState('')
   const [forwardInstructions, setForwardInstructions] = useState('')
@@ -1037,7 +1033,6 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const replyFormRef = useRef<HTMLFormElement>(null)
-  const esRef = useRef<EventSource | null>(null)
   const nav = useNavigate()
 
   const load = useCallback(async () => {
@@ -1063,18 +1058,17 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
   }
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { if (watching) setShowLog(true) }, [watching])
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages.length, liveLines.length])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages.length])
 
   // Auto-poll while the task is active so messages appear without manual refresh
   // Pro users get 2s polling; free users get 5s
   const pollInterval = plan === 'pro' ? 2000 : 5000
   useEffect(() => {
-    if (!task || watching) return
+    if (!task) return
     if (!['running', 'waiting_input', 'pending'].includes(task.status)) return
     const t = setInterval(load, pollInterval)
     return () => clearInterval(t)
-  }, [task?.status, watching, load, pollInterval])
+  }, [task?.status, load, pollInterval])
 
   // Notify on every status transition (running, waiting_input, done, failed)
   const prevStatusRef = useRef<string | undefined>(undefined)
@@ -1087,27 +1081,6 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
     const agentName = agentMap[task.agent_id]?.name ?? 'Agent'
     if (notif) notify(notif.title(agentName), notif.body(task.subject), task.id)
   }, [task?.status, task?.subject, task?.id, agentMap])
-
-  async function startLive() {
-    if (!task || esRef.current) return
-    trackEvent('live_view_started', { task_id: task.id, agent_id: task.agent_id });
-    const token = await getToken()
-    const es = new EventSource(`${import.meta.env.VITE_API_BASE_URL}/live/${task.agent_id}?token=${token}`)
-    esRef.current = es
-    setWatching(true)
-    setLiveLines([])
-    es.onmessage = (e) => {
-      if (e.data.startsWith(':')) return
-      const data = JSON.parse(e.data) as { type: string; text: string }
-      if (data.type === 'connected') return
-      if (data.type === 'line') setLiveLines(prev => [...prev, data.text])
-      if (data.type === 'backlog') setLiveLines(data.text.split('\n'))
-      if (data.type === 'done' || data.type === 'waiting_input') { es.close(); esRef.current = null; setWatching(false); load() }
-    }
-    es.onerror = () => { es.close(); esRef.current = null; setWatching(false) }
-  }
-
-  useEffect(() => () => { esRef.current?.close() }, [])
 
   async function deleteTask() {
     if (!taskId || !confirm('Delete this task and all its messages?')) return
@@ -1267,24 +1240,6 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
 
         {/* Action buttons — right side */}
         <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
-          {task && task.status === 'running' && !watching && (
-            <Button onClick={startLive} size="sm" variant="outline" className="hidden sm:flex">
-              <Play className="h-3.5 w-3.5 mr-1.5" />
-              Watch live
-            </Button>
-          )}
-          {task && task.status === 'running' && !watching && (
-            <Button onClick={startLive} size="icon" variant="outline" className="sm:hidden h-8 w-8">
-              <Play className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {watching && (
-            <Button variant="secondary" size="sm" disabled>
-              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-              Live
-            </Button>
-          )}
-
           {task && ['done', 'waiting_input'].includes(task.status) && (
             <Dialog open={showForward} onOpenChange={setShowForward}>
               <DialogTrigger asChild>
@@ -1360,25 +1315,6 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
           />
         ))}
 
-        {liveLines.length > 0 && (
-          <div className="mt-3 border rounded-xl overflow-hidden shadow-sm">
-            <button
-              onClick={() => setShowLog(x => !x)}
-              className="w-full text-left px-4 py-3 bg-zinc-900 text-zinc-100 text-sm flex justify-between items-center hover:bg-zinc-800 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${watching ? 'bg-green-500 animate-pulse' : 'bg-zinc-500'}`} />
-                <span className="font-medium">Session log ({liveLines.length} lines)</span>
-              </div>
-              {showLog ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </button>
-            {showLog && (
-              <div className="bg-zinc-950 text-emerald-400 p-4 font-mono text-xs whitespace-pre max-h-96 overflow-auto">
-                {liveLines.join('\n')}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ── Edit form for scheduled messages — only when agent is waiting for input ── */}

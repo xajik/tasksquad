@@ -157,13 +157,6 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	}
 	go a.uploadAndAttachLog(cfg, sessionID, logContent)
 
-	if agentID != "" {
-		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
-			"type":  "waiting_input",
-			"lines": []string{finalText},
-		})
-	}
-
 	a.st.mu.Lock()
 	if transcriptPath != "" {
 		a.st.transcriptPath = transcriptPath
@@ -214,7 +207,6 @@ func (a *Agent) closeSession(cfg *config.Config) {
 	sess := a.st.tmuxSession
 	fifo := a.st.fifoPath
 	runLog := a.st.runLog
-	agentID := a.st.agentID
 	a.st.tmuxSession = ""
 	a.st.fifoPath = ""
 	a.st.sessionID = ""
@@ -235,12 +227,6 @@ func (a *Agent) closeSession(cfg *config.Config) {
 		os.Remove(fifo)
 	}
 	logger.Info(fmt.Sprintf("[%s] Session closed by user — tmux killed, agent reset to idle", a.Config.Name))
-
-	if agentID != "" {
-		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
-			"type": "done",
-		})
-	}
 }
 
 // PushIntermediateResponse posts a per-turn agent message to the task thread
@@ -326,14 +312,6 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 	}
 
 	logger.Info(fmt.Sprintf("[%s] Waiting for user input: %s", a.Config.Name, notifyMsg))
-
-	// Notify SSE clients so the portal can display the question.
-	if agentID != "" {
-		a.post(cfg, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
-			"type":  "waiting_input",
-			"lines": []string{notifyMsg},
-		})
-	}
 
 	notifyResp, err := a.post(cfg, "/daemon/session/notify", map[string]any{
 		"session_id": sessionID,

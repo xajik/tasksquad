@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { trackEvent } from '../lib/analytics'
 import Header from '../components/Header'
 
 export default function HowTo() {

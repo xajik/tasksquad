@@ -34,23 +34,6 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 	// The default 64KB limit causes scanner to fail silently, closing outputDone
 	// and triggering a false crash. Use a 4MB buffer to handle any real-world frame.
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
-	var batch []string
-
-	flushPush := func() {
-		if len(batch) == 0 {
-			return
-		}
-		a.st.mu.Lock()
-		id := a.st.agentID
-		a.st.mu.Unlock()
-		if id != "" {
-			a.post(cfg, "/daemon/push/"+id, map[string]any{ //nolint:errcheck
-				"type":  "line",
-				"lines": batch,
-			})
-		}
-		batch = nil
-	}
 
 	for scanner.Scan() {
 		line := cleanLine(scanner.Text())
@@ -68,14 +51,7 @@ func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 		if runLog != nil {
 			fmt.Fprintln(runLog, line)
 		}
-
-		// Batch lines for server push.
-		batch = append(batch, line)
-		if len(batch) >= 10 {
-			flushPush()
-		}
 	}
-	flushPush()
 	if err := scanner.Err(); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] streamOutput scanner error: %v", a.Config.Name, err))
 	}

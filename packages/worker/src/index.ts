@@ -6,13 +6,12 @@ import * as agents   from './routes/agents.js'
 import * as tasks    from './routes/tasks.js'
 import * as messages from './routes/messages.js'
 import * as daemon   from './routes/daemon.js'
-import * as live     from './routes/live.js'
 import * as me       from './routes/me.js'
 import * as notes    from './routes/notes.js'
 import * as conveyors from './routes/conveyors.js'
 import * as skills   from './routes/skills.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
-export { AgentRelay } from './relay.js'
+
 
 type FirebaseHandler = (req: Request, env: Env, ctx: ExecutionContext, auth: AuthContext) => Promise<Response>
 type DaemonHandler  = (req: Request, env: Env, ctx: ExecutionContext, ctx2: DaemonContext) => Promise<Response>
@@ -122,8 +121,6 @@ router.delete('/tasks/:taskId/messages/:msgId',              firebaseRoute(messa
 router.get ('/tasks/:taskId/messages/:msgId/transcript',      firebaseRoute(messages.getTranscript))
 router.get ('/tasks/:taskId/logs',       firebaseRoute(tasks.logs))
 
-router.get ('/live/:agentId',            (req: IRequest, env: Env) => live.connect(req as Request, env))
-
 // ── Daemon routes (Firebase JWT) ──────────────────────────────────────────────
 router.get ('/daemon/user/agents',       (req: IRequest, env: Env, ctx: ExecutionContext) => daemon.userAgents(req as Request, env, ctx))
 router.get ('/daemon/user/skills',       firebaseRoute(skills.userSkills))
@@ -133,8 +130,6 @@ router.post('/daemon/session/open',      daemonRoute(daemon.sessionOpen))
 router.post('/daemon/session/close',     daemonRoute(daemon.sessionClose))
 router.post('/daemon/session/notify',    daemonRoute(daemon.sessionNotify))
 router.post('/daemon/session/message',  daemonRoute(daemon.sessionMessage))
-router.get ('/daemon/viewers/:agentId',  daemonRoute(daemon.viewers))
-router.post('/daemon/push/:agentId',     daemonRoute(daemon.push))
 router.post('/daemon/r2/presign',        daemonRoute(daemon.presignUpload))
 router.post('/daemon/messages/:msgId/attach', daemonRoute(daemon.messageAttach))
 router.post('/daemon/sessions/:sessionId/attach', daemonRoute(daemon.sessionAttach))

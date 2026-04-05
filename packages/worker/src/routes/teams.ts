@@ -61,12 +61,6 @@ export async function deactivate(req: Request, env: Env, _ctx: unknown, auth: Au
     return err('unauthorized', 403)
   }
 
-  // Get all active agent IDs for this team to signal them to cancel
-  const agents = await env.DB
-    .prepare('SELECT id FROM agents WHERE team_id = ?')
-    .bind(teamId)
-    .all<{ id: string }>()
-
   // 1. Mark team as deactivated
   // 2. Mark all pending/running tasks for this team as failed
   // 3. Mark all agents as offline
@@ -78,19 +72,6 @@ export async function deactivate(req: Request, env: Env, _ctx: unknown, auth: Au
     env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE task_id IN (SELECT id FROM tasks WHERE team_id = ?) AND status IN ('running', 'waiting_input')").bind(now, teamId),
   ]
   await env.DB.batch(ops)
-
-  // Signal all active agents in this team to cancel current tasks
-  for (const agent of agents.results) {
-    const doId = env.AGENT_RELAY.idFromName(agent.id)
-    const stub = env.AGENT_RELAY.get(doId)
-    // We don't have a direct 'cancel' method on DO, but heartbeat will pick it up
-    // because task status is now 'failed'. We can also push a 'done' event.
-    await stub.fetch(new Request('https://relay/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'done', lines: ['Team deactivated. Task cancelled.'] }),
-    })).catch(() => {})
-  }
 
   return json({ ok: true })
 }

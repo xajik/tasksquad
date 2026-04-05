@@ -124,15 +124,6 @@ func (a *Agent) uploadTaskArtifacts(cfg *config.Config, sessionID, msgID, logCon
 	}
 }
 
-func (a *Agent) pushSSEDone(agentID, finalText string) {
-	if agentID != "" {
-		a.post(nil, "/daemon/push/"+agentID, map[string]any{ //nolint:errcheck
-			"type":  "done",
-			"lines": []string{finalText},
-		})
-	}
-}
-
 func (a *Agent) doSkillExtraction(cfg *config.Config, agentID, tmuxCapture string) {
 	if tmuxCapture == "" || !a.st.Learnings() {
 		return
@@ -177,8 +168,6 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		logContent = tmuxCapture
 	}
 	a.uploadTaskArtifacts(cfg, sessionID, msgID, logContent, tmuxCapture, transcriptPath)
-
-	a.pushSSEDone(agentID, finalText)
 
 	a.doSkillExtraction(cfg, agentID, tmuxCapture)
 

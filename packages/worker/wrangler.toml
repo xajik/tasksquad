@@ -33,15 +33,6 @@ id      = "60e989c16f6d4ce4946df7393a6031ce"
 # binding = "CB_KV"
 # id      = "REPLACE_WITH_ID_FROM_wrangler_kv_namespace_create_CB_CACHE"
 
-# Durable Objects
-[[durable_objects.bindings]]
-name       = "AGENT_RELAY"
-class_name = "AgentRelay"
-
-[[migrations]]
-tag         = "v1"
-new_classes = ["AgentRelay"]
-
 [observability]
 enabled = true
 
