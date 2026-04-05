@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -211,9 +212,11 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		} else {
 			tmuxCmd.Env = os.Environ()
 		}
+		var tmuxStderr bytes.Buffer
+		tmuxCmd.Stderr = &tmuxStderr
 
 		if err := tmuxCmd.Run(); err != nil {
-			logger.Error(fmt.Sprintf("[%s] tmux new-session failed: %v — cannot start task", a.Config.Name, err))
+			logger.Error(fmt.Sprintf("[%s] tmux new-session failed: %v stderr=%q — cannot start task", a.Config.Name, err, tmuxStderr.String()))
 			os.Remove(fifoPath)
 			a.complete(cfg, string(agentmode.StatusCrashed))
 			close(outputDone)

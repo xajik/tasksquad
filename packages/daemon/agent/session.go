@@ -160,36 +160,8 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	}
 	go a.uploadAndAttachLog(cfg, sessionID, logContent)
 
-	// Server already closed the session — clean up locally without a second API call.
 	if autoClose {
-		a.st.mu.Lock()
-		fifo := a.st.fifoPath
-		runLog := a.st.runLog
-		pw := a.st.stdinWrite
-		a.st.tmuxSession = ""
-		a.st.fifoPath = ""
-		a.st.sessionID = ""
-		a.st.taskID = ""
-		a.st.transcriptPath = ""
-		a.st.stdinWrite = nil
-		a.st.runLog = nil
-		a.st.mode = ModeIdle
-		a.st.outputLines = nil
-		a.st.completing = false
-		a.st.mu.Unlock()
-		if sess != "" {
-			exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
-		} else if pw != nil {
-			pw.Close()
-		}
-		if fifo != "" {
-			os.Remove(fifo) //nolint:errcheck
-		}
-		if runLog != nil {
-			fmt.Fprintf(runLog, "\n[EVENT] event=success\n# ended=%s\n", time.Now().Format(time.RFC3339))
-			runLog.Close()
-		}
-		logger.Info(fmt.Sprintf("[%s] Auto-close: agent reset to idle", a.Config.Name))
+		a.autoCloseAndReset()
 		return
 	}
 
@@ -203,6 +175,41 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	}
 
 	logger.Info(fmt.Sprintf("[%s] Paused after response — tmux session kept alive, waiting for reply or close", a.Config.Name))
+}
+
+// autoCloseAndReset cleans up all task-scoped resources and resets the agent to
+// idle when the server responds with close:true. Must NOT be called with a.st.mu held.
+func (a *Agent) autoCloseAndReset() {
+	a.st.mu.Lock()
+	fifo := a.st.fifoPath
+	runLog := a.st.runLog
+	pw := a.st.stdinWrite
+	sess := a.st.tmuxSession
+	a.st.tmuxSession = ""
+	a.st.fifoPath = ""
+	a.st.sessionID = ""
+	a.st.taskID = ""
+	a.st.transcriptPath = ""
+	a.st.stdinWrite = nil
+	a.st.runLog = nil
+	a.st.mode = ModeIdle
+	a.st.outputLines = nil
+	a.st.completing = false
+	a.st.notifyPosted = false
+	a.st.mu.Unlock()
+	if sess != "" {
+		exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
+	} else if pw != nil {
+		pw.Close()
+	}
+	if fifo != "" {
+		os.Remove(fifo) //nolint:errcheck
+	}
+	if runLog != nil {
+		fmt.Fprintf(runLog, "\n[EVENT] event=success\n# ended=%s\n", time.Now().Format(time.RFC3339))
+		runLog.Close()
+	}
+	logger.Info(fmt.Sprintf("[%s] Auto-close: agent reset to idle", a.Config.Name))
 }
 
 // handleReset kills any running tmux session and returns the agent to idle.
@@ -268,7 +275,8 @@ func (a *Agent) closeSession(cfg *config.Config) {
 // PushIntermediateResponse posts a per-turn agent message to the task thread
 // without pausing the task or changing agent mode. Called by Gemini's AfterAgent
 // hook after each model turn so the portal shows progress while the session
-// continues running. Task completion is signalled by SessionEnd (/hooks/stop).
+// continues running. If the server responds with close:true the session is
+// auto-closed immediately (same as StopAndPause auto-close path).
 func (a *Agent) PushIntermediateResponse(cfg *config.Config, promptResponse, transcriptPath string) {
 	a.st.mu.Lock()
 	mode := a.st.mode
@@ -292,15 +300,19 @@ func (a *Agent) PushIntermediateResponse(cfg *config.Config, promptResponse, tra
 		return
 	}
 
-	_, err := a.post(cfg, "/daemon/session/message", map[string]any{
+	resp, err := a.post(cfg, "/daemon/session/message", map[string]any{
 		"session_id": sessionID,
 		"type":       "output",
 		"message":    text,
 	})
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] PushIntermediateResponse error: %v", a.Config.Name, err))
-	} else {
-		logger.Info(fmt.Sprintf("[%s] Intermediate response posted (%d chars)", a.Config.Name, len(text)))
+		return
+	}
+	logger.Info(fmt.Sprintf("[%s] Intermediate response posted (%d chars)", a.Config.Name, len(text)))
+
+	if autoClose, _ := resp["close"].(bool); autoClose {
+		a.autoCloseAndReset()
 	}
 }
 

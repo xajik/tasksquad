@@ -142,7 +142,7 @@ func (s *hookServer) handleAfterAgent(w http.ResponseWriter, r *http.Request) {
 	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
 		mode := agentmode.Mode(a.GetMode())
 		if mode == agentmode.ModeRunning || mode == agentmode.ModeWaitingInput {
-			logger.Debug(fmt.Sprintf("[hooks] Dispatching PushIntermediateResponse to agent %s", a.Name()))
+			logger.Debug(fmt.Sprintf("[hooks] Dispatching PushIntermediateResponse to agent %s (AfterAgent)", a.Name()))
 			go a.PushIntermediateResponse(s.cfg, aev.PromptResponse, aev.TranscriptPath)
 		}
 	})
