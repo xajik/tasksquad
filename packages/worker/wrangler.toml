@@ -33,6 +33,11 @@ id      = "60e989c16f6d4ce4946df7393a6031ce"
 # binding = "CB_KV"
 # id      = "REPLACE_WITH_ID_FROM_wrangler_kv_namespace_create_CB_CACHE"
 
+# Durable Object migration — remove AgentRelay class (relay removed in security refactor)
+[[migrations]]
+tag = "v2"
+deleted_classes = ["AgentRelay"]
+
 [observability]
 enabled = true
 

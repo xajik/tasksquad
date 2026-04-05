@@ -135,9 +135,12 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 		"agent_id":   agentID,
 		"message":    finalText,
 	})
+
+	autoClose := false
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] StopAndPause notify error: %v", a.Config.Name, err))
 	} else if notifyResp != nil {
+		autoClose, _ = notifyResp["close"].(bool)
 		msgID, _ := notifyResp["message_id"].(string)
 		if msgID != "" {
 			if tmuxCapture != "" {
@@ -156,6 +159,39 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 		logContent = tmuxCapture
 	}
 	go a.uploadAndAttachLog(cfg, sessionID, logContent)
+
+	// Server already closed the session — clean up locally without a second API call.
+	if autoClose {
+		a.st.mu.Lock()
+		fifo := a.st.fifoPath
+		runLog := a.st.runLog
+		pw := a.st.stdinWrite
+		a.st.tmuxSession = ""
+		a.st.fifoPath = ""
+		a.st.sessionID = ""
+		a.st.taskID = ""
+		a.st.transcriptPath = ""
+		a.st.stdinWrite = nil
+		a.st.runLog = nil
+		a.st.mode = ModeIdle
+		a.st.outputLines = nil
+		a.st.completing = false
+		a.st.mu.Unlock()
+		if sess != "" {
+			exec.Command(tmuxBin, "kill-session", "-t", sess).Run() //nolint:errcheck
+		} else if pw != nil {
+			pw.Close()
+		}
+		if fifo != "" {
+			os.Remove(fifo) //nolint:errcheck
+		}
+		if runLog != nil {
+			fmt.Fprintf(runLog, "\n[EVENT] event=success\n# ended=%s\n", time.Now().Format(time.RFC3339))
+			runLog.Close()
+		}
+		logger.Info(fmt.Sprintf("[%s] Auto-close: agent reset to idle", a.Config.Name))
+		return
+	}
 
 	a.st.mu.Lock()
 	if transcriptPath != "" {

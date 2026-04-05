@@ -561,13 +561,27 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
   if (!session_id || !message) return err('missing_fields', 400)
 
   const session = await env.DB
-    .prepare('SELECT s.task_id, t.subject, a.name as agent_name FROM sessions s JOIN tasks t ON t.id = s.task_id JOIN agents a ON a.id = s.agent_id WHERE s.id = ? AND s.agent_id = ?')
+    .prepare('SELECT s.task_id, t.subject, t.auto_close, a.name as agent_name FROM sessions s JOIN tasks t ON t.id = s.task_id JOIN agents a ON a.id = s.agent_id WHERE s.id = ? AND s.agent_id = ?')
     .bind(session_id, agentId)
-    .first<{ task_id: string; subject: string; agent_name: string }>()
+    .first<{ task_id: string; subject: string; auto_close: number; agent_name: string }>()
   if (!session) return err('not_found', 404)
 
   const now = Date.now()
   const msgId = ulid()
+  const agentName = session.agent_name ?? 'Agent'
+
+  if (session.auto_close) {
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(msgId, session.task_id, null, 'agent', message, now),
+      env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE id = ?").bind(now, session_id),
+      env.DB.prepare("UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?").bind(now, session.task_id),
+      env.DB.prepare("UPDATE agents SET status = 'idle' WHERE id = ?").bind(agentId),
+      env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
+    ])
+    await notifyTeamMembers(env, session.task_id, `${agentName} completed a task`, session.subject)
+    return json({ ok: true, close: true, session_id, message_id: msgId })
+  }
 
   await env.DB.batch([
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -577,7 +591,6 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
     env.DB.prepare("UPDATE agent_state SET mode = 'waiting_input', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
   ])
 
-  const agentName = session.agent_name ?? 'Agent'
   await notifyTeamMembers(env, session.task_id, `${agentName} needs your input`, `${session.subject} · ${truncate(message)}`)
 
   return json({ ok: true, session_id, message_id: msgId })
