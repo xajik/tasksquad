@@ -26,6 +26,13 @@ id      = "2fd5d9c6fb734e07940c1d825c7d1411"
 binding = "POLL_CACHE"
 id      = "60e989c16f6d4ce4946df7393a6031ce"
 
+# KV — circuit breaker: IP rate limiting, auth failure tracking, token minting limits
+# Provision with: wrangler kv namespace create CB_CACHE
+# Then replace the id below with the output from that command.
+# [[kv_namespaces]]
+# binding = "CB_KV"
+# id      = "REPLACE_WITH_ID_FROM_wrangler_kv_namespace_create_CB_CACHE"
+
 # Durable Objects
 [[durable_objects.bindings]]
 name       = "AGENT_RELAY"

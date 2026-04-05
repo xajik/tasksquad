@@ -87,6 +87,13 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   if (!(await requireMember(env.DB, team_id, auth.userId))) return err('forbidden', 403)
 
+  const hourAgo = Date.now() - 3_600_000
+  const recentCount = await env.DB
+    .prepare('SELECT COUNT(*) as n FROM tasks WHERE sender_id = ? AND created_at > ?')
+    .bind(auth.userId, hourAgo)
+    .first<{ n: number }>()
+  if ((recentCount?.n ?? 0) >= 20) return err('rate_limit_exceeded', 429)
+
   // Verify agent belongs to team
   const agent = await env.DB
     .prepare('SELECT id FROM agents WHERE id = ? AND team_id = ?')

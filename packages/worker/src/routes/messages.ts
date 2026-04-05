@@ -94,7 +94,6 @@ export async function getTranscript(req: Request, env: Env, _ctx: unknown, auth:
   return new Response(text, {
     headers: {
       'Content-Type': 'application/x-ndjson',
-      'Access-Control-Allow-Origin': '*',
     },
   })
 }

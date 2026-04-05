@@ -20,6 +20,9 @@ export interface Env {
   ADMIN_SECRET?: string
   // Comma-separated list of allowed CORS origins, e.g. "https://tasksquad.ai,http://localhost:5173"
   ALLOWED_ORIGINS?: string
+  // KV namespace for circuit breaker rate limiting (optional — gracefully skipped if not provisioned)
+  // Provision with: wrangler kv namespace create CB_CACHE
+  CB_KV?: KVNamespace
 }
 
 export interface AuthContext {

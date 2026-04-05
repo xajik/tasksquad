@@ -22,6 +22,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -58,16 +59,34 @@ func Login(dashboardURL, apiURL string) (email string, err error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		idToken := q.Get("id_token")
-		refreshToken := q.Get("refresh_token")
-		emailParam := q.Get("email")
+		// Allow the portal (served from HTTPS) to POST tokens cross-origin.
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 
-		if idToken == "" {
+		r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+		var body struct {
+			IDToken      string `json:"id_token"`
+			RefreshToken string `json:"refresh_token"`
+			Email        string `json:"email"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.IDToken == "" {
 			http.Error(w, "missing id_token", http.StatusBadRequest)
 			ch <- result{err: fmt.Errorf("missing id_token in callback")}
 			return
 		}
+		idToken := body.IDToken
+		refreshToken := body.RefreshToken
+		emailParam := body.Email
+
 		w.Header().Set("Content-Type", "text/html")
 		fmt.Fprint(w, `<!doctype html>
 <html lang="en">

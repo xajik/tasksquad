@@ -223,14 +223,16 @@ export async function removeMember(req: Request, env: Env, _ctx: unknown, auth: 
   if (!target) return err('not_found', 404)
 
   if (isSelf && target.role === 'owner') {
-    // If you are the owner, check if there are other owners
-    const others = await env.DB
-      .prepare("SELECT COUNT(*) as n FROM team_members WHERE team_id = ? AND role = 'owner' AND user_id != ?")
-      .bind(teamId, userId)
-      .first<{ n: number }>()
-    if ((others?.n ?? 0) === 0) {
+    // Atomically delete only if at least one other owner remains — prevents last-owner race condition
+    const result = await env.DB
+      .prepare(`DELETE FROM team_members WHERE team_id = ? AND user_id = ?
+                AND (SELECT COUNT(*) FROM team_members WHERE team_id = ? AND role = 'owner' AND user_id != ?) > 0`)
+      .bind(teamId, userId, teamId, userId)
+      .run()
+    if (!result.meta.changes) {
       return err('As the last owner, you must delete the project in Settings before leaving.', 400)
     }
+    return json({ ok: true })
   }
 
   if (isOwner && !isSelf && target.role === 'maintainer') return err('Cannot remove a maintainer', 400)

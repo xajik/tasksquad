@@ -1,6 +1,7 @@
 import { CloudFireAuth } from 'cloudfire-auth'
 import { ulid } from 'ulidx'
 import type { Env, AuthContext, DaemonContext } from './types.js'
+import { trackAuthFailure } from './middleware/circuitBreaker.js'
 
 const CLI_TOKEN_PREFIX = 'tsq_cli_'
 const CLI_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000 // 90 days
@@ -36,6 +37,7 @@ export async function withFirebaseAuth(
     decoded = await auth.verifyIdToken(token)
   } catch {
     console.warn('[auth] Firebase ID token verification failed')
+    trackAuthFailure(req, env).catch(() => {})
     return new Response(JSON.stringify({ error: 'invalid_token' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },

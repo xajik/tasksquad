@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -13,6 +14,10 @@ import (
 	"github.com/tasksquad/daemon/tmux"
 	"github.com/tasksquad/daemon/util"
 )
+
+// safeIDRe accepts only ULID-style identifiers (alphanumeric, up to 32 chars).
+// This prevents shell injection when IDs are embedded in command strings.
+var safeIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 
 // detectCLI returns the CLI binary to use for supervisor sessions.
 // Prefers an agent with is_supervisor=true; falls back to PATH priority.
@@ -45,6 +50,12 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 		delete(s.activeForTask, taskID)
 		s.mu.Unlock()
 	}()
+
+	// Guard against shell injection: taskID must match the safe allowlist.
+	if !safeIDRe.MatchString(taskID) {
+		logger.Error(fmt.Sprintf("[supervisor] Rejecting unsafe taskID %q — contains disallowed characters", taskID))
+		return
+	}
 
 	suffix := taskID
 	if len(suffix) > 8 {

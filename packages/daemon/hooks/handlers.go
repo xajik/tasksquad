@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 
 	hookadapter "github.com/tasksquad/daemon/adapter"
@@ -14,6 +15,11 @@ import (
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 )
+
+// unsafeCharsRe matches non-printable and control characters (except tab, LF, CR).
+// Used to strip potentially dangerous characters from supervisor verdict fields
+// before they are stored or displayed in the portal.
+var unsafeCharsRe = regexp.MustCompile(`[^\x09\x0A\x0D\x20-\x7E]`)
 
 // hookServer holds the shared state needed by every hook handler.
 type hookServer struct {
@@ -289,6 +295,11 @@ func (s *hookServer) handleSupervisor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "summary/found/action fields must be ≤1000 chars", http.StatusBadRequest)
 		return
 	}
+	// Strip non-printable/control characters to prevent XSS or display corruption.
+	payload.Summary = unsafeCharsRe.ReplaceAllString(payload.Summary, "")
+	payload.Found = unsafeCharsRe.ReplaceAllString(payload.Found, "")
+	payload.Action = unsafeCharsRe.ReplaceAllString(payload.Action, "")
+
 	logger.Info(fmt.Sprintf("[hooks/supervisor] Verdict for task %s: status=%s summary=%q",
 		payload.TaskID, payload.Status, payload.Summary))
 	if s.reporter != nil {

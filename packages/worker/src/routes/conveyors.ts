@@ -12,6 +12,20 @@ async function requireMember(db: D1Database, teamId: string, userId: string): Pr
 
 export type ConveyorFrequency = 'hourly' | 'daily' | 'weekly' | 'monthly'
 
+function validateConveyorFields(fields: {
+  hour?: number; minute?: number; day_of_week?: number | null; day_of_month?: number | null;
+  repeat_count?: number | null; frequency?: string;
+}): string | null {
+  const { hour, minute, day_of_week, day_of_month, repeat_count, frequency } = fields
+  if (hour !== undefined && (!Number.isInteger(Number(hour)) || hour < 0 || hour > 23)) return 'invalid_hour'
+  if (minute !== undefined && (!Number.isInteger(Number(minute)) || minute < 0 || minute > 59)) return 'invalid_minute'
+  if (day_of_week != null && (day_of_week < 0 || day_of_week > 6)) return 'invalid_day_of_week'
+  if (day_of_month != null && (day_of_month < 1 || day_of_month > 31)) return 'invalid_day_of_month'
+  if (repeat_count != null && (repeat_count < 1 || repeat_count > 1000)) return 'invalid_repeat_count'
+  if (frequency !== undefined && !['hourly', 'daily', 'weekly', 'monthly'].includes(frequency)) return 'invalid_frequency'
+  return null
+}
+
 export interface ConveyorRow {
   id: string
   team_id: string
@@ -164,6 +178,9 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     return err('missing_fields', 400)
   }
 
+  const validationError = validateConveyorFields({ hour, minute: minute ?? 0, day_of_week, day_of_month, repeat_count, frequency })
+  if (validationError) return err(validationError, 400)
+
   // Verify agent belongs to team
   const agent = await env.DB
     .prepare('SELECT id FROM agents WHERE id = ? AND team_id = ?')
@@ -250,6 +267,16 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   const tz = body.timezone ?? existing.timezone ?? 'UTC'
   const paused = 'paused' in body ? (body.paused ? 1 : 0) : existing.paused
   const auto_close = 'auto_close' in body ? (body.auto_close ? 1 : 0) : existing.auto_close
+
+  const updateValidationError = validateConveyorFields({
+    hour: 'hour' in body ? body.hour : undefined,
+    minute: 'minute' in body ? body.minute : undefined,
+    day_of_week: 'day_of_week' in body ? body.day_of_week : undefined,
+    day_of_month: 'day_of_month' in body ? body.day_of_month : undefined,
+    repeat_count: 'repeat_count' in body ? body.repeat_count : undefined,
+    frequency: 'frequency' in body ? body.frequency : undefined,
+  })
+  if (updateValidationError) return err(updateValidationError, 400)
 
   const nextRunAt = calculateNextRun(Date.now(), frequency, day_of_week, day_of_month, hour, minute, tz)
 

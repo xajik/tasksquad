@@ -1,7 +1,7 @@
 import * as amplitude from '@amplitude/unified';
 
 export const initAnalytics = () => {
-  amplitude.initAll('f9b76851c13dec7adb26c8552028913c', {
+  amplitude.initAll(import.meta.env.VITE_AMPLITUDE_KEY ?? 'f9b76851c13dec7adb26c8552028913c', {
     "analytics": {
       "autocapture": {
         "attribution": true,

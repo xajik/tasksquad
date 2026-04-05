@@ -1,5 +1,6 @@
 import { Router, IRequest } from 'itty-router'
 import { withFirebaseAuth, withDaemonAgentAuth, mintCliToken, revokeCliToken, err, json } from './auth.js'
+import { checkCircuitBreaker, checkCliTokenRateLimit } from './middleware/circuitBreaker.js'
 import * as teams    from './routes/teams.js'
 import * as agents   from './routes/agents.js'
 import * as tasks    from './routes/tasks.js'
@@ -55,6 +56,8 @@ router.options('*', (req: IRequest, env: Env) => new Response(null, { status: 20
 // Exchanges a Firebase ID token (from tsq login) for a long-lived CLI token (90 days).
 // The portal always uses short-lived Firebase ID tokens; only the daemon uses this.
 router.post('/auth/cli-token', firebaseRoute(async (_req, env, _ctx, auth) => {
+  const rateCheck = await checkCliTokenRateLimit(env, auth.userId)
+  if (rateCheck) return rateCheck
   const { token, expiresAt } = await mintCliToken(env, auth.userId)
   return json({ token, expires_at: expiresAt, expires_in: 90 * 24 * 3600 })
 }))
@@ -151,6 +154,9 @@ function addCors(res: Response, req: Request, env: Env): Response {
 export default {
   fetch: async (req: Request, env: Env, ctx: ExecutionContext): Promise<Response> => {
     try {
+      const blocked = await checkCircuitBreaker(req, env)
+      if (blocked) return addCors(blocked, req, env)
+
       const res = await router.fetch(req, env, ctx)
       return addCors(res, req, env)
     } catch (e) {

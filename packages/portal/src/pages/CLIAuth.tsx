@@ -13,36 +13,40 @@ import {
 
 const redirectUri = new URLSearchParams(window.location.search).get('redirect_uri') ?? ''
 
-const isSafe =
-  redirectUri.startsWith('http://localhost:') ||
-  redirectUri.startsWith('http://127.0.0.1:')
+// Validate that redirectUri targets localhost with a safe port range (1024–65535).
+// This prevents rogue local services on reserved ports from intercepting the flow.
+const portMatch = redirectUri.match(/^http:\/\/(localhost|127\.0\.0\.1):(\d{1,5})(\/|$)/)
+const isSafe = !!portMatch && parseInt(portMatch[2]) >= 1024 && parseInt(portMatch[2]) <= 65535
 
-console.log('[CLIAuth] module init, redirectUri=', redirectUri, 'isSafe=', isSafe)
-
+// POST tokens to the daemon's local callback server rather than encoding them in
+// the URL (which would expose them in browser history and proxy access logs).
 async function sendTokens(user: User): Promise<void> {
   const idToken = await user.getIdToken()
-  const url = new URL(redirectUri)
-  url.searchParams.set('id_token', idToken)
-  url.searchParams.set('refresh_token', user.refreshToken)
-  url.searchParams.set('email', user.email ?? '')
-  window.location.href = url.toString()
+  const res = await fetch(redirectUri, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id_token: idToken, refresh_token: user.refreshToken, email: user.email ?? '' }),
+  })
+  if (!res.ok) throw new Error(`Daemon returned ${res.status}`)
 }
 
 export default function CLIAuth() {
   // null = loading, User = logged in, false = not logged in
   const [user, setUser] = useState<User | null | false>(null)
   const [error, setError] = useState('')
-
-  console.log('[CLIAuth] render, user=', user, 'isSafe=', isSafe)
+  const [sent, setSent] = useState(false)
 
   useEffect(() => {
-    console.log('[CLIAuth] useEffect, isSafe=', isSafe)
     if (!isSafe) return
     return onAuthStateChanged(auth, (u) => {
-      console.log('[CLIAuth] onAuthStateChanged, u=', u?.email ?? null)
       if (u) {
-        // Already logged in — send tokens immediately, no interaction needed.
-        sendTokens(u).catch((e) => setError(e instanceof Error ? e.message : 'Failed'))
+        // Already logged in — send tokens to daemon via POST, no interaction needed.
+        sendTokens(u)
+          .then(() => setSent(true))
+          .catch((e) => {
+            setError(e instanceof Error ? e.message : 'Failed to authenticate')
+            setUser(false)
+          })
       } else {
         setUser(false)
       }
@@ -63,6 +67,21 @@ export default function CLIAuth() {
       setError(e instanceof Error ? e.message : 'Sign-in failed')
       setUser(false)
     }
+  }
+
+  if (sent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <Card className="w-full max-w-[380px]">
+          <CardHeader>
+            <CardTitle>Authenticated</CardTitle>
+            <CardDescription>
+              You can close this window and return to the terminal.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
   }
 
   if (!redirectUri || !isSafe) {

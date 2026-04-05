@@ -22,11 +22,11 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   const archived = url.searchParams.get('archived') === 'true'
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '20'), 100)
   const offset = Math.max(parseInt(url.searchParams.get('offset') || '0'), 0)
-  const whereArchived = archived ? 'n.archived_at IS NOT NULL' : 'n.archived_at IS NULL'
+  const archivedBit = archived ? 1 : 0
 
   const countRow = await env.DB
-    .prepare(`SELECT COUNT(*) as total FROM notes n WHERE n.team_id = ? AND ${whereArchived}`)
-    .bind(teamId)
+    .prepare('SELECT COUNT(*) as total FROM notes n WHERE n.team_id = ? AND (? = 1 AND n.archived_at IS NOT NULL OR ? = 0 AND n.archived_at IS NULL)')
+    .bind(teamId, archivedBit, archivedBit)
     .first<{ total: number }>()
   const total = countRow?.total ?? 0
 
@@ -37,12 +37,12 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
       FROM notes n
       LEFT JOIN note_tags nt ON n.id = nt.note_id
       LEFT JOIN tags t ON nt.tag_id = t.id
-      WHERE n.team_id = ? AND ${whereArchived}
+      WHERE n.team_id = ? AND (? = 1 AND n.archived_at IS NOT NULL OR ? = 0 AND n.archived_at IS NULL)
       GROUP BY n.id
       ORDER BY n.updated_at DESC
       LIMIT ? OFFSET ?
     `)
-    .bind(teamId, limit, offset)
+    .bind(teamId, archivedBit, archivedBit, limit, offset)
     .all()
 
   const results = notes.results.map((n: any) => ({

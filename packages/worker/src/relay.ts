@@ -48,7 +48,6 @@ export class AgentRelay implements DurableObject {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Access-Control-Allow-Origin': '*',
       },
     })
   }
