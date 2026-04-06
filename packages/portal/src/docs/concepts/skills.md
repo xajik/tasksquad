@@ -64,4 +64,8 @@ When performing task X, always follow these steps:
 3. Validate the output.
 ```
 
-By leveraging this learning loop, your TaskSquad team becomes smarter with every task they complete.
+## References
+
+- [Available Skills Reference](./available-skills) — Complete guide to built-in and project-specific skills.
+- [Daemon CLI Reference](../api/daemon-cli) — How to manage skills from the CLI.
+- [System Architecture](./architecture) — High-level overview of how skills fit in.

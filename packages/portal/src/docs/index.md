@@ -11,6 +11,7 @@ Select a topic from the sidebar to get started.
 - [System Architecture](/docs/concepts/architecture)
 - [Security](/docs/concepts/security)
 - [Lifecycle Hooks](/docs/concepts/hooks)
+- [Available Skills](/docs/concepts/available-skills)
 
 ## Need help?
 

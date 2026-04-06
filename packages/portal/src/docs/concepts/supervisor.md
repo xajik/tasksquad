@@ -183,3 +183,9 @@ While both use AI to help agents:
 - **Skills** — Provides reusable knowledge; loaded at task start
 
 The Supervisor may load the `/tsq-supervisor` skill (if installed) to get structured diagnostic instructions.
+
+## References
+
+- [Daemon CLI Reference](../api/daemon-cli) — Commands for monitoring and unblocking agents.
+- [Available Skills Reference](./available-skills) — Review the `tsq-supervisor` skill details.
+- [Lifecycle Hooks](./hooks) — How the supervisor reports verdicts.

@@ -130,14 +130,10 @@ The daemon invokes the command with the task subject as input and captures the o
 If the agent process crashes or loses connectivity, its status moves to `offline` after a
 missed heartbeat window.
 
-## Next Steps
-
-- [System Architecture](./concepts/architecture) — deeper look at how components connect
-- [Security & Encryption](./concepts/security) — how data is protected in transit and at rest
-- [Supervisor](./concepts/supervisor) — automated health-check for stuck tasks
-
 ## References
 
-- [System Architecture](./concepts/architecture)
-- [Security & Encryption](./concepts/security)
-- [Supervisor](./concepts/supervisor)
+- [System Architecture](./concepts/architecture) — Deeper look at how components connect.
+- [Security & Encryption](./concepts/security) — How data is protected in transit and at rest.
+- [Supervisor](./concepts/supervisor) — Automated health-check for stuck tasks.
+- [Skills & Learning](./concepts/skills) — How agents grow smarter over time.
+- [Daemon CLI Reference](./api/daemon-cli) — Detailed guide to the `tsq` binary.
