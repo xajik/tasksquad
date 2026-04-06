@@ -436,6 +436,20 @@ export function Skills({ teamId }: { teamId: string }) {
               className="font-mono text-sm min-h-[120px]"
               required
             />
+            <div className="text-[10px] text-muted-foreground bg-muted/30 p-2.5 rounded border border-dashed font-mono">
+              <span className="block mb-1.5 text-[11px] font-bold text-foreground opacity-60 uppercase tracking-tight">Expected Skill Format (Markdown):</span>
+              <div className="space-y-0.5 opacity-80">
+                ---<br />
+                name: tsq-my-skill<br />
+                description: brief summary of the skill<br />
+                ---<br />
+                <br />
+                # Instructions<br />
+                Step-by-step guidance for the agent.<br />
+                1. First do X<br />
+                2. Then do Y
+              </div>
+            </div>
             <div className="flex items-center justify-between">
               <button
                 type="button"

@@ -205,6 +205,20 @@ tsq skill --name tsq-foo --description "..." --file /path/to/skill.md
 cat /path/to/skill.md | tsq skill --name tsq-foo --description "..."
 ```
 
+**Skill File Format (`SKILL.md`):**
+Skills MUST be Markdown files with YAML frontmatter:
+```markdown
+---
+name: tsq-my-skill
+description: brief summary of the skill
+---
+
+# Instructions
+Step-by-step guidance for the agent.
+1. First do X
+2. Then do Y
+```
+
 **Flags:**
 
 | Flag | Default | Description |

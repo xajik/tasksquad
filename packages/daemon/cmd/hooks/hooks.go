@@ -67,6 +67,21 @@ func RunSkill(args []string) error {
 
 	if *name == "" || *description == "" {
 		fmt.Fprintln(os.Stderr, "usage: tsq skill --name <name> --description <desc> [--file <path>]")
+		fmt.Fprintln(os.Stderr, "\nHint: Skill content must be a Markdown file with YAML frontmatter.")
+		fmt.Fprintln(os.Stderr, "\nExpected Skill Format (SKILL.md):")
+		fmt.Fprintln(os.Stderr, "┌──────────────────────────────────────────────────┐")
+		fmt.Fprintln(os.Stderr, "│ ---                                              │")
+		fmt.Fprintln(os.Stderr, "│ name: tsq-my-skill                               │")
+		fmt.Fprintln(os.Stderr, "│ description: brief summary of the skill          │")
+		fmt.Fprintln(os.Stderr, "│ ---                                              │")
+		fmt.Fprintln(os.Stderr, "│                                                  │")
+		fmt.Fprintln(os.Stderr, "│ ## When to use                                   │")
+		fmt.Fprintln(os.Stderr, "│ <condition that triggers this skill>             │")
+		fmt.Fprintln(os.Stderr, "│                                                  │")
+		fmt.Fprintln(os.Stderr, "│ ## Steps                                         │")
+		fmt.Fprintln(os.Stderr, "│ 1. First do X                                    │")
+		fmt.Fprintln(os.Stderr, "│ 2. Then do Y                                     │")
+		fmt.Fprintln(os.Stderr, "└──────────────────────────────────────────────────┘")
 		os.Exit(1)
 	}
 

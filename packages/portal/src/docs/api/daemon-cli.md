@@ -83,6 +83,19 @@ Push a new skill definition to the daemon.
 - **Flags**: `--name` (must start with `tsq-`), `--description`, `--file`.
 - **Usage**: `tsq skill --name tsq-my-skill --description "Description" --file ./skill.md`
 
+**Skill File Format**:
+Skills should be Markdown with YAML frontmatter:
+
+```markdown
+---
+name: tsq-my-skill
+description: brief summary
+---
+
+# Instructions
+Step-by-step guidance for the agent.
+```
+
 ## Configuration
 
 The daemon is configured via `~/.tasksquad/config.toml`. It is hot-reloaded automatically when changes are detected.
