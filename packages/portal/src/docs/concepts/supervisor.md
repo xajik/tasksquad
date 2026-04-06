@@ -40,7 +40,7 @@ Monitor() tick (every 60s)
 When triggered, the Supervisor:
 
 1. **Captures context** — Agent name, task ID, tmux session, run log path, terminal snapshot (last 50 lines)
-2. **Spawns a tmux session** — Named `tsq-sup-<taskID[:8]>` running Claude/Gemini/OpenCode
+2. **Spawns a tmux session** — Named `tsq-sup-<taskID>` running the configured supervisor CLI. Session runs from `~/.tasksquad` (not the agent's work dir), giving it direct access to all logs.
 3. **Injects the prompt** — Provides context + instructions to load `/tsq-supervisor` (if available)
 4. **Waits for verdict** — 5 minute timeout; if no verdict, retries next cycle
 5. **Reports outcome** — Posts result to the task thread
@@ -164,7 +164,17 @@ tsq pane tsq-<taskID8> --lines 100
 
 ## Configuration
 
-The Supervisor is always enabled when the daemon runs. Key constants:
+The Supervisor is **opt-in**. Add a `[supervisor]` section to `~/.tasksquad/config.toml` to enable it. If the section is absent, the Supervisor is completely disabled with no fallback.
+
+```toml
+[supervisor]
+command = "claude"
+# command = "opencode -m ollama/gemma4:26b"   # flags are supported
+```
+
+The `command` field accepts any CLI tool that can read stdin and post a verdict to `POST /hooks/supervisor`. Flags are included in the command string and preserved in the shell invocation.
+
+Key constants (hardcoded in `packages/daemon/supervisor/supervisor.go`):
 
 | Constant | Default | Description |
 |----------|---------|-------------|
@@ -172,8 +182,6 @@ The Supervisor is always enabled when the daemon runs. Key constants:
 | `checkInterval` | 60 sec | How often the monitor loop runs |
 | `supervisorTimeout` | 5 min | Max time a supervisor session can run |
 | `maxSupervisorFailures` | 5 | Consecutive failures before escalation |
-
-These are hardcoded in `packages/daemon/supervisor/supervisor.go`.
 
 ## Supervisor vs Skills
 

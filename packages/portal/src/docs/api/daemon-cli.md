@@ -110,6 +110,11 @@ id = "01JXYZ..."
 name = "coder"
 command = "claude"
 work_dir = "~/Projects/myapp"
+
+# Optional — add to enable automatic stuck-agent recovery
+[supervisor]
+command = "claude"
+# command = "opencode -m ollama/gemma4:26b"
 ```
 
 ## References

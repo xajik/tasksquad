@@ -256,6 +256,11 @@ id       = "01JABC..."
 name     = "reviewer"
 command  = "claude"
 work_dir = "/Users/alice/Projects/myapp"
+
+# Optional — omit entirely to disable supervisor
+[supervisor]
+command = "claude"
+# command = "opencode -m ollama/gemma4:26b"   # flags are supported
 ```
 
 **Providers** (auto-detected from command binary name, or set `provider` explicitly):
@@ -342,7 +347,7 @@ When tmux is installed, the daemon runs each task in a dedicated tmux session in
 | Session type | Name pattern | Example |
 |---|---|---|
 | Task | `tsq-<first8chars of taskID>` | `tsq-01KKTPE` |
-| Supervisor | `tsq-sup-<first8chars of taskID>` | `tsq-sup-01KKTPE` |
+| Supervisor | `tsq-sup-<taskID>` | `tsq-sup-01JQZF3XKBP5TYNQWN6KV3M8AZ` |
 
 ### `tsq sessions`
 

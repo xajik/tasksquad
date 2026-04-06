@@ -92,30 +92,37 @@ port = 7374          # local HTTP port for provider hooks (default: 7374)
 
 [[agents]]
 id       = "agent_id_from_portal"    # unique agent ID from portal
-token    = "tsq_live_xxxxxxxxxxxx"   # paste from TaskSquad portal
 name     = "my-agent"
 command  = "claude"                  # CLI binary to run
 work_dir = "~/Projects/my-repo"
 # provider = "claude-code"           # auto-detected from command; uncomment to override
+```
 
-**Multiple agents** — add additional `[[agents]]` blocks, each with its own token:
+**Multiple agents** — add additional `[[agents]]` blocks:
 
 ```toml
 [[agents]]
 id       = "frontend-agent-id"
-token    = "tsq_live_aaa"
 name     = "frontend-agent"
 command  = "claude"
 work_dir = "~/Projects/frontend"
 
 [[agents]]
 id       = "backend-agent-id"
-token    = "tsq_live_bbb"
 name     = "backend-agent"
 command  = "claude"
 work_dir = "~/Projects/backend"
 ```
+
+**Supervisor** (optional) — add a `[supervisor]` section to enable automatic recovery when an agent stalls. If this section is absent, the supervisor is completely disabled.
+
+```toml
+[supervisor]
+command = "claude"                        # any CLI tool; flags supported
+# command = "opencode -m ollama/gemma4:26b"
 ```
+
+The supervisor monitors all running agents. If a task has had no hook activity for 10 minutes, it spawns a dedicated tmux session (`tsq-sup-<taskID>`) from `~/.tasksquad` — giving it direct access to all logs — runs the supervisor CLI in print mode, and delivers a verdict back to the daemon.
 
 ### Config fields
 
@@ -125,11 +132,11 @@ work_dir = "~/Projects/backend"
 | `server.poll_interval` | No | `60` | Heartbeat interval in seconds |
 | `hooks.port` | No | `7374` | Local port for provider hook callbacks |
 | `agents[].id` | Yes | — | Unique agent ID from the portal |
-| `agents[].token` | Yes | — | Agent auth token from the portal |
 | `agents[].name` | Yes | — | Display name shown in portal |
 | `agents[].command` | Yes | — | CLI command to execute (e.g. `claude`, `codex`) |
 | `agents[].work_dir` | Yes | — | Working directory for the CLI process |
 | `agents[].provider` | No | auto | Provider override: `claude-code`, `opencode`, `codex`, `stdout` |
+| `supervisor.command` | No | — | CLI used for automatic recovery; section absent = supervisor disabled |
 
 ---
 
@@ -190,7 +197,42 @@ The daemon runs a local HTTP server (default port `7374`) that receives provider
 |---|---|---|
 | `POST` | `/hooks/stop` | Claude Code Stop event — closes the current session |
 | `POST` | `/hooks/notification` | Claude Code Notification event — marks task as waiting for input |
+| `POST` | `/hooks/supervisor` | Supervisor verdict delivery (status, summary, found, action) |
 | `POST` | `/hooks/codex` | Codex hook (not yet implemented — returns 501) |
+
+---
+
+## Supervisor
+
+The optional supervisor automatically recovers stalled agents. Add a `[supervisor]` section to `config.toml` to enable it; omitting the section disables it entirely (no fallback auto-detection).
+
+```toml
+[supervisor]
+command = "claude"
+# command = "opencode -m ollama/gemma4:26b"   # flags are supported
+```
+
+**How it works:**
+
+1. Every 60 seconds the supervisor checks all `running` agents.
+2. If a task has had no hook activity for **10 minutes**, a tmux session `tsq-sup-<taskID>` is spawned from `~/.tasksquad` (giving direct access to all logs).
+3. The supervisor CLI receives a context prompt (agent name, task ID, tmux snapshot, log path) and is expected to investigate and post a verdict to `POST /hooks/supervisor`.
+4. The daemon acts on the verdict:
+   - `working_fine` → posts a progress note to the task thread
+   - `resolved` / `cannot_help` → reports the supervisor's findings to the worker
+5. If the supervisor exits without posting a verdict 5 consecutive times, the daemon escalates the task.
+
+**Verdict payload** (posted by the supervisor CLI via `/tsq-supervisor` skill):
+
+```json
+{
+  "task_id": "01JQZF3XKB…",
+  "status": "resolved",          // "working_fine" | "resolved" | "cannot_help"
+  "summary": "Sent '2' to dismiss Gemini rate-limit prompt",
+  "found": "Gemini rate limit",
+  "action": "Sent keystroke '2' to tmux session"
+}
+```
 
 ---
 
@@ -220,7 +262,7 @@ packages/daemon/
 ├── config/
 │   └── config.go      # TOML config loader + fsnotify hot-reload watcher
 ├── hooks/
-│   └── server.go      # Local HTTP hook server (Stop, Notification, Codex endpoints)
+│   └── server.go      # Local HTTP hook server (Stop, Notification, Supervisor, Codex endpoints)
 ├── logger/
 │   └── logger.go      # Structured logger → stdout + daily log file
 ├── provider/
@@ -229,6 +271,9 @@ packages/daemon/
 │   ├── opencode.go    # OpenCode stub (TODO)
 │   ├── codex.go       # Codex stub (TODO)
 │   └── stdout.go      # Generic stdout fallback (process-exit only)
+├── supervisor/
+│   ├── supervisor.go  # Supervisor struct, Monitor loop, verdict handling
+│   └── spawn.go       # Tmux session spawning, prompt building, CLI resolution
 ├── ui/
 │   └── ui.go          # Systray UI stub (headless for now; see file for full plan)
 └── session_test.go    # Integration test: spawns claude, captures Stop hook
@@ -264,8 +309,10 @@ The daemon watches `~/.tasksquad/config.toml` via `fsnotify`. Edit the file whil
 ### Logs
 
 ```
-~/.tasksquad/logs/daemon-YYYY-MM-DD.log   # daily daemon log
-~/.tasksquad/logs/test-session-*.txt      # integration test session records
+~/.tasksquad/logs/daemon-YYYY-MM-DD.log        # daily daemon log
+~/.tasksquad/logs/supervisor/<taskID>.log      # per-task supervisor log (when supervisor is enabled)
+~/.tasksquad/logs/test-session-*.txt           # integration test session records
+~/.tasksquad/projects/<project>/troubleshooting.md  # per-project notes read by the supervisor
 ```
 
 ---
