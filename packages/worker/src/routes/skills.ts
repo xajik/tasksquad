@@ -244,6 +244,15 @@ export async function daemonSkillGet(req: Request, env: Env, _ctx: unknown, auth
 
 // ─── Daemon upsert ─────────────────────────────────────────────────────────────
 
+function skillTimeSuffix(ts: number): string {
+  const d = new Date(ts)
+  const mm = String(d.getUTCMinutes()).padStart(2, '0')
+  const hh = String(d.getUTCHours()).padStart(2, '0')
+  const dd = String(d.getUTCDate()).padStart(2, '0')
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0')
+  return `-${mm}-${hh}-${dd}-${mo}`
+}
+
 export async function daemonUpsert(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const body = await req.json<{ name: string; description?: string; content: string }>()
   const { name, description, content } = body
@@ -252,28 +261,25 @@ export async function daemonUpsert(req: Request, env: Env, _ctx: unknown, daemon
   if (!name.startsWith('tsq-')) return err('name_must_start_with_tsq', 400)
 
   const { teamId, agentId } = daemon
-  const id = ulid()
   const now = Date.now()
   const etag = await contentEtag(content)
 
+  // Check for collision: team-scoped skill with same name OR a global default with same name.
+  const collision = await env.DB
+    .prepare('SELECT id FROM skills WHERE name = ? AND (team_id = ? OR is_default = 1) LIMIT 1')
+    .bind(name, teamId)
+    .first<{ id: string }>()
+
+  const finalName = collision ? name + skillTimeSuffix(now) : name
+
+  const id = ulid()
   await env.DB
     .prepare(`
       INSERT INTO skills (id, team_id, name, description, content, author_id, etag, is_default, auto_install, version, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, NULL, ?, 0, 0, 1, ?, ?)
-      ON CONFLICT(team_id, name) DO UPDATE SET
-        description = excluded.description,
-        content     = excluded.content,
-        etag        = excluded.etag,
-        version     = version + 1,
-        updated_at  = excluded.updated_at
     `)
-    .bind(id, teamId, name, description ?? '', content, etag, now, now)
+    .bind(id, teamId, finalName, description ?? '', content, etag, now, now)
     .run()
 
-  const row = await env.DB
-    .prepare('SELECT id, version FROM skills WHERE team_id = ? AND name = ?')
-    .bind(teamId, name)
-    .first<{ id: string; version: number }>()
-
-  return json({ id: row?.id ?? id, name, etag, version: row?.version ?? 1, agent_id: agentId }, 201)
+  return json({ id, name: finalName, etag, version: 1, agent_id: agentId }, 201)
 }

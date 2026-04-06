@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { api, type Skill } from '../lib/api'
+import { api, type Skill, type Member } from '../lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Loader2, Plus, BookOpen, Trash2, Edit, X, Save, Shield, Zap, RefreshCw, HelpCircle, ChevronUp, ChevronDown, ExternalLink } from 'lucide-react'
+import { Loader2, Plus, BookOpen, Trash2, Edit, X, Save, Shield, Zap, RefreshCw, HelpCircle, ChevronUp, ChevronDown, ExternalLink, User } from 'lucide-react'
 import { SkillWorkflow } from '../components/SkillWorkflow'
 
 function relativeTime(ts: number): string {
@@ -33,17 +33,22 @@ function relativeTime(ts: number): string {
 
 function SkillCard({
   skill,
+  members,
   onClick,
   onDelete,
   onToggleAutoInstall,
 }: {
   skill: Skill
+  members: Map<string, string>
   onClick: () => void
   onDelete: () => void
   onToggleAutoInstall: () => void
 }) {
-  const isDefault = !!skill.is_default
+  const isProtected = !!skill.is_default
   const autoInstall = !!skill.auto_install
+  const authorLabel = skill.author_id !== null
+    ? (members.get(skill.author_id) ?? skill.author_id.slice(0, 8))
+    : (!isProtected ? 'Agent' : null)
 
   return (
     <Card
@@ -55,7 +60,7 @@ function SkillCard({
           <CardTitle className="text-base font-medium line-clamp-1 group-hover:text-primary transition-colors font-mono">
             {skill.name}
           </CardTitle>
-          {isDefault && (
+          {isProtected && (
             <Badge variant="outline" className="shrink-0 text-xs gap-1">
               <Shield className="h-3 w-3" /> default
             </Badge>
@@ -72,12 +77,12 @@ function SkillCard({
             className={`h-7 w-7 ${autoInstall ? 'text-primary' : 'text-muted-foreground'} hover:bg-muted`}
             title={autoInstall ? 'Disable auto-install' : 'Enable auto-install'}
             onClick={onToggleAutoInstall}
-            disabled={isDefault}
+            disabled={isProtected}
           >
             <Zap className="h-3.5 w-3.5" />
           </Button>
           {/* Delete */}
-          {!isDefault && (
+          {!isProtected && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
@@ -115,11 +120,18 @@ function SkillCard({
         )}
         <div className="flex items-center justify-between gap-2 mt-auto text-xs text-muted-foreground">
           <span>{relativeTime(skill.updated_at)}</span>
-          {autoInstall && (
-            <span className="flex items-center gap-1 text-primary">
-              <Zap className="h-3 w-3" /> auto-install
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {authorLabel && (
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <User className="h-3 w-3" /> {authorLabel}
+              </span>
+            )}
+            {autoInstall && (
+              <span className="flex items-center gap-1 text-primary">
+                <Zap className="h-3 w-3" /> auto-install
+              </span>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -129,12 +141,13 @@ function SkillCard({
 interface SkillDetailProps {
   skill: Skill
   teamId: string
+  members: Map<string, string>
   onClose: () => void
   onSaved: () => void
   onDeleted: () => void
 }
 
-function SkillDetail({ skill, teamId, onClose, onSaved, onDeleted }: SkillDetailProps) {
+function SkillDetail({ skill, teamId, members, onClose, onSaved, onDeleted }: SkillDetailProps) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(skill.name)
   const [description, setDescription] = useState(skill.description)
@@ -150,7 +163,10 @@ function SkillDetail({ skill, teamId, onClose, onSaved, onDeleted }: SkillDetail
     }).catch(() => {})
   }, [teamId, skill.id])
 
-  const isDefault = !!skill.is_default
+  const isProtected = !!skill.is_default
+  const authorLabel = skill.author_id !== null
+    ? (members.get(skill.author_id) ?? skill.author_id.slice(0, 8))
+    : (!isProtected ? 'Agent' : null)
 
   async function handleSave() {
     setSaving(true)
@@ -178,14 +194,19 @@ function SkillDetail({ skill, teamId, onClose, onSaved, onDeleted }: SkillDetail
           ) : (
             <h2 className="text-lg font-medium font-mono truncate">{skill.name}</h2>
           )}
-          {isDefault && (
+          {isProtected && (
             <Badge variant="outline" className="shrink-0 text-xs gap-1 ml-1">
               <Shield className="h-3 w-3" /> default
             </Badge>
           )}
+          {authorLabel && (
+            <Badge variant="secondary" className="shrink-0 text-xs gap-1 ml-1">
+              <User className="h-3 w-3" /> {authorLabel}
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0 ml-2">
-          {!isDefault && !editing && (
+          {!isProtected && !editing && (
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditing(true)}>
               <Edit className="h-4 w-4" />
             </Button>
@@ -201,7 +222,7 @@ function SkillDetail({ skill, teamId, onClose, onSaved, onDeleted }: SkillDetail
               </Button>
             </>
           )}
-          {!isDefault && !editing && (
+          {!isProtected && !editing && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10">
@@ -276,6 +297,7 @@ function SkillDetail({ skill, teamId, onClose, onSaved, onDeleted }: SkillDetail
 
 export function Skills({ teamId }: { teamId: string }) {
   const [skills, setSkills] = useState<Skill[]>([])
+  const [members, setMembers] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Skill | null>(null)
   const [showCreate, setShowCreate] = useState(false)
@@ -291,8 +313,16 @@ export function Skills({ teamId }: { teamId: string }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await api.skills.list(teamId)
-      setSkills(data.skills ?? [])
+      const [skillsData, membersData] = await Promise.all([
+        api.skills.list(teamId),
+        api.members.list(teamId).catch(() => ({ members: [] as Member[] })),
+      ])
+      setSkills(skillsData.skills ?? [])
+      const map = new Map<string, string>()
+      for (const m of membersData.members ?? []) {
+        map.set(m.id, m.email)
+      }
+      setMembers(map)
     } finally {
       setLoading(false)
     }
@@ -509,6 +539,7 @@ Your skill content here..."
                 <SkillCard
                   key={skill.id}
                   skill={skill}
+                  members={members}
                   onClick={() => setSelected(skill)}
                   onDelete={() => handleDelete(skill)}
                   onToggleAutoInstall={() => handleToggleAutoInstall(skill)}
@@ -526,6 +557,7 @@ Your skill content here..."
             key={selected.id}
             skill={selected}
             teamId={teamId}
+            members={members}
             onClose={() => setSelected(null)}
             onSaved={load}
             onDeleted={async () => {
