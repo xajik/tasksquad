@@ -140,3 +140,103 @@ func TestExpandHome_WithTilde(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+func TestDefaultDir_ContainsDotTasksquad(t *testing.T) {
+	d := DefaultDir()
+	if !strings.Contains(d, ".tasksquad") {
+		t.Errorf("DefaultDir() = %q, expected it to contain .tasksquad", d)
+	}
+	if strings.HasSuffix(d, "config.toml") {
+		t.Errorf("DefaultDir() = %q, should not end with config.toml", d)
+	}
+}
+
+func TestLoad_SupervisorAbsent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	os.WriteFile(path, []byte(`[[agents]]
+id = "agent-abc"
+name = "test"
+command = "claude"
+work_dir = "/tmp"
+`), 0644)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Supervisor != nil {
+		t.Errorf("expected Supervisor to be nil when section is absent, got %+v", cfg.Supervisor)
+	}
+}
+
+func TestLoad_SupervisorPresent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	os.WriteFile(path, []byte(`[[agents]]
+id = "agent-abc"
+name = "test"
+command = "claude"
+work_dir = "/tmp"
+
+[supervisor]
+command = "opencode -m ollama/gemma4:26b"
+`), 0644)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Supervisor == nil {
+		t.Fatal("expected Supervisor to be non-nil when section is present")
+	}
+	if cfg.Supervisor.Command != "opencode -m ollama/gemma4:26b" {
+		t.Errorf("Command = %q, want %q", cfg.Supervisor.Command, "opencode -m ollama/gemma4:26b")
+	}
+}
+
+func TestLoad_SupervisorEmptyCommand(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	os.WriteFile(path, []byte(`[[agents]]
+id = "agent-abc"
+name = "test"
+command = "claude"
+work_dir = "/tmp"
+
+[supervisor]
+command = ""
+`), 0644)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Supervisor == nil {
+		t.Fatal("expected Supervisor to be non-nil (section present, command empty)")
+	}
+	if cfg.Supervisor.Command != "" {
+		t.Errorf("expected empty Command, got %q", cfg.Supervisor.Command)
+	}
+}
+
+func TestLoad_IsSupervisorFlagIgnored(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	// Old config with is_supervisor flag — should load without error (unknown fields ignored).
+	os.WriteFile(path, []byte(`[[agents]]
+id = "agent-abc"
+name = "test"
+command = "claude"
+work_dir = "/tmp"
+is_supervisor = true
+`), 0644)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error loading old config with is_supervisor: %v", err)
+	}
+	if cfg.Supervisor != nil {
+		t.Errorf("old is_supervisor flag should not populate Supervisor section, got %+v", cfg.Supervisor)
+	}
+}

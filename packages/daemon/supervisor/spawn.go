@@ -19,28 +19,21 @@ import (
 // This prevents shell injection when IDs are embedded in command strings.
 var safeIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 
-// detectCLI returns the CLI binary to use for supervisor sessions.
-// Prefers an agent with is_supervisor=true; falls back to PATH priority.
-func detectCLI(cfg *config.Config) string {
-	for _, a := range cfg.Agents {
-		if a.IsSupervisor {
-			parts := strings.Fields(a.Command)
-			if len(parts) > 0 {
-				if p, err := exec.LookPath(parts[0]); err == nil {
-					logger.Info(fmt.Sprintf("[supervisor] Using designated supervisor command: %s", parts[0]))
-					return p
-				}
-			}
-		}
+// resolveSupervisorCLI resolves the binary path and full command from SupervisorConfig.
+// Returns ("", "") if the command is empty or the binary cannot be found in PATH.
+func resolveSupervisorCLI(scfg *config.SupervisorConfig) (cli, fullCmd string) {
+	parts := strings.Fields(scfg.Command)
+	if len(parts) == 0 {
+		logger.Warn("[supervisor] supervisor.command is empty — supervisor disabled")
+		return "", ""
 	}
-	for _, cmd := range []string{"claude", "gemini", "opencode", "codex"} {
-		if p, err := exec.LookPath(cmd); err == nil {
-			logger.Info(fmt.Sprintf("[supervisor] Auto-detected CLI: %s", p))
-			return p
-		}
+	p, err := exec.LookPath(parts[0])
+	if err != nil {
+		logger.Warn(fmt.Sprintf("[supervisor] supervisor CLI %q not found in PATH — supervisor disabled", parts[0]))
+		return "", ""
 	}
-	logger.Warn("[supervisor] No CLI tool found — supervisor disabled")
-	return ""
+	logger.Info(fmt.Sprintf("[supervisor] Using supervisor command: %s", scfg.Command))
+	return p, scfg.Command
 }
 
 // spawn starts a supervisor tmux session for the given stuck task.
@@ -58,11 +51,12 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	}
 
 	sessionName := "tsq-sup-" + taskID
-	workDir := a.WorkDir()
+	workDir := config.DefaultDir() // ~/.tasksquad — direct access to all logs
+	agentWorkDir := a.WorkDir()
 	agentTmux := a.TmuxSession()
 	agentID := a.AgentID()
 	logPath := a.LastLogPath()
-	troubleshootPath := troubleshootingFile(workDir)
+	troubleshootPath := troubleshootingFile(agentWorkDir)
 	supLog := SupervisorLogPath(taskID)
 
 	if err := os.MkdirAll(filepath.Dir(supLog), 0755); err != nil {
@@ -93,7 +87,7 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	}
 	tmpF.Close()
 
-	shellCmd := printModeCmd(s.cli, promptFile, supLog, s.daemonBinDir, taskID, s.cfg.Hooks.Port)
+	shellCmd := printModeCmd(s.cli, s.fullCmd, promptFile, supLog, s.daemonBinDir, taskID, s.cfg.Hooks.Port)
 	err = exec.Command("tmux", "new-session", "-d", "-s", sessionName,
 		"-c", workDir, "sh", "-c", shellCmd).Run()
 	if err != nil {
@@ -211,7 +205,7 @@ func troubleshootingFile(workDir string) string {
 
 // printModeCmd builds a shell command that runs the CLI in print mode,
 // piping the prompt from promptFile and appending output to logFile.
-func printModeCmd(cli, promptFile, logFile, daemonBinDir, taskID string, hooksPort int) string {
+func printModeCmd(cli, fullCmd, promptFile, logFile, daemonBinDir, taskID string, hooksPort int) string {
 	base := filepath.Base(cli)
 	pathPrefix := ""
 	if daemonBinDir != "" {
@@ -224,5 +218,5 @@ func printModeCmd(cli, promptFile, logFile, daemonBinDir, taskID string, hooksPo
 	fallbackCurl := fmt.Sprintf(
 		`curl -sf -X POST http://localhost:%d/hooks/supervisor -H 'Content-Type: application/json' -d '{"task_id":"%s","status":"cannot_help","summary":"Supervisor CLI exited without posting verdict"}' > /dev/null 2>&1 || true`,
 		hooksPort, taskID)
-	return fmt.Sprintf(`%scat %s | %s >> %s 2>&1; %s`, pathPrefix, promptFile, cli, logFile, fallbackCurl)
+	return fmt.Sprintf(`%scat %s | %s >> %s 2>&1; %s`, pathPrefix, promptFile, fullCmd, logFile, fallbackCurl)
 }

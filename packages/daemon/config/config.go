@@ -31,9 +31,12 @@ type AgentConfig struct {
 	// Valid values: "claude-code", "opencode", "codex", "stdout".
 	// Auto-detected from the command binary name when empty.
 	Provider string `toml:"provider"`
-	// IsSupervisor marks this agent's command as the preferred CLI tool for
-	// supervisor sessions. Only one agent should have this set to true.
-	IsSupervisor bool `toml:"is_supervisor"`
+}
+
+// SupervisorConfig holds the optional [supervisor] section.
+// If absent from config.toml, Supervisor will be nil and the feature is disabled.
+type SupervisorConfig struct {
+	Command string `toml:"command"`
 }
 
 type HooksConfig struct {
@@ -53,11 +56,12 @@ type AnalyticsConfig struct {
 }
 
 type Config struct {
-	Server    ServerConfig    `toml:"server"`
-	Agents    []AgentConfig   `toml:"agents"`
-	Hooks     HooksConfig     `toml:"hooks"`
-	Firebase  FirebaseConfig  `toml:"firebase"`
-	Analytics AnalyticsConfig `toml:"analytics"`
+	Server     ServerConfig      `toml:"server"`
+	Agents     []AgentConfig     `toml:"agents"`
+	Hooks      HooksConfig       `toml:"hooks"`
+	Firebase   FirebaseConfig    `toml:"firebase"`
+	Analytics  AnalyticsConfig   `toml:"analytics"`
+	Supervisor *SupervisorConfig `toml:"supervisor"`
 }
 
 func expandHome(path string) string {
@@ -71,6 +75,11 @@ func expandHome(path string) string {
 func DefaultPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".tasksquad", "config.toml")
+}
+
+func DefaultDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".tasksquad")
 }
 
 func DeviceID() string {

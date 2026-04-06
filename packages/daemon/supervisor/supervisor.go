@@ -70,23 +70,32 @@ type Supervisor struct {
 	lastAttempt   map[string]time.Time             // when supervision was last attempted per taskID
 	failCount     map[string]int                   // consecutive no-verdict attempts per taskID
 	verdictChans  map[string]chan supervisorVerdict // taskID → verdict delivery channel
-	cli           string                           // resolved CLI binary path
+	cli           string                           // resolved CLI binary path (empty = disabled)
+	fullCmd       string                           // full command string with flags from [supervisor] config
 	daemonBinDir  string                           // directory containing the tsq binary; prepended to PATH in supervisor sessions
 	cfg           *config.Config
 }
 
-// New creates a Supervisor and detects the CLI tool from config or PATH priority.
+// New creates a Supervisor. If the [supervisor] section is absent from config
+// or the binary cannot be found in PATH, the supervisor is disabled (cli == "").
 func New(cfg *config.Config) *Supervisor {
 	binDir := ""
 	if exe, err := os.Executable(); err == nil {
 		binDir = filepath.Dir(exe)
+	}
+	cli, fullCmd := "", ""
+	if cfg.Supervisor != nil {
+		cli, fullCmd = resolveSupervisorCLI(cfg.Supervisor)
+	} else {
+		logger.Info("[supervisor] No [supervisor] section in config — supervisor disabled")
 	}
 	return &Supervisor{
 		activeForTask: make(map[string]bool),
 		lastAttempt:   make(map[string]time.Time),
 		failCount:     make(map[string]int),
 		verdictChans:  make(map[string]chan supervisorVerdict),
-		cli:           detectCLI(cfg),
+		cli:           cli,
+		fullCmd:       fullCmd,
 		daemonBinDir:  binDir,
 		cfg:           cfg,
 	}
