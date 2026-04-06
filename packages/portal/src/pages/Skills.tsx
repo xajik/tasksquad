@@ -280,6 +280,7 @@ export function Skills({ teamId }: { teamId: string }) {
   const [selected, setSelected] = useState<Skill | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [showHowItWorks, setShowHowItWorks] = useState(false)
+  const [showExample, setShowExample] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newContent, setNewContent] = useState('')
@@ -359,7 +360,7 @@ export function Skills({ teamId }: { teamId: string }) {
               {showHowItWorks ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
             </Button>
           </div>
-          <Button size="sm" onClick={() => setShowCreate(true)}>
+          <Button size="sm" onClick={() => { setShowCreate(true); setNewContent('---\nname: \ndescription:\n---\n# ') }}>
             <Plus className="h-4 w-4 mr-1" /> New Skill
           </Button>
         </div>
@@ -418,7 +419,7 @@ export function Skills({ teamId }: { teamId: string }) {
               </div>
             )}
             <Input
-              placeholder="skill-name (use tsq- prefix for auto-learning)"
+              placeholder="skill-name"
               value={newName}
               onChange={e => setNewName(e.target.value)}
               className="font-mono"
@@ -430,25 +431,39 @@ export function Skills({ teamId }: { teamId: string }) {
               onChange={e => setNewDesc(e.target.value)}
             />
             <Textarea
-              placeholder="Skill content (Markdown with frontmatter)"
+              placeholder="---
+name: my-skill
+description: What this skill does
+---
+# Instructions
+Your skill content here..."
               value={newContent}
               onChange={e => setNewContent(e.target.value)}
               className="font-mono text-sm min-h-[120px]"
               required
             />
             <div className="text-[10px] text-muted-foreground bg-muted/30 p-2.5 rounded border border-dashed font-mono">
-              <span className="block mb-1.5 text-[11px] font-bold text-foreground opacity-60 uppercase tracking-tight">Expected Skill Format (Markdown):</span>
-              <div className="space-y-0.5 opacity-80">
-                ---<br />
-                name: tsq-my-skill<br />
-                description: brief summary of the skill<br />
-                ---<br />
-                <br />
-                # Instructions<br />
-                Step-by-step guidance for the agent.<br />
-                1. First do X<br />
-                2. Then do Y
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowExample(v => !v)}
+                className="flex items-center gap-1.5 text-[11px] font-bold text-foreground opacity-60 uppercase tracking-tight hover:opacity-100 transition-opacity w-full"
+              >
+                <span className={`transition-transform ${showExample ? 'rotate-90' : ''}`}>{'>'}</span>
+                Example
+              </button>
+              {showExample && (
+                <div className="space-y-0.5 opacity-80 mt-1.5">
+                  ---<br />
+                  name: my-skill<br />
+                  description: brief summary of the skill<br />
+                  ---<br />
+                  <br />
+                  # Instructions<br />
+                  Step-by-step guidance for the agent.<br />
+                  1. First do X<br />
+                  2. Then do Y
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-between">
               <button
