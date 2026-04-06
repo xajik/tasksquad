@@ -19,6 +19,17 @@ import (
 // This prevents shell injection when IDs are embedded in command strings.
 var safeIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 
+// ansiEscape matches ANSI/VT100 escape sequences produced by terminal UIs.
+var ansiEscape = regexp.MustCompile(`\x1b(\[[0-9;?]*[A-Za-z]|\][^\x07]*(\x07|\x1b\\)|\(B|[0-9A-Za-z])`)
+
+// cleanLine strips ANSI escape sequences and handles carriage returns (\r).
+func cleanLine(s string) string {
+	if i := strings.LastIndex(s, "\r"); i >= 0 {
+		s = s[i+1:]
+	}
+	return strings.TrimRight(ansiEscape.ReplaceAllString(s, ""), " \t")
+}
+
 // resolveSupervisorCLI resolves the binary path and full command from SupervisorConfig.
 // Returns ("", "") if the command is empty or the binary cannot be found in PATH.
 func resolveSupervisorCLI(scfg *config.SupervisorConfig) (cli, fullCmd string) {
@@ -65,7 +76,7 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	}
 
 	tmuxSnapshot := captureTmuxPane(agentTmux, 50)
-	contextBlock := buildContextBlock(a.Name(), taskID, agentTmux, logPath, troubleshootPath, tmuxSnapshot)
+	contextBlock := buildContextBlock(a.Name(), taskID, agentTmux, logPath, troubleshootPath, cleanLine(tmuxSnapshot))
 
 	header := fmt.Sprintf(
 		"# TaskSquad Supervisor Log\n# agent=%s  task_id=%s\n# started=%s\n\n--- CONTEXT ---\n%s\n\n--- OUTPUT ---\n",
