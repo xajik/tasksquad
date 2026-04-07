@@ -33,6 +33,9 @@ type Agent interface {
 	// hook (e.g. codex last-assistant-message) so internalComplete can use it
 	// as finalText without a transcript file.
 	SetHookMessage(message string)
+	// GetLastTmuxCapture returns the stored tmux capture for fallback when
+	// transcript is unavailable. Returns empty string if not available.
+	GetLastTmuxCapture() string
 }
 
 // SupervisorReporter is implemented by the supervisor package and allows the
@@ -78,14 +81,30 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 
 // findAndDispatch iterates agents, applies agentID/taskID filters, and calls fn
 // on the first matching agent. Returns true if a match was found.
-// A mismatched taskID is logged as a stale-hook warning and the agent is skipped.
+// For stale hooks (taskID mismatch), attempts to use stored tmux capture as fallback.
 func findAndDispatch(agents []Agent, agentID, taskIDParam string, fn func(Agent)) bool {
 	for _, a := range agents {
 		if agentID != "" && a.ID() != agentID {
 			continue
 		}
-		if currentTaskID := a.GetTaskID(); taskIDParam != "" && currentTaskID != taskIDParam {
-			logger.Warn(fmt.Sprintf("[hooks] stale hook task_id=%q does not match agent %s current task %q — ignoring", taskIDParam, a.Name(), currentTaskID))
+		currentTaskID := a.GetTaskID()
+
+		// Check for stale hook: taskID doesn't match but agent just completed this task
+		if taskIDParam != "" && currentTaskID != taskIDParam && currentTaskID == "" {
+			// Agent is idle - check if we have stored tmux capture for fallback
+			if tmuxCapture := a.GetLastTmuxCapture(); tmuxCapture != "" {
+				logger.Info(fmt.Sprintf("[hooks] Stale hook for task %s - using stored tmux capture (%d chars) as fallback",
+					taskIDParam, len(tmuxCapture)))
+				// Still call fn to process the hook - the agent will use stored tmuxCapture
+				fn(a)
+				return true
+			}
+		}
+
+		// Normal case: taskID matches or no taskID filter
+		if taskIDParam != "" && currentTaskID != taskIDParam {
+			logger.Warn(fmt.Sprintf("[hooks] stale hook task_id=%q does not match agent %s current task %q — ignoring",
+				taskIDParam, a.Name(), currentTaskID))
 			continue
 		}
 		fn(a)

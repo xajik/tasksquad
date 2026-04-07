@@ -2,7 +2,9 @@ package agent
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/tasksquad/daemon/agentmode"
@@ -98,6 +100,24 @@ func (a *Agent) SetHookMessage(msg string) {
 	a.st.mu.Lock()
 	a.st.hookMessage = msg
 	a.st.mu.Unlock()
+}
+
+// GetLastTmuxCapture returns the stored tmux capture for fallback when
+// transcript is unavailable. Reads from local file if path exists.
+func (a *Agent) GetLastTmuxCapture() string {
+	a.st.mu.Lock()
+	path := a.st.lastTmuxCapturePath
+	a.st.mu.Unlock()
+
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		logger.Debug(fmt.Sprintf("[%s] Failed to read tmux capture file: %v", a.Config.Name, err))
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 // Pause stops the heartbeat poll loop until Resume is called.

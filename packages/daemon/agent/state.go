@@ -81,15 +81,16 @@ type AgentState struct {
 	// Process handles (active while task runs)
 	proc       *exec.Cmd
 	stdinWrite io.WriteCloser // pipe or PTY master; kept open for interactive replies
-	outputDone chan struct{}   // closed when streamOutput finishes draining stdout
+	outputDone chan struct{}  // closed when streamOutput finishes draining stdout
 
 	// tmux / FIFO
 	tmuxSession string // session name while task is running (tmux path only)
 	fifoPath    string // FIFO path for tmux output streaming
 
 	// Output and transcript
-	outputLines    []string
-	transcriptPath string // conversation transcript path (from Stop hook payload)
+	outputLines         []string
+	transcriptPath      string // conversation transcript path (from Stop hook payload)
+	lastTmuxCapturePath string // path to local tmux capture file for fallback when transcript is empty
 
 	// Prompt tracking
 	lastPrompt string // the initial prompt or latest reply sent to the process

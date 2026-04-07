@@ -244,14 +244,6 @@ export async function daemonSkillGet(req: Request, env: Env, _ctx: unknown, auth
 
 // ─── Daemon upsert ─────────────────────────────────────────────────────────────
 
-function skillTimeSuffix(ts: number): string {
-  const d = new Date(ts)
-  const mm = String(d.getUTCMinutes()).padStart(2, '0')
-  const hh = String(d.getUTCHours()).padStart(2, '0')
-  const dd = String(d.getUTCDate()).padStart(2, '0')
-  const mo = String(d.getUTCMonth() + 1).padStart(2, '0')
-  return `-${mm}-${hh}-${dd}-${mo}`
-}
 
 export async function daemonUpsert(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const body = await req.json<{ name: string; description?: string; content: string }>()
@@ -264,13 +256,35 @@ export async function daemonUpsert(req: Request, env: Env, _ctx: unknown, daemon
   const now = Date.now()
   const etag = await contentEtag(content)
 
-  // Check for collision: team-scoped skill with same name OR a global default with same name.
-  const collision = await env.DB
-    .prepare('SELECT id FROM skills WHERE name = ? AND (team_id = ? OR is_default = 1) LIMIT 1')
+  // If a team-scoped skill with this name already exists, update it.
+  const existing = await env.DB
+    .prepare('SELECT id, version FROM skills WHERE name = ? AND team_id = ?')
     .bind(name, teamId)
+    .first<{ id: string; version: number }>()
+
+  if (existing) {
+    await env.DB
+      .prepare(`
+        UPDATE skills SET
+          description = ?,
+          content     = ?,
+          etag        = ?,
+          version     = version + 1,
+          updated_at  = ?
+        WHERE id = ?
+      `)
+      .bind(description ?? '', content, etag, now, existing.id)
+      .run()
+    return json({ id: existing.id, name, etag, version: existing.version + 1, agent_id: agentId }, 200)
+  }
+
+  // Check for collision with a global default — can't overwrite those.
+  const defaultCollision = await env.DB
+    .prepare('SELECT id FROM skills WHERE name = ? AND is_default = 1 LIMIT 1')
+    .bind(name)
     .first<{ id: string }>()
 
-  const finalName = collision ? name + skillTimeSuffix(now) : name
+  const finalName = defaultCollision ? `${name}-${now}` : name
 
   const id = ulid()
   await env.DB

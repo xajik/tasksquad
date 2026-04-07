@@ -159,21 +159,58 @@ function ToolExecution({ name, input, output }: { name: string; input: any; outp
 }
 
 function TranscriptViewer({ content }: { content: string }) {
-  // Plain-text mode: tmux capture-pane output (not JSONL).
-  // Detect by checking whether the first non-empty line parses as JSON.
-  const isJsonl = useMemo(() => {
-    const firstLine = content.trim().split('\n').find(l => l.trim())
-    if (!firstLine) return false
-    try { JSON.parse(firstLine); return true } catch { return false }
+  // Detect format:
+  // 1. Claude JSONL: multiple lines, each is {"type":"assistant",...}
+  // 2. Gemini/OpenCode single-JSON: {"messages": [...]} or {"type": "...", "content": "..."}
+  // 3. Plain text: everything else
+  const format = useMemo(() => {
+    const trimmed = content.trim()
+    if (!trimmed) return 'empty'
+    
+    // Try to parse as JSON
+    let parsed: unknown
+    try { parsed = JSON.parse(trimmed) } catch { return 'plain' }
+    if (!parsed || typeof parsed !== 'object') return 'plain'
+    
+    const obj = parsed as Record<string, unknown>
+    
+    // Check for messages array (Gemini/OpenCode single-JSON)
+    if (Array.isArray(obj.messages)) {
+      return 'gemini'
+    }
+    
+    // Check for single message with type/content (OpenCode variant)
+    if (obj.type && obj.content) {
+      return 'single'
+    }
+    
+    // Check if it looks like Claude JSONL (has type field)
+    if (obj.type && typeof obj.type === 'string') {
+      // Check if it's NDJSON (multiple lines)
+      if (trimmed.includes('\n')) {
+        return 'jsonl'
+      }
+      return 'single'
+    }
+    
+    return 'plain'
   }, [content])
 
+  // Parse entries based on format
   const entries: TranscriptEntry[] = useMemo(() => {
-    if (!isJsonl) return []
-    return content
-      .trim()
-      .split('\n')
-      .flatMap(line => { try { return [JSON.parse(line)] } catch { return [] } })
-  }, [content, isJsonl])
+    const trimmed = content.trim()
+    if (!trimmed) return []
+    
+    // For jsonl, single, or gemini - try parsing each line as JSON
+    // This handles Claude JSONL and also Gemini/OpenCode when converted to NDJSON
+    if (format === 'jsonl' || format === 'single' || format === 'gemini') {
+      return trimmed
+        .split('\n')
+        .flatMap(line => { try { return [JSON.parse(line)] } catch { return [] } })
+    }
+    
+    return []
+  }, [content, format])
 
   // Link outputs back to tool uses
   const toolOutputs = useMemo(() => {
@@ -186,10 +223,11 @@ function TranscriptViewer({ content }: { content: string }) {
     return outputs
   }, [entries])
 
-  if (!isJsonl) {
+  // Plain text fallback
+  if (format === 'plain' || format === 'empty') {
     return (
       <pre className="text-xs font-mono leading-relaxed whitespace-pre text-foreground/90 bg-muted/20 rounded-lg p-4 border border-border/40">
-        {content}
+        {format === 'empty' ? '(empty transcript)' : content}
       </pre>
     )
   }
@@ -197,6 +235,7 @@ function TranscriptViewer({ content }: { content: string }) {
   return (
     <div className="space-y-6 pb-4">
       {entries.map((entry, i) => {
+        // Handle user messages
         if (entry.type === 'user') {
           const raw = entry.message?.content
           const text = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.find(c => c.type === 'text')?.text : undefined
@@ -209,32 +248,57 @@ function TranscriptViewer({ content }: { content: string }) {
           )
         }
 
-        if (entry.type === 'assistant') {
+        // Handle assistant/agent messages (Gemini, OpenCode, Claude)
+        if (entry.type === 'assistant' || entry.type === 'gemini' || entry.type === 'model') {
+          // Try multiple content formats
+          let contentEl: React.ReactNode = null
+          
+          // Format 1: Claude style - entry.message.content is array
+          if (Array.isArray(entry.message?.content)) {
+            contentEl = entry.message.content.map((c, j) => {
+              if (c.type === 'text' && c.text) {
+                return <div key={j} className="text-sm leading-relaxed whitespace-pre">{c.text}</div>
+              }
+              if (c.type === 'tool_use' && c.name && c.input && c.tool_use_id) {
+                return (
+                  <ToolExecution
+                    key={j}
+                    name={c.name}
+                    input={c.input}
+                    output={toolOutputs[c.tool_use_id]}
+                  />
+                )
+              }
+              return null
+            })
+          }
+          // Format 2: Gemini/OpenCode simple - entry.content is string
+          else if (entry.message?.content || (entry as unknown as Record<string, unknown>).content) {
+            const text = typeof entry.message?.content === 'string' 
+              ? entry.message.content 
+              : typeof (entry as unknown as Record<string, unknown>).content === 'string'
+                ? String((entry as unknown as Record<string, unknown>).content)
+                : null
+            if (text) {
+              contentEl = <div className="text-sm leading-relaxed whitespace-pre">{text}</div>
+            }
+          }
+          
+          if (!contentEl) return null
+          
           return (
             <div key={i} className="space-y-3">
-              <div className="text-[10px] uppercase tracking-widest font-bold text-emerald-600/80">Claude</div>
+              <div className="text-[10px] uppercase tracking-widest font-bold text-emerald-600/80">
+                {entry.type === 'gemini' ? 'Gemini' : entry.type === 'model' ? 'Model' : 'Claude'}
+              </div>
               <div className="space-y-2 pl-3 border-l-2 border-emerald-500/20">
-                {Array.isArray(entry.message?.content) && entry.message.content.map((c, j) => {
-                  if (c.type === 'text' && c.text) {
-                    return <div key={j} className="text-sm leading-relaxed whitespace-pre">{c.text}</div>
-                  }
-                  if (c.type === 'tool_use' && c.name && c.input && c.tool_use_id) {
-                    return (
-                      <ToolExecution
-                        key={j}
-                        name={c.name}
-                        input={c.input}
-                        output={toolOutputs[c.tool_use_id]}
-                      />
-                    )
-                  }
-                  return null
-                })}
+                {contentEl}
               </div>
             </div>
           )
         }
 
+        // Handle result/telemetry
         if (entry.type === 'result' && entry.total_cost_usd != null) {
           return (
             <div key={i} className="bg-muted/30 rounded-lg p-3 border border-border/40 flex items-center justify-between text-xs">

@@ -72,6 +72,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.st.notifyPosted = false
 	a.st.hookMessage = ""
 	a.st.lastActivityAt = time.Now()
+	a.st.transcriptPath = ""
+	a.st.lastTmuxCapturePath = ""
 	a.st.mu.Unlock()
 
 	logger.Lifecycle(fmt.Sprintf("[%s] event=started task_id=%s subject=%q", a.Config.Name, taskID, subject))

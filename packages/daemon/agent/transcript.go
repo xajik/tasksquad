@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -53,7 +54,22 @@ func (a *Agent) extractFinalText(hookMsg, transcriptPath string, outputLines []s
 			time.Sleep(500 * time.Millisecond)
 		}
 		if finalText == "" {
-			logger.Warn(fmt.Sprintf("[%s] Transcript read returned empty after 10s, falling back to terminal output", a.Config.Name))
+			logger.Warn(fmt.Sprintf("[%s] Transcript read returned empty after 10s, falling back to stored tmux capture", a.Config.Name))
+		}
+	}
+
+	// Try stored tmux capture file before falling back to outputLines
+	if finalText == "" {
+		a.st.mu.Lock()
+		tmuxPath := a.st.lastTmuxCapturePath
+		a.st.mu.Unlock()
+		if tmuxPath != "" {
+			if data, err := os.ReadFile(tmuxPath); err == nil {
+				finalText = strings.TrimSpace(string(data))
+				logger.Info(fmt.Sprintf("[%s] Final text from tmux capture file (%d chars)", a.Config.Name, len(finalText)))
+			} else {
+				logger.Debug(fmt.Sprintf("[%s] Failed to read tmux capture file: %v", a.Config.Name, err))
+			}
 		}
 	}
 

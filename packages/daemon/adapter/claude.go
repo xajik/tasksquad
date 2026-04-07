@@ -3,8 +3,11 @@ package adapter
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
+
+	"github.com/tasksquad/daemon/logger"
 )
 
 // ClaudeAdapter handles Anthropic Claude Code hook payloads and JSONL transcripts.
@@ -51,11 +54,29 @@ func (ClaudeAdapter) ParseAfterAgent(_ []byte) (AfterAgentEvent, error) {
 // ExtractTranscript reads Claude's JSONL format.
 // Each line: {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"..."}]}}
 func (ClaudeAdapter) ExtractTranscript(path string) string {
+	if path == "" {
+		logger.Debug("[ClaudeAdapter] ExtractTranscript: no path provided")
+		return ""
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		logger.Debug(fmt.Sprintf("[ClaudeAdapter] ExtractTranscript: file not found: %s", path))
+		return ""
+	}
+	if info.Size() == 0 {
+		logger.Debug(fmt.Sprintf("[ClaudeAdapter] ExtractTranscript: empty file: %s", path))
+		return ""
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
+		logger.Debug(fmt.Sprintf("[ClaudeAdapter] ExtractTranscript: failed to open: %v", err))
 		return ""
 	}
 	defer f.Close()
+
+	logger.Debug(fmt.Sprintf("[ClaudeAdapter] ExtractTranscript: reading from %s (%d bytes)", path, info.Size()))
 
 	var lastText string
 	sc := bufio.NewScanner(f)
@@ -86,6 +107,9 @@ func (ClaudeAdapter) ExtractTranscript(path string) string {
 		if len(parts) > 0 {
 			lastText = strings.Join(parts, "\n")
 		}
+	}
+	if lastText != "" {
+		logger.Debug(fmt.Sprintf("[ClaudeAdapter] ExtractTranscript: extracted %d chars from transcript", len(lastText)))
 	}
 	return strings.TrimSpace(lastText)
 }

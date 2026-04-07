@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -43,18 +44,26 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath, false)
 }
 
-func (a *Agent) captureTerminalState(sess string) string {
+func (a *Agent) captureTerminalState(sess string) (content string, path string) {
 	if sess == "" || tmuxBin == "" {
-		return ""
+		return "", ""
 	}
 	out, err := exec.Command(tmuxBin, "capture-pane", "-t", sess, "-p", "-S", "-").Output()
 	if err == nil {
 		result := strings.TrimSpace(string(out))
 		logger.Info(fmt.Sprintf("[%s] Captured %d chars from tmux scrollback", a.Config.Name, len(result)))
-		return result
+
+		// Write to local file for persistent fallback
+		fallbackPath := filepath.Join(a.Config.WorkDir, ".tasksquad-tmux-capture.txt")
+		if writeErr := os.WriteFile(fallbackPath, []byte(result), 0644); writeErr == nil {
+			logger.Debug(fmt.Sprintf("[%s] Wrote tmux capture to %s", a.Config.Name, fallbackPath))
+			return result, fallbackPath
+		}
+		logger.Warn(fmt.Sprintf("[%s] Failed to write tmux capture file: %v", a.Config.Name, err))
+		return result, ""
 	}
 	logger.Warn(fmt.Sprintf("[%s] tmux capture-pane failed: %v", a.Config.Name, err))
-	return ""
+	return "", ""
 }
 
 func (a *Agent) closeProcessResources(sess, fifo string, pw io.WriteCloser, outputDone chan struct{}) {
@@ -116,10 +125,11 @@ func (a *Agent) uploadTaskArtifacts(cfg *config.Config, sessionID, msgID, logCon
 	go a.uploadAndAttachLog(cfg, sessionID, logContent)
 
 	if msgID != "" {
-		if tmuxCapture != "" {
-			go a.uploadAndAttachContent(cfg, sessionID, msgID, "transcript.txt", []byte(tmuxCapture))
-		} else if transcriptPath != "" {
+		// Prioritize transcript.jsonl (rich JSONL data), fallback to transcript.txt (plain tmux capture)
+		if transcriptPath != "" {
 			go a.uploadAndAttach(cfg, sessionID, msgID, "transcript.jsonl", transcriptPath)
+		} else if tmuxCapture != "" {
+			go a.uploadAndAttachContent(cfg, sessionID, msgID, "transcript.txt", []byte(tmuxCapture))
 		}
 	}
 }
@@ -137,7 +147,12 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		status = string(agentmode.StatusClosed)
 	}
 
-	tmuxCapture := a.captureTerminalState(sess)
+	tmuxCapture, tmuxCapturePath := a.captureTerminalState(sess)
+
+	// Store tmux capture path in state for potential stale hook fallback
+	a.st.mu.Lock()
+	a.st.lastTmuxCapturePath = tmuxCapturePath
+	a.st.mu.Unlock()
 
 	a.closeProcessResources(sess, fifo, pw, outputDone)
 

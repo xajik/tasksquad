@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -89,16 +90,31 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	// Wait briefly for FIFO output to drain.
 	time.Sleep(300 * time.Millisecond)
 
-	// Capture full tmux scrollback for the transcript upload.
+	// Capture full tmux scrollback for the transcript upload and fallback.
 	var tmuxCapture string
+	var tmuxCapturePath string
 	if sess != "" && tmuxBin != "" {
 		if out, err := exec.Command(tmuxBin, "capture-pane", "-t", sess, "-p", "-S", "-").Output(); err == nil {
 			tmuxCapture = strings.TrimSpace(string(out))
 			logger.Info(fmt.Sprintf("[%s] Captured %d chars from tmux scrollback", a.Config.Name, len(tmuxCapture)))
+
+			// Write to local file for persistent fallback
+			fallbackPath := filepath.Join(a.Config.WorkDir, ".tasksquad-tmux-capture.txt")
+			if err := os.WriteFile(fallbackPath, []byte(tmuxCapture), 0644); err == nil {
+				tmuxCapturePath = fallbackPath
+				logger.Debug(fmt.Sprintf("[%s] Wrote tmux capture to %s", a.Config.Name, fallbackPath))
+			} else {
+				logger.Warn(fmt.Sprintf("[%s] Failed to write tmux capture file: %v", a.Config.Name, err))
+			}
 		} else {
 			logger.Warn(fmt.Sprintf("[%s] tmux capture-pane failed: %v", a.Config.Name, err))
 		}
 	}
+
+	// Store tmux capture path in state for potential stale hook fallback
+	a.st.mu.Lock()
+	a.st.lastTmuxCapturePath = tmuxCapturePath
+	a.st.mu.Unlock()
 
 	// Extract final response text.
 	// Priority: hookMessage → transcript → tmux scrollback → outputLines.
@@ -143,10 +159,11 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 		autoClose, _ = notifyResp["close"].(bool)
 		msgID, _ := notifyResp["message_id"].(string)
 		if msgID != "" {
-			if tmuxCapture != "" {
-				go a.uploadAndAttachContent(cfg, sessionID, msgID, "transcript.txt", []byte(tmuxCapture))
-			} else if transcriptPath != "" {
+			// Prioritize transcript.jsonl (rich JSONL data), fallback to transcript.txt (plain tmux capture)
+			if transcriptPath != "" {
 				go a.uploadAndAttach(cfg, sessionID, msgID, "transcript.jsonl", transcriptPath)
+			} else if tmuxCapture != "" {
+				go a.uploadAndAttachContent(cfg, sessionID, msgID, "transcript.txt", []byte(tmuxCapture))
 			}
 		}
 	}
@@ -190,6 +207,7 @@ func (a *Agent) autoCloseAndReset() {
 	a.st.sessionID = ""
 	a.st.taskID = ""
 	a.st.transcriptPath = ""
+	a.st.lastTmuxCapturePath = ""
 	a.st.stdinWrite = nil
 	a.st.runLog = nil
 	a.st.mode = ModeIdle
@@ -222,6 +240,7 @@ func (a *Agent) handleReset() {
 	a.st.tmuxSession = ""
 	a.st.fifoPath = ""
 	a.st.transcriptPath = ""
+	a.st.lastTmuxCapturePath = ""
 	a.st.sessionID = ""
 	a.st.taskID = ""
 	a.st.completing = false
@@ -254,6 +273,7 @@ func (a *Agent) closeSession(cfg *config.Config) {
 	a.st.fifoPath = ""
 	a.st.sessionID = ""
 	a.st.transcriptPath = ""
+	a.st.lastTmuxCapturePath = ""
 	a.st.mode = ModeIdle
 	a.st.outputLines = nil
 	a.st.runLog = nil
