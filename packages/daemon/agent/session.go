@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -90,28 +89,7 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	// Wait briefly for FIFO output to drain.
 	time.Sleep(300 * time.Millisecond)
 
-	// Capture full tmux scrollback for the transcript upload and fallback.
-	var tmuxCapture string
-	var tmuxCapturePath string
-	if sess != "" && tmuxBin != "" {
-		if out, err := exec.Command(tmuxBin, "capture-pane", "-t", sess, "-p", "-S", "-").Output(); err == nil {
-			tmuxCapture = strings.TrimSpace(string(out))
-			logger.Info(fmt.Sprintf("[%s] Captured %d chars from tmux scrollback", a.Config.Name, len(tmuxCapture)))
-
-			// Write to local file for persistent fallback
-			fallbackPath := filepath.Join(a.Config.WorkDir, ".tasksquad-tmux-capture.txt")
-			if err := os.WriteFile(fallbackPath, []byte(tmuxCapture), 0644); err == nil {
-				tmuxCapturePath = fallbackPath
-				logger.Debug(fmt.Sprintf("[%s] Wrote tmux capture to %s", a.Config.Name, fallbackPath))
-			} else {
-				logger.Warn(fmt.Sprintf("[%s] Failed to write tmux capture file: %v", a.Config.Name, err))
-			}
-		} else {
-			logger.Warn(fmt.Sprintf("[%s] tmux capture-pane failed: %v", a.Config.Name, err))
-		}
-	}
-
-	// Store tmux capture path in state for potential stale hook fallback
+	tmuxCapture, tmuxCapturePath := a.captureTerminalState(sess)
 	a.st.mu.Lock()
 	a.st.lastTmuxCapturePath = tmuxCapturePath
 	a.st.mu.Unlock()

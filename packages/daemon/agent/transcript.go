@@ -2,7 +2,6 @@ package agent
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -33,7 +32,7 @@ func (a *Agent) extractTranscriptResponse(path string) string {
 // extractFinalText chooses the best available text for the session's final reply.
 // Priority: hook message → transcript file (with retry) → terminal output lines.
 // Returns "" for learning sessions (no user-visible reply expected).
-func (a *Agent) extractFinalText(hookMsg, transcriptPath string, outputLines []string, wasLearning bool) string {
+func (a *Agent) extractFinalText(hookMsg, transcriptPath, tmuxCapture string, outputLines []string, wasLearning bool) string {
 	if wasLearning {
 		return ""
 	}
@@ -58,19 +57,10 @@ func (a *Agent) extractFinalText(hookMsg, transcriptPath string, outputLines []s
 		}
 	}
 
-	// Try stored tmux capture file before falling back to outputLines
-	if finalText == "" {
-		a.st.mu.Lock()
-		tmuxPath := a.st.lastTmuxCapturePath
-		a.st.mu.Unlock()
-		if tmuxPath != "" {
-			if data, err := os.ReadFile(tmuxPath); err == nil {
-				finalText = strings.TrimSpace(string(data))
-				logger.Info(fmt.Sprintf("[%s] Final text from tmux capture file (%d chars)", a.Config.Name, len(finalText)))
-			} else {
-				logger.Debug(fmt.Sprintf("[%s] Failed to read tmux capture file: %v", a.Config.Name, err))
-			}
-		}
+	// Use already-captured tmux content (avoids a redundant disk read)
+	if finalText == "" && tmuxCapture != "" {
+		finalText = tmuxCapture
+		logger.Info(fmt.Sprintf("[%s] Final text from tmux capture (%d chars)", a.Config.Name, len(finalText)))
 	}
 
 	if finalText == "" {

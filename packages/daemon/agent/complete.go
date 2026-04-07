@@ -44,6 +44,8 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath, false)
 }
 
+const tmuxCaptureFallbackFile = ".tasksquad-tmux-capture.txt"
+
 func (a *Agent) captureTerminalState(sess string) (content string, path string) {
 	if sess == "" || tmuxBin == "" {
 		return "", ""
@@ -53,13 +55,13 @@ func (a *Agent) captureTerminalState(sess string) (content string, path string) 
 		result := strings.TrimSpace(string(out))
 		logger.Info(fmt.Sprintf("[%s] Captured %d chars from tmux scrollback", a.Config.Name, len(result)))
 
-		// Write to local file for persistent fallback
-		fallbackPath := filepath.Join(a.Config.WorkDir, ".tasksquad-tmux-capture.txt")
+		fallbackPath := filepath.Join(a.Config.WorkDir, tmuxCaptureFallbackFile)
 		if writeErr := os.WriteFile(fallbackPath, []byte(result), 0644); writeErr == nil {
 			logger.Debug(fmt.Sprintf("[%s] Wrote tmux capture to %s", a.Config.Name, fallbackPath))
 			return result, fallbackPath
+		} else {
+			logger.Warn(fmt.Sprintf("[%s] Failed to write tmux capture file: %v", a.Config.Name, writeErr))
 		}
-		logger.Warn(fmt.Sprintf("[%s] Failed to write tmux capture file: %v", a.Config.Name, err))
 		return result, ""
 	}
 	logger.Warn(fmt.Sprintf("[%s] tmux capture-pane failed: %v", a.Config.Name, err))
@@ -169,7 +171,7 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 	a.st.hookMessage = ""
 	a.st.mu.Unlock()
 
-	finalText := a.extractFinalText(hookMsg, transcriptPath, lines, wasLearning)
+	finalText := a.extractFinalText(hookMsg, transcriptPath, tmuxCapture, lines, wasLearning)
 
 	closeResp := a.postSessionClose(cfg, sessionID, agentID, status, finalText)
 
