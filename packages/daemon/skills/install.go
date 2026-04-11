@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -11,7 +12,7 @@ import (
 )
 
 // installSkill writes content to <workDir>/.tsq/skills/<name>/SKILL.md
-// and symlinks it to .claude/skills/<name> and .agents/skills/<name>
+// and copies it to .claude/skills/<name> and .agents/skills/<name>
 // for compatibility with various agent tools.
 func installSkill(workDir string, skill remoteSkill) error {
 	dir := skillDir(workDir, skill.Name)
@@ -22,33 +23,72 @@ func installSkill(workDir string, skill remoteSkill) error {
 		return err
 	}
 
-	linkDirs := []string{
+	copyDirs := []string{
 		filepath.Join(workDir, ".claude", "skills"),
 		filepath.Join(workDir, ".agents", "skills"),
 	}
-	for _, ld := range linkDirs {
-		os.MkdirAll(ld, 0755) //nolint:errcheck
+	for _, cd := range copyDirs {
+		os.MkdirAll(cd, 0755) //nolint:errcheck
 
-		target := filepath.Join(ld, skill.Name)
-		os.RemoveAll(target) //nolint:errcheck
-
-		// Use relative path so symlinks remain portable across machines.
-		relPath := filepath.Join("..", "..", ".tsq", "skills", skill.Name)
-		if err := os.Symlink(relPath, target); err != nil {
-			logger.Warn(fmt.Sprintf("[skills] Failed to create symlink at %s: %v", target, err))
+		dest := filepath.Join(cd, skill.Name)
+		if err := copyDir(dir, dest); err != nil {
+			logger.Warn(fmt.Sprintf("[skills] Failed to copy skill %q to %s: %v", skill.Name, dest, err))
 		}
 	}
 
 	return nil
 }
 
-// removeSkill deletes the skill from .tsq/skills and its symlinks.
+// removeSkill deletes the skill from .tsq/skills and its copies.
+// Only server-managed skills (tracked in the lock file) are ever passed here,
+// so user-created skills in .claude/skills or .agents/skills are never touched.
 func removeSkill(workDir, name string) {
 	os.RemoveAll(skillDir(workDir, name)) //nolint:errcheck
 
 	for _, ld := range []string{".claude/skills", ".agents/skills"} {
-		os.Remove(filepath.Join(workDir, ld, name)) //nolint:errcheck
+		os.RemoveAll(filepath.Join(workDir, ld, name)) //nolint:errcheck
 	}
+}
+
+// copyDir copies all files from src directory into dst directory.
+// dst is created if it does not exist. Existing files are overwritten.
+func copyDir(src, dst string) error {
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue // skill dirs are flat; skip subdirectories
+		}
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if err := copyFile(srcPath, dstPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// copyFile copies a single file from src to dst, creating or overwriting dst.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
 
 // skillDir returns the canonical on-disk directory for a skill.
