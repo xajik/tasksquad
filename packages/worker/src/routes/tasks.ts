@@ -47,14 +47,35 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
   const taskId = url.pathname.split('/')[2]
 
   const task = await env.DB
-    .prepare('SELECT id, team_id, agent_id, sender_id, subject, status, created_at, started_at, completed_at FROM tasks WHERE id = ?')
+    .prepare('SELECT id, team_id, agent_id, sender_id, subject, status, created_at, started_at, completed_at, settings FROM tasks WHERE id = ?')
     .bind(taskId)
-    .first<{ id: string; team_id: string; agent_id: string; sender_id: string; subject: string; status: string; created_at: number; started_at: number | null; completed_at: number | null }>()
+    .first<{ id: string; team_id: string; agent_id: string; sender_id: string; subject: string; status: string; created_at: number; started_at: number | null; completed_at: number | null; settings: string | null }>()
 
   if (!task) return err('not_found', 404)
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
 
-  return json(task)
+  return json({ ...task, settings: task.settings ? JSON.parse(task.settings) : null })
+}
+
+export async function updateSettings(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const taskId = url.pathname.split('/')[2]
+
+  const body = await req.json<{ save_tokens?: { enabled: boolean; level: string } }>().catch(() => ({} as { save_tokens?: { enabled: boolean; level: string } }))
+
+  const task = await env.DB
+    .prepare('SELECT team_id FROM tasks WHERE id = ?')
+    .bind(taskId)
+    .first<{ team_id: string }>()
+  if (!task) return err('not_found', 404)
+  if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('forbidden', 403)
+
+  await env.DB
+    .prepare('UPDATE tasks SET settings = ? WHERE id = ?')
+    .bind(JSON.stringify(body), taskId)
+    .run()
+
+  return json({ ok: true })
 }
 
 export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
@@ -81,8 +102,8 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 }
 
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
-  const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean }))
-  const { agent_id, subject, team_id, body: taskBody, scheduled_at, auto_close } = body
+  const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: string } }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: string } }))
+  const { agent_id, subject, team_id, body: taskBody, scheduled_at, auto_close, save_tokens } = body
   if (!agent_id || !subject?.trim() || !team_id) return err('missing_fields', 400)
 
   if (!(await requireMember(env.DB, team_id, auth.userId))) return err('forbidden', 403)
@@ -106,12 +127,13 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   const isScheduled = scheduled_at && scheduled_at > now
 
   const autoCloseVal = auto_close ? 1 : 0
+  const settingsVal = save_tokens ? JSON.stringify({ save_tokens }) : null
 
   if (isScheduled) {
     await env.DB.batch([
       // Use 'scheduled' status so the daemon doesn't pick it up before the scheduled time
-      env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'scheduled', now, autoCloseVal),
+      env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'scheduled', now, autoCloseVal, settingsVal),
       // Insert initial user message with scheduled_at
       env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now, scheduled_at),
@@ -120,8 +142,8 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   }
 
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'pending', now, autoCloseVal),
+    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'pending', now, autoCloseVal, settingsVal),
     // Insert initial user message — use body if provided, else fall back to subject
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now),

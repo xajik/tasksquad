@@ -483,6 +483,8 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined)
   const [autoClose, setAutoClose] = useState(false)
+  const [saveTokens, setSaveTokens] = useState(false)
+  const [saveTokensLevel, setSaveTokensLevel] = useState<'lite' | 'full' | 'ultra'>('full')
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'queued' | 'running' | 'waiting_input' | 'done' | 'failed' | 'scheduled'>('all')
@@ -538,6 +540,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
         body: taskBody || undefined,
         scheduled_at: scheduledAt,
         auto_close: autoClose || undefined,
+        save_tokens: saveTokens ? { enabled: true, level: saveTokensLevel } : undefined,
       })
       trackEvent('task_created', { agent_id: agentId, team_id: teamId, scheduled: !!scheduledAt, auto_close: autoClose });
       setShowCompose(false);
@@ -547,6 +550,8 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
       setShowSchedulePicker(false)
       setScheduledDate(undefined)
       setAutoClose(false)
+      setSaveTokens(false)
+      setSaveTokensLevel('full')
       load()
     } finally { setCreating(false) }
   }
@@ -697,6 +702,31 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
                 </Label>
               </div>
 
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="save-tokens"
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  checked={saveTokens}
+                  onChange={e => setSaveTokens(e.target.checked)}
+                />
+                <Label htmlFor="save-tokens" className="font-normal cursor-pointer">
+                  Save tokens (caveman)
+                </Label>
+              </div>
+              {saveTokens && (
+                <Select value={saveTokensLevel} onValueChange={v => setSaveTokensLevel(v as 'lite' | 'full' | 'ultra')}>
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lite">lite — no filler, full sentences</SelectItem>
+                    <SelectItem value="full">full — fragments, short synonyms (default)</SelectItem>
+                    <SelectItem value="ultra">ultra — max abbreviation</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+
               {/* Schedule picker */}
               {showSchedulePicker && (
                 <div className="border border-border rounded-lg p-3">
@@ -718,6 +748,8 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
                 setShowCompose(false)
                 setShowSchedulePicker(false)
                 setAutoClose(false)
+                setSaveTokens(false)
+                setSaveTokensLevel('full')
                 setScheduledDate(undefined)
               }}>
                 Cancel
@@ -1120,6 +1152,15 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
     if (notif) notify(notif.title(agentName), notif.body(task.subject), task.id)
   }, [task?.status, task?.subject, task?.id, agentMap])
 
+  async function toggleSaveTokens() {
+    if (!taskId || !task) return
+    const current = task.settings?.save_tokens
+    await api.tasks.updateSettings(taskId, {
+      save_tokens: { enabled: !(current?.enabled ?? false), level: current?.level ?? 'full' },
+    })
+    load()
+  }
+
   async function deleteTask() {
     if (!taskId || !confirm('Delete this task and all its messages?')) return
     await api.tasks.delete(taskId)
@@ -1271,6 +1312,28 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
               <>
                 <span>·</span>
                 <span>{messages.length} message{messages.length !== 1 ? 's' : ''}</span>
+              </>
+            )}
+            {task && (
+              <>
+                <span>·</span>
+                <button
+                  onClick={toggleSaveTokens}
+                  title="Toggle caveman token-saving mode"
+                  style={{
+                    fontSize: 11,
+                    padding: '1px 7px',
+                    borderRadius: 4,
+                    border: '1px solid',
+                    borderColor: task.settings?.save_tokens?.enabled ? '#2563EB' : '#E2E4EA',
+                    background: task.settings?.save_tokens?.enabled ? '#2563EB' : 'transparent',
+                    color: task.settings?.save_tokens?.enabled ? '#fff' : '#6B7280',
+                    cursor: 'pointer',
+                    lineHeight: '1.6',
+                  }}
+                >
+                  Token saver {task.settings?.save_tokens?.enabled ? 'ON' : 'OFF'}
+                </button>
               </>
             )}
           </div>

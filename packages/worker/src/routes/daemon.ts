@@ -12,6 +12,18 @@ function truncate(text: string, maxLen = 80): string {
   return text.slice(0, maxLen) + (text.length > maxLen ? '…' : '')
 }
 
+function injectCaveman(body: string, settings: string | null): string {
+  if (!settings) return body
+  try {
+    const s = JSON.parse(settings)
+    if (!s?.save_tokens?.enabled) return body
+    const level = s.save_tokens.level ?? 'full'
+    return `Instruction: use caveman skill to save tokens. /caveman ${level}.\n\n${body}`
+  } catch {
+    return body
+  }
+}
+
 async function notifyTeamMembers(env: Env, taskId: string, title: string, body: string): Promise<void> {
   try {
     const task = await env.DB
@@ -99,9 +111,9 @@ async function processAgentHeartbeat(
 
     if (state?.current_task_id) {
       const task = await env.DB
-        .prepare('SELECT status FROM tasks WHERE id = ?')
+        .prepare('SELECT status, settings FROM tasks WHERE id = ?')
         .bind(state.current_task_id)
-        .first<{ status: string }>()
+        .first<{ status: string; settings: string | null }>()
 
       if (task) {
         if (task.status === 'learning' && agentStatus === 'waiting_input') {
@@ -143,7 +155,7 @@ async function processAgentHeartbeat(
             env.DB.prepare("UPDATE agent_state SET mode = 'running', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
             env.DB.prepare("UPDATE tasks SET status = 'running' WHERE id = ?").bind(state.current_task_id),
           ])
-          return { agent_id: agentId, ok: true, reply: reply.body, next_poll_ms: nextPollMs }
+          return { agent_id: agentId, ok: true, reply: injectCaveman(reply.body, task.settings ?? null), next_poll_ms: nextPollMs }
         }
       }
     }
@@ -168,9 +180,9 @@ async function processAgentHeartbeat(
 
   // Idle: query for pending task
   const task = await env.DB
-    .prepare("SELECT t.id, t.subject, t.team_id FROM tasks t WHERE t.agent_id = ? AND t.status = 'pending' ORDER BY t.created_at ASC LIMIT 1")
+    .prepare("SELECT t.id, t.subject, t.team_id, t.settings FROM tasks t WHERE t.agent_id = ? AND t.status = 'pending' ORDER BY t.created_at ASC LIMIT 1")
     .bind(agentId)
-    .first<{ id: string; subject: string; team_id: string }>()
+    .first<{ id: string; subject: string; team_id: string; settings: string | null }>()
 
   if (task) {
     const [msgRows, teamRow] = await Promise.all([
@@ -184,10 +196,19 @@ async function processAgentHeartbeat(
         .first<{ learn_from_session: number }>(),
     ])
     const learnings = teamRow?.learn_from_session !== 0
+    // Inject caveman instruction into the first user message if save_tokens is enabled
+    let firstUserInjected = false
+    const messages = msgRows.results.map(m => {
+      if (!firstUserInjected && m.role === 'user') {
+        firstUserInjected = true
+        return { ...m, body: injectCaveman(m.body, task.settings) }
+      }
+      return m
+    })
     return {
       agent_id: agentId,
       ok: true,
-      task: { id: task.id, subject: task.subject, messages: msgRows.results, learnings },
+      task: { id: task.id, subject: task.subject, messages, learnings },
       next_poll_ms: nextPollMs,
     }
   }

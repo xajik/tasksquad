@@ -81,10 +81,12 @@ export const api = {
   tasks: {
     list: (teamId: string) => request<{ tasks: Task[] }>(`/tasks?team_id=${teamId}`),
     get: (id: string) => request<Task>(`/tasks/${id}`),
-    create: (body: { agent_id: string; subject: string; team_id: string; body?: string; scheduled_at?: number; auto_close?: boolean }) =>
+    create: (body: { agent_id: string; subject: string; team_id: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: 'lite' | 'full' | 'ultra' } }) =>
       request<{ id: string; status: string }>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
     update: (taskId: string, body: { status: string }) =>
       request<{ ok: boolean }>(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify(body) }),
+    updateSettings: (taskId: string, settings: TaskSettings) =>
+      request<{ ok: boolean }>(`/tasks/${taskId}/settings`, { method: 'PATCH', body: JSON.stringify(settings) }),
     close: (taskId: string) =>
       request<{ ok: boolean }>(`/tasks/${taskId}/close`, { method: 'POST' }),
     delete: (taskId: string) =>
@@ -280,6 +282,10 @@ export interface Conveyor {
   auto_close: boolean
 }
 
+export interface TaskSettings {
+  save_tokens?: { enabled: boolean; level: 'lite' | 'full' | 'ultra' }
+}
+
 export interface Task {
   id: string
   agent_id: string
@@ -293,6 +299,7 @@ export interface Task {
   first_message_type?: string | null
   scheduled_at?: number | null
   auto_close?: boolean
+  settings?: TaskSettings | null
 }
 
 export interface Message {
