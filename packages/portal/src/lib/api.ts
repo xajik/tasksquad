@@ -214,6 +214,15 @@ export const api = {
       request<{ ok: boolean }>(`/teams/${teamId}/skills/${skillId}`, { method: 'PUT', body: JSON.stringify(body) }),
     delete: (teamId: string, skillId: string) => del(`/teams/${teamId}/skills/${skillId}`),
   },
+  subAgents: {
+    list: (teamId: string) => request<{ sub_agents: SubAgent[] }>(`/teams/${teamId}/sub-agents`),
+    get: (teamId: string, id: string) => request<SubAgent>(`/teams/${teamId}/sub-agents/${id}`),
+    create: (teamId: string, body: { name: string; description: string; content: string; auto_install?: boolean }) =>
+      request<{ id: string; name: string; etag: string }>(`/teams/${teamId}/sub-agents`, { method: 'POST', body: JSON.stringify(body) }),
+    update: (teamId: string, id: string, body: { name?: string; description?: string; content?: string; auto_install?: boolean }) =>
+      request<{ ok: boolean }>(`/teams/${teamId}/sub-agents/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    delete: (teamId: string, id: string) => del(`/teams/${teamId}/sub-agents/${id}`),
+  },
 }
 
 export interface UserProfile {
@@ -257,6 +266,21 @@ export interface Skill {
   etag: string
   is_default: number
   auto_install: number
+  created_at: number
+  updated_at: number
+}
+
+export interface SubAgent {
+  id: string
+  team_id: string | null
+  name: string
+  description: string
+  content?: string
+  author_id: string | null
+  etag: string
+  is_default: number
+  auto_install: number
+  version: number
   created_at: number
   updated_at: number
 }

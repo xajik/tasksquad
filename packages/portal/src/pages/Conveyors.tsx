@@ -48,11 +48,14 @@ import {
   Pause,
   Play,
 } from 'lucide-react'
+import { ConveyorWorkflow } from '../components/ConveyorWorkflow'
+import { HowItWorks, HowItWorksToggle } from '../components/HowItWorks'
 
 export function Conveyors({ teamId }: { teamId: string }) {
   const [conveyors, setConveyors] = useState<Conveyor[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [showCompose, setShowCompose] = useState(false)
+  const [showHowItWorks, setShowHowItWorks] = useState(false)
   const [subject, setSubject] = useState('')
   const [taskBody, setTaskBody] = useState('')
   const [agentId, setAgentId] = useState<string | undefined>(undefined)
@@ -245,12 +248,19 @@ function openEdit(c: Conveyor) {
           <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => load()} title="Refresh">
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
+          <HowItWorksToggle show={showHowItWorks} onToggle={() => setShowHowItWorks(!showHowItWorks)} />
         </div>
         <Button onClick={() => setShowCompose(true)}>
           <Plus className="h-4 w-4 mr-2" />
           New Conveyor
         </Button>
       </div>
+
+      {showHowItWorks && (
+        <HowItWorks title="Recurring Task Scheduler" icon={Repeat} docsLink="/docs" className="mb-6" text="Conveyors schedule tasks on hourly, daily, weekly, or monthly intervals. Each run creates a new task for the assigned agent, with optional max run limits and end dates.">
+          <ConveyorWorkflow />
+        </HowItWorks>
+      )}
 
       <Dialog open={showCompose} onOpenChange={(open) => { if (!open) resetForm(); setShowCompose(open) }}>
         <DialogContent className="sm:max-w-[500px]">

@@ -9,7 +9,8 @@ import * as daemon   from './routes/daemon.js'
 import * as me       from './routes/me.js'
 import * as notes    from './routes/notes.js'
 import * as conveyors from './routes/conveyors.js'
-import * as skills   from './routes/skills.js'
+import * as skills     from './routes/skills.js'
+import * as subAgents  from './routes/sub-agents.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 
 
@@ -107,6 +108,12 @@ router.get   ('/teams/:teamId/skills/:skillId',     firebaseRoute(skills.get))
 router.put   ('/teams/:teamId/skills/:skillId',     firebaseRoute(skills.update))
 router.delete('/teams/:teamId/skills/:skillId',     firebaseRoute(skills.remove))
 
+router.get   ('/teams/:teamId/sub-agents',                   firebaseRoute(subAgents.list))
+router.post  ('/teams/:teamId/sub-agents',                   firebaseRoute(subAgents.create))
+router.get   ('/teams/:teamId/sub-agents/:subAgentId',       firebaseRoute(subAgents.get))
+router.put   ('/teams/:teamId/sub-agents/:subAgentId',       firebaseRoute(subAgents.update))
+router.delete('/teams/:teamId/sub-agents/:subAgentId',       firebaseRoute(subAgents.remove))
+
 router.get ('/tasks',                    firebaseRoute(tasks.list))
 router.post('/tasks',                    firebaseRoute(tasks.create))
 router.get   ('/tasks/:taskId',          firebaseRoute(tasks.get))
@@ -125,6 +132,8 @@ router.get ('/tasks/:taskId/logs',       firebaseRoute(tasks.logs))
 // ── Daemon routes (Firebase JWT) ──────────────────────────────────────────────
 router.get ('/daemon/user/agents',       (req: IRequest, env: Env, ctx: ExecutionContext) => daemon.userAgents(req as Request, env, ctx))
 router.get ('/daemon/user/skills',       firebaseRoute(skills.userSkills))
+router.get ('/daemon/user/sub-agents',   firebaseRoute(subAgents.userSubAgents))
+router.get ('/daemon/sub-agents/:subAgentId', firebaseRoute(subAgents.daemonSubAgentGet))
 router.post('/daemon/heartbeat/batch',   (req: IRequest, env: Env, ctx: ExecutionContext) => daemon.batchHeartbeat(req as Request, env, ctx))
 router.post('/daemon/complete',          daemonRoute(daemon.complete))
 router.post('/daemon/session/open',      daemonRoute(daemon.sessionOpen))

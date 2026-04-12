@@ -93,6 +93,9 @@ import { Notes } from './Notes'
 import { NoteDetail } from './NoteDetail'
 import { Conveyors } from './Conveyors'
 import { Skills } from './Skills'
+import { AgentWorkflow } from '../components/AgentWorkflow'
+import { MemberWorkflow } from '../components/MemberWorkflow'
+import { HowItWorks, HowItWorksToggle } from '../components/HowItWorks'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
 
@@ -1637,6 +1640,7 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
   const [activeTab, setActiveTab] = useState<'claude' | 'gemini' | 'opencode' | 'codex'>('claude')
   const [editingRole, setEditingRole] = useState<{ agentId: string; name: string; role: string } | null>(null)
   const [savingRole, setSavingRole] = useState(false)
+  const [showHowItWorks, setShowHowItWorks] = useState(false)
   const nav = useNavigate()
 
   const load = useCallback(async () => {
@@ -1729,6 +1733,7 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
           <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => load()} title="Refresh">
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
+          <HowItWorksToggle show={showHowItWorks} onToggle={() => setShowHowItWorks(!showHowItWorks)} />
         </div>
         {plan === 'free' && (
           <div className="flex items-center gap-2">
@@ -1743,6 +1748,12 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
           </div>
         )}
       </div>
+
+      {showHowItWorks && (
+        <HowItWorks title="Agent Connection Flow" icon={Bot} docsLink="/docs" className="mb-6" text="Agents connect to TaskSquad via periodic heartbeats, poll for assigned tasks, execute them using your configured CLI (Claude, Gemini, OpenCode, or Codex), interact with you as needed, and save execution logs for transcript viewing.">
+          <AgentWorkflow />
+        </HowItWorks>
+      )}
 
       <div className="flex flex-col gap-3 mb-8">
         {isLoading ? (
@@ -2053,6 +2064,7 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
   const [email, setEmail] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
+  const [showHowItWorks, setShowHowItWorks] = useState(false)
   const currentUserId = internalUserId || auth.currentUser?.uid
   const nav = useNavigate()
 
@@ -2102,6 +2114,7 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
           <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => load()} title="Refresh">
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
+          <HowItWorksToggle show={showHowItWorks} onToggle={() => setShowHowItWorks(!showHowItWorks)} />
         </div>
         {plan === 'free' && (
           <div className="flex items-center gap-2">
@@ -2116,6 +2129,12 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
           </div>
         )}
       </div>
+
+      {showHowItWorks && (
+        <HowItWorks title="Team Access & Roles" icon={Users} docsLink="/docs" className="mb-6" text="Invite team members by email. They join with a specific role (owner, maintainer, or viewer) that controls access to agents, tasks, and project settings.">
+          <MemberWorkflow />
+        </HowItWorks>
+      )}
 
       <div className="flex flex-col gap-2 mb-8">
         {isLoading ? (
@@ -2614,7 +2633,7 @@ export default function Dashboard() {
             onClick={() => handleNav('/dashboard/skills')}
             >
             <BookOpen className="mr-2 h-4 w-4" />
-            Skills
+            Skills & Sub-agents
             </Button>
 <Button
             variant={isAgents ? 'secondary' : 'ghost'}            className="w-full justify-start mb-1"

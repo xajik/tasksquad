@@ -4,10 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/tasksquad/daemon/harness"
 	"github.com/tasksquad/daemon/logger"
 )
 
@@ -23,11 +23,7 @@ func installSkill(workDir string, skill remoteSkill) error {
 		return err
 	}
 
-	copyDirs := []string{
-		filepath.Join(workDir, ".claude", "skills"),
-		filepath.Join(workDir, ".agents", "skills"),
-	}
-	for _, cd := range copyDirs {
+	for _, cd := range harness.SkillDirs(workDir) {
 		os.MkdirAll(cd, 0755) //nolint:errcheck
 
 		dest := filepath.Join(cd, skill.Name)
@@ -41,12 +37,12 @@ func installSkill(workDir string, skill remoteSkill) error {
 
 // removeSkill deletes the skill from .tsq/skills and its copies.
 // Only server-managed skills (tracked in the lock file) are ever passed here,
-// so user-created skills in .claude/skills or .agents/skills are never touched.
+// so user-created skills in provider directories are never touched.
 func removeSkill(workDir, name string) {
 	os.RemoveAll(skillDir(workDir, name)) //nolint:errcheck
 
-	for _, ld := range []string{".claude/skills", ".agents/skills"} {
-		os.RemoveAll(filepath.Join(workDir, ld, name)) //nolint:errcheck
+	for _, cd := range harness.SkillDirs(workDir) {
+		os.RemoveAll(filepath.Join(cd, name)) //nolint:errcheck
 	}
 }
 
@@ -66,40 +62,16 @@ func copyDir(src, dst string) error {
 		}
 		srcPath := filepath.Join(src, entry.Name())
 		dstPath := filepath.Join(dst, entry.Name())
-		if err := copyFile(srcPath, dstPath); err != nil {
+		if err := harness.CopyFile(srcPath, dstPath); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// copyFile copies a single file from src to dst, creating or overwriting dst.
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	return err
-}
-
 // skillDir returns the canonical on-disk directory for a skill.
 func skillDir(workDir, name string) string {
 	return filepath.Join(workDir, ".tsq", "skills", name)
-}
-
-// fileExists reports whether path exists on disk.
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
 
 // ─── Lock file helpers ───────────────────────────────────────────────────────���

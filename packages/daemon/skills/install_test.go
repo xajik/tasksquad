@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/tasksquad/daemon/harness"
 )
 
 func TestInstallSkill_WritesFile(t *testing.T) {
@@ -72,10 +74,10 @@ func TestFileExists(t *testing.T) {
 	f.Close()
 	defer os.Remove(f.Name())
 
-	if !fileExists(f.Name()) {
+	if !harness.FileExists(f.Name()) {
 		t.Error("expected fileExists=true for existing file")
 	}
-	if fileExists("/nonexistent/file.txt") {
+	if harness.FileExists("/nonexistent/file.txt") {
 		t.Error("expected fileExists=false for missing file")
 	}
 }

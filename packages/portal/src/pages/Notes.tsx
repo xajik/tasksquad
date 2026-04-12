@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Loader2, Plus, Search, FileText, Tag as TagIcon, RefreshCw, Trash2, Archive, ArchiveRestore } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { NoteWorkflow } from '../components/NoteWorkflow'
+import { HowItWorks, HowItWorksToggle } from '../components/HowItWorks'
 
 const LIMIT = 20
 
@@ -124,6 +126,7 @@ export function Notes({ teamId }: { teamId: string }) {
   const [archivedLoaded, setArchivedLoaded] = useState(false)
 
   const [showArchived, setShowArchived] = useState(false)
+  const [showHowItWorks, setShowHowItWorks] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [search, setSearch] = useState('')
@@ -234,12 +237,19 @@ export function Notes({ teamId }: { teamId: string }) {
           <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={refresh} title="Refresh">
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
+          <HowItWorksToggle show={showHowItWorks} onToggle={() => setShowHowItWorks(!showHowItWorks)} />
         </div>
         <Button onClick={createNote} disabled={creating}>
           {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
           New Note
         </Button>
       </div>
+
+      {showHowItWorks && (
+        <HowItWorks title="Agent Context Injection" icon={FileText} docsLink="/docs" className="mb-6 shrink-0" text="Notes are tagged and saved, then fetched by agents during task execution. Notes provide context and background information to help agents understand your project better.">
+          <NoteWorkflow />
+        </HowItWorks>
+      )}
 
       {/* Search bar */}
       <div className="relative mb-4 shrink-0">

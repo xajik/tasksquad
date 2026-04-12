@@ -7,6 +7,7 @@ import (
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
+	"github.com/tasksquad/daemon/harness"
 	"github.com/tasksquad/daemon/logger"
 )
 
@@ -95,7 +96,7 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 
 		if lock[skill.Name] == skill.Etag && skill.Etag != "" {
 			skillDir := skillDir(workDir, skill.Name)
-			if fileExists(skillDir + "/SKILL.md") {
+			if harness.FileExists(skillDir + "/SKILL.md") {
 				continue // already up to date and exists on disk
 			}
 		}
