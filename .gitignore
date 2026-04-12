@@ -69,3 +69,5 @@ ai/
 
 .omlx/
 logs
+
+.vscode
