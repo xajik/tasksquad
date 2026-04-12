@@ -66,3 +66,6 @@ ai/
 
 # TSQ local config and skills
 .tsq/
+
+.omlx/
+logs
