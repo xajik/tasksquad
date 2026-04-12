@@ -71,3 +71,6 @@ ai/
 logs
 
 .vscode
+
+# claw code
+.agent
