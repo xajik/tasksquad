@@ -12,7 +12,7 @@ import (
 )
 
 // installAgent writes content to <workDir>/.tsq/agents/<name>.md
-// and copies it to .claude/agents/<name>.md and .agents/agents/<name>.md
+// and copies it to .claude/agents/<name>.md, .agents/agents/<name>.md, and .gemini/agents/<name>.md
 // for compatibility with various agent tools.
 func installAgent(workDir string, agent remoteAgent) error {
 	dir := filepath.Join(workDir, ".tsq", "agents")

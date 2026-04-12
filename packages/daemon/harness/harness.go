@@ -14,7 +14,8 @@ import (
 //	.claude — Claude Code, OpenCode
 //	.agents — Gemini, Codex
 //	.agent  — Claw Code
-var All = []string{".claude", ".agents", ".agent"}
+//	.gemini — Gemini CLI
+var All = []string{".claude", ".agents", ".agent", ".gemini"}
 
 // SkillDirs returns the on-disk skill directories for all harnesses under workDir.
 func SkillDirs(workDir string) []string {

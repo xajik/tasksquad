@@ -5,7 +5,7 @@
 //   - StartSync (sync.go) polls the server hourly and installs auto_install /
 //     default sub-agents into each agent's work directory.
 //   - installAgent / removeAgent (install.go) manage on-disk .md files and
-//     copy them to .claude/agents and .agents/agents.
+//     copy them to .claude/agents, .agents/agents, and .gemini/agents.
 package agents
 
 // AgentRef is the minimal interface this package needs from a running agent.

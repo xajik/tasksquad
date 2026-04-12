@@ -12,7 +12,7 @@ import (
 )
 
 // installSkill writes content to <workDir>/.tsq/skills/<name>/SKILL.md
-// and copies it to .claude/skills/<name> and .agents/skills/<name>
+// and copies it to .claude/skills/<name>, .agents/skills/<name>, and .gemini/skills/<name>
 // for compatibility with various agent tools.
 func installSkill(workDir string, skill remoteSkill) error {
 	dir := skillDir(workDir, skill.Name)

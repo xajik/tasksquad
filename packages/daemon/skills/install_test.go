@@ -34,10 +34,10 @@ func TestInstallSkill_CreatesSymlinks(t *testing.T) {
 		t.Fatalf("installSkill error: %v", err)
 	}
 
-	for _, dir := range []string{".claude/skills", ".agents/skills"} {
-		link := filepath.Join(workDir, dir, "tsq-link-test")
+	for _, p := range harness.All {
+		link := filepath.Join(workDir, p, "skills", "tsq-link-test")
 		if _, err := os.Lstat(link); err != nil {
-			t.Errorf("symlink missing at %s: %v", link, err)
+			t.Errorf("copied skill missing at %s: %v", link, err)
 		}
 	}
 }
