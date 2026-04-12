@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Loader2, Bot, Trash2, Edit, X, Save, Shield, Zap, User } from 'lucide-react'
+import { Loader2, Bot, Trash2, Edit, X, Save, Shield, Zap, User, Copy, Check } from 'lucide-react'
 import { relativeTime } from '../lib/utils'
 
 export function SubAgentCard({
@@ -117,6 +117,7 @@ export function SubAgentDetail({
   const [content, setContent] = useState(agent.content ?? '')
   const [saving, setSaving] = useState(false)
   const [fullAgent, setFullAgent] = useState<SubAgent | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const isProtected = !!agent.is_default
   const authorLabel = agent.author_id !== null
@@ -176,6 +177,23 @@ export function SubAgentDetail({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+          )}
+          {!editing && (
+            <Button
+              variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
+              onClick={() => {
+                const text = content || (fullAgent?.content ?? '')
+                if (text) {
+                  navigator.clipboard.writeText(text).then(() => {
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  })
+                }
+              }}
+              title="Copy content"
+            >
+              {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+            </Button>
           )}
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
