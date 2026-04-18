@@ -7,7 +7,7 @@ import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
 import { sendFCMNotification } from '../fcm.js'
 import { getCombinedInboxVersion } from '../inbox_version.js'
 import { calculateNextRun, type ConveyorRow } from './conveyors.js'
-import { TaskStatus, AgentStatus, SessionStatus, AgentMode } from '../statuses.js'
+import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
 
 function truncate(text: string, maxLen = 80): string {
   return text.slice(0, maxLen) + (text.length > maxLen ? '…' : '')
@@ -501,8 +501,8 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   // If this is a note-critique task that just completed, post agent response as note comment
   if (taskStatus === TaskStatus.Done && final_text) {
     const critiqueMsg = await env.DB
-      .prepare("SELECT json_payload FROM messages WHERE task_id = ? AND type = 'note-critique' AND role = 'system' LIMIT 1")
-      .bind(session.task_id)
+      .prepare("SELECT json_payload FROM messages WHERE task_id = ? AND type = ? AND role = 'system' LIMIT 1")
+      .bind(session.task_id, MessageType.NoteCritique)
       .first<{ json_payload: string }>()
 
     if (critiqueMsg) {
@@ -560,8 +560,8 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
   // If this is a note-critique task, post agent output as a note comment
   if (output) {
     const critiqueMsg = await env.DB
-      .prepare("SELECT json_payload FROM messages WHERE task_id = ? AND type = 'note-critique' AND role = 'system' LIMIT 1")
-      .bind(session.task_id)
+      .prepare("SELECT json_payload FROM messages WHERE task_id = ? AND type = ? AND role = 'system' LIMIT 1")
+      .bind(session.task_id, MessageType.NoteCritique)
       .first<{ json_payload: string }>()
 
     if (critiqueMsg) {
@@ -609,8 +609,8 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
 
     // If this is a note-critique task, post agent response as note comment
     const critiqueMsg = await env.DB
-      .prepare("SELECT json_payload FROM messages WHERE task_id = ? AND type = 'note-critique' AND role = 'system' LIMIT 1")
-      .bind(session.task_id)
+      .prepare("SELECT json_payload FROM messages WHERE task_id = ? AND type = ? AND role = 'system' LIMIT 1")
+      .bind(session.task_id, MessageType.NoteCritique)
       .first<{ json_payload: string }>()
     if (critiqueMsg) {
       try {
@@ -815,7 +815,7 @@ export async function permissionRequest(req: Request, env: Env, _ctx: unknown, d
 
   await env.DB.batch([
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, type, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(msgId, session.task_id, null, 'agent', msgBody, 'permission_request', jsonPayload, now),
+      .bind(msgId, session.task_id, null, 'agent', msgBody, MessageType.PermissionRequest, jsonPayload, now),
     env.DB.prepare("UPDATE tasks SET status = ? WHERE id = ?").bind(TaskStatus.WaitingInput, session.task_id),
     env.DB.prepare("UPDATE agents SET status = ? WHERE id = ?").bind(AgentStatus.WaitingInput, agentId),
     env.DB.prepare("UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?").bind(AgentMode.WaitingInput, now, agentId),

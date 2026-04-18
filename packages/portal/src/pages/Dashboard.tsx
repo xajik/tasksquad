@@ -4,6 +4,7 @@ import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router
 import { auth } from '../lib/firebase'
 import { trackEvent } from '../lib/analytics'
 import { api, type Agent, type Task, type Message, type Team, type Member } from '../lib/api'
+import { MessageType } from '../lib/messageTypes'
 import { requestNotificationPermission, notify, STATUS_NOTIF, registerPushToken } from '../lib/notifications'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -373,18 +374,18 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
     if (statusFilter !== 'all') {
       result = result.filter(t => taskStatus(t) === statusFilter)
     }
-    if (activeFilter === 'system') return result.filter(t => t.first_message_role === 'system' && t.first_message_type !== 'note-to-inbox')
-    if (activeFilter === 'mine') return result.filter(t => t.first_message_role === 'user' && t.sender_id === internalUserId && t.first_message_type !== 'note-to-inbox')
-    if (activeFilter === 'from-note') return result.filter(t => t.first_message_type === 'note-to-inbox')
-    if (activeFilter === 'note-critique') return result.filter(t => t.first_message_type === 'note-critique')
+    if (activeFilter === 'system') return result.filter(t => t.first_message_role === 'system' && t.first_message_type !== MessageType.NoteToInbox)
+    if (activeFilter === 'mine') return result.filter(t => t.first_message_role === 'user' && t.sender_id === internalUserId && t.first_message_type !== MessageType.NoteToInbox)
+    if (activeFilter === 'from-note') return result.filter(t => t.first_message_type === MessageType.NoteToInbox)
+    if (activeFilter === 'note-critique') return result.filter(t => t.first_message_type === MessageType.NoteCritique)
     if (activeFilter === 'scheduled') return result.filter(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
     return result
   }, [tasks, statusFilter, activeFilter, internalUserId, agentMap])
 
-  const hasSystem = useMemo(() => tasks.some(t => t.first_message_role === 'system' && t.first_message_type !== 'note-to-inbox'), [tasks])
-  const hasMine = useMemo(() => tasks.some(t => t.first_message_role === 'user' && t.sender_id === internalUserId && t.first_message_type !== 'note-to-inbox'), [tasks])
-  const hasNotes = useMemo(() => tasks.some(t => t.first_message_type === 'note-to-inbox'), [tasks])
-  const hasCritiques = useMemo(() => tasks.some(t => t.first_message_type === 'note-critique'), [tasks])
+  const hasSystem = useMemo(() => tasks.some(t => t.first_message_role === 'system' && t.first_message_type !== MessageType.NoteToInbox), [tasks])
+  const hasMine = useMemo(() => tasks.some(t => t.first_message_role === 'user' && t.sender_id === internalUserId && t.first_message_type !== MessageType.NoteToInbox), [tasks])
+  const hasNotes = useMemo(() => tasks.some(t => t.first_message_type === MessageType.NoteToInbox), [tasks])
+  const hasCritiques = useMemo(() => tasks.some(t => t.first_message_type === MessageType.NoteCritique), [tasks])
   const hasScheduled = useMemo(() => {
     const now = Date.now()
     return tasks.some(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
@@ -640,7 +641,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
 
 /** Intermediate agent activity row — compact, expandable, skimmable. */
 function ActivityRow({ message }: { message: Message }) {
-  const isPending = message.type === 'permission_request' && message.interaction_status === 'pending'
+  const isPending = message.type === MessageType.PermissionRequest && message.interaction_status === 'pending'
   const [expanded, setExpanded] = useState(isPending)
   const type = message.type
 
@@ -676,7 +677,7 @@ function ActivityRow({ message }: { message: Message }) {
     } catch {
       preview = message.body.slice(0, 80).replace(/\n/g, ' ')
     }
-  } else if (type === 'permission_request') {
+  } else if (type === MessageType.PermissionRequest) {
     Icon = ShieldAlert
     try {
       const p = JSON.parse(message.json_payload ?? message.body)
@@ -696,7 +697,7 @@ function ActivityRow({ message }: { message: Message }) {
     preview = message.body.slice(0, 80).replace(/\n/g, ' ')
   }
 
-  const iconColor = type === 'permission_request' && (isPending ? 'text-amber-500' : 'text-muted-foreground/50')
+  const iconColor = type === MessageType.PermissionRequest && (isPending ? 'text-amber-500' : 'text-muted-foreground/50')
 
   return (
     <div className="mb-0.5">
@@ -705,17 +706,17 @@ function ActivityRow({ message }: { message: Message }) {
         className="w-full flex items-center gap-2 px-3 py-1 rounded-md text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors group text-left"
       >
         <Icon className={cn('h-3 w-3 shrink-0 opacity-50 group-hover:opacity-100', iconColor)} />
-        <span className={cn('font-mono text-[11px] shrink-0 opacity-70', type === 'permission_request' && isPending && 'text-amber-600 dark:text-amber-400 opacity-100 font-semibold')}>{label}</span>
+        <span className={cn('font-mono text-[11px] shrink-0 opacity-70', type === MessageType.PermissionRequest && isPending && 'text-amber-600 dark:text-amber-400 opacity-100 font-semibold')}>{label}</span>
         <span className="font-mono text-[11px] truncate flex-1 opacity-50">{preview}</span>
-        {type === 'permission_request' && message.interaction_status === 'resolved' && (
+        {type === MessageType.PermissionRequest && message.interaction_status === 'resolved' && (
           <span className="text-[10px] font-medium text-muted-foreground/60 shrink-0">{message.interaction_response}</span>
         )}
         <ChevronRight className={cn('h-3 w-3 shrink-0 opacity-0 group-hover:opacity-40 transition-transform', expanded && 'rotate-90 opacity-40')} />
       </button>
       {expanded && (
-        <div className={cn('mx-3 mb-1 rounded border overflow-x-auto', type === 'permission_request' && isPending ? 'border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/10' : 'border-border/40 bg-muted/30')}>
+        <div className={cn('mx-3 mb-1 rounded border overflow-x-auto', type === MessageType.PermissionRequest && isPending ? 'border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/10' : 'border-border/40 bg-muted/30')}>
           <pre className="px-3 py-2 text-[11px] font-mono text-foreground/70 whitespace-pre-wrap break-all leading-relaxed">{detail}</pre>
-          {type === 'permission_request' && message.interaction_status === 'resolved' && (
+          {type === MessageType.PermissionRequest && message.interaction_status === 'resolved' && (
             <div className="px-3 py-2 border-t border-border/30 text-[11px] text-muted-foreground">
               <span className="font-semibold">Reply: </span>{message.interaction_response}
             </div>
@@ -790,7 +791,7 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
   }
 
   // Note-to-inbox user message — show as a collapsible card (content can be very long)
-  if (isUser && message.type === 'note-to-inbox') {
+  if (isUser && message.type === MessageType.NoteToInbox) {
     const [expanded, setExpanded] = useState(false)
     let noteTitle = ''
     try { noteTitle = JSON.parse(message.json_payload ?? '{}').note_title ?? '' } catch {}
@@ -1087,7 +1088,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
   const permissionOptions = useMemo((): string[] | null => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]
-      if (m.type === 'permission_request' && m.interaction_status === 'pending') {
+      if (m.type === MessageType.PermissionRequest && m.interaction_status === 'pending') {
         try {
           const p = JSON.parse(m.json_payload ?? '')
           if (Array.isArray(p.options) && p.options.length > 0) return p.options as string[]

@@ -3,7 +3,7 @@ import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { importMasterKey, unwrapDEK, decrypt } from '../crypto.js'
 import { bumpInboxVersion } from '../inbox_version.js'
-import { TaskStatus, AgentStatus, SessionStatus, AgentMode } from '../statuses.js'
+import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -40,12 +40,12 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
                 WHERE r.task_id = pr.task_id AND r.role = 'user' AND r.created_at > pr.created_at
                 ORDER BY r.created_at ASC LIMIT 1) AS interaction_response
         FROM messages pr
-        WHERE pr.task_id = ? AND pr.type = 'permission_request'
+        WHERE pr.task_id = ? AND pr.type = ?
       ) pe ON pe.msg_id = m.id
       WHERE m.task_id = ?
       ORDER BY CASE WHEN m.scheduled_at IS NOT NULL THEN 1 ELSE 0 END ASC, m.created_at ASC
     `)
-    .bind(taskId, taskId)
+    .bind(taskId, MessageType.PermissionRequest, taskId)
     .all()
   return json({ messages: rows.results })
 }

@@ -2,7 +2,7 @@ import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { bumpInboxVersion } from '../inbox_version.js'
-import { TaskStatus, AgentStatus, SessionStatus, AgentMode } from '../statuses.js'
+import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -278,12 +278,12 @@ export async function listLinkedTasks(req: Request, env: Env, _ctx: unknown, aut
       JOIN messages m ON m.task_id = t.id
       LEFT JOIN agents a ON a.id = t.agent_id
       WHERE t.team_id = ?
-        AND m.type IN ('note-to-inbox', 'note-critique')
+        AND m.type IN (?, ?)
         AND m.role = 'system'
         AND json_extract(m.json_payload, '$.note_id') = ?
       ORDER BY t.created_at DESC
     `)
-    .bind(teamId, noteId)
+    .bind(teamId, noteId, MessageType.NoteToInbox, MessageType.NoteCritique)
     .all()
 
   return json({ tasks: tasks.results })
@@ -347,10 +347,10 @@ export async function critique(req: Request, env: Env, _ctx: unknown, auth: Auth
       .bind(taskId, teamId, agent_id, auth.userId, `Critique: ${note.title}`, TaskStatus.Pending, now),
     // System message — tracks this as a critique task and stores note reference
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(ulid(), taskId, auth.userId, 'system', 'note-critique', `Critique requested for "${note.title}"`, payload, now),
+      .bind(ulid(), taskId, auth.userId, 'system', MessageType.NoteCritique, `Critique requested for "${note.title}"`, payload, now),
     // User message — the formatted prompt delivered to the agent
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(ulid(), taskId, auth.userId, 'user', 'note-critique', agentBody, payload, now),
+      .bind(ulid(), taskId, auth.userId, 'user', MessageType.NoteCritique, agentBody, payload, now),
   ])
 
   await bumpInboxVersion(env, agent_id)
@@ -407,10 +407,10 @@ export async function convertToInbox(req: Request, env: Env, _ctx: unknown, auth
       .bind(taskId, teamId, agent_id, auth.userId, `Note: ${note.title}`, TaskStatus.Pending, now, autoCloseVal),
     // System message — portal displays this as a pill showing the conversion event
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(ulid(), taskId, auth.userId, 'system', 'note-to-inbox', `Note "${note.title}" sent to inbox`, payload, now),
+      .bind(ulid(), taskId, auth.userId, 'system', MessageType.NoteToInbox, `Note "${note.title}" sent to inbox`, payload, now),
     // User message — this is what the daemon delivers to the agent
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(ulid(), taskId, auth.userId, 'user', 'note-to-inbox', agentBody, payload, now),
+      .bind(ulid(), taskId, auth.userId, 'user', MessageType.NoteToInbox, agentBody, payload, now),
   ])
 
   await bumpInboxVersion(env, agent_id)

@@ -1,5 +1,6 @@
 import { getToken } from './firebase'
 import { trackEvent } from './analytics'
+import { MessageType } from './messageTypes'
 
 const BASE = import.meta.env.VITE_API_BASE_URL
 
@@ -358,7 +359,7 @@ export interface Message {
   sender_id: string | null
   role: 'user' | 'agent' | 'system' | 'supervisor'
   /** Intermediate agent message types. null/undefined = final agent response. */
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'output' | 'permission_request' | 'note-to-inbox' | null
+  type: typeof MessageType[keyof typeof MessageType] | null
   body: string
   /** Structured JSON payload for typed messages (e.g. permission_request). */
   json_payload: string | null
