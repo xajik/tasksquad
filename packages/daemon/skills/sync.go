@@ -129,11 +129,10 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 			continue
 		}
 
-		if err := installSkill(workDir, skill); err != nil {
+		if err := installSkill(workDir, skill, lock); err != nil {
 			logger.Error(fmt.Sprintf("[skills] Failed to install %q: %v", skill.Name, err))
 			continue
 		}
-		lock[skill.Name] = skill.Etag
 		logger.Info(fmt.Sprintf("[skills] Installed %q v%d → %s", skill.Name, skill.Version, workDir))
 	}
 

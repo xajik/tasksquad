@@ -92,8 +92,7 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 
 	// ── Quick actions ──────────────────────────────────────────────────────
 	mDash := systray.AddMenuItem("Open Web Portal", dashboardURL)
-	mVoiceToMD := systray.AddMenuItem("Voice to MD", "Open voice-to-markdown editor")
-	mSessions := systray.AddMenuItem("Control Panel", "Open control panel")
+	mSessions := systray.AddMenuItem("Control Panel", "Open unified control panel")
 	mBoot := systray.AddMenuItem(bootLabel(autostartCtrl.IsEnabled()), "Toggle run on OS boot")
 	mSyncSkills := systray.AddMenuItem("Sync Skills Now", "Force-sync skills from server")
 	mSyncConveyor := systray.AddMenuItem("Sync Conveyor Now", "Force a heartbeat poll immediately")
@@ -194,16 +193,9 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 		}
 	}()
 	go func() {
-		for range mVoiceToMD.ClickedCh {
-			if cpURL != "" {
-				openVoiceToMD(cpURL + "/voice-to-md")
-			}
-		}
-	}()
-	go func() {
 		for range mSessions.ClickedCh {
 			if cpURL != "" {
-				openControlPanel(cpURL)
+				openBrowser(cpURL)
 			}
 		}
 	}()

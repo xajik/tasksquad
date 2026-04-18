@@ -14,9 +14,17 @@ import (
 // installSkill writes content to <workDir>/.tsq/skills/<name>/SKILL.md
 // and copies it to .claude/skills/<name>, .agents/skills/<name>, and .gemini/skills/<name>
 // for compatibility with various agent tools.
-func installSkill(workDir string, skill remoteSkill) error {
+func installSkill(workDir string, skill remoteSkill, lock skillsLock) error {
+	if currentEtag, ok := lock[skill.Name]; ok && currentEtag == skill.Etag {
+		return nil
+	}
+
 	dir := skillDir(workDir, skill.Name)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+	} else if err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(skill.Content), 0644); err != nil {
@@ -32,6 +40,7 @@ func installSkill(workDir string, skill remoteSkill) error {
 		}
 	}
 
+	lock[skill.Name] = skill.Etag
 	return nil
 }
 

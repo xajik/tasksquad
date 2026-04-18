@@ -24,11 +24,8 @@ import (
 // Visual design mirrors the TaskSquad portal — same color tokens, card style,
 // button variants, and typography. Source lives in dashboard.html alongside this file.
 //
-//go:embed dashboard.html
-var dashboardHTML string
-
-//go:embed voice_to_md.html
-var voiceToMDHTML string
+//go:embed portal.html
+var portalHTML string
 
 type dashStatus struct {
 	Email     string        `json:"email"`
@@ -70,12 +67,11 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(dashboardHTML)) //nolint:errcheck
+		w.Write([]byte(portalHTML)) //nolint:errcheck
 	})
 
 	mux.HandleFunc("/voice-to-md", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(voiceToMDHTML)) //nolint:errcheck
+		http.Redirect(w, r, "/", http.StatusFound)
 	})
 
 	// ── Voice-to-MD API ───────────────────────────────────────────────────────

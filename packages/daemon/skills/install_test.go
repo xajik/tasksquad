@@ -11,8 +11,9 @@ import (
 func TestInstallSkill_WritesFile(t *testing.T) {
 	workDir := t.TempDir()
 	skill := remoteSkill{Name: "tsq-example", Content: "step 1\nstep 2"}
+	lock := make(skillsLock)
 
-	if err := installSkill(workDir, skill); err != nil {
+	if err := installSkill(workDir, skill, lock); err != nil {
 		t.Fatalf("installSkill error: %v", err)
 	}
 
@@ -29,8 +30,9 @@ func TestInstallSkill_WritesFile(t *testing.T) {
 func TestInstallSkill_CreatesSymlinks(t *testing.T) {
 	workDir := t.TempDir()
 	skill := remoteSkill{Name: "tsq-link-test", Content: "content"}
+	lock := make(skillsLock)
 
-	if err := installSkill(workDir, skill); err != nil {
+	if err := installSkill(workDir, skill, lock); err != nil {
 		t.Fatalf("installSkill error: %v", err)
 	}
 
@@ -45,8 +47,9 @@ func TestInstallSkill_CreatesSymlinks(t *testing.T) {
 func TestRemoveSkill_DeletesFiles(t *testing.T) {
 	workDir := t.TempDir()
 	skill := remoteSkill{Name: "tsq-bye", Content: "content"}
+	lock := make(skillsLock)
 
-	if err := installSkill(workDir, skill); err != nil {
+	if err := installSkill(workDir, skill, lock); err != nil {
 		t.Fatalf("install: %v", err)
 	}
 
