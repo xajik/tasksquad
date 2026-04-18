@@ -12,7 +12,7 @@ func TestModeConstants(t *testing.T) {
 	if string(ModeWaitingInput) != "waiting_input" {
 		t.Errorf("ModeWaitingInput = %q", ModeWaitingInput)
 	}
-	if string(ModeLearning) != "learning" {
+	if string(ModeLearning) != "wrapping_up" {
 		t.Errorf("ModeLearning = %q", ModeLearning)
 	}
 }

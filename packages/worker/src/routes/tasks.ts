@@ -2,6 +2,7 @@ import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { bumpInboxVersion } from '../inbox_version.js'
+import { TaskStatus, AgentStatus, SessionStatus, AgentMode } from '../statuses.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -47,14 +48,17 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
   const taskId = url.pathname.split('/')[2]
 
   const task = await env.DB
-    .prepare('SELECT id, team_id, agent_id, sender_id, subject, status, created_at, started_at, completed_at, settings FROM tasks WHERE id = ?')
+    .prepare('SELECT id, team_id, agent_id, sender_id, subject, status, created_at, started_at, completed_at, settings, close_steps, close_steps_active_idx FROM tasks WHERE id = ?')
     .bind(taskId)
-    .first<{ id: string; team_id: string; agent_id: string; sender_id: string; subject: string; status: string; created_at: number; started_at: number | null; completed_at: number | null; settings: string | null }>()
+    .first<{ id: string; team_id: string; agent_id: string; sender_id: string; subject: string; status: string; created_at: number; started_at: number | null; completed_at: number | null; settings: string | null; close_steps: string | null; close_steps_active_idx: number }>()
 
   if (!task) return err('not_found', 404)
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
 
-  return json({ ...task, settings: task.settings ? JSON.parse(task.settings) : null })
+  let closeSteps: string[] | null = null
+  try { closeSteps = task.close_steps ? JSON.parse(task.close_steps) : null } catch { closeSteps = null }
+
+  return json({ ...task, settings: task.settings ? JSON.parse(task.settings) : null, close_steps: closeSteps })
 }
 
 export async function updateSettings(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
@@ -95,15 +99,15 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   const now = Date.now()
   await env.DB.prepare('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?')
-    .bind(body.status, body.status === 'done' || body.status === 'failed' ? now : null, taskId)
+    .bind(body.status, body.status === TaskStatus.Done || body.status === TaskStatus.Failed ? now : null, taskId)
     .run()
 
   return json({ ok: true })
 }
 
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
-  const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: string } }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: string } }))
-  const { agent_id, subject, team_id, body: taskBody, scheduled_at, auto_close, save_tokens } = body
+  const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: string }; close_steps?: string[] }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: string }; close_steps?: string[] }))
+  const { agent_id, subject, team_id, body: taskBody, scheduled_at, auto_close, save_tokens, close_steps } = body
   if (!agent_id || !subject?.trim() || !team_id) return err('missing_fields', 400)
 
   if (!(await requireMember(env.DB, team_id, auth.userId))) return err('forbidden', 403)
@@ -128,22 +132,23 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   const autoCloseVal = auto_close ? 1 : 0
   const settingsVal = save_tokens ? JSON.stringify({ save_tokens }) : null
+  const closeStepsVal = close_steps?.length ? JSON.stringify(close_steps) : null
 
   if (isScheduled) {
     await env.DB.batch([
       // Use 'scheduled' status so the daemon doesn't pick it up before the scheduled time
-      env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'scheduled', now, autoCloseVal, settingsVal),
+      env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close, settings, close_steps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), TaskStatus.Scheduled, now, autoCloseVal, settingsVal, closeStepsVal),
       // Insert initial user message with scheduled_at
       env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now, scheduled_at),
     ])
-    return json({ id: taskId, status: 'scheduled' }, 201)
+    return json({ id: taskId, status: TaskStatus.Scheduled }, 201)
   }
 
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), 'pending', now, autoCloseVal, settingsVal),
+    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close, settings, close_steps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), TaskStatus.Pending, now, autoCloseVal, settingsVal, closeStepsVal),
     // Insert initial user message — use body if provided, else fall back to subject
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now),
@@ -151,7 +156,7 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   await bumpInboxVersion(env, agent_id)
 
-  return json({ id: taskId, status: 'pending' }, 201)
+  return json({ id: taskId, status: TaskStatus.Pending }, 201)
 }
 
 export async function closeTask(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
@@ -159,38 +164,35 @@ export async function closeTask(req: Request, env: Env, _ctx: unknown, auth: Aut
   const taskId = url.pathname.split('/')[2]
 
   const task = await env.DB
-    .prepare('SELECT team_id, agent_id FROM tasks WHERE id = ?')
+    .prepare('SELECT team_id, agent_id, close_steps FROM tasks WHERE id = ?')
     .bind(taskId)
-    .first<{ team_id: string; agent_id: string }>()
+    .first<{ team_id: string; agent_id: string; close_steps: string | null }>()
   if (!task) return err('not_found', 404)
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('forbidden', 403)
 
   const now = Date.now()
 
-  const [agent, team] = await Promise.all([
-    env.DB.prepare("SELECT status FROM agents WHERE id = ?")
-      .bind(task.agent_id).first<{ status: string }>(),
-    env.DB.prepare("SELECT learn_from_session FROM teams WHERE id = ?")
-      .bind(task.team_id).first<{ learn_from_session: number }>(),
-  ])
+  const agent = await env.DB.prepare("SELECT status FROM agents WHERE id = ?")
+    .bind(task.agent_id).first<{ status: string }>()
 
-  if (agent?.status === 'waiting_input' && team?.learn_from_session !== 0) {
-    await env.DB.prepare("UPDATE tasks SET status = 'learning' WHERE id = ?").bind(taskId).run()
+  // If the agent is waiting_input and the task has close_steps, start the close sequence.
+  if (agent?.status === AgentStatus.WaitingInput && task.close_steps) {
+    await env.DB.prepare("UPDATE tasks SET status = ? WHERE id = ?").bind(TaskStatus.WrappingUp, taskId).run()
     return json({ ok: true })
   }
 
-  // Agent is not waiting_input (running, idle, etc.) — use original close flow.
+  // No close_steps or agent not in waiting_input — close immediately.
   const session = await env.DB
-    .prepare("SELECT id FROM sessions WHERE task_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1")
-    .bind(taskId)
+    .prepare("SELECT id FROM sessions WHERE task_id = ? AND status = ? ORDER BY started_at DESC LIMIT 1")
+    .bind(taskId, SessionStatus.Running)
     .first<{ id: string }>()
 
   const ops = [
-    env.DB.prepare("UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?").bind(now, taskId),
+    env.DB.prepare("UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?").bind(TaskStatus.Done, now, taskId),
   ]
   if (session) {
     ops.push(
-      env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE id = ?").bind(now, session.id)
+      env.DB.prepare("UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?").bind(SessionStatus.Closed, now, session.id)
     )
   }
 
@@ -213,16 +215,16 @@ export async function deleteTask(req: Request, env: Env, _ctx: unknown, auth: Au
 
   // Complete any active session so the daemon receives a cancel signal on next heartbeat
   const activeSession = await env.DB
-    .prepare("SELECT id FROM sessions WHERE task_id = ? AND status IN ('running', 'waiting_input') ORDER BY started_at DESC LIMIT 1")
-    .bind(taskId)
+    .prepare("SELECT id FROM sessions WHERE task_id = ? AND status IN (?, ?) ORDER BY started_at DESC LIMIT 1")
+    .bind(taskId, SessionStatus.Running, SessionStatus.WaitingInput)
     .first<{ id: string }>()
 
   await env.DB.batch([
     // Close active session and reset agent state before deleting
     ...(activeSession ? [
-      env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE id = ?").bind(now, activeSession.id),
-      env.DB.prepare("UPDATE agents SET status = 'idle' WHERE id = ?").bind(task.agent_id),
-      env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, task.agent_id),
+      env.DB.prepare("UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?").bind(SessionStatus.Closed, now, activeSession.id),
+      env.DB.prepare("UPDATE agents SET status = ? WHERE id = ?").bind(AgentStatus.Idle, task.agent_id),
+      env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = ?, updated_at = ? WHERE agent_id = ?").bind(AgentMode.Idle, now, task.agent_id),
     ] : [
       // No active session — still clear any stale FK refs
       env.DB.prepare('UPDATE agent_state SET current_task_id = NULL, current_session = NULL WHERE current_task_id = ?').bind(taskId),
@@ -281,7 +283,7 @@ export async function forwardTask(req: Request, env: Env, _ctx: unknown, auth: A
   await env.DB.batch([
     env.DB.prepare(
       'INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, parent_task_id) VALUES (?,?,?,?,?,?,?,?)'
-    ).bind(newId, task.team_id, body.agent_id, auth.userId, task.subject, 'pending', now, taskId),
+    ).bind(newId, task.team_id, body.agent_id, auth.userId, task.subject, TaskStatus.Pending, now, taskId),
     env.DB.prepare(
       'INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?,?,?,?,?,?)'
     ).bind(ulid(), newId, auth.userId, 'user', messageBody, now),

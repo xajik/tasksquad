@@ -3,6 +3,7 @@ import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { importMasterKey, unwrapDEK, decrypt } from '../crypto.js'
 import { bumpInboxVersion } from '../inbox_version.js'
+import { TaskStatus, AgentStatus, SessionStatus, AgentMode } from '../statuses.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -108,7 +109,7 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     .first<{ team_id: string; status: string; agent_id: string }>()
   if (!task) return err('not_found', 404)
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
-  if (task.status === 'done' || task.status === 'failed') return err('task_closed', 403)
+  if (task.status === TaskStatus.Done || task.status === TaskStatus.Failed) return err('task_closed', 403)
 
   const body = await req.json<{ body?: string; scheduled_at?: number }>().catch(() => ({} as { body?: string; scheduled_at?: number }))
   const text = body.body?.trim()
@@ -134,10 +135,10 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     .run()
 
   // If task was waiting for input, reopen it as pending so daemon picks it up
-  if (task.status === 'waiting_input') {
+  if (task.status === TaskStatus.WaitingInput) {
     await env.DB
-      .prepare("UPDATE tasks SET status = 'pending', completed_at = NULL WHERE id = ?")
-      .bind(taskId)
+      .prepare("UPDATE tasks SET status = ?, completed_at = NULL WHERE id = ?")
+      .bind(TaskStatus.Pending, taskId)
       .run()
   }
 

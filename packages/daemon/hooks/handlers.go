@@ -57,8 +57,8 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
 		switch agentmode.Mode(a.GetMode()) {
 		case agentmode.ModeLearning:
-			logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(closed) to learning agent %s", a.Name()))
-			go a.Complete(s.cfg, string(agentmode.StatusClosed), ev.TranscriptPath)
+			logger.Debug(fmt.Sprintf("[hooks] Advancing close step for agent %s", a.Name()))
+			go a.AdvanceCloseStep(s.cfg)
 		case agentmode.ModeRunning, agentmode.ModeWaitingInput:
 			if ev.IsFailure {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(crashed) to agent %s", a.Name()))

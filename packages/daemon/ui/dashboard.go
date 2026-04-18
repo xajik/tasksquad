@@ -24,6 +24,9 @@ import (
 //go:embed dashboard.html
 var dashboardHTML string
 
+//go:embed voice_to_md.html
+var voiceToMDHTML string
+
 type dashStatus struct {
 	Email     string        `json:"email"`
 	DashURL   string        `json:"dash_url"`
@@ -35,16 +38,18 @@ type dashStatus struct {
 }
 
 type dashAgent struct {
-	Name     string `json:"name"`
-	Mode     string `json:"mode"`
-	TaskID   string `json:"task_id"`
-	LogPath  string `json:"log_path"`
-	Session  string `json:"session"`
-	PullAgo  string `json:"pull_ago"`
-	ID       string `json:"id"`
-	WorkDir  string `json:"work_dir"`
-	Command  string `json:"command"`
-	Provider string `json:"provider"`
+	Name          string   `json:"name"`
+	Mode          string   `json:"mode"`
+	TaskID        string   `json:"task_id"`
+	LogPath       string   `json:"log_path"`
+	Session       string   `json:"session"`
+	PullAgo       string   `json:"pull_ago"`
+	ID            string   `json:"id"`
+	WorkDir       string   `json:"work_dir"`
+	Command       string   `json:"command"`
+	Provider      string   `json:"provider"`
+	PendingSteps  []string `json:"pending_steps"`
+	ExecutedSteps []string `json:"executed_steps"`
 }
 
 type dashSession struct {
@@ -63,6 +68,32 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(dashboardHTML)) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/voice-to-md", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(voiceToMDHTML)) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/voice-to-md/content", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		content, fileName := GetVoiceContent()
+		json.NewEncoder(w).Encode(map[string]string{
+			"content":  content,
+			"fileName": fileName,
+		})
+	})
+
+	mux.HandleFunc("/api/voice-to-md/upload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		// In a real implementation, we would handle multipart/form-data or raw bytes
+		// and pass them to the whisperer for transcription.
+		// For now, we'll just acknowledge the upload.
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"status":"ok"}`)
 	})
 
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
@@ -87,17 +118,20 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 			if t := a.LastPullTime(); !t.IsZero() {
 				ago = relTime(t)
 			}
+			pending, executed := a.CloseSteps()
 			agts = append(agts, dashAgent{
-				Name:     a.Name(),
-				Mode:     a.GetMode(),
-				TaskID:   a.GetTaskID(),
-				LogPath:  a.LastLogPath(),
-				Session:  a.TmuxSession(),
-				PullAgo:  ago,
-				ID:       a.AgentID(),
-				WorkDir:  a.WorkDir(),
-				Command:  a.Command(),
-				Provider: a.Provider(),
+				Name:          a.Name(),
+				Mode:          a.GetMode(),
+				TaskID:        a.GetTaskID(),
+				LogPath:       a.LastLogPath(),
+				Session:       a.TmuxSession(),
+				PullAgo:       ago,
+				ID:            a.AgentID(),
+				WorkDir:       a.WorkDir(),
+				Command:       a.Command(),
+				Provider:      a.Provider(),
+				PendingSteps:  pending,
+				ExecutedSteps: executed,
 			})
 		}
 

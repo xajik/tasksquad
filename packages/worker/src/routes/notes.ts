@@ -2,6 +2,7 @@ import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { bumpInboxVersion } from '../inbox_version.js'
+import { TaskStatus, AgentStatus, SessionStatus, AgentMode } from '../statuses.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -343,7 +344,7 @@ export async function critique(req: Request, env: Env, _ctx: unknown, auth: Auth
 
   await env.DB.batch([
     env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, 1)')
-      .bind(taskId, teamId, agent_id, auth.userId, `Critique: ${note.title}`, 'pending', now),
+      .bind(taskId, teamId, agent_id, auth.userId, `Critique: ${note.title}`, TaskStatus.Pending, now),
     // System message — tracks this as a critique task and stores note reference
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(ulid(), taskId, auth.userId, 'system', 'note-critique', `Critique requested for "${note.title}"`, payload, now),
@@ -403,7 +404,7 @@ export async function convertToInbox(req: Request, env: Env, _ctx: unknown, auth
   await env.DB.batch([
     // Task
     env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(taskId, teamId, agent_id, auth.userId, `Note: ${note.title}`, 'pending', now, autoCloseVal),
+      .bind(taskId, teamId, agent_id, auth.userId, `Note: ${note.title}`, TaskStatus.Pending, now, autoCloseVal),
     // System message — portal displays this as a pill showing the conversion event
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(ulid(), taskId, auth.userId, 'system', 'note-to-inbox', `Note "${note.title}" sent to inbox`, payload, now),

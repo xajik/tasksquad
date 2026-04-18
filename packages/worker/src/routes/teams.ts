@@ -1,6 +1,7 @@
 import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
+import { TaskStatus, AgentStatus, SessionStatus, AgentMode } from '../statuses.js'
 
 async function requireOwner(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -67,9 +68,9 @@ export async function deactivate(req: Request, env: Env, _ctx: unknown, auth: Au
   const now = Date.now()
   const ops = [
     env.DB.prepare('UPDATE teams SET is_deactivated = 1 WHERE id = ?').bind(teamId),
-    env.DB.prepare("UPDATE tasks SET status = 'failed' WHERE team_id = ? AND status IN ('pending', 'running', 'waiting_input')").bind(teamId),
-    env.DB.prepare("UPDATE agents SET status = 'offline' WHERE team_id = ?").bind(teamId),
-    env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE task_id IN (SELECT id FROM tasks WHERE team_id = ?) AND status IN ('running', 'waiting_input')").bind(now, teamId),
+    env.DB.prepare("UPDATE tasks SET status = ? WHERE team_id = ? AND status IN (?, ?, ?)").bind(TaskStatus.Failed, teamId, TaskStatus.Pending, TaskStatus.Running, TaskStatus.WaitingInput),
+    env.DB.prepare("UPDATE agents SET status = ? WHERE team_id = ?").bind(AgentStatus.Offline, teamId),
+    env.DB.prepare("UPDATE sessions SET status = ?, closed_at = ? WHERE task_id IN (SELECT id FROM tasks WHERE team_id = ?) AND status IN (?, ?)").bind(SessionStatus.Closed, now, teamId, SessionStatus.Running, SessionStatus.WaitingInput),
   ]
   await env.DB.batch(ops)
 

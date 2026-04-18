@@ -46,10 +46,13 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 			go a.closeSession(cfg)
 			return
 		}
-		if learn, _ := resp["learn"].(bool); learn && currentMode == ModeWaitingInput {
-			logger.Info(fmt.Sprintf("[%s] Server requested learning phase — injecting learning prompt", a.Config.Name))
-			go a.startLearning(cfg)
-			return
+		if stepsRaw, ok := resp["close_steps"]; ok && currentMode == ModeWaitingInput {
+			steps := parseCloseSteps(stepsRaw)
+			if len(steps) > 0 {
+				logger.Info(fmt.Sprintf("[%s] Server requested close sequence (%d steps)", a.Config.Name, len(steps)))
+				go a.startCloseSequence(cfg, steps)
+				return
+			}
 		}
 	}
 
@@ -101,4 +104,18 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 	} else {
 		logger.Debug(fmt.Sprintf("[%s] No pending tasks", a.Config.Name))
 	}
+}
+
+func parseCloseSteps(raw any) []string {
+	arr, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, v := range arr {
+		if s, ok := v.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }

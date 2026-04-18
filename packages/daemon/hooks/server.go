@@ -27,8 +27,11 @@ type Agent interface {
 	// GetTaskID returns the task ID the agent is currently working on.
 	// Used to reject stale hook events that fired after the task changed.
 	GetTaskID() string
-	// IsLearning returns true when the agent is in the end-session learning phase.
+	// IsLearning returns true when the agent is in the close-sequence phase.
 	IsLearning() bool
+	// AdvanceCloseStep marks the current close step as done and injects the next,
+	// or calls Complete when the queue is exhausted.
+	AdvanceCloseStep(cfg *config.Config)
 	// SetHookMessage stores the assistant text delivered by a provider-specific
 	// hook (e.g. codex last-assistant-message) so internalComplete can use it
 	// as finalText without a transcript file.

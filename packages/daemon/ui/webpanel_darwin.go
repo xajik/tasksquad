@@ -92,3 +92,12 @@ func openControlPanel(url string) {
 	defer C.free(unsafe.Pointer(ct))
 	C.tsq_open_panel(cu, ct, 1024, 720)
 }
+
+// openVoiceToMD opens the voice-to-markdown editor URL in a native macOS window.
+func openVoiceToMD(url string) {
+	cu := C.CString(url)
+	defer C.free(unsafe.Pointer(cu))
+	ct := C.CString("TaskSquad — Voice to MD")
+	defer C.free(unsafe.Pointer(ct))
+	C.tsq_open_panel(cu, ct, 1200, 800)
+}

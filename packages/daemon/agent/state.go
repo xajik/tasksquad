@@ -95,7 +95,9 @@ type AgentState struct {
 	// Prompt tracking
 	lastPrompt string // the initial prompt or latest reply sent to the process
 
-	learnings bool
+	// Close sequence queue (populated during ModeLearning)
+	pendingSteps  []string // steps not yet injected into tmux
+	executedSteps []string // steps already completed
 
 	// notifyPosted is set to true at the start of SetWaitingInput so that
 	// StopAndPause can detect a concurrent Notification+Stop pair (Claude Code
@@ -188,8 +190,9 @@ func (s *AgentState) Paused() bool {
 	return s.paused
 }
 
-func (s *AgentState) Learnings() bool {
+// CloseSteps returns a snapshot of the pending and executed close-sequence steps.
+func (s *AgentState) CloseSteps() (pending []string, executed []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.learnings
+	return append([]string{}, s.pendingSteps...), append([]string{}, s.executedSteps...)
 }

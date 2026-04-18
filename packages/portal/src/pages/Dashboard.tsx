@@ -58,11 +58,8 @@ import {
   LogOut,
   Trash2,
   Copy,
-  ChevronDown,
-  ChevronUp,
   Loader2,
   FileText,
-  Code2,
   Terminal,
   ExternalLink,
   CheckCircle,
@@ -96,231 +93,10 @@ import { Skills } from './Skills'
 import { AgentWorkflow } from '../components/AgentWorkflow'
 import { MemberWorkflow } from '../components/MemberWorkflow'
 import { HowItWorks, HowItWorksToggle } from '../components/HowItWorks'
+import { parseTranscript } from '../lib/transcript.tsx'
+import { CloseStepsProgress } from '../components/CloseStepsProgress'
 
 // ── Transcript viewer ─────────────────────────────────────────────────────────
-
-interface TranscriptEntry {
-  type: string
-  message?: {
-    role?: string
-    content?: string | Array<{
-      type: string
-      text?: string
-      name?: string
-      input?: any
-      tool_use_id?: string
-      content?: string
-    }>
-  }
-  tool_use_id?: string
-  output?: string
-  content?: string
-  result?: string
-  total_cost_usd?: number
-}
-
-function ToolExecution({ name, input, output }: { name: string; input: any; output?: string }) {
-  const [expanded, setExpanded] = useState(false)
-
-  return (
-    <div className="border border-border/60 rounded-lg overflow-hidden my-2 bg-muted/20">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/40 transition-colors text-xs font-medium"
-      >
-        <Terminal className="h-3 w-3 text-muted-foreground" />
-        <span className="text-muted-foreground italic">use tool</span>
-        <span className="font-mono text-foreground">{name}</span>
-        <div className="flex-1" />
-        {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-      </button>
-
-      {expanded && (
-        <div className="p-3 pt-0 space-y-3">
-          <div className="space-y-1">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1">
-              <Code2 className="h-2.5 w-2.5" /> Input
-            </div>
-            <pre className="text-[11px] bg-zinc-950 text-emerald-400/90 p-2 rounded border border-white/5 overflow-auto max-h-40">
-              {typeof input === 'string' ? input : JSON.stringify(input, null, 2)}
-            </pre>
-          </div>
-          {output && (
-            <div className="space-y-1">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1">
-                <ExternalLink className="h-2.5 w-2.5" /> Output
-              </div>
-              <pre className="text-[11px] bg-zinc-900 text-zinc-300 p-2 rounded border border-white/5 overflow-auto max-h-60">
-                {output}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function TranscriptViewer({ content }: { content: string }) {
-  // Detect format:
-  // 1. Claude JSONL: multiple lines, each is {"type":"assistant",...}
-  // 2. Gemini/OpenCode single-JSON: {"messages": [...]} or {"type": "...", "content": "..."}
-  // 3. Plain text: everything else
-  const format = useMemo(() => {
-    const trimmed = content.trim()
-    if (!trimmed) return 'empty'
-    
-    // Try to parse as JSON
-    let parsed: unknown
-    try { parsed = JSON.parse(trimmed) } catch { return 'plain' }
-    if (!parsed || typeof parsed !== 'object') return 'plain'
-    
-    const obj = parsed as Record<string, unknown>
-    
-    // Check for messages array (Gemini/OpenCode single-JSON)
-    if (Array.isArray(obj.messages)) {
-      return 'gemini'
-    }
-    
-    // Check for single message with type/content (OpenCode variant)
-    if (obj.type && obj.content) {
-      return 'single'
-    }
-    
-    // Check if it looks like Claude JSONL (has type field)
-    if (obj.type && typeof obj.type === 'string') {
-      // Check if it's NDJSON (multiple lines)
-      if (trimmed.includes('\n')) {
-        return 'jsonl'
-      }
-      return 'single'
-    }
-    
-    return 'plain'
-  }, [content])
-
-  // Parse entries based on format
-  const entries: TranscriptEntry[] = useMemo(() => {
-    const trimmed = content.trim()
-    if (!trimmed) return []
-    
-    // For jsonl, single, or gemini - try parsing each line as JSON
-    // This handles Claude JSONL and also Gemini/OpenCode when converted to NDJSON
-    if (format === 'jsonl' || format === 'single' || format === 'gemini') {
-      return trimmed
-        .split('\n')
-        .flatMap(line => { try { return [JSON.parse(line)] } catch { return [] } })
-    }
-    
-    return []
-  }, [content, format])
-
-  // Link outputs back to tool uses
-  const toolOutputs = useMemo(() => {
-    const outputs: Record<string, string> = {}
-    entries.forEach(e => {
-      if (e.type === 'tool_result' && e.tool_use_id && e.content) {
-        outputs[e.tool_use_id] = e.content
-      }
-    })
-    return outputs
-  }, [entries])
-
-  // Plain text fallback
-  if (format === 'plain' || format === 'empty') {
-    return (
-      <pre className="text-xs font-mono leading-relaxed whitespace-pre text-foreground/90 bg-muted/20 rounded-lg p-4 border border-border/40">
-        {format === 'empty' ? '(empty transcript)' : content}
-      </pre>
-    )
-  }
-
-  return (
-    <div className="space-y-6 pb-4">
-      {entries.map((entry, i) => {
-        // Handle user messages
-        if (entry.type === 'user') {
-          const raw = entry.message?.content
-          const text = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.find(c => c.type === 'text')?.text : undefined
-          if (!text) return null
-          return (
-            <div key={i} className="space-y-1">
-              <div className="text-[10px] uppercase tracking-widest font-bold text-blue-500/80">Human</div>
-              <div className="text-sm leading-relaxed whitespace-pre-wrap pl-3 border-l-2 border-blue-500/20">{text}</div>
-            </div>
-          )
-        }
-
-        // Handle assistant/agent messages (Gemini, OpenCode, Claude)
-        if (entry.type === 'assistant' || entry.type === 'gemini' || entry.type === 'model') {
-          // Try multiple content formats
-          let contentEl: React.ReactNode = null
-          
-          // Format 1: Claude style - entry.message.content is array
-          if (Array.isArray(entry.message?.content)) {
-            contentEl = entry.message.content.map((c, j) => {
-              if (c.type === 'text' && c.text) {
-                return <div key={j} className="text-sm leading-relaxed whitespace-pre">{c.text}</div>
-              }
-              if (c.type === 'tool_use' && c.name && c.input && c.tool_use_id) {
-                return (
-                  <ToolExecution
-                    key={j}
-                    name={c.name}
-                    input={c.input}
-                    output={toolOutputs[c.tool_use_id]}
-                  />
-                )
-              }
-              return null
-            })
-          }
-          // Format 2: Gemini/OpenCode simple - entry.content is string
-          else if (entry.message?.content || (entry as unknown as Record<string, unknown>).content) {
-            const text = typeof entry.message?.content === 'string' 
-              ? entry.message.content 
-              : typeof (entry as unknown as Record<string, unknown>).content === 'string'
-                ? String((entry as unknown as Record<string, unknown>).content)
-                : null
-            if (text) {
-              contentEl = <div className="text-sm leading-relaxed whitespace-pre">{text}</div>
-            }
-          }
-          
-          if (!contentEl) return null
-          
-          return (
-            <div key={i} className="space-y-3">
-              <div className="text-[10px] uppercase tracking-widest font-bold text-emerald-600/80">
-                {entry.type === 'gemini' ? 'Gemini' : entry.type === 'model' ? 'Model' : 'Claude'}
-              </div>
-              <div className="space-y-2 pl-3 border-l-2 border-emerald-500/20">
-                {contentEl}
-              </div>
-            </div>
-          )
-        }
-
-        // Handle result/telemetry
-        if (entry.type === 'result' && entry.total_cost_usd != null) {
-          return (
-            <div key={i} className="bg-muted/30 rounded-lg p-3 border border-border/40 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-muted-foreground uppercase tracking-tight">Outcome:</span>
-                <span className="font-medium text-foreground capitalize">{entry.result}</span>
-              </div>
-              <div className="text-muted-foreground font-mono">
-                ${entry.total_cost_usd.toFixed(4)}
-              </div>
-            </div>
-          )
-        }
-
-        return null
-      })}
-    </div>
-  )
-}
 
 function TranscriptButton({ taskId, msgId }: { taskId: string; msgId: string }) {
   const [open, setOpen] = useState(false)
@@ -367,7 +143,7 @@ function TranscriptButton({ taskId, msgId }: { taskId: string; msgId: string }) 
                   <p className="text-sm text-muted-foreground animate-pulse">Retrieving transcript...</p>
                 </div>
               )}
-              {content && <TranscriptViewer content={content} />}
+              {content && parseTranscript(content)}
             </div>
           </ScrollArea>
         </DialogContent>
@@ -393,7 +169,11 @@ const STATUS_COLOR: Record<string, "default" | "secondary" | "destructive" | "ou
   accumulating: 'default', live: 'default', stuck: 'secondary', error: 'destructive',
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, activeStep }: { status: string; activeStep?: string }) {
+  if (status === 'wrapping_up') {
+    const label = activeStep ? `Wrapping up ${activeStep}` : 'Wrapping up'
+    return <Badge variant="secondary">{label}</Badge>
+  }
   return (
     <Badge variant={STATUS_COLOR[status] ?? 'outline'}>
       {status}
@@ -488,6 +268,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
   const [autoClose, setAutoClose] = useState(false)
   const [saveTokens, setSaveTokens] = useState(false)
   const [saveTokensLevel, setSaveTokensLevel] = useState<'lite' | 'full' | 'ultra'>('full')
+  const [closeStepsInput, setCloseStepsInput] = useState('')
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'queued' | 'running' | 'waiting_input' | 'done' | 'failed' | 'scheduled'>('all')
@@ -536,6 +317,9 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
       if (scheduledDate && scheduledDate.getTime() > Date.now()) {
         scheduledAt = scheduledDate.getTime()
       }
+      const parsedCloseSteps = closeStepsInput.trim()
+        ? closeStepsInput.split('\n').map(s => s.trim()).filter(Boolean)
+        : undefined
       await api.tasks.create({
         agent_id: agentId,
         subject,
@@ -544,6 +328,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
         scheduled_at: scheduledAt,
         auto_close: autoClose || undefined,
         save_tokens: saveTokens ? { enabled: true, level: saveTokensLevel } : undefined,
+        close_steps: parsedCloseSteps,
       })
       trackEvent('task_created', { agent_id: agentId, team_id: teamId, scheduled: !!scheduledAt, auto_close: autoClose });
       setShowCompose(false);
@@ -555,6 +340,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
       setAutoClose(false)
       setSaveTokens(false)
       setSaveTokensLevel('full')
+      setCloseStepsInput('')
       load()
     } finally { setCreating(false) }
   }
@@ -573,6 +359,12 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
       if (agent && (agent.status === 'running' || agent.status === 'waiting_input')) return 'queued'
     }
     return t.status
+  }
+
+  function activeCloseStep(t: Task): string | undefined {
+    if (t.status !== 'wrapping_up' || !t.close_steps?.length) return undefined
+    const idx = t.close_steps_active_idx ?? 0
+    return t.close_steps[idx] ?? t.close_steps[0]
   }
 
   const filteredTasks = useMemo(() => {
@@ -730,6 +522,20 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
                 </Select>
               )}
 
+              <div className="space-y-1">
+                <Label htmlFor="close-steps" className="text-xs text-muted-foreground">
+                  Session close steps (one per line, e.g. <code className="font-mono">/tsq-end-session-learning</code>)
+                </Label>
+                <Textarea
+                  id="close-steps"
+                  value={closeStepsInput}
+                  onChange={e => setCloseStepsInput(e.target.value)}
+                  placeholder={"/tsq-end-session-learning\n/tsq-memory"}
+                  rows={2}
+                  className="font-mono text-xs"
+                />
+              </div>
+
               {/* Schedule picker */}
               {showSchedulePicker && (
                 <div className="border border-border rounded-lg p-3">
@@ -792,7 +598,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
                   <div className="text-sm text-muted-foreground truncate">{agentMap[t.agent_id]?.name ?? t.agent_id}</div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <StatusBadge status={taskStatus(t)} />
+                  <StatusBadge status={taskStatus(t)} activeStep={activeCloseStep(t)} />
                   <span className="text-muted-foreground text-sm hidden sm:inline">{relativeTime(t.created_at)}</span>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -1130,6 +936,12 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
     return t.status
   }
 
+  function activeCloseStep(t: Task): string | undefined {
+    if (t.status !== 'wrapping_up' || !t.close_steps?.length) return undefined
+    const idx = t.close_steps_active_idx ?? 0
+    return t.close_steps[idx] ?? t.close_steps[0]
+  }
+
   useEffect(() => { load() }, [load])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages.length])
 
@@ -1304,7 +1116,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
             {task?.subject ?? '…'}
           </h1>
           <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground flex-wrap">
-            {task && <StatusBadge status={taskStatus(task)} />}
+            {task && <StatusBadge status={taskStatus(task)} activeStep={activeCloseStep(task)} />}
             <span className="flex items-center gap-1">
               <Bot className="h-3.5 w-3.5" />
               {agentName}
@@ -1591,13 +1403,23 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
       )}
 
 
+      {/* ── Close steps progress (shown while session is closing) ── */}
+      {task?.status === 'wrapping_up' && task.close_steps?.length ? (
+        <div style={{ padding: '0 0 8px' }}>
+          <CloseStepsProgress
+            steps={task.close_steps}
+            activeIdx={task.close_steps_active_idx ?? 0}
+          />
+        </div>
+      ) : null}
+
       {/* ── Sticky action bar ── */}
       {task && !['done', 'failed'].includes(task.status) && (
         <div className="sticky bottom-0 pt-3 pb-1 flex justify-start bg-gradient-to-t from-background via-background to-transparent">
-          {task.status === 'learning' ? (
+          {task.status === 'wrapping_up' ? (
             <Button size="sm" disabled className="bg-emerald-600 text-white shadow-sm opacity-80 cursor-not-allowed">
               <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-              Extracting learnings…
+              {activeCloseStep(task) ? `Wrapping up ${activeCloseStep(task)}` : 'Wrapping up…'}
             </Button>
           ) : (
             <AlertDialog>

@@ -19,6 +19,7 @@ import (
 	"github.com/tasksquad/daemon/orphan"
 	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/agents"
+	"github.com/tasksquad/daemon/commands"
 	"github.com/tasksquad/daemon/skills"
 	"github.com/tasksquad/daemon/supervisor"
 	"github.com/tasksquad/daemon/ui"
@@ -172,6 +173,13 @@ func runDaemon() {
 	}
 	agentsSyncer := agents.NewSyncer()
 	go agents.StartSync(cfg, agentRefs, agentsSyncer)
+
+	commandRefs := make([]commands.AgentRef, len(rawAgents))
+	for i, a := range rawAgents {
+		commandRefs[i] = a
+	}
+	commandsSyncer := commands.NewSyncer()
+	go commands.StartSync(cfg, commandRefs, commandsSyncer)
 
 	logger.Info("Running — waiting for tasks...")
 

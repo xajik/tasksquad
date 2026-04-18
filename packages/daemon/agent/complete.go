@@ -12,7 +12,6 @@ import (
 	"github.com/tasksquad/daemon/agentmode"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
-	"github.com/tasksquad/daemon/skills"
 	"github.com/tasksquad/daemon/tasklog"
 )
 
@@ -136,12 +135,6 @@ func (a *Agent) uploadTaskArtifacts(cfg *config.Config, sessionID, msgID, logCon
 	}
 }
 
-func (a *Agent) doSkillExtraction(cfg *config.Config, agentID, tmuxCapture string) {
-	if tmuxCapture == "" || !a.st.Learnings() {
-		return
-	}
-	go skills.ExtractFromSession(cfg, agentID, tmuxCapture)
-}
 
 func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string, wasLearning bool) {
 	logger.Info(fmt.Sprintf("[%s] internalComplete called — status=%q taskID=%s transcriptPath=%q", a.Config.Name, status, taskID, transcriptPath))
@@ -185,8 +178,6 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		logContent = tmuxCapture
 	}
 	a.uploadTaskArtifacts(cfg, sessionID, msgID, logContent, tmuxCapture, transcriptPath)
-
-	a.doSkillExtraction(cfg, agentID, tmuxCapture)
 
 	a.st.mu.Lock()
 	tlog := a.st.taskLog

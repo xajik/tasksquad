@@ -7,6 +7,7 @@ import { importMasterKey, unwrapDEK, exportKey } from '../crypto.js'
 import { sendFCMNotification } from '../fcm.js'
 import { getCombinedInboxVersion } from '../inbox_version.js'
 import { calculateNextRun, type ConveyorRow } from './conveyors.js'
+import { TaskStatus, AgentStatus, SessionStatus, AgentMode } from '../statuses.js'
 
 function truncate(text: string, maxLen = 80): string {
   return text.slice(0, maxLen) + (text.length > maxLen ? '…' : '')
@@ -93,8 +94,8 @@ async function processAgentHeartbeat(
 ): Promise<Record<string, unknown>> {
   if (agentRow?.reset_pending) {
     await env.DB.batch([
-      env.DB.prepare("UPDATE agents SET reset_pending = 0, status = 'offline' WHERE id = ?").bind(agentId),
-      env.DB.prepare("UPDATE agent_state SET mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
+      env.DB.prepare("UPDATE agents SET reset_pending = 0, status = ? WHERE id = ?").bind(AgentStatus.Offline, agentId),
+      env.DB.prepare("UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?").bind(AgentMode.Idle, now, agentId),
     ])
     return { agent_id: agentId, ok: true, reset: true }
   }
@@ -103,7 +104,7 @@ async function processAgentHeartbeat(
     return { agent_id: agentId, ok: true, stop_pulling: true }
   }
 
-  if (agentStatus === 'running' || agentStatus === 'waiting_input') {
+  if (agentStatus === AgentStatus.Running || agentStatus === AgentStatus.WaitingInput || agentStatus === AgentStatus.WrappingUp) {
     const state = await env.DB
       .prepare('SELECT current_task_id FROM agent_state WHERE agent_id = ?')
       .bind(agentId)
@@ -111,30 +112,32 @@ async function processAgentHeartbeat(
 
     if (state?.current_task_id) {
       const task = await env.DB
-        .prepare('SELECT status, settings FROM tasks WHERE id = ?')
+        .prepare('SELECT status, settings, close_steps FROM tasks WHERE id = ?')
         .bind(state.current_task_id)
-        .first<{ status: string; settings: string | null }>()
+        .first<{ status: string; settings: string | null; close_steps: string | null }>()
 
       if (task) {
-        if (task.status === 'learning' && agentStatus === 'waiting_input') {
-          return { agent_id: agentId, ok: true, learn: true, next_poll_ms: nextPollMs }
+        if (task.status === TaskStatus.WrappingUp && agentStatus === AgentStatus.WaitingInput) {
+          let closeSteps: string[] = []
+          try { closeSteps = task.close_steps ? JSON.parse(task.close_steps) : [] } catch { closeSteps = [] }
+          return { agent_id: agentId, ok: true, close_steps: closeSteps, next_poll_ms: nextPollMs }
         }
-        if (task.status === 'done' && agentStatus === 'waiting_input') {
+        if (task.status === TaskStatus.Done && agentStatus === AgentStatus.WaitingInput) {
           return { agent_id: agentId, ok: true, close: true, next_poll_ms: nextPollMs }
         }
-        if (task.status === 'done' || task.status === 'failed' || task.status === 'cancelled') {
+        if (task.status === TaskStatus.Done || task.status === TaskStatus.Failed || task.status === TaskStatus.Cancelled) {
           return { agent_id: agentId, ok: true, cancel: true, next_poll_ms: nextPollMs }
         }
 
         // SYNC: if daemon says it's running but DB says it's waiting_input, un-pause.
-        if (agentStatus === 'running' && task.status === 'waiting_input') {
-          await env.DB.prepare("UPDATE tasks SET status = 'running' WHERE id = ?")
-            .bind(state.current_task_id)
+        if (agentStatus === AgentStatus.Running && task.status === TaskStatus.WaitingInput) {
+          await env.DB.prepare("UPDATE tasks SET status = ? WHERE id = ?")
+            .bind(TaskStatus.Running, state.current_task_id)
             .run()
         }
       }
 
-      if (agentStatus === 'waiting_input') {
+      if (agentStatus === AgentStatus.WaitingInput) {
         const reply = await env.DB
           .prepare(`
             SELECT body FROM messages
@@ -151,11 +154,11 @@ async function processAgentHeartbeat(
 
         if (reply) {
           await env.DB.batch([
-            env.DB.prepare("UPDATE agents SET status = 'running' WHERE id = ?").bind(agentId),
-            env.DB.prepare("UPDATE agent_state SET mode = 'running', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
-            env.DB.prepare("UPDATE tasks SET status = 'running' WHERE id = ?").bind(state.current_task_id),
+            env.DB.prepare("UPDATE agents SET status = ? WHERE id = ?").bind(AgentStatus.Running, agentId),
+            env.DB.prepare("UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?").bind(AgentMode.Running, now, agentId),
+            env.DB.prepare("UPDATE tasks SET status = ? WHERE id = ?").bind(TaskStatus.Running, state.current_task_id),
           ])
-          return { agent_id: agentId, ok: true, reply: injectCaveman(reply.body, task.settings ?? null), next_poll_ms: nextPollMs }
+          return { agent_id: agentId, ok: true, reply: injectCaveman(reply.body, task?.settings ?? null), next_poll_ms: nextPollMs }
         }
       }
     }
@@ -163,39 +166,32 @@ async function processAgentHeartbeat(
     return { agent_id: agentId, ok: true, next_poll_ms: nextPollMs }
   }
 
-  // Idle: heal tasks left in 'running' or 'learning' state by a daemon crash/restart.
+  // Idle: heal tasks left in 'running' or 'wrapping_up' state by a daemon crash/restart.
   // 'running' → reset to 'pending' so the task is retried.
-  // 'learning' → set to 'done': learning is the final phase; just complete it.
+  // 'wrapping_up' → set to 'done': close sequence is the final phase; just complete it.
   await env.DB.batch([
     env.DB.prepare(`
       UPDATE tasks SET
-        status = CASE status WHEN 'running' THEN 'pending' WHEN 'learning' THEN 'done' END,
-        completed_at = CASE status WHEN 'learning' THEN ? ELSE NULL END
+        status = CASE status WHEN ? THEN ? WHEN ? THEN ? END,
+        completed_at = CASE status WHEN ? THEN ? ELSE NULL END
       WHERE id = (SELECT current_task_id FROM agent_state WHERE agent_id = ?)
-        AND status IN ('running', 'learning')
-    `).bind(now, agentId),
+        AND status IN (?, ?)
+    `).bind(TaskStatus.Running, TaskStatus.Pending, TaskStatus.WrappingUp, TaskStatus.Done, TaskStatus.WrappingUp, now, agentId, TaskStatus.Running, TaskStatus.WrappingUp),
     env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, updated_at = ? WHERE agent_id = ? AND current_task_id IS NOT NULL")
       .bind(now, agentId),
   ])
 
   // Idle: query for pending task
   const task = await env.DB
-    .prepare("SELECT t.id, t.subject, t.team_id, t.settings FROM tasks t WHERE t.agent_id = ? AND t.status = 'pending' ORDER BY t.created_at ASC LIMIT 1")
-    .bind(agentId)
-    .first<{ id: string; subject: string; team_id: string; settings: string | null }>()
+    .prepare("SELECT t.id, t.subject, t.settings FROM tasks t WHERE t.agent_id = ? AND t.status = ? ORDER BY t.created_at ASC LIMIT 1")
+    .bind(agentId, TaskStatus.Pending)
+    .first<{ id: string; subject: string; settings: string | null }>()
 
   if (task) {
-    const [msgRows, teamRow] = await Promise.all([
-      env.DB
-        .prepare("SELECT role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') AND (scheduled_at IS NULL OR scheduled_at <= ?) ORDER BY created_at ASC")
-        .bind(task.id, now)
-        .all<{ role: string; body: string }>(),
-      env.DB
-        .prepare("SELECT learn_from_session FROM teams WHERE id = ?")
-        .bind(task.team_id)
-        .first<{ learn_from_session: number }>(),
-    ])
-    const learnings = teamRow?.learn_from_session !== 0
+    const msgRows = await env.DB
+      .prepare("SELECT role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') AND (scheduled_at IS NULL OR scheduled_at <= ?) ORDER BY created_at ASC")
+      .bind(task.id, now)
+      .all<{ role: string; body: string }>()
     // Inject caveman instruction into the first user message if save_tokens is enabled
     let firstUserInjected = false
     const messages = msgRows.results.map(m => {
@@ -208,7 +204,7 @@ async function processAgentHeartbeat(
     return {
       agent_id: agentId,
       ok: true,
-      task: { id: task.id, subject: task.subject, messages, learnings },
+      task: { id: task.id, subject: task.subject, messages },
       next_poll_ms: nextPollMs,
     }
   }
@@ -257,7 +253,7 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
 
       await env.DB.batch([
         env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(taskId, teamId, conveyor.agent_id, conveyor.sender_id, conveyor.subject, 'scheduled', now, conveyor.auto_close ?? 0),
+          .bind(taskId, teamId, conveyor.agent_id, conveyor.sender_id, conveyor.subject, TaskStatus.Scheduled, now, conveyor.auto_close ?? 0),
         env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
           .bind(msgId, taskId, conveyor.sender_id, 'user', conveyor.body, now, conveyor.next_run_at),
         env.DB.prepare('UPDATE conveyors SET repeat_counter = repeat_counter + 1, next_run_at = ? WHERE id = ?')
@@ -282,14 +278,15 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
  */
 export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Promise<Response> {
   const body = await req
-    .json<{ agents?: Array<{ id: string; status: string }> }>()
-    .catch(() => ({} as { agents?: Array<{ id: string; status: string }> }))
+    .json<{ agents?: Array<{ id: string; status: string; close_step_idx?: number }> }>()
+    .catch(() => ({} as { agents?: Array<{ id: string; status: string; close_step_idx?: number }> }))
 
   const agentEntries = body.agents
   if (!agentEntries?.length) return err('missing_fields', 400)
 
   const agentIds = agentEntries.map(e => e.id)
-  const statuses = agentEntries.map(e => e.status ?? 'idle')
+  const statuses = agentEntries.map(e => e.status ?? AgentStatus.Idle)
+  const closeStepIdxs = agentEntries.map(e => e.close_step_idx ?? -1)
 
   // Authenticate via Firebase token; verify all agent IDs belong to the user.
   const authResult = await withDaemonBatchAuth(req, agentIds, env)
@@ -321,17 +318,17 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
 
   for (const msg of dueMessages.results) {
     const agentIdx = agentIds.indexOf(msg.agent_id)
-    const agentCurrentStatus = agentIdx >= 0 ? statuses[agentIdx] : 'idle'
+    const agentCurrentStatus = agentIdx >= 0 ? statuses[agentIdx] : AgentStatus.Idle
 
     // If the agent is mid-run on this exact task, leave the message scheduled so it
     // is not lost.  It will be picked up on the next heartbeat after the agent
     // finishes or transitions to waiting_input.
-    if (agentCurrentStatus === 'running' && msg.task_status === 'running') {
+    if (agentCurrentStatus === AgentStatus.Running && msg.task_status === TaskStatus.Running) {
       continue
     }
 
     // Don't deliver to terminal tasks — message stays in DB undelivered.
-    if (msg.task_status === 'done' || msg.task_status === 'failed') {
+    if (msg.task_status === TaskStatus.Done || msg.task_status === TaskStatus.Failed) {
       continue
     }
 
@@ -343,15 +340,15 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
     // Reset task to pending so the agent picks it up on the next heartbeat.
     // Skip if already pending (no-op), or if the agent is in waiting_input —
     // in that case the reply-detection query will find the message directly.
-    if (msg.task_status !== 'pending' && msg.task_status !== 'running') {
+    if (msg.task_status !== TaskStatus.Pending && msg.task_status !== TaskStatus.Running) {
       await env.DB
-        .prepare("UPDATE tasks SET status = 'pending', completed_at = NULL WHERE id = ?")
-        .bind(msg.task_id)
+        .prepare("UPDATE tasks SET status = ?, completed_at = NULL WHERE id = ?")
+        .bind(TaskStatus.Pending, msg.task_id)
         .run()
     }
   }
 
-  const allIdle = statuses.every(s => s === 'idle')
+  const allIdle = statuses.every(s => s === AgentStatus.Idle)
 
   // Fetch agent rows for rate-limit check + control flags (single D1 batch)
   const agentRowResults = await env.DB.batch(
@@ -371,12 +368,21 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
     }
   }
 
-  // Update status + last_seen for all agents in one batch write
+  // Update status + last_seen for all agents, and close_steps_active_idx when wrapping up.
   await env.DB.batch(
-    agentIds.flatMap((id, i) => [
-      env.DB.prepare('UPDATE agents SET status = ?, last_seen = ? WHERE id = ?').bind(statuses[i], now, id),
-      env.DB.prepare('UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?').bind(statuses[i], now, id),
-    ])
+    agentIds.flatMap((id, i) => {
+      const stmts = [
+        env.DB.prepare('UPDATE agents SET status = ?, last_seen = ? WHERE id = ?').bind(statuses[i], now, id),
+        env.DB.prepare('UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?').bind(statuses[i], now, id),
+      ]
+      if (statuses[i] === AgentStatus.WrappingUp && closeStepIdxs[i] >= 0) {
+        stmts.push(
+          env.DB.prepare('UPDATE tasks SET close_steps_active_idx = ? WHERE agent_id = ? AND status = ?')
+            .bind(closeStepIdxs[i], id, TaskStatus.WrappingUp)
+        )
+      }
+      return stmts
+    })
   )
 
   // Combined ETag short-circuit — only valid when ALL agents are idle
@@ -420,13 +426,13 @@ export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon:
 
   const openOps: D1PreparedStatement[] = [
     env.DB.prepare('INSERT INTO sessions (id, task_id, agent_id, status, started_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(sessionId, task_id, agentId, 'running', now),
-    env.DB.prepare("UPDATE tasks SET status = 'running', started_at = ? WHERE id = ?")
-      .bind(now, task_id),
+      .bind(sessionId, task_id, agentId, SessionStatus.Running, now),
+    env.DB.prepare("UPDATE tasks SET status = ?, started_at = ? WHERE id = ?")
+      .bind(TaskStatus.Running, now, task_id),
     env.DB.prepare('UPDATE agent_state SET current_task_id = ?, current_session = ?, mode = ?, tmux_session = ?, updated_at = ? WHERE agent_id = ?')
-      .bind(task_id, sessionId, 'accumulating', tmux_session ?? null, now, agentId),
+      .bind(task_id, sessionId, AgentMode.Accumulating, tmux_session ?? null, now, agentId),
     env.DB.prepare('UPDATE agents SET status = ? WHERE id = ?')
-      .bind('running', agentId),
+      .bind(AgentStatus.Running, agentId),
   ]
   // Only insert "Task started." on the first session — not on re-opens triggered by
   // scheduled messages (which create a second session for the same task).
@@ -449,7 +455,7 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
     status?: string
     final_text?: string
   }>().catch(() => ({} as { session_id?: string; status?: string; final_text?: string }))
-  const { session_id, status = 'closed', final_text } = body
+  const { session_id, status = SessionStatus.Closed, final_text } = body
   const agentId = daemon.agentId
   if (!session_id) return err('missing_fields', 400)
 
@@ -460,13 +466,13 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   if (!session) return err('not_found', 404)
 
   // If auto_close is set and the agent finished its first turn (waiting_input), close automatically
-  const effectiveStatus = (status === 'waiting_input' && session.auto_close) ? 'closed' : status
+  const effectiveStatus = (status === SessionStatus.WaitingInput && session.auto_close) ? SessionStatus.Closed : status
 
-  const taskStatus = effectiveStatus === 'closed' ? 'done'
-    : effectiveStatus === 'waiting_input' ? 'waiting_input'
-    : 'failed'
+  const taskStatus = effectiveStatus === SessionStatus.Closed ? TaskStatus.Done
+    : effectiveStatus === SessionStatus.WaitingInput ? TaskStatus.WaitingInput
+    : TaskStatus.Failed
 
-  const agentStatus = taskStatus === 'waiting_input' ? 'waiting_input' : 'idle'
+  const agentStatus = taskStatus === TaskStatus.WaitingInput ? AgentStatus.WaitingInput : AgentStatus.Idle
   const now = Date.now()
   const msgId = ulid()
 
@@ -478,7 +484,7 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
     env.DB.prepare('UPDATE agents SET status = ? WHERE id = ?')
       .bind(agentStatus, agentId),
     env.DB.prepare('UPDATE agent_state SET current_task_id = ?, current_session = ?, mode = ?, updated_at = ? WHERE agent_id = ?')
-      .bind(null, null, agentStatus === 'idle' ? 'idle' : 'waiting_input', now, agentId),
+      .bind(null, null, agentStatus === AgentStatus.Idle ? AgentMode.Idle : AgentMode.WaitingInput, now, agentId),
   ]
 
   if (final_text) {
@@ -493,7 +499,7 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   const agentName = session.agent_name ?? 'Agent'
 
   // If this is a note-critique task that just completed, post agent response as note comment
-  if (taskStatus === 'done' && final_text) {
+  if (taskStatus === TaskStatus.Done && final_text) {
     const critiqueMsg = await env.DB
       .prepare("SELECT json_payload FROM messages WHERE task_id = ? AND type = 'note-critique' AND role = 'system' LIMIT 1")
       .bind(session.task_id)
@@ -509,10 +515,10 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
       } catch {}
     }
   }
-  const notifTitle = taskStatus === 'done' ? `${agentName} completed a task`
-    : taskStatus === 'waiting_input' ? `${agentName} needs your input`
+  const notifTitle = taskStatus === TaskStatus.Done ? `${agentName} completed a task`
+    : taskStatus === TaskStatus.WaitingInput ? `${agentName} needs your input`
     : `${agentName} failed`
-  const notifBody = taskStatus === 'waiting_input' && final_text
+  const notifBody = taskStatus === TaskStatus.WaitingInput && final_text
     ? `${session.subject} · ${truncate(final_text)}`
     : session.subject
   await notifyTeamMembers(env, session.task_id, notifTitle, notifBody)
@@ -536,10 +542,10 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
   const msgId = ulid()
 
   const ops = [
-    env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE id = ?").bind(now, session_id),
-    env.DB.prepare("UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?").bind(now, session.task_id),
-    env.DB.prepare("UPDATE agents SET status = 'idle' WHERE id = ?").bind(agentId),
-    env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
+    env.DB.prepare("UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?").bind(SessionStatus.Closed, now, session_id),
+    env.DB.prepare("UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?").bind(TaskStatus.Done, now, session.task_id),
+    env.DB.prepare("UPDATE agents SET status = ? WHERE id = ?").bind(AgentStatus.Idle, agentId),
+    env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = ?, updated_at = ? WHERE agent_id = ?").bind(AgentMode.Idle, now, agentId),
   ]
 
   if (output) {
@@ -595,10 +601,10 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
     await env.DB.batch([
       env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         .bind(msgId, session.task_id, null, 'agent', message, now),
-      env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE id = ?").bind(now, session_id),
-      env.DB.prepare("UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?").bind(now, session.task_id),
-      env.DB.prepare("UPDATE agents SET status = 'idle' WHERE id = ?").bind(agentId),
-      env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = 'idle', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
+      env.DB.prepare("UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?").bind(SessionStatus.Closed, now, session_id),
+      env.DB.prepare("UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?").bind(TaskStatus.Done, now, session.task_id),
+      env.DB.prepare("UPDATE agents SET status = ? WHERE id = ?").bind(AgentStatus.Idle, agentId),
+      env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = ?, updated_at = ? WHERE agent_id = ?").bind(AgentMode.Idle, now, agentId),
     ])
 
     // If this is a note-critique task, post agent response as note comment
@@ -623,9 +629,9 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
   await env.DB.batch([
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(msgId, session.task_id, null, 'agent', message, now),
-    env.DB.prepare("UPDATE agents SET status = 'waiting_input' WHERE id = ?").bind(agentId),
-    env.DB.prepare("UPDATE tasks SET status = 'waiting_input' WHERE id = ?").bind(session.task_id),
-    env.DB.prepare("UPDATE agent_state SET mode = 'waiting_input', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
+    env.DB.prepare("UPDATE agents SET status = ? WHERE id = ?").bind(AgentStatus.WaitingInput, agentId),
+    env.DB.prepare("UPDATE tasks SET status = ? WHERE id = ?").bind(TaskStatus.WaitingInput, session.task_id),
+    env.DB.prepare("UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?").bind(AgentMode.WaitingInput, now, agentId),
   ])
 
   await notifyTeamMembers(env, session.task_id, `${agentName} needs your input`, `${session.subject} · ${truncate(message)}`)
@@ -810,9 +816,9 @@ export async function permissionRequest(req: Request, env: Env, _ctx: unknown, d
   await env.DB.batch([
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, type, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(msgId, session.task_id, null, 'agent', msgBody, 'permission_request', jsonPayload, now),
-    env.DB.prepare("UPDATE tasks SET status = 'waiting_input' WHERE id = ?").bind(session.task_id),
-    env.DB.prepare("UPDATE agents SET status = 'waiting_input' WHERE id = ?").bind(agentId),
-    env.DB.prepare("UPDATE agent_state SET mode = 'waiting_input', updated_at = ? WHERE agent_id = ?").bind(now, agentId),
+    env.DB.prepare("UPDATE tasks SET status = ? WHERE id = ?").bind(TaskStatus.WaitingInput, session.task_id),
+    env.DB.prepare("UPDATE agents SET status = ? WHERE id = ?").bind(AgentStatus.WaitingInput, agentId),
+    env.DB.prepare("UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?").bind(AgentMode.WaitingInput, now, agentId),
   ])
 
   await notifyTeamMembers(env, session.task_id, `${agentName} needs permission`, `${session.subject} · ${tool_name}`)

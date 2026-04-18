@@ -2,6 +2,7 @@ import { ulid } from 'ulidx'
 import { json, err, sha256 } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { generateDEK, wrapDEK, importMasterKey } from '../crypto.js'
+import { TaskStatus, AgentStatus, SessionStatus, AgentMode } from '../statuses.js'
 
 async function requireMaintainer(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -67,16 +68,16 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   const now = Date.now()
   await env.DB
     .prepare('INSERT INTO agents (id, team_id, name, role, status, created_at, encrypted_dek) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, teamId, name.trim(), role?.trim() || null, 'offline', now, encryptedDek)
+    .bind(id, teamId, name.trim(), role?.trim() || null, AgentStatus.Offline, now, encryptedDek)
     .run()
 
   // Initialise agent_state row
   await env.DB
     .prepare('INSERT INTO agent_state (agent_id, mode, viewer_count, updated_at) VALUES (?, ?, ?, ?)')
-    .bind(id, 'idle', 0, now)
+    .bind(id, AgentMode.Idle, 0, now)
     .run()
 
-  return json({ id, name: name.trim(), status: 'offline' }, 201)
+  return json({ id, name: name.trim(), status: AgentStatus.Offline }, 201)
 }
 
 export async function createToken(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
@@ -135,11 +136,11 @@ export async function resetAgent(req: Request, env: Env, _ctx: unknown, auth: Au
     // Signal daemon to reset on next heartbeat
     env.DB.prepare('UPDATE agents SET reset_pending = 1 WHERE id = ?').bind(agentId),
     // Complete in-progress tasks (not re-queued — they are done)
-    env.DB.prepare("UPDATE tasks SET status = 'done', completed_at = ? WHERE agent_id = ? AND status IN ('running', 'waiting_input')")
-      .bind(now, agentId),
+    env.DB.prepare("UPDATE tasks SET status = ?, completed_at = ? WHERE agent_id = ? AND status IN (?, ?)")
+      .bind(TaskStatus.Done, now, agentId, TaskStatus.Running, TaskStatus.WaitingInput),
     // Close any open sessions
-    env.DB.prepare("UPDATE sessions SET status = 'closed', closed_at = ? WHERE agent_id = ? AND status IN ('running', 'waiting_input')")
-      .bind(now, agentId),
+    env.DB.prepare("UPDATE sessions SET status = ?, closed_at = ? WHERE agent_id = ? AND status IN (?, ?)")
+      .bind(SessionStatus.Closed, now, agentId, SessionStatus.Running, SessionStatus.WaitingInput),
     // Clear agent_state current task/session; daemon will update mode to idle on its next heartbeat
     env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, updated_at = ? WHERE agent_id = ?")
       .bind(now, agentId),

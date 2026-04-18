@@ -59,14 +59,10 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	if err := a.st.Transition(EventTaskStarted); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] startTask: unexpected transition error: %v", a.Config.Name, err))
 	}
-	// learnings defaults to true; the server sets it false to skip extraction.
-	learnings := true
-	if v, ok := task["learnings"].(bool); ok {
-		learnings = v
-	}
 	a.st.mu.Lock()
 	a.st.taskID = taskID
-	a.st.learnings = learnings
+	a.st.pendingSteps = nil
+	a.st.executedSteps = nil
 	a.st.outputLines = nil
 	a.st.completing = false
 	a.st.notifyPosted = false

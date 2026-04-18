@@ -1,5 +1,5 @@
 // Package harness defines the on-disk directories used by each AI CLI agent
-// harness (Claude Code, Gemini, Codex, etc.) to load skills and sub-agents.
+// harness (Claude Code, Gemini, Codex, etc.) to load skills, sub-agents, and commands.
 package harness
 
 import (
@@ -11,25 +11,36 @@ import (
 // All is the canonical list of harness base directories, relative to the
 // agent's work directory. Each maps to a different AI CLI ecosystem:
 //
-//	.claude — Claude Code, OpenCode
+//	.claude — Claude Code
 //	.agents — Gemini, Codex
 //	.agent  — Claw Code
 //	.gemini — Gemini CLI
 var All = []string{".claude", ".agents", ".agent", ".gemini"}
 
+// CommandBases is the list of harness base directories that support slash
+// commands. OpenCode is included here (it uses .opencode/commands/) but is
+// not in All because its skills and agents follow a different layout.
+var CommandBases = []string{".claude", ".agents", ".agent", ".gemini", ".opencode"}
+
 // SkillDirs returns the on-disk skill directories for all harnesses under workDir.
 func SkillDirs(workDir string) []string {
-	return subDirs(workDir, "skills")
+	return subDirs(workDir, All, "skills")
 }
 
 // AgentDirs returns the on-disk sub-agent directories for all harnesses under workDir.
 func AgentDirs(workDir string) []string {
-	return subDirs(workDir, "agents")
+	return subDirs(workDir, All, "agents")
 }
 
-func subDirs(workDir, sub string) []string {
-	dirs := make([]string, len(All))
-	for i, p := range All {
+// CommandDirs returns the on-disk command directories for all harnesses under
+// workDir. This includes .opencode/commands/ in addition to the standard set.
+func CommandDirs(workDir string) []string {
+	return subDirs(workDir, CommandBases, "commands")
+}
+
+func subDirs(workDir string, bases []string, sub string) []string {
+	dirs := make([]string, len(bases))
+	for i, p := range bases {
 		dirs[i] = filepath.Join(workDir, p, sub)
 	}
 	return dirs

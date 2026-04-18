@@ -81,7 +81,7 @@ export const api = {
   tasks: {
     list: (teamId: string) => request<{ tasks: Task[] }>(`/tasks?team_id=${teamId}`),
     get: (id: string) => request<Task>(`/tasks/${id}`),
-    create: (body: { agent_id: string; subject: string; team_id: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: 'lite' | 'full' | 'ultra' } }) =>
+    create: (body: { agent_id: string; subject: string; team_id: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: 'lite' | 'full' | 'ultra' }; close_steps?: string[] }) =>
       request<{ id: string; status: string }>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
     update: (taskId: string, body: { status: string }) =>
       request<{ ok: boolean }>(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify(body) }),
@@ -223,6 +223,15 @@ export const api = {
       request<{ ok: boolean }>(`/teams/${teamId}/sub-agents/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     delete: (teamId: string, id: string) => del(`/teams/${teamId}/sub-agents/${id}`),
   },
+  commands: {
+    list: (teamId: string) => request<{ commands: Command[] }>(`/teams/${teamId}/commands`),
+    get: (teamId: string, id: string) => request<Command>(`/teams/${teamId}/commands/${id}`),
+    create: (teamId: string, body: { name: string; description: string; content: string; auto_install?: boolean }) =>
+      request<{ id: string; name: string; etag: string }>(`/teams/${teamId}/commands`, { method: 'POST', body: JSON.stringify(body) }),
+    update: (teamId: string, id: string, body: { name?: string; description?: string; content?: string; auto_install?: boolean }) =>
+      request<{ ok: boolean }>(`/teams/${teamId}/commands/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    delete: (teamId: string, id: string) => del(`/teams/${teamId}/commands/${id}`),
+  },
 }
 
 export interface UserProfile {
@@ -285,6 +294,21 @@ export interface SubAgent {
   updated_at: number
 }
 
+export interface Command {
+  id: string
+  team_id: string | null
+  name: string
+  description: string
+  content?: string
+  author_id: string | null
+  etag: string
+  is_default: number
+  auto_install: number
+  version: number
+  created_at: number
+  updated_at: number
+}
+
 export interface Conveyor {
   id: string
   team_id: string
@@ -324,6 +348,8 @@ export interface Task {
   scheduled_at?: number | null
   auto_close?: boolean
   settings?: TaskSettings | null
+  close_steps?: string[] | null
+  close_steps_active_idx?: number
 }
 
 export interface Message {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tasksquad/daemon/agentmode"
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
@@ -123,7 +124,7 @@ func (c *OrphanController) getSessionStates(sessionIDs []string) (map[string]Ses
 }
 
 func (c *OrphanController) isOrphan(state SessionState) bool {
-	return state.TaskStatus == "done" || state.TaskStatus == "failed"
+	return state.TaskStatus == string(agentmode.TaskStatusDone) || state.TaskStatus == string(agentmode.TaskStatusFailed)
 }
 
 func (c *OrphanController) killOrphan(sessionID string) {

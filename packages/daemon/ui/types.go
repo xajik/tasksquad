@@ -24,6 +24,8 @@ type AgentStatus interface {
 	Command() string
 	// Provider returns the detected or configured hook provider name.
 	Provider() string
+	// CloseSteps returns the pending and executed steps of the active close sequence.
+	CloseSteps() (pending []string, executed []string)
 }
 
 // PullController lets the UI pause and resume all agents' heartbeat polling.

@@ -1,16 +1,19 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { api, type Skill, type SubAgent, type Member } from '../lib/api'
+import { api, type Skill, type SubAgent, type Command, type Member } from '../lib/api'
 import { Button } from '@/components/ui/button'
-import { Loader2, Plus, BookOpen, Zap, RefreshCw, Bot } from 'lucide-react'
+import { Loader2, Plus, BookOpen, Zap, RefreshCw, Bot, Terminal } from 'lucide-react'
 import { SkillWorkflow } from '../components/SkillWorkflow'
 import { SubAgentWorkflow } from '../components/SubAgentWorkflow'
+import { CommandWorkflow } from '../components/CommandWorkflow'
 import { HowItWorks, HowItWorksToggle } from '../components/HowItWorks'
 import { SkillCard, SkillDetail } from '../components/SkillPanel'
 import { SubAgentCard, SubAgentDetail } from '../components/SubAgentPanel'
+import { CommandCard, CommandDetail } from '../components/CommandPanel'
 import { SkillCreateForm } from '../components/SkillCreateForm'
 import { SubAgentCreateForm } from '../components/SubAgentCreateForm'
+import { CommandCreateForm } from '../components/CommandCreateForm'
 
-type Tab = 'skills' | 'sub-agents'
+type Tab = 'skills' | 'sub-agents' | 'commands'
 
 function Grid({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{children}</div>
@@ -30,27 +33,33 @@ export function Skills({ teamId }: { teamId: string }) {
   const [tab, setTab] = useState<Tab>('skills')
   const [skills, setSkills] = useState<Skill[]>([])
   const [subAgents, setSubAgents] = useState<SubAgent[]>([])
+  const [commands, setCommands] = useState<Command[]>([])
   const [members, setMembers] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<SubAgent | null>(null)
+  const [selectedCommand, setSelectedCommand] = useState<Command | null>(null)
   const [showHowItWorks, setShowHowItWorks] = useState(false)
   const [autoInstallFilter, setAutoInstallFilter] = useState<boolean | null>(null)
   const [showCreateSkill, setShowCreateSkill] = useState(false)
   const [showCreateAgent, setShowCreateAgent] = useState(false)
+  const [showCreateCommand, setShowCreateCommand] = useState(false)
   const [skillError, setSkillError] = useState<string | null>(null)
   const [agentError, setAgentError] = useState<string | null>(null)
+  const [commandError, setCommandError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [skillsData, agentsData, membersData] = await Promise.all([
+      const [skillsData, agentsData, commandsData, membersData] = await Promise.all([
         api.skills.list(teamId),
         api.subAgents.list(teamId).catch(() => ({ sub_agents: [] as SubAgent[] })),
+        api.commands.list(teamId).catch(() => ({ commands: [] as Command[] })),
         api.members.list(teamId).catch(() => ({ members: [] as Member[] })),
       ])
       setSkills(skillsData.skills ?? [])
       setSubAgents(agentsData.sub_agents ?? [])
+      setCommands(commandsData.commands ?? [])
       const map = new Map<string, string>()
       for (const m of membersData.members ?? []) map.set(m.id, m.email)
       setMembers(map)
@@ -65,8 +74,10 @@ export function Skills({ teamId }: { teamId: string }) {
     setTab(t)
     setSelectedSkill(null)
     setSelectedAgent(null)
+    setSelectedCommand(null)
     setShowCreateSkill(false)
     setShowCreateAgent(false)
+    setShowCreateCommand(false)
     setAutoInstallFilter(null)
   }
 
@@ -79,6 +90,12 @@ export function Skills({ teamId }: { teamId: string }) {
   async function handleDeleteAgent(agent: SubAgent) {
     await api.subAgents.delete(teamId, agent.id)
     if (selectedAgent?.id === agent.id) setSelectedAgent(null)
+    load()
+  }
+
+  async function handleDeleteCommand(command: Command) {
+    await api.commands.delete(teamId, command.id)
+    if (selectedCommand?.id === command.id) setSelectedCommand(null)
     load()
   }
 
@@ -106,6 +123,18 @@ export function Skills({ teamId }: { teamId: string }) {
     }
   }
 
+  async function handleCreateCommand(fields: { name: string; desc: string; content: string; autoInstall: boolean }) {
+    setCommandError(null)
+    try {
+      await api.commands.create(teamId, { name: fields.name, description: fields.desc, content: fields.content, auto_install: fields.autoInstall })
+      setShowCreateCommand(false)
+      load()
+    } catch (err: unknown) {
+      setCommandError(err && typeof err === 'object' && 'error' in err ? String((err as { error: unknown }).error) : 'Failed to create command')
+      throw err
+    }
+  }
+
   const filteredSkills = useMemo(() =>
     autoInstallFilter === null ? skills : skills.filter(s => !!s.auto_install === autoInstallFilter),
     [skills, autoInstallFilter]
@@ -114,8 +143,12 @@ export function Skills({ teamId }: { teamId: string }) {
     autoInstallFilter === null ? subAgents : subAgents.filter(a => !!a.auto_install === autoInstallFilter),
     [subAgents, autoInstallFilter]
   )
+  const filteredCommands = useMemo(() =>
+    autoInstallFilter === null ? commands : commands.filter(c => !!c.auto_install === autoInstallFilter),
+    [commands, autoInstallFilter]
+  )
 
-  const hasDetail = selectedSkill !== null || selectedAgent !== null
+  const hasDetail = selectedSkill !== null || selectedAgent !== null || selectedCommand !== null
 
   return (
     <div className="flex h-full">
@@ -128,14 +161,14 @@ export function Skills({ teamId }: { teamId: string }) {
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
-          <Button size="sm" onClick={() => tab === 'skills' ? setShowCreateSkill(true) : setShowCreateAgent(true)}>
-            <Plus className="h-4 w-4 mr-1" /> New {tab === 'skills' ? 'Skill' : 'Sub-agent'}
+          <Button size="sm" onClick={() => tab === 'skills' ? setShowCreateSkill(true) : tab === 'sub-agents' ? setShowCreateAgent(true) : setShowCreateCommand(true)}>
+            <Plus className="h-4 w-4 mr-1" /> New {tab === 'skills' ? 'Skill' : tab === 'sub-agents' ? 'Sub-agent' : 'Command'}
           </Button>
         </div>
 
         {/* Tabs */}
         <div className="flex items-center gap-1 mb-4 p-1 bg-muted rounded-lg w-fit">
-          {([['skills', BookOpen, 'Skills', skills.length], ['sub-agents', Bot, 'Sub-agents', subAgents.length]] as const).map(([id, Icon, label, count]) => (
+          {([['skills', BookOpen, 'Skills', skills.length], ['sub-agents', Bot, 'Sub-agents', subAgents.length], ['commands', Terminal, 'Commands', commands.length]] as const).map(([id, Icon, label, count]) => (
             <button key={id} onClick={() => switchTab(id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
             >
@@ -182,6 +215,26 @@ export function Skills({ teamId }: { teamId: string }) {
           </div>
         )}
 
+        {/* How it works - commands */}
+        {tab === 'commands' && (
+          <div className="mb-4">
+            <HowItWorksToggle show={showHowItWorks} onToggle={() => setShowHowItWorks(v => !v)} />
+            {showHowItWorks && (
+              <HowItWorks title="Command Sync Flow" icon={Terminal} docsLink="/docs" className="mt-2" text={
+                <p>
+                  Commands are reusable slash-command prompts synced to{' '}
+                  <code className="text-primary font-mono font-bold px-1 py-0.5 bg-primary/5 rounded">.opencode/commands/</code> on each machine.
+                  Each command is a Markdown file with optional <code className="text-primary font-mono font-bold px-1 py-0.5 bg-primary/5 rounded">agent</code> and{' '}
+                  <code className="text-primary font-mono font-bold px-1 py-0.5 bg-primary/5 rounded">model</code> frontmatter fields.
+                  Enable auto-install to share across all agents.
+                </p>
+              }>
+                <CommandWorkflow />
+              </HowItWorks>
+            )}
+          </div>
+        )}
+
         {/* Filter */}
         <div className="flex items-center gap-1.5 mb-4 shrink-0">
           <Button variant={autoInstallFilter === null ? 'default' : 'outline'} size="sm" onClick={() => setAutoInstallFilter(null)} className="h-7 rounded-full px-3 text-xs">All</Button>
@@ -192,6 +245,7 @@ export function Skills({ teamId }: { teamId: string }) {
 
         {tab === 'skills' && showCreateSkill && <SkillCreateForm onSubmit={handleCreateSkill} onCancel={() => setShowCreateSkill(false)} error={skillError} />}
         {tab === 'sub-agents' && showCreateAgent && <SubAgentCreateForm onSubmit={handleCreateAgent} onCancel={() => setShowCreateAgent(false)} error={agentError} />}
+        {tab === 'commands' && showCreateCommand && <CommandCreateForm onSubmit={handleCreateCommand} onCancel={() => setShowCreateCommand(false)} error={commandError} />}
 
         {/* Grid */}
         <div className="flex-1 overflow-auto p-6 pt-4">
@@ -202,19 +256,29 @@ export function Skills({ teamId }: { teamId: string }) {
               ? <EmptyState icon={BookOpen} primary={autoInstallFilter ? 'No auto-install skills.' : 'No skills yet.'} secondary="Agents automatically create skills as they learn." />
               : <Grid>{filteredSkills.map(s => (
                   <SkillCard key={s.id} skill={s} members={members}
-                    onClick={() => { setSelectedSkill(s); setSelectedAgent(null) }}
+                    onClick={() => { setSelectedSkill(s); setSelectedAgent(null); setSelectedCommand(null) }}
                     onDelete={() => handleDeleteSkill(s)}
                     onToggleAutoInstall={async () => { await api.skills.update(teamId, s.id, { auto_install: !s.auto_install }); load() }}
                   />
                 ))}</Grid>
-          ) : (
+          ) : tab === 'sub-agents' ? (
             filteredAgents.length === 0
               ? <EmptyState icon={Bot} primary={autoInstallFilter ? 'No auto-install sub-agents.' : 'No sub-agents yet.'} secondary="Sub-agents are synced to .claude/agents/ on each machine." />
               : <Grid>{filteredAgents.map(a => (
                   <SubAgentCard key={a.id} agent={a} members={members}
-                    onClick={() => { setSelectedAgent(a); setSelectedSkill(null) }}
+                    onClick={() => { setSelectedAgent(a); setSelectedSkill(null); setSelectedCommand(null) }}
                     onDelete={() => handleDeleteAgent(a)}
                     onToggleAutoInstall={async () => { await api.subAgents.update(teamId, a.id, { auto_install: !a.auto_install }); load() }}
+                  />
+                ))}</Grid>
+          ) : (
+            filteredCommands.length === 0
+              ? <EmptyState icon={Terminal} primary={autoInstallFilter ? 'No auto-install commands.' : 'No commands yet.'} secondary="Commands are synced to .opencode/commands/ on each machine." />
+              : <Grid>{filteredCommands.map(c => (
+                  <CommandCard key={c.id} command={c} members={members}
+                    onClick={() => { setSelectedCommand(c); setSelectedSkill(null); setSelectedAgent(null) }}
+                    onDelete={() => handleDeleteCommand(c)}
+                    onToggleAutoInstall={async () => { await api.commands.update(teamId, c.id, { auto_install: !c.auto_install }); load() }}
                   />
                 ))}</Grid>
           )}
@@ -231,6 +295,12 @@ export function Skills({ teamId }: { teamId: string }) {
         <div className="flex-1 overflow-hidden">
           <SubAgentDetail key={selectedAgent.id} agent={selectedAgent} teamId={teamId} members={members}
             onClose={() => setSelectedAgent(null)} onSaved={load} onDeleted={() => handleDeleteAgent(selectedAgent)} />
+        </div>
+      )}
+      {selectedCommand && (
+        <div className="flex-1 overflow-hidden">
+          <CommandDetail key={selectedCommand.id} command={selectedCommand} teamId={teamId} members={members}
+            onClose={() => setSelectedCommand(null)} onSaved={load} onDeleted={() => handleDeleteCommand(selectedCommand)} />
         </div>
       )}
     </div>

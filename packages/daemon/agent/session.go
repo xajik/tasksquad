@@ -14,11 +14,6 @@ import (
 	"github.com/tasksquad/daemon/tmux"
 )
 
-// learningTimeout is the maximum time the agent may spend in the learning phase
-// before the daemon forces completion. Keeps tasks from hanging if the agent
-// never fires the Stop hook after the learning prompt is injected.
-const learningTimeout = 10 * time.Minute
-
 // Complete is called by the hook server when the provider emits a Stop event.
 // For the tmux path it kills the tmux session (which closes the FIFO writer,
 // draining the last output) and then calls complete() with the hook-supplied
@@ -391,36 +386,65 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 	}
 }
 
-// startLearning transitions the agent to ModeLearning, injects the learning
-// prompt into the active tmux session, and starts a safety timer that forces
-// Complete("closed") after learningTimeout if the Stop hook never fires.
-func (a *Agent) startLearning(cfg *config.Config) {
+// startCloseSequence transitions the agent to ModeLearning and begins executing
+// the provided steps sequentially via tmux. Each step is sent as-is to the active
+// tmux session; the next step starts only after the Stop hook fires (CLI finished
+// the previous step). When all steps are done, Complete is called.
+func (a *Agent) startCloseSequence(cfg *config.Config, steps []string) {
 	if err := a.st.Transition(EventLearnStart); err != nil {
-		logger.Warn(fmt.Sprintf("[%s] startLearning: unexpected transition error: %v", a.Config.Name, err))
+		logger.Warn(fmt.Sprintf("[%s] startCloseSequence: unexpected transition error: %v", a.Config.Name, err))
 		return
 	}
 
-	if a.TmuxSession() == "" || tmuxBin == "" {
-		logger.Warn(fmt.Sprintf("[%s] startLearning: no tmux session — completing task directly", a.Config.Name))
+	a.st.mu.Lock()
+	a.st.pendingSteps = append([]string{}, steps...)
+	a.st.executedSteps = nil
+	sess := a.st.tmuxSession
+	a.st.mu.Unlock()
+
+	if sess == "" || tmuxBin == "" {
+		logger.Warn(fmt.Sprintf("[%s] startCloseSequence: no tmux session — completing task directly", a.Config.Name))
 		go a.Complete(cfg, string(agentmode.StatusClosed), "")
 		return
 	}
 
-	sess := a.TmuxSession()
-	logger.Info(fmt.Sprintf("[%s] Injecting learning prompt into %s", a.Config.Name, sess))
-	time.Sleep(500 * time.Millisecond)
-	tmux.SendKeys(sess, "We are closing this session. Load /tsq-end-session-learning and provide any learnings.") //nolint:errcheck
+	a.injectNextStep(sess)
+}
 
-	go func() {
-		timer := time.NewTimer(learningTimeout)
-		defer timer.Stop()
-		<-timer.C
-		a.st.mu.Lock()
-		stillLearning := a.st.mode == ModeLearning
+// advanceCloseStep is called by the Stop hook when the agent is in ModeLearning.
+// It marks the current step as executed, injects the next one, or calls Complete
+// when the queue is empty.
+func (a *Agent) advanceCloseStep(cfg *config.Config) {
+	a.st.mu.Lock()
+	if len(a.st.pendingSteps) > 0 {
+		done := a.st.pendingSteps[0]
+		a.st.executedSteps = append(a.st.executedSteps, done)
+		a.st.pendingSteps = a.st.pendingSteps[1:]
+	}
+	remaining := len(a.st.pendingSteps)
+	sess := a.st.tmuxSession
+	a.st.mu.Unlock()
+
+	if remaining > 0 {
+		a.injectNextStep(sess)
+		return
+	}
+	a.Complete(cfg, string(agentmode.StatusClosed), "")
+}
+
+// injectNextStep sends the first pending step as-is into the tmux session.
+func (a *Agent) injectNextStep(sess string) {
+	a.st.mu.Lock()
+	if len(a.st.pendingSteps) == 0 {
 		a.st.mu.Unlock()
-		if stillLearning {
-			logger.Warn(fmt.Sprintf("[%s] Learning phase timed out after %s — forcing Complete(closed)", a.Config.Name, learningTimeout))
-			a.Complete(cfg, string(agentmode.StatusClosed), "")
-		}
-	}()
+		return
+	}
+	step := a.st.pendingSteps[0]
+	total := len(a.st.pendingSteps) + len(a.st.executedSteps)
+	idx := len(a.st.executedSteps) + 1
+	a.st.mu.Unlock()
+
+	logger.Info(fmt.Sprintf("[%s] Close step %d/%d: %q", a.Config.Name, idx, total, step))
+	time.Sleep(500 * time.Millisecond)
+	tmux.SendKeys(sess, step) //nolint:errcheck
 }

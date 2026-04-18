@@ -11,6 +11,7 @@ import * as notes    from './routes/notes.js'
 import * as conveyors from './routes/conveyors.js'
 import * as skills     from './routes/skills.js'
 import * as subAgents  from './routes/sub-agents.js'
+import * as commands   from './routes/commands.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 
 
@@ -114,6 +115,12 @@ router.get   ('/teams/:teamId/sub-agents/:subAgentId',       firebaseRoute(subAg
 router.put   ('/teams/:teamId/sub-agents/:subAgentId',       firebaseRoute(subAgents.update))
 router.delete('/teams/:teamId/sub-agents/:subAgentId',       firebaseRoute(subAgents.remove))
 
+router.get   ('/teams/:teamId/commands',                 firebaseRoute(commands.list))
+router.post  ('/teams/:teamId/commands',                 firebaseRoute(commands.create))
+router.get   ('/teams/:teamId/commands/:commandId',      firebaseRoute(commands.get))
+router.put   ('/teams/:teamId/commands/:commandId',      firebaseRoute(commands.update))
+router.delete('/teams/:teamId/commands/:commandId',      firebaseRoute(commands.remove))
+
 router.get ('/tasks',                    firebaseRoute(tasks.list))
 router.post('/tasks',                    firebaseRoute(tasks.create))
 router.get   ('/tasks/:taskId',          firebaseRoute(tasks.get))
@@ -134,6 +141,8 @@ router.get ('/daemon/user/agents',       (req: IRequest, env: Env, ctx: Executio
 router.get ('/daemon/user/skills',       firebaseRoute(skills.userSkills))
 router.get ('/daemon/user/sub-agents',   firebaseRoute(subAgents.userSubAgents))
 router.get ('/daemon/sub-agents/:subAgentId', firebaseRoute(subAgents.daemonSubAgentGet))
+router.get ('/daemon/user/commands',     firebaseRoute(commands.userCommands))
+router.get ('/daemon/commands/:commandId', firebaseRoute(commands.daemonCommandGet))
 router.post('/daemon/heartbeat/batch',   (req: IRequest, env: Env, ctx: ExecutionContext) => daemon.batchHeartbeat(req as Request, env, ctx))
 router.post('/daemon/complete',          daemonRoute(daemon.complete))
 router.post('/daemon/session/open',      daemonRoute(daemon.sessionOpen))

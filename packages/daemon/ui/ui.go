@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/getlantern/systray"
+	"github.com/tasksquad/daemon/agentmode"
 	"github.com/tasksquad/daemon/logger"
 )
 
@@ -91,6 +92,7 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 
 	// ── Quick actions ──────────────────────────────────────────────────────
 	mDash := systray.AddMenuItem("Open Web Portal", dashboardURL)
+	mVoiceToMD := systray.AddMenuItem("Voice to MD", "Open voice-to-markdown editor")
 	mSessions := systray.AddMenuItem("Control Panel", "Open control panel")
 	mBoot := systray.AddMenuItem(bootLabel(autostartCtrl.IsEnabled()), "Toggle run on OS boot")
 	mSyncSkills := systray.AddMenuItem("Sync Skills Now", "Force-sync skills from server")
@@ -188,6 +190,13 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 				openBrowser(dashboardURL + "/dashboard")
 			} else {
 				openBrowser(dashboardURL + "/auth")
+			}
+		}
+	}()
+	go func() {
+		for range mVoiceToMD.ClickedCh {
+			if cpURL != "" {
+				openVoiceToMD(cpURL + "/voice-to-md")
 			}
 		}
 	}()
@@ -292,11 +301,11 @@ func statsLabel(agents []AgentStatus) string {
 	var lastPull time.Time
 	for _, a := range agents {
 		switch a.GetMode() {
-		case "running":
+		case string(agentmode.ModeRunning):
 			running++
-		case "idle":
+		case string(agentmode.ModeIdle):
 			idle++
-		case "waiting_input":
+		case string(agentmode.ModeWaitingInput):
 			waiting++
 		}
 		if t := a.LastPullTime(); !t.IsZero() && t.After(lastPull) {
@@ -337,9 +346,9 @@ func attachTmux(session string) {
 //	● running   ◐ waiting_input   ○ idle
 func agentLabel(a AgentStatus) string {
 	dot := map[string]string{
-		"running":       "●",
-		"waiting_input": "◐",
-		"idle":          "○",
+		string(agentmode.ModeRunning):      "●",
+		string(agentmode.ModeWaitingInput): "◐",
+		string(agentmode.ModeIdle):         "○",
 	}[a.GetMode()]
 	if dot == "" {
 		dot = "○"

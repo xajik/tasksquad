@@ -62,7 +62,12 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 		// Build per-agent entry list.
 		entries := make([]map[string]any, len(agents))
 		for i, a := range agents {
-			entries[i] = map[string]any{"id": a.Config.ID, "status": a.st.Mode()}
+			entry := map[string]any{"id": a.Config.ID, "status": a.st.Mode()}
+			if a.st.ModeValue() == ModeLearning {
+				_, executed := a.st.CloseSteps()
+				entry["close_step_idx"] = len(executed)
+			}
+			entries[i] = entry
 		}
 
 		agentMaps, newEtag, is304, err := api.PostBatch(cfg, token, "/daemon/heartbeat/batch", entries, combinedEtag)

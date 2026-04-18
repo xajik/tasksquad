@@ -43,6 +43,8 @@ func (a *fakeAgent) SetWaitingInput(_ *config.Config, _, _ string) {
 	a.setWaitingInputCalled = true
 }
 func (a *fakeAgent) PushIntermediateResponse(_ *config.Config, _, _ string) {}
+func (a *fakeAgent) AdvanceCloseStep(_ *config.Config)                      {}
+func (a *fakeAgent) GetLastTmuxCapture() string                             { return "" }
 
 // ── findAndDispatch ───────────────────────────────────────────────────────────
 

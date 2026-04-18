@@ -39,7 +39,7 @@ const (
 //
 //	agent.go     — struct, constructor, accessors
 //	lifecycle.go — startTask (process spawn)
-//	session.go   — Complete, StopAndPause, closeSession, handleReset, startLearning
+//	session.go   — Complete, StopAndPause, closeSession, handleReset, startCloseSequence
 //	complete.go  — internalComplete and its helpers
 //	response.go  — processResponse, SetWaitingInput, PushIntermediateResponse
 //	streaming.go — streamOutput, writeRunLog
@@ -87,8 +87,15 @@ func (a *Agent) Provider() string { return a.prov.Name() }
 // GetMode implements the hooks.Agent and ui.AgentStatus interfaces.
 func (a *Agent) GetMode() string { return a.st.Mode() }
 
-// IsLearning returns true when the agent is in the end-session learning phase.
+// IsLearning returns true when the agent is in the close-sequence phase.
 func (a *Agent) IsLearning() bool { return a.st.ModeValue() == ModeLearning }
+
+// AdvanceCloseStep implements hooks.Agent — marks the current close step done
+// and injects the next, or calls Complete when the queue is exhausted.
+func (a *Agent) AdvanceCloseStep(cfg *config.Config) { a.advanceCloseStep(cfg) }
+
+// CloseSteps returns a snapshot of the pending and executed close-sequence steps.
+func (a *Agent) CloseSteps() (pending []string, executed []string) { return a.st.CloseSteps() }
 
 // GetTaskID returns the task ID the agent is currently working on.
 func (a *Agent) GetTaskID() string { return a.st.TaskID() }
