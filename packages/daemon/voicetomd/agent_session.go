@@ -2,6 +2,7 @@ package voicetomd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/tasksquad/daemon/config"
+	"github.com/tasksquad/daemon/harness"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/tmux"
@@ -18,8 +20,9 @@ import (
 
 const tmuxSessionPrefix = "tsq-vtm-"
 
-// commandFileContent is installed to ~/.claude/commands/tsq-voice-to-md.md.
-// PORT is replaced with the actual hooks port before writing.
+// commandFileContent is installed to every harness commands directory so any CLI
+// can invoke /tsq-voice-to-md manually. PORT and NOTES_PATH are replaced before
+// writing (NOTES_PATH becomes a shell expression for dynamic sessions).
 const commandFileContent = `You are a voice-to-markdown transcription assistant running inside a TaskSquad voice session.
 
 **Initialization**
@@ -31,13 +34,15 @@ curl -s -X POST http://localhost:PORT/hooks/voice-to-md/init \
 ` + "```" + `
 
 **Processing chunks**
+Your notes file is: NOTES_PATH
+
 For each user message you receive (a JSON object with "current_markdown" and "new_transcript"):
 
 1. Clean the transcript: remove filler words (um, uh, like, you know, so, actually, basically), fix grammar, compress verbose phrasing.
 2. Preserve all technical terms, names, numbers, and code identifiers exactly as spoken.
 3. Integrate the cleaned text into current_markdown — do NOT rewrite or reformat existing sections.
-4. Output ONLY the complete updated markdown document — no explanations, no preamble, no code fences.
-5. After generating the markdown, post it to the daemon:
+4. Write the complete updated markdown to NOTES_PATH (create or overwrite).
+5. Post the result to the daemon:
 ` + "```" + `bash
 cat << 'EOF' | jq -Rs '{markdown:.}' | curl -s -X POST http://localhost:PORT/hooks/voice-to-md/response -H 'Content-Type: application/json' -d @-
 <your updated markdown here>
@@ -46,6 +51,13 @@ EOF
 
 Remain in this mode for the entire session, processing one chunk at a time.`
 
+// subAgentContent is installed to every harness agents directory so any CLI
+// can spawn tsq-voice-to-md as a sub-agent. PORT is replaced before writing.
+const subAgentContent = `---
+description: Voice-to-markdown transcription assistant for TaskSquad voice sessions. Processes audio transcript chunks and converts them to clean, structured markdown. Signals readiness and posts results to the TaskSquad daemon on port PORT.
+---
+` + commandFileContent
+
 // AgentSession manages the persistent tmux session for voice-to-md chunk processing.
 type AgentSession struct {
 	mu          sync.Mutex
@@ -53,6 +65,7 @@ type AgentSession struct {
 	agentCfg    config.AgentConfig
 	hooksPort   int
 	sessionDir  string
+	notesPath   string
 	initialized bool
 	initCh      chan struct{}
 	stopped     bool
@@ -65,30 +78,48 @@ type ChunkPayload struct {
 }
 
 func newAgentSession(agentCfg config.AgentConfig, hooksPort int, sessionDir string) *AgentSession {
+	workDir := agentCfg.WorkDir
+	if workDir == "" {
+		workDir = sessionDir
+	}
+	ts := time.Now()
+	notesDir := filepath.Join(workDir, ".tsq", "notes", ts.Format("20060102"))
+	notesPath := filepath.Join(notesDir, ts.Format("150405")+".md")
+
 	return &AgentSession{
-		agentCfg:   agentCfg,
-		hooksPort:  hooksPort,
+		agentCfg:  agentCfg,
+		hooksPort: hooksPort,
 		sessionDir: sessionDir,
-		initCh:     make(chan struct{}),
+		notesPath: notesPath,
+		initCh:    make(chan struct{}),
 	}
 }
 
 // Start spawns the agent's tmux session, waits for it to load, then sends
 // /tsq-voice-to-md using the same send-keys pattern as the regular task runner.
 func (s *AgentSession) Start() error {
-	if err := s.installCommandFile(); err != nil {
-		logger.Warn(fmt.Sprintf("[voice-agent] install command file: %v", err))
+	if err := s.installBuiltins(); err != nil {
+		logger.Warn(fmt.Sprintf("[voice-agent] install builtins: %v", err))
+	}
+
+	// Create the notes directory so the agent can write to the file immediately.
+	if err := os.MkdirAll(filepath.Dir(s.notesPath), 0755); err != nil {
+		logger.Warn(fmt.Sprintf("[voice-agent] create notes dir: %v", err))
 	}
 
 	// Write hooks to the agent's configured work directory — the same directory
-	// Claude runs from, so it actually picks up the settings.json.
+	// the CLI runs from, so it picks up the settings.json.
 	workDir := s.agentCfg.WorkDir
 	if workDir == "" {
 		workDir = s.sessionDir
 	}
-	prov := &provider.ClaudeCode{}
+	prov := provider.Detect(s.agentCfg.Command, s.agentCfg.Provider)
 	if err := prov.SetupVoice(workDir, s.hooksPort); err != nil {
-		logger.Warn(fmt.Sprintf("[voice-agent] provider setup: %v", err))
+		if errors.Is(err, provider.ErrNotSupported) {
+			logger.Warn(fmt.Sprintf("[voice-agent] provider %s does not support voice hooks", prov.Name()))
+		} else {
+			logger.Warn(fmt.Sprintf("[voice-agent] provider setup: %v", err))
+		}
 	}
 
 	ts := fmt.Sprintf("%d", time.Now().UnixMilli())
@@ -127,6 +158,7 @@ func (s *AgentSession) Start() error {
 	// Send the init instructions directly as the first message using PastePromptFile —
 	// the same mechanism used for chunk payloads, avoids any TUI slash-command issues.
 	initContent := strings.ReplaceAll(commandFileContent, "PORT", fmt.Sprintf("%d", s.hooksPort))
+	initContent = strings.ReplaceAll(initContent, "NOTES_PATH", s.notesPath)
 	initFile, err := os.CreateTemp("", "tsq-voice-init-*.md")
 	if err != nil {
 		return fmt.Errorf("create init temp: %w", err)
@@ -144,9 +176,12 @@ func (s *AgentSession) Start() error {
 	}
 	tmux.DeleteBuffer(bufName)
 
-	logger.Info(fmt.Sprintf("[voice-agent] Sent init prompt to %s; awaiting init hook", sessionName))
+	logger.Info(fmt.Sprintf("[voice-agent] Sent init prompt to %s (notes: %s); awaiting init hook", sessionName, s.notesPath))
 	return nil
 }
+
+// NotesPath returns the notes file path for this session.
+func (s *AgentSession) NotesPath() string { return s.notesPath }
 
 // WaitForInit blocks until the agent fires the init hook, or times out.
 func (s *AgentSession) WaitForInit(timeout time.Duration) error {
@@ -221,14 +256,58 @@ func (s *AgentSession) Stop() {
 	s.tmuxName = ""
 }
 
-// installCommandFile writes ~/.claude/commands/tsq-voice-to-md.md with the
-// current hooks port embedded so the agent can call the right endpoint.
-func (s *AgentSession) installCommandFile() error {
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".claude", "commands")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
+// installBuiltins writes the tsq-voice-to-md command and sub-agent files to
+// all harness command and agent directories (workDir-relative and global).
+// Errors are logged but not fatal — missing builtins degrade gracefully.
+func (s *AgentSession) installBuiltins() error {
+	port := fmt.Sprintf("%d", s.hooksPort)
+	workDir := s.agentCfg.WorkDir
+	if workDir == "" {
+		workDir = s.sessionDir
 	}
-	content := strings.ReplaceAll(commandFileContent, "PORT", fmt.Sprintf("%d", s.hooksPort))
-	return os.WriteFile(filepath.Join(dir, "tsq-voice-to-md.md"), []byte(content), 0644)
+
+	cmdContent := strings.NewReplacer("PORT", port, "NOTES_PATH", notesPathExpr).Replace(commandFileContent)
+	agentContent := strings.NewReplacer("PORT", port, "NOTES_PATH", notesPathExpr).Replace(subAgentContent)
+
+	var errs []string
+
+	// workDir-relative dirs (picked up by the CLI running in workDir)
+	for _, cd := range harness.CommandDirs(workDir) {
+		if err := writeBuiltin(cd, "tsq-voice-to-md.md", cmdContent); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+	for _, ad := range harness.AgentDirs(workDir) {
+		if err := writeBuiltin(ad, "tsq-voice-to-md.md", agentContent); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+
+	// Global user-level dirs (used when CLI is invoked outside a project dir)
+	home, _ := os.UserHomeDir()
+	for _, base := range harness.All {
+		if err := writeBuiltin(filepath.Join(home, base, "commands"), "tsq-voice-to-md.md", cmdContent); err != nil {
+			errs = append(errs, err.Error())
+		}
+		if err := writeBuiltin(filepath.Join(home, base, "agents"), "tsq-voice-to-md.md", agentContent); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("partial install: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// notesPathExpr is used in static command/agent files where the path is resolved
+// at runtime by the shell.
+const notesPathExpr = `$(date -u +"$HOME/.tsq/notes/%Y%m%d/%H%M%S.md")`
+
+// writeBuiltin creates dir and writes content to dir/name.
+func writeBuiltin(dir, name, content string) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+	return os.WriteFile(filepath.Join(dir, name), []byte(content), 0644)
 }

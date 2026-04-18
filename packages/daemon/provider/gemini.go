@@ -1,9 +1,7 @@
 package provider
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 
@@ -33,28 +31,40 @@ func (p *Gemini) Stdin(prompt string) string { return prompt }
 func (p *Gemini) ExtraArgs() []string        { return nil }
 func (p *Gemini) TmuxReadyIndicator() string { return "Ready" }
 
+// SetupVoice writes .gemini/settings.json with an AfterAgent hook pointing at
+// the voice-to-md notification endpoint.
+func (p *Gemini) SetupVoice(workDir string, hooksPort int) error {
+	settingsPath := filepath.Join(workDir, ".gemini", "settings.json")
+	err := writeHooks(settingsPath, map[string]any{
+		"AfterAgent": []any{
+			map[string]any{
+				"matcher": "*",
+				"hooks": []any{
+					map[string]any{
+						"name":    "tasksquad-voice",
+						"type":    "command",
+						"command": geminiHookCmd(fmt.Sprintf("http://localhost:%d/hooks/voice-to-md/notification", hooksPort)),
+						"timeout": 5000,
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	logger.Debug(fmt.Sprintf("[provider/gemini] Wrote voice hooks to %s (port %d)", settingsPath, hooksPort))
+	return nil
+}
+
 // Setup writes .gemini/settings.json into workDir with AfterAgent hook
 // pointing to the daemon's local hook server on hooksPort.
 func (p *Gemini) Setup(workDir string, hooksPort int, agentID string, taskID string) error {
-	geminiDir := filepath.Join(workDir, ".gemini")
-	settingsPath := filepath.Join(geminiDir, "settings.json")
-
-	if err := os.MkdirAll(geminiDir, 0755); err != nil {
-		return fmt.Errorf("create .gemini dir: %w", err)
-	}
-
-	// Preserve existing settings; only overwrite the hooks key.
-	existing := make(map[string]any)
-	if data, err := os.ReadFile(settingsPath); err == nil {
-		_ = json.Unmarshal(data, &existing)
-	}
-
+	settingsPath := filepath.Join(workDir, ".gemini", "settings.json")
+	stopURL := fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
 	// AfterAgent triggers on every model turn. We use it as the completion signal
 	// to align with Claude Code's Stop hook behavior.
-	stopURL := fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
-
-	// Gemini CLI hooks structure: {"hooks": {"EventName": [{"matcher": "*", "hooks": [...]}]}}
-	existing["hooks"] = map[string]any{
+	err := writeHooks(settingsPath, map[string]any{
 		"AfterAgent": []any{
 			map[string]any{
 				"matcher": "*",
@@ -68,16 +78,10 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentID string, taskID str
 				},
 			},
 		},
-	}
-
-	data, err := json.MarshalIndent(existing, "", "  ")
+	})
 	if err != nil {
-		return fmt.Errorf("marshal settings: %w", err)
+		return err
 	}
-	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
-		return fmt.Errorf("write settings: %w", err)
-	}
-
 	logger.Debug(fmt.Sprintf("[provider/gemini] Wrote hooks to %s (port %d)", settingsPath, hooksPort))
 	return nil
 }

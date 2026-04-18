@@ -13,15 +13,21 @@ import (
 	"github.com/tasksquad/daemon/whisperer"
 )
 
+const (
+	silenceFlushDelay = 5 * time.Second
+	blankAudioMarker  = "[BLANK_AUDIO]"
+)
+
 // Manager orchestrates a voice-to-markdown session: audio → transcription →
 // agent processing → markdown update → UI broadcast.
 type Manager struct {
-	mu        sync.Mutex
-	session   *Session
-	buffer    *Buffer
-	agentSess *AgentSession
-	bc        *Broadcaster
-	cfg       *config.Config
+	mu           sync.Mutex
+	session      *Session
+	buffer       *Buffer
+	agentSess    *AgentSession
+	bc           *Broadcaster
+	cfg          *config.Config
+	silenceTimer *time.Timer
 }
 
 // New creates a Manager wired to the given daemon config.
@@ -162,15 +168,22 @@ func (m *Manager) StartRecording() error {
 	return nil
 }
 
-// PauseRecording pauses without killing the agent.
+// PauseRecording pauses without killing the agent and flushes any buffered input.
 func (m *Manager) PauseRecording() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.session == nil || m.session.State != StateRecording {
+		m.mu.Unlock()
 		return fmt.Errorf("not recording")
 	}
 	m.session.State = StatePaused
+	if m.silenceTimer != nil {
+		m.silenceTimer.Stop()
+		m.silenceTimer = nil
+	}
+	m.mu.Unlock()
+
 	m.bc.Send(Event{Type: EventState, Payload: StatePaused.String()})
+	m.flushToAgent()
 	return nil
 }
 
@@ -180,6 +193,10 @@ func (m *Manager) StopSession() {
 	as := m.agentSess
 	sess := m.session
 	buf := m.buffer
+	if m.silenceTimer != nil {
+		m.silenceTimer.Stop()
+		m.silenceTimer = nil
+	}
 	m.mu.Unlock()
 
 	if buf != nil && sess != nil {
@@ -228,6 +245,16 @@ func (m *Manager) ReceiveAudioChunk(modelSize string, audioData []byte) error {
 		return nil
 	}
 
+	// Whisper signals silence as [BLANK_AUDIO] — flush buffered input to the agent.
+	if strings.Contains(text, blankAudioMarker) {
+		logger.Info("[voicetomd] blank audio detected — flushing buffer")
+		m.flushToAgent()
+		return nil
+	}
+
+	// Real speech: reset the 5-second silence timer.
+	m.resetSilenceTimer()
+
 	if err := sess.AppendTranscript(text); err != nil {
 		logger.Warn(fmt.Sprintf("[voicetomd] AppendTranscript: %v", err))
 	}
@@ -259,6 +286,10 @@ func (m *Manager) Status() map[string]any {
 	if m.session == nil {
 		return map[string]any{"state": "idle"}
 	}
+	notesPath := ""
+	if m.agentSess != nil {
+		notesPath = m.agentSess.NotesPath()
+	}
 	return map[string]any{
 		"state":      m.session.State.String(),
 		"session_id": m.session.ID,
@@ -266,6 +297,7 @@ func (m *Manager) Status() map[string]any {
 		"model":      m.session.ModelSize,
 		"txt_path":   m.session.TxtPath,
 		"md_path":    m.session.MdPath,
+		"notes_path": notesPath,
 	}
 }
 
@@ -320,6 +352,16 @@ func (m *Manager) flushToAgent() {
 			buf.AgentDone()
 		}
 	}()
+}
+
+// resetSilenceTimer restarts the 5-second silence flush timer.
+func (m *Manager) resetSilenceTimer() {
+	m.mu.Lock()
+	if m.silenceTimer != nil {
+		m.silenceTimer.Stop()
+	}
+	m.silenceTimer = time.AfterFunc(silenceFlushDelay, m.flushToAgent)
+	m.mu.Unlock()
 }
 
 // setSessionState sets state under lock and broadcasts it.

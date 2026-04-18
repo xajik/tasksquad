@@ -36,6 +36,7 @@ func (p *Codex) UsesHooks() bool         { return true }
 func (p *Codex) Env(_ int) []string      { return nil }
 func (p *Codex) Stdin(_ string) string   { return "" }
 func (p *Codex) ExtraArgs() []string     { return nil }
+func (p *Codex) SetupVoice(_ string, _ int) error { return ErrNotSupported }
 
 // Setup updates ~/.codex/config.toml with a notify command that POSTs the
 // codex turn-complete payload to the daemon's local hook server.

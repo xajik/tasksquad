@@ -131,3 +131,4 @@ func (p *OpenCode) UsesHooks() bool            { return true }
 func (p *OpenCode) Stdin(prompt string) string { return prompt }
 func (p *OpenCode) Env(_ int) []string         { return nil }
 func (p *OpenCode) ExtraArgs() []string        { return []string{"--print-logs"} }
+func (p *OpenCode) SetupVoice(_ string, _ int) error { return ErrNotSupported }

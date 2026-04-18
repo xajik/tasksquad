@@ -1,9 +1,13 @@
 package provider
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 )
+
+// ErrNotSupported is returned when a provider doesn't support a given feature.
+var ErrNotSupported = errors.New("provider does not support this feature")
 
 // Provider describes how the daemon integrates with a specific CLI tool.
 //
@@ -23,6 +27,9 @@ type Provider interface {
 	// agentID (server-assigned UUID) and taskID are embedded in hook URLs so the
 	// hook server can route to the correct agent and reject stale events.
 	Setup(workDir string, hooksPort int, agentID string, taskID string) error
+	// SetupVoice writes hook config for voice-to-md notification.
+	// Returns ErrNotSupported if the provider doesn't support voice hooks.
+	SetupVoice(workDir string, hooksPort int) error
 	Env(hooksPort int) []string
 	UsesHooks() bool
 	// Stdin returns the content to pipe to the process stdin, or "" to use -p flag.

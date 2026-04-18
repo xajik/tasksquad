@@ -51,8 +51,8 @@ func (s *hookServer) handleVoiceToMDResponse(w http.ResponseWriter, r *http.Requ
 }
 
 // handleVoiceToMDNotification handles POST /hooks/voice-to-md/notification.
-// Claude Code fires this whenever it is waiting for user input (after each turn).
-// We use it as a fallback to read the processed markdown from the transcript.
+// Fired by each provider after a turn completes (Claude via Notification hook,
+// Gemini via AfterAgent hook). Used as a fallback signal to read processed markdown.
 func (s *hookServer) handleVoiceToMDNotification(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	logger.Info("[hooks] POST /hooks/voice-to-md/notification")
