@@ -1,50 +1,35 @@
 package ui
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
+	"github.com/tasksquad/daemon/config"
+	"github.com/tasksquad/daemon/voicetomd"
 )
 
-var (
-	voiceMu      sync.Mutex
-	voiceContentState string
-	voiceFile    string
-)
+var globalVoiceManager *voicetomd.Manager
 
-func init() {
-	home, _ := os.UserHomeDir()
-	notesDir := filepath.Join(home, ".tasksquad", "notes")
-	os.MkdirAll(notesDir, 0755)
-	voiceFile = filepath.Join(notesDir, "new-document.md")
+// InitVoiceToMD must be called from main before the UI starts.
+func InitVoiceToMD(cfg *config.Config) {
+	globalVoiceManager = voicetomd.New(cfg)
 }
 
-// UpdateVoiceContent updates the current state of the markdown document.
-// This is called by the tsq-voice-to-md agent.
-func UpdateVoiceContent(content string) {
-	voiceMu.Lock()
-	defer voiceMu.Unlock()
-	voiceContentState = content
-	// Also write to disk
-	os.WriteFile(voiceFile, []byte(content), 0644)
+// GetVoiceManager returns the singleton voice-to-md manager. May be nil before
+// InitVoiceToMD is called.
+func GetVoiceManager() *voicetomd.Manager {
+	return globalVoiceManager
 }
 
-// GetVoiceContent returns the current state for the UI.
+// GetVoiceContent returns current markdown content and a display file name.
+// Legacy shim kept for compatibility with the dashboard content endpoint.
 func GetVoiceContent() (string, string) {
-	voiceMu.Lock()
-	defer voiceMu.Unlock()
-	return voiceContentState, filepath.Base(voiceFile)
-}
-
-// StartVoiceAgent starts a session with tsq-voice-to-md.
-func StartVoiceAgent() error {
-    // TODO: Implement agent spawning with tsq-voice-to-md instructions
-    return nil
-}
-
-// ProcessVoiceChunk sends a transcribed chunk to the running agent.
-func ProcessVoiceChunk(chunk string) error {
-    // TODO: Push to agent's stdin or via API
-    return nil
+	if globalVoiceManager == nil {
+		return "", "new-document.md"
+	}
+	md := globalVoiceManager.Markdown()
+	status := globalVoiceManager.Status()
+	sessionID, _ := status["session_id"].(string)
+	name := "new-document.md"
+	if sessionID != "" {
+		name = sessionID + ".md"
+	}
+	return md, name
 }

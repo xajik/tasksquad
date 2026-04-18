@@ -23,9 +23,10 @@ var unsafeCharsRe = regexp.MustCompile(`[^\x09\x0A\x0D\x20-\x7E]`)
 
 // hookServer holds the shared state needed by every hook handler.
 type hookServer struct {
-	cfg      *config.Config
-	agents   []Agent
-	reporter SupervisorReporter
+	cfg          *config.Config
+	agents       []Agent
+	reporter     SupervisorReporter
+	voiceHandler VoiceToMDHandler // nil when voice-to-md feature is not active
 }
 
 // handleStop handles POST /hooks/stop.

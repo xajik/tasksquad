@@ -15,6 +15,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/tasksquad/daemon/voicetomd"
+	"github.com/tasksquad/daemon/whisperer"
 )
 
 // dashboardHTML is the single-page control panel served at the local HTTP server.
@@ -75,25 +78,192 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 		w.Write([]byte(voiceToMDHTML)) //nolint:errcheck
 	})
 
+	// ── Voice-to-MD API ───────────────────────────────────────────────────────
+
+	mux.HandleFunc("/api/voice-to-md/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		mgr := GetVoiceManager()
+		if mgr == nil {
+			json.NewEncoder(w).Encode(map[string]any{"state": "idle"}) //nolint:errcheck
+			return
+		}
+		json.NewEncoder(w).Encode(mgr.Status()) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/voice-to-md/stream", func(w http.ResponseWriter, r *http.Request) {
+		mgr := GetVoiceManager()
+		if mgr == nil {
+			http.Error(w, "voice-to-md not initialised", http.StatusServiceUnavailable)
+			return
+		}
+		mgr.ServeSSE(w, r)
+	})
+
+	mux.HandleFunc("/api/voice-to-md/session/start", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			Agent string `json:"agent"`
+			Model string `json:"model"`
+		}
+		json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
+		if body.Agent == "" {
+			http.Error(w, "agent required", http.StatusBadRequest)
+			return
+		}
+		if body.Model == "" {
+			body.Model = "base"
+		}
+		mgr := GetVoiceManager()
+		if mgr == nil {
+			http.Error(w, "voice-to-md not initialised", http.StatusServiceUnavailable)
+			return
+		}
+		if err := mgr.StartSession(body.Agent, body.Model); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/voice-to-md/recording/start", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		mgr := GetVoiceManager()
+		if mgr == nil {
+			http.Error(w, "no active session", http.StatusBadRequest)
+			return
+		}
+		if err := mgr.StartRecording(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/voice-to-md/recording/pause", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		mgr := GetVoiceManager()
+		if mgr != nil {
+			mgr.PauseRecording() //nolint:errcheck
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/voice-to-md/session/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		mgr := GetVoiceManager()
+		if mgr != nil {
+			mgr.StopSession()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/voice-to-md/upload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		mgr := GetVoiceManager()
+		if mgr == nil {
+			http.Error(w, "no active session", http.StatusBadRequest)
+			return
+		}
+		if err := mgr.HandleUploadRequest(r); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+	})
+
 	mux.HandleFunc("/api/voice-to-md/content", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		content, fileName := GetVoiceContent()
-		json.NewEncoder(w).Encode(map[string]string{
+		json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
 			"content":  content,
 			"fileName": fileName,
 		})
 	})
 
-	mux.HandleFunc("/api/voice-to-md/upload", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/voice-to-md/transcript", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		mgr := GetVoiceManager()
+		transcript := ""
+		if mgr != nil {
+			transcript = mgr.Transcript()
+		}
+		json.NewEncoder(w).Encode(map[string]string{"transcript": transcript}) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/voice-to-md/models", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(whisperModelStatus()) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/voice-to-md/prereqs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(whisperer.CheckPrereqs()) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/voice-to-md/models/download", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		// In a real implementation, we would handle multipart/form-data or raw bytes
-		// and pass them to the whisperer for transcription.
-		// For now, we'll just acknowledge the upload.
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{"status":"ok"}`)
+		var body struct {
+			Model string `json:"model"`
+		}
+		json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
+		if body.Model == "" {
+			http.Error(w, "model required", http.StatusBadRequest)
+			return
+		}
+		mgr := GetVoiceManager()
+		if mgr == nil {
+			http.Error(w, "manager not ready", http.StatusServiceUnavailable)
+			return
+		}
+		// Stream download progress as SSE.
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		flusher, _ := w.(http.Flusher)
+		ch := startModelDownload(body.Model)
+		for p := range ch {
+			fmt.Fprintf(w, "data: %s\n\n", p)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+	})
+
+	mux.HandleFunc("/api/voice-to-md/agents", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var names []string
+		for _, a := range agents {
+			names = append(names, a.Name())
+		}
+		json.NewEncoder(w).Encode(names) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/voice-to-md/sessions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessions, _ := voicetomd.ListSessions()
+		json.NewEncoder(w).Encode(sessions) //nolint:errcheck
 	})
 
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
@@ -420,6 +590,37 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 	}()
 	port := ln.Addr().(*net.TCPAddr).Port
 	return fmt.Sprintf("http://localhost:%d", port)
+}
+
+// whisperModelStatus returns download status for all known Whisper models.
+func whisperModelStatus() []map[string]any {
+	return whisperer.ModelStatus()
+}
+
+// startModelDownload starts downloading a model and returns a channel that emits
+// JSON-encoded progress strings until the download completes.
+func startModelDownload(modelName string) <-chan string {
+	ch := make(chan string, 8)
+	go func() {
+		defer close(ch)
+		size := whisperer.ModelSize(modelName)
+		for p := range whisperer.DownloadModel(size) {
+			var msg string
+			if p.Err != nil {
+				msg = fmt.Sprintf(`{"error":%q}`, p.Err.Error())
+			} else if p.Done {
+				msg = `{"done":true}`
+			} else {
+				pct := 0
+				if p.BytesTotal > 0 {
+					pct = int(p.BytesDone * 100 / p.BytesTotal)
+				}
+				msg = fmt.Sprintf(`{"bytes_done":%d,"bytes_total":%d,"pct":%d}`, p.BytesDone, p.BytesTotal, pct)
+			}
+			ch <- msg
+		}
+	}()
+	return ch
 }
 
 // dashSanitize mirrors logger.sanitizeName: replaces non-alphanumeric chars with '-'.

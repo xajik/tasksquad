@@ -10,7 +10,8 @@ package ui
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 
-// TSQUIDelegate forwards JS confirm/alert/prompt dialogs to native NSAlert sheets.
+// TSQUIDelegate forwards JS confirm/alert/prompt dialogs to native NSAlert sheets
+// and auto-grants microphone/camera capture permissions to trusted local pages.
 @interface TSQUIDelegate : NSObject <WKUIDelegate>
 @end
 
@@ -38,6 +39,18 @@ package ui
     completionHandler();
 }
 
+// Grant microphone access to all pages loaded in TaskSquad panels.
+// The system-level TCC prompt still fires the first time; after the user
+// approves it once, subsequent requests are granted automatically.
+- (void)webView:(WKWebView*)webView
+    requestMediaCapturePermissionForOrigin:(WKSecurityOrigin*)origin
+    initiatedByFrame:(WKFrameInfo*)frame
+    type:(WKMediaCaptureType)type
+    decisionHandler:(void (^)(WKPermissionDecision))decisionHandler
+    API_AVAILABLE(macos(12.0)) {
+    decisionHandler(WKPermissionDecisionGrant);
+}
+
 @end
 
 void tsq_open_panel(const char* url, const char* title, int w, int h) {
@@ -62,6 +75,9 @@ void tsq_open_panel(const char* url, const char* title, int w, int h) {
         [win setReleasedWhenClosed:NO];
 
         WKWebViewConfiguration* cfg = [[WKWebViewConfiguration alloc] init];
+        // Remove the user-gesture requirement so that MediaRecorder.start() works
+        // without needing a click inside the WKWebView first.
+        cfg.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
         WKWebView* wv = [[WKWebView alloc] initWithFrame:frame configuration:cfg];
         wv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 
@@ -80,7 +96,12 @@ void tsq_open_panel(const char* url, const char* title, int w, int h) {
 }
 */
 import "C"
-import "unsafe"
+import (
+	"os/exec"
+	"unsafe"
+
+	"github.com/tasksquad/daemon/logger"
+)
 
 // openControlPanel opens the control-panel URL in a native macOS window
 // (NSWindow + WKWebView) that shares the existing Cocoa application's event
@@ -93,11 +114,10 @@ func openControlPanel(url string) {
 	C.tsq_open_panel(cu, ct, 1024, 720)
 }
 
-// openVoiceToMD opens the voice-to-markdown editor URL in a native macOS window.
+// openVoiceToMD opens the voice-to-markdown editor in the default system browser.
+// Using the browser avoids WKWebView microphone TCC permission issues with CLI binaries.
 func openVoiceToMD(url string) {
-	cu := C.CString(url)
-	defer C.free(unsafe.Pointer(cu))
-	ct := C.CString("TaskSquad — Voice to MD")
-	defer C.free(unsafe.Pointer(ct))
-	C.tsq_open_panel(cu, ct, 1200, 800)
+	if err := exec.Command("open", url).Start(); err != nil {
+		logger.Warn("[ui] openVoiceToMD: " + err.Error())
+	}
 }

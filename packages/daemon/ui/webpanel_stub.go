@@ -23,3 +23,8 @@ func openControlPanel(url string) {
 		logger.Warn("[ui] openControlPanel: " + err.Error())
 	}
 }
+
+// openVoiceToMD falls back to the system browser on non-macOS platforms.
+func openVoiceToMD(url string) {
+	openControlPanel(url)
+}
