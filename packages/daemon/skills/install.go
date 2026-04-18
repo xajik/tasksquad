@@ -20,11 +20,14 @@ func installSkill(workDir string, skill remoteSkill, lock skillsLock) error {
 	}
 
 	dir := skillDir(workDir, skill.Name)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
+	if info, lErr := os.Lstat(dir); lErr == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			os.RemoveAll(dir) //nolint:errcheck
 		}
-	} else if err != nil {
+	} else if !os.IsNotExist(lErr) {
+		return lErr
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(skill.Content), 0644); err != nil {
@@ -58,6 +61,9 @@ func removeSkill(workDir, name string) {
 // copyDir copies all files from src directory into dst directory.
 // dst is created if it does not exist. Existing files are overwritten.
 func copyDir(src, dst string) error {
+	if info, err := os.Lstat(dst); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		os.RemoveAll(dst) //nolint:errcheck
+	}
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return err
 	}

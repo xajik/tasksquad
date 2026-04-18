@@ -456,7 +456,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
       </select>
     </div>
     <button id="btn-start-session" class="btn btn-default" disabled>
-      <span id="start-spinner" class="spinner"></span> Initialise Agent
+      <span id="start-spinner" class="spinner" style="display:none"></span><span id="start-label"> Initialise Agent</span>
     </button>
     <p style="font-size:12px;color:var(--vm-muted)">Select a model (download if needed) and an agent, then click Initialise. Recording will enable once the agent is ready.</p>
   </div>
@@ -900,8 +900,8 @@ btnStartSession.addEventListener('click', async () => {
   const agent = agentSelect.value;
   if (!agent) return;
   btnStartSession.disabled = true;
-  startSpinner.classList.add('show');
-  btnStartSession.textContent = ' Initialising…';
+  startSpinner.style.display = 'inline-block';
+  document.getElementById('start-label').textContent = ' Initialising…';
   try {
     const res = await fetch('/api/voice-to-md/session/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({agent, model: modelSelect.value}) });
     if (!res.ok) throw new Error(await res.text());
@@ -910,7 +910,7 @@ btnStartSession.addEventListener('click', async () => {
     setVoiceSessionState('initializing');
     connectVoiceSSE();
   } catch(e) { voiceToast('Error: ' + e.message); btnStartSession.disabled = false; }
-  finally { startSpinner.classList.remove('show'); btnStartSession.textContent = 'Initialise Agent'; }
+  finally { startSpinner.style.display = 'none'; document.getElementById('start-label').textContent = ' Initialise Agent'; }
 });
 
 function connectVoiceSSE() {
