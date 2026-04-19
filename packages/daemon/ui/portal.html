@@ -252,94 +252,340 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* VOICE TO MD STYLES */
+/* VOICE TO MD — Apple Siri Design */
 :root {
-  --vm-bg:         #F6F7F9;
-  --vm-card:       #FFFFFF;
-  --vm-ink:        #0F1117;
-  --vm-muted:      #6B7280;
-  --vm-border:     #E2E4EA;
-  --vm-accent:     #2563EB;
-  --vm-green:      #16A34A;
-  --vm-amber:     #D97706;
-  --vm-red:       #DC2626;
-  --vm-radius:    6px;
+  --vm-bg:     #F5F5F7;
+  --vm-card:   rgba(255,255,255,0.82);
+  --vm-ink:    #1D1D1F;
+  --vm-muted:  #6E6E73;
+  --vm-border: rgba(0,0,0,0.08);
+  --vm-blue:   #007AFF;
+  --vm-green:  #34C759;
+  --vm-red:    #FF3B30;
+  --vm-orange: #FF9F0A;
+  --siri-1:    #007AFF;
+  --siri-2:    #5E5CE6;
+  --siri-3:    #BF5AF2;
+  --siri-4:    #FF375F;
+  --siri-5:    #FF9F0A;
 }
-#voice-view { background: var(--vm-bg); display: flex; flex-direction: column; min-height: calc(100vh - 57px); }
-#voice-view .card { background: var(--vm-card); border-color: var(--vm-border); }
-#voice-view .btn-default { background: var(--vm-accent); color: #fff; }
-#voice-view .btn-ghost { background: transparent; border-color: var(--vm-border); }
-#voice-view .state-badge {
-  padding: 3px 10px;
-  border-radius: 20px;
-  font-size: 12px;
+#voice-view {
+  background: var(--muted);
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 97px);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+#voice-header {
+  height: 40px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  flex-shrink: 0;
+}
+#voice-header .vm-title { font-size: 13px; font-weight: 500; color: var(--muted-fg); }
+
+/* Badges */
+.vm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 9px;
+  border-radius: 10px;
+  font-size: 11px;
   font-weight: 500;
-  background: var(--vm-bg);
-  border: 1px solid var(--vm-border);
-  color: var(--vm-muted);
+  letter-spacing: 0.1px;
 }
-#voice-view .state-badge.recording { background: #FEF2F2; border-color: var(--vm-red); color: var(--vm-red); }
-#voice-view .state-badge.processing { background: #FFF7ED; border-color: var(--vm-amber); color: var(--vm-amber); }
-#voice-view .state-badge.ready { background: #F0FDF4; border-color: var(--vm-green); color: var(--vm-green); }
-#voice-view .panel { background: var(--vm-card); border: 1px solid var(--vm-border); border-radius: var(--vm-radius); display: flex; flex-direction: column; overflow: hidden; }
-#voice-view .panel-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px; border-bottom: 1px solid var(--vm-border);
-  font-size: 12px; font-weight: 500; color: var(--vm-muted);
-  text-transform: uppercase; letter-spacing: .5px; flex-shrink: 0;
+.vm-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.vm-badge-idle      { background: rgba(110,110,115,0.12); color: #6E6E73; }
+.vm-badge-idle::before { background: #6E6E73; }
+.vm-badge-recording { background: rgba(255,59,48,0.12); color: #FF3B30; animation: badge-pulse 1.5s ease-in-out infinite; }
+.vm-badge-recording::before { background: #FF3B30; }
+.vm-badge-processing { background: rgba(255,159,10,0.12); color: #FF9F0A; }
+.vm-badge-processing::before { background: #FF9F0A; }
+.vm-badge-ready  { background: rgba(52,199,89,0.12); color: #34C759; }
+.vm-badge-ready::before { background: #34C759; }
+.vm-badge-paused { background: rgba(52,199,89,0.12); color: #34C759; }
+.vm-badge-paused::before { background: #34C759; }
+@keyframes badge-pulse { 0%,100% { opacity:1; } 50% { opacity:.6; } }
+
+/* Buttons */
+.vm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 510;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+  outline: none;
+  -webkit-font-smoothing: antialiased;
 }
-#voice-view textarea, #voice-view input, #voice-view select {
-  border: 1px solid var(--vm-border); border-radius: var(--vm-radius);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: var(--vm-card); color: var(--vm-ink); outline: none;
+.vm-btn:focus-visible { outline: 3px solid var(--vm-blue); outline-offset: 2px; }
+.vm-btn:disabled { opacity: 0.38; cursor: not-allowed; pointer-events: none; }
+.vm-btn-primary { background: var(--vm-blue); color: #fff; font-weight: 590; letter-spacing: -0.2px; }
+.vm-btn-primary:hover { background: #0077ED; }
+.vm-btn-primary:active { transform: scale(0.97); background: #006EDB; }
+.vm-btn-outline { background: rgba(0,0,0,0.05); color: var(--vm-ink); }
+.vm-btn-outline:hover { background: rgba(0,0,0,0.09); }
+.vm-btn-outline:active { transform: scale(0.97); }
+.vm-btn-ghost { background: transparent; color: var(--accent-blue); }
+.vm-btn-ghost:hover { background: rgba(37,99,235,0.08); }
+.vm-btn-sm { height: 28px; padding: 0 12px; font-size: 13px; border-radius: 7px; font-weight: 500; }
+
+/* Form controls */
+.vm-select {
+  height: 34px;
+  padding: 0 32px 0 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--fg);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236E6E73' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 13px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
 }
-#voice-view textarea:focus, #voice-view input:focus, #voice-view select:focus { border-color: var(--vm-accent); }
-#voice-view select, #voice-view input { height: 36px; padding: 0 12px; font-size: 14px; }
-#voice-view label { font-size: 12px; font-weight: 500; color: var(--vm-muted); text-transform: uppercase; letter-spacing: .5px; }
-#voice-view .form-row { display: flex; flex-direction: column; gap: 6px; }
-#voice-view .model-row { display: flex; align-items: center; gap: 8px; }
-#voice-view .model-row select { flex: 1; }
-#voice-view .model-status { font-size: 12px; color: var(--vm-muted); white-space: nowrap; }
-#voice-view .model-status.ok { color: var(--vm-green); }
-#voice-view .progress-bar { height: 4px; background: var(--vm-bg); border-radius: 2px; overflow: hidden; margin-top: 4px; }
-#voice-view .progress-fill { height: 100%; background: var(--vm-accent); transition: width .2s; }
-#voice-view .record-btn {
-  width: 56px; height: 56px; border-radius: 50%;
-  background: var(--vm-accent); color: #fff; border: none; cursor: pointer;
+.vm-select:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+.vm-label { font-size: 13px; font-weight: 500; color: var(--muted-fg); display: block; margin-bottom: 6px; }
+.vm-form-group { display: flex; flex-direction: column; }
+
+/* Progress */
+.vm-progress { height: 4px; background: rgba(0,0,0,0.08); border-radius: 2px; overflow: hidden; }
+.vm-progress-fill { height: 100%; background: var(--vm-blue); border-radius: 2px; transition: width 0.2s ease; }
+
+/* Model status */
+.vm-model-status { font-size: 13px; font-weight: 500; color: var(--muted-fg); white-space: nowrap; flex-shrink: 0; }
+.vm-model-status.ok { color: #16a34a; }
+
+/* Setup card */
+.vm-setup-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 32px 32px;
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.vm-setup-card-title { font-size: 15px; font-weight: 600; color: var(--fg); letter-spacing: -0.2px; margin-bottom: 2px; }
+.vm-hint { font-size: 12px; color: var(--muted-fg); line-height: 1.5; }
+
+/* Prereq warning */
+.vm-prereq-warn {
+  background: rgba(255,159,10,0.1);
+  border: 0.5px solid rgba(255,159,10,0.4);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: #B25000;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vm-prereq-warn strong { font-weight: 600; }
+.vm-prereq-warn code { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 12px; }
+
+/* Content panels */
+.vm-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.vm-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 38px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.vm-panel-header-label { font-size: 12px; font-weight: 600; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.4px; }
+.vm-panel-header-right { display: flex; align-items: center; gap: 8px; }
+
+#md-editor {
+  flex: 1;
+  min-height: 160px;
+  padding: 14px 16px;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--fg);
+  background: transparent;
+  border: none;
+  resize: none;
+  outline: none;
+  overflow-y: auto;
+}
+#transcript-body {
+  max-height: 140px;
+  overflow-y: auto;
+  padding: 10px 16px;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted-fg);
+}
+#transcript-body .chunk { margin-bottom: 2px; }
+#transcript-body .chunk.new { color: var(--fg); }
+
+/* Controls bar */
+.vm-controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 96px;
+  padding: 0 24px 8px;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.vm-controls-side { display: flex; align-items: center; min-width: 90px; }
+.vm-controls-side:last-child { justify-content: flex-end; }
+.vm-controls-center { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+/* Siri orb button */
+.vm-record-btn {
+  position: relative;
+  width: 68px; height: 68px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  padding: 0;
+  outline: none;
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.vm-record-btn:focus-visible { outline: 3px solid var(--vm-blue); outline-offset: 3px; }
+.vm-record-btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+.vm-record-btn:hover:not(:disabled) { transform: scale(1.07); }
+.vm-record-btn:active:not(:disabled) { transform: scale(0.94); }
+
+.siri-orb {
+  width: 68px; height: 68px;
+  border-radius: 50%;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,122,255,.4), 0 1px 4px rgba(0,0,0,.15);
+  transition: box-shadow 0.3s ease;
+}
+.vm-record-btn.recording .siri-orb {
+  box-shadow: none;
+  animation: orb-breathe 2s ease-in-out infinite;
+}
+@keyframes orb-breathe {
+  0%,100% { box-shadow: 0 0 20px 4px rgba(94,92,230,.5), 0 0 40px 8px rgba(191,90,242,.25); }
+  50%      { box-shadow: 0 0 28px 8px rgba(255,55,95,.5), 0 0 56px 16px rgba(255,159,10,.2); }
+}
+.siri-orb-bg {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background: var(--vm-blue);
+  transition: opacity 0.4s ease;
+}
+.vm-record-btn.recording .siri-orb-bg { opacity: 0; }
+.siri-orb-gradient {
+  position: absolute; inset: -4px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--siri-1) 0%, var(--siri-2) 20%, var(--siri-3) 40%, var(--siri-4) 60%, var(--siri-5) 80%, var(--siri-1) 100%);
+  opacity: 0;
+  animation: siri-spin 2.4s linear infinite;
+  transition: opacity 0.4s ease;
+}
+.vm-record-btn.recording .siri-orb-gradient { opacity: 1; }
+@keyframes siri-spin { to { transform: rotate(360deg); } }
+.siri-orb-center {
+  position: absolute; inset: 3px;
+  border-radius: 50%;
+  background: rgba(20,20,30,0.18);
+  backdrop-filter: blur(6px);
   display: flex; align-items: center; justify-content: center;
-  transition: transform .15s, background .15s;
-  box-shadow: 0 4px 12px rgba(37,99,235,.35);
+  transition: background 0.3s ease;
 }
-#voice-view .record-btn:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
-#voice-view .record-btn:hover:not(:disabled) { transform: scale(1.06); }
-#voice-view .record-btn.recording { background: var(--vm-red); box-shadow: 0 4px 12px rgba(220,38,38,.35); animation: pulse 1.4s infinite; }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220,38,38,.4); } 70% { box-shadow: 0 0 0 16px rgba(220,38,38,0); } 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0); } }
-#voice-view .controls { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px 0; flex-shrink: 0; }
-#voice-view .controls-voice { padding: 12px 24px; }
-#voice-view #setup-panel { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; }
-#voice-view #setup-panel .setup-card {
-  background: var(--vm-card); border: 1px solid var(--vm-border);
-  border-radius: var(--vm-radius); padding: 32px; width: 100%; max-width: 500px;
-  display: flex; flex-direction: column; gap: 20px;
+.vm-record-btn:not(.recording) .siri-orb-center { background: transparent; }
+
+/* Siri waveform */
+.siri-wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
 }
-#voice-view #setup-panel h2 { font-size: 16px; font-weight: 600; }
-#voice-view #session-panel { flex: 1; display: none; flex-direction: column; overflow: hidden; padding: 16px; gap: 12px; }
-#voice-view #md-editor { flex: 1; padding: 16px; font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 13px; line-height: 1.6; border: none; resize: none; outline: none; }
-#voice-view #transcript-body { max-height: 180px; overflow-y: auto; padding: 12px 16px; font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; color: var(--vm-muted); }
-#voice-view #transcript-body .chunk { margin-bottom: 4px; }
-#voice-view #transcript-body .chunk.new { color: var(--vm-ink); }
-#voice-view #init-banner { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 0 4px; font-size: 13px; color: var(--vm-muted); }
-#voice-view .init-spinner { width: 14px; height: 14px; border: 2px solid var(--vm-border); border-top-color: var(--vm-accent); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
-#voice-view #toast {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
-  background: #1e293b; color: #f8fafc; padding: 10px 20px; border-radius: 20px;
-  font-size: 13px; opacity: 0; transition: opacity .2s, transform .2s;
-  pointer-events: none; z-index: 999;
+.siri-wave.active { opacity: 1; }
+.wave-bar { width: 3px; border-radius: 2px; transform-origin: bottom center; animation: wave-dance 1.8s ease-in-out infinite; }
+.wave-bar:nth-child(1) { height: 10px; background: var(--siri-1); animation-delay: 0.00s; }
+.wave-bar:nth-child(2) { height: 18px; background: var(--siri-2); animation-delay: 0.12s; }
+.wave-bar:nth-child(3) { height: 7px;  background: var(--siri-2); animation-delay: 0.06s; }
+.wave-bar:nth-child(4) { height: 20px; background: var(--siri-3); animation-delay: 0.18s; }
+.wave-bar:nth-child(5) { height: 12px; background: var(--siri-4); animation-delay: 0.09s; }
+.wave-bar:nth-child(6) { height: 16px; background: var(--siri-4); animation-delay: 0.22s; }
+.wave-bar:nth-child(7) { height: 8px;  background: var(--siri-5); animation-delay: 0.03s; }
+@keyframes wave-dance { 0%,100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+
+/* Init banner */
+#init-banner { display: none; align-items: center; gap: 6px; font-size: 12px; color: var(--vm-muted); letter-spacing: -0.1px; }
+.vm-init-spinner {
+  width: 12px; height: 12px;
+  border: 1.5px solid rgba(0,0,0,0.15);
+  border-top-color: var(--vm-blue);
+  border-radius: 50%;
+  animation: spin .65s linear infinite;
+  flex-shrink: 0;
 }
-#voice-view #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-#voice-view .prereq-warn { background: #FFF7ED; border: 1px solid var(--vm-amber); border-radius: var(--vm-radius); padding: 10px 14px; font-size: 13px; color: #92400e; display: flex; flex-direction: column; gap: 4px; }
-#voice-view .prereq-warn strong { font-weight: 600; }
-#voice-view .prereq-warn code { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 12px; }
+
+/* Toast */
+#vm-toast {
+  position: fixed;
+  bottom: 32px; right: 24px;
+  background: rgba(30,30,32,0.92);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  color: rgba(255,255,255,0.95);
+  padding: 11px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-family: inherit;
+  box-shadow: 0 8px 24px rgba(0,0,0,.2);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  pointer-events: none;
+  z-index: 999;
+  max-width: 300px;
+  letter-spacing: -0.1px;
+}
+#vm-toast.show { opacity: 1; transform: translateY(0); }
 </style>
 </head>
 <body>
@@ -353,7 +599,8 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <span class="email-label" id="email-label"></span>
     <span class="refresh-label" id="refresh-label"></span>
     <button class="btn btn-secondary" onclick="showDaemonLog()">Daemon Logs</button>
-    <button class="btn btn-default" onclick="openPortal()">Open Web Portal</button>
+    <button class="btn btn-primary" onclick="syncTools()">Sync Tools</button>
+    <button class="btn btn-secondary" onclick="openPortal()">Open Web Portal</button>
   </div>
 </header>
 
@@ -419,82 +666,118 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
 <!-- Voice to MD View -->
 <div id="voice-view" class="view">
-<div style="display:flex;align-items:center;gap:12px;padding:0 24px;height:56px;background:var(--vm-card);border-bottom:1px solid var(--vm-border);flex-shrink:0">
-  <div class="logo-dot" style="width:8px;height:8px;border-radius:50%;background:var(--vm-accent);flex-shrink:0"></div>
-  <span style="font-weight:600;font-size:15px">Voice to MD</span>
-  <span style="flex:1"></span>
-  <span class="state-badge" id="state-badge">idle</span>
+
+<div id="voice-header">
+  <span class="vm-title">Voice to MD</span>
+  <span class="vm-badge vm-badge-idle" id="state-badge">idle</span>
 </div>
 
-<div id="setup-panel" style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px">
-  <div class="setup-card">
-    <h2>New Voice Session</h2>
-    <div id="prereq-warn" class="prereq-warn" style="display:none"></div>
-    <div class="form-row">
-      <label>Whisper Model</label>
-      <div class="model-row">
-        <select id="model-select">
+<div id="setup-panel" style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px">
+  <div class="vm-setup-card">
+    <div class="vm-setup-card-title">Configure session</div>
+    <div id="prereq-warn" class="vm-prereq-warn" style="display:none"></div>
+
+    <div class="vm-form-group">
+      <label class="vm-label" for="model-select">Whisper model</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <select id="model-select" class="vm-select">
           <option value="tiny">Tiny (75 MB) — fastest</option>
           <option value="base" selected>Base (142 MB) — recommended</option>
           <option value="small">Small (466 MB)</option>
           <option value="medium">Medium (1.5 GB)</option>
           <option value="large">Large (2.9 GB)</option>
         </select>
-        <span id="model-status" class="model-status">checking…</span>
+        <span id="model-status" class="vm-model-status">checking…</span>
       </div>
-      <div class="progress-bar" id="dl-progress-bar" style="display:none">
-        <div class="progress-fill" id="dl-progress-fill" style="width:0%"></div>
+      <div style="margin-top:8px">
+        <div class="vm-progress" id="dl-progress-bar" style="display:none">
+          <div class="vm-progress-fill" id="dl-progress-fill" style="width:0%"></div>
+        </div>
+        <button id="btn-download" class="vm-btn vm-btn-outline vm-btn-sm" style="display:none;margin-top:8px">
+          <span id="dl-spinner" class="vm-init-spinner" style="display:none"></span>
+          Download model
+        </button>
       </div>
-      <button id="btn-download" class="btn btn-ghost btn-sm" style="display:none">
-        <span id="dl-spinner" class="spinner"></span> Download
-      </button>
     </div>
-    <div class="form-row">
-      <label>Agent</label>
-      <select id="agent-select">
+
+    <div class="vm-form-group">
+      <label class="vm-label" for="agent-select">Agent</label>
+      <select id="agent-select" class="vm-select">
         <option value="">Loading agents…</option>
       </select>
     </div>
-    <button id="btn-start-session" class="btn btn-default" disabled>
-      <span id="start-spinner" class="spinner" style="display:none"></span><span id="start-label"> Initialise Agent</span>
+
+    <button id="btn-start-session" class="vm-btn vm-btn-primary" style="width:100%;justify-content:center" disabled>
+      <span id="start-spinner" class="vm-init-spinner" style="display:none;border-color:rgba(255,255,255,.3);border-top-color:#fff"></span>
+      <span id="start-label">Initialise agent</span>
     </button>
-    <p style="font-size:12px;color:var(--vm-muted)">Select a model (download if needed) and an agent, then click Initialise. Recording will enable once the agent is ready.</p>
+
+    <p class="vm-hint">Select a model (download if needed) and an agent, then click Initialise. Recording will enable once the agent is ready.</p>
   </div>
 </div>
 
-<div id="session-panel" style="flex:1;display:none;flex-direction:column;overflow:hidden;padding:16px;gap:12px">
-  <div class="panel" style="flex:1">
-    <div class="panel-header">
-      <span>Markdown</span>
-      <span id="md-filename" style="font-weight:400;color:var(--vm-muted)">new-document.md</span>
+<div id="session-panel" style="flex:1;display:none;flex-direction:column;min-height:0">
+  <div id="session-content" style="flex:1;overflow-y:auto;overflow-x:hidden;padding:16px 24px;display:flex;flex-direction:column;gap:12px;min-height:0">
+    <div class="vm-panel" style="flex:1;min-height:0;display:flex;flex-direction:column">
+      <div class="vm-panel-header">
+        <span class="vm-panel-header-label">Markdown</span>
+        <div class="vm-panel-header-right">
+          <span id="md-filename" style="font-size:12px;color:var(--muted-fg)">new-document.md</span>
+        </div>
+      </div>
+      <textarea id="md-editor" spellcheck="false" placeholder="Processed markdown will appear here…"></textarea>
     </div>
-    <textarea id="md-editor" spellcheck="false" placeholder="Processed markdown will appear here…" style="flex:1;padding:16px;font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;font-size:13px;line-height:1.6;border:none;resize:none;outline:none;background:var(--vm-card)"></textarea>
-  </div>
-  <div class="panel" id="transcript-panel" style="flex-shrink:0">
-    <div class="panel-header">
-      <span>Live Transcript</span>
-      <button class="btn btn-ghost btn-sm" id="btn-clear-transcript">Clear</button>
+
+    <div class="vm-panel" id="transcript-panel" style="flex-shrink:0">
+      <div class="vm-panel-header">
+        <span class="vm-panel-header-label">Live transcript</span>
+        <div class="vm-panel-header-right">
+          <button class="vm-btn vm-btn-ghost vm-btn-sm" id="btn-clear-transcript">Clear</button>
+        </div>
+      </div>
+      <div id="transcript-body"></div>
     </div>
-    <div id="transcript-body" style="max-height:180px;overflow-y:auto;padding:12px 16px;font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;font-size:12px;line-height:1.5;color:var(--vm-muted)"></div>
   </div>
-  <div class="controls controls-voice" style="display:flex;align-items:center;justify-content:center;gap:12px;padding:12px 0;flex-shrink:0">
-    <button class="btn btn-ghost btn-sm" id="btn-stop-session">Stop Session</button>
-    <button class="record-btn" id="btn-record" disabled title="Start recording" style="width:56px;height:56px;border-radius:50%;background:var(--vm-accent);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
-        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-        <line x1="12" y1="19" x2="12" y2="22"/>
-      </svg>
-    </button>
-    <button class="btn btn-ghost btn-sm" id="btn-pause" disabled>Pause</button>
-  </div>
-  <div id="init-banner" style="display:none;align-items:center;justify-content:center;gap:10px;padding:10px 0 4px;font-size:13px;color:var(--vm-muted)">
-    <div class="init-spinner" style="width:14px;height:14px;border:2px solid var(--vm-border);border-top-color:var(--vm-accent);border-radius:50%;animation:spin .7s linear infinite"></div>
-    <span>Waiting for agent to initialise… (~15–30 s)</span>
+
+  <div class="vm-controls-bar">
+    <div class="vm-controls-side">
+      <button class="vm-btn vm-btn-outline vm-btn-sm" id="btn-stop-session">Stop</button>
+    </div>
+    <div class="vm-controls-center">
+      <button class="vm-record-btn" id="btn-record" disabled title="Start recording">
+        <div class="siri-orb">
+          <div class="siri-orb-bg"></div>
+          <div class="siri-orb-gradient"></div>
+          <div class="siri-orb-center">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="22"/>
+            </svg>
+          </div>
+        </div>
+      </button>
+      <div class="siri-wave" id="siri-wave">
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+      </div>
+      <div id="init-banner">
+        <div class="vm-init-spinner"></div>
+        <span>Waiting for agent… (~15–30 s)</span>
+      </div>
+    </div>
+    <div class="vm-controls-side">
+      <button class="vm-btn vm-btn-outline vm-btn-sm" id="btn-pause" disabled>Pause</button>
+    </div>
   </div>
 </div>
 
-<div id="toast" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#f8fafc;padding:10px 20px;border-radius:20px;font-size:13px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:999"></div>
+<div id="vm-toast"></div>
 </div>
 
 <script>
@@ -560,7 +843,7 @@ function renderAgents(agents) {
   let html = '';
   let idx = 0;
   for (const dir of groupOrder) {
-    html += '<div class="group-header">' + x(dir) + '</div>';
+    html += '<div class="group-header">' + x(shortPath(dir)) + '</div>';
     for (const a of groups[dir]) {
       const i = idx++;
       const logBtn = a.task_id ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ')">Logs</button>' : '';
@@ -694,6 +977,34 @@ function closeLog() {
 
 function showDaemonLog() { openLog('daemon · today', '/api/logs/daemon'); }
 
+async function syncTools() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Syncing...';
+  try {
+    const res = await fetch('/api/sync', { method: 'POST' });
+    if (res.ok) {
+      btn.textContent = 'Synced!';
+      setTimeout(() => {
+        btn.textContent = 'Sync Tools';
+        btn.disabled = false;
+      }, 2000);
+    } else {
+      btn.textContent = 'Error';
+      setTimeout(() => {
+        btn.textContent = 'Sync Tools';
+        btn.disabled = false;
+      }, 2000);
+    }
+  } catch (e) {
+    btn.textContent = 'Error';
+    setTimeout(() => {
+      btn.textContent = 'Sync Tools';
+      btn.disabled = false;
+    }, 2000);
+  }
+}
+
 async function loadTasks() {
   try {
     const r = await fetch('/api/tasks');
@@ -749,6 +1060,11 @@ function closeTaskPanel() { document.getElementById('task-panel').classList.remo
 
 function x(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function q(s) { return x(JSON.stringify(String(s || ''))); }
+function shortPath(dir) {
+  const home = dir.replace(/^\/Users\/[^/]+/, '~');
+  const parts = home.split('/').filter(Boolean);
+  return parts.length > 2 ? '…/' + parts.slice(-2).join('/') : home;
+}
 
 /* ========== VOICE TO MD ========== */
 let voiceInited = false;
@@ -826,19 +1142,26 @@ async function loadAgents() {
 async function loadModels() {
   selectedModel = modelSelect.value;
   modelStatus.textContent = 'checking…';
-  modelStatus.className = 'model-status';
+  modelStatus.className = 'vm-model-status';
   btnDownload.style.display = 'none';
   try {
     const res = await fetch('/api/voice-to-md/models');
     const models = await res.json();
-    const m = (models || []).find(x => x.size === selectedModel);
-    console.log('loadModels:', selectedModel, 'model:', m);
-    // Check for downloaded - handle boolean or string "true"/"false"
-    const isDownloaded = m && (m.downloaded === true || m.downloaded === 'true' || m.downloaded === 1);
-    if (isDownloaded) {
+    // Auto-select the first downloaded model if current selection isn't downloaded
+    const isModelDownloaded = (m) => m && (m.downloaded === true || m.downloaded === 'true' || m.downloaded === 1);
+    let m = (models || []).find(x => x.size === selectedModel);
+    if (!isModelDownloaded(m)) {
+      const first = (models || []).find(isModelDownloaded);
+      if (first) {
+        modelSelect.value = first.size;
+        selectedModel = first.size;
+        m = first;
+      }
+    }
+    if (isModelDownloaded(m)) {
       const mb = (m.bytes / 1048576).toFixed(0);
       modelStatus.textContent = '✓ ' + mb + ' MB';
-      modelStatus.className = 'model-status ok';
+      modelStatus.className = 'vm-model-status ok';
       btnDownload.style.display = 'none';
       modelDownloaded = true;
     } else if (m && m.bytes > 0) {
@@ -851,9 +1174,9 @@ async function loadModels() {
       modelDownloaded = false;
       btnDownload.style.display = 'inline-flex';
     }
-  } catch(e) { 
-    modelStatus.textContent = 'Error'; 
-    modelDownloaded = false; 
+  } catch(e) {
+    modelStatus.textContent = 'Error';
+    modelDownloaded = false;
   }
   voiceUpdateStartBtn();
 }
@@ -867,7 +1190,7 @@ function voiceUpdateStartBtn() {
 
 btnDownload.addEventListener('click', async () => {
   btnDownload.disabled = true;
-  dlSpinner.classList.add('show');
+  dlSpinner.style.display = 'inline-block';
   dlProgressBar.style.display = 'block';
   dlProgressFill.style.width = '0%';
   const res = await fetch('/api/voice-to-md/models/download', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({model: selectedModel}) });
@@ -890,7 +1213,7 @@ btnDownload.addEventListener('click', async () => {
       } catch(_) {}
     }
   }
-  dlSpinner.classList.remove('show');
+  dlSpinner.style.display = 'none';
   btnDownload.disabled = false;
   await loadModels();
   voiceToast('Model downloaded');
@@ -910,7 +1233,7 @@ btnStartSession.addEventListener('click', async () => {
     setVoiceSessionState('initializing');
     connectVoiceSSE();
   } catch(e) { voiceToast('Error: ' + e.message); btnStartSession.disabled = false; }
-  finally { startSpinner.style.display = 'none'; document.getElementById('start-label').textContent = ' Initialise Agent'; }
+  finally { startSpinner.style.display = 'none'; document.getElementById('start-label').textContent = 'Initialise agent'; }
 });
 
 function connectVoiceSSE() {
@@ -933,15 +1256,23 @@ function setVoiceSessionState(st) {
   sessionState = st;
   if (voiceStateBadge) {
     voiceStateBadge.textContent = st;
-    voiceStateBadge.className = 'state-badge';
-    if (st === 'recording') voiceStateBadge.classList.add('recording');
-    else if (st === 'processing') voiceStateBadge.classList.add('processing');
-    else if (st === 'ready' || st === 'paused') voiceStateBadge.classList.add('ready');
+    voiceStateBadge.className = 'vm-badge';
+    if (st === 'recording') voiceStateBadge.classList.add('vm-badge-recording');
+    else if (st === 'processing') voiceStateBadge.classList.add('vm-badge-processing');
+    else if (st === 'ready') voiceStateBadge.classList.add('vm-badge-ready');
+    else if (st === 'paused') voiceStateBadge.classList.add('vm-badge-paused');
+    else voiceStateBadge.classList.add('vm-badge-idle');
   }
   initBanner.style.display = (st === 'initializing') ? 'flex' : 'none';
   btnRecord.disabled = (st !== 'ready' && st !== 'recording' && st !== 'paused');
-  if (st === 'recording') { btnRecord.classList.add('recording'); btnRecord.title = 'Stop recording'; btnPause.disabled = false; }
-  else { btnRecord.classList.remove('recording'); btnRecord.title = 'Start recording'; btnPause.disabled = true; }
+  const siriWave = document.getElementById('siri-wave');
+  if (st === 'recording') {
+    btnRecord.classList.add('recording'); btnRecord.title = 'Stop recording'; btnPause.disabled = false;
+    if (siriWave) siriWave.classList.add('active');
+  } else {
+    btnRecord.classList.remove('recording'); btnRecord.title = 'Start recording'; btnPause.disabled = true;
+    if (siriWave) siriWave.classList.remove('active');
+  }
   if (st === 'stopped') {
     stopMedia(); if (eventSource) { eventSource.close(); eventSource = null; }
     sessionPanel.style.display = 'none'; setupPanel.style.display = 'flex'; loadModels();
@@ -999,7 +1330,7 @@ function appendVoiceTranscript(text) {
 }
 
 function voiceToast(msg) {
-  const el = document.getElementById('toast');
+  const el = document.getElementById('vm-toast');
   el.textContent = msg; el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 3500);
 }
