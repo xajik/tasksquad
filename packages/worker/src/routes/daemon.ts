@@ -252,10 +252,10 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
       )
 
       await env.DB.batch([
-        env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(taskId, teamId, conveyor.agent_id, conveyor.sender_id, conveyor.subject, TaskStatus.Scheduled, now, conveyor.auto_close ?? 0),
-        env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .bind(msgId, taskId, conveyor.sender_id, 'user', conveyor.body, now, conveyor.next_run_at),
+        env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close, close_steps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(taskId, teamId, conveyor.agent_id, conveyor.sender_id, conveyor.subject, TaskStatus.Scheduled, now, conveyor.auto_close ?? 0, JSON.stringify(['/tsq-cleanup'])),
+        env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(msgId, taskId, conveyor.sender_id, 'user', MessageType.Conveyor, conveyor.body, now, conveyor.next_run_at),
         env.DB.prepare('UPDATE conveyors SET repeat_counter = repeat_counter + 1, next_run_at = ? WHERE id = ?')
           .bind(nextRun, conveyor.id),
       ])

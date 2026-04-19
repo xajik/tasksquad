@@ -47,6 +47,8 @@ export const MessageType = {
   PermissionRequest: 'permission_request',
   NoteToInbox:     'note-to-inbox',
   NoteCritique:    'note-critique',
+  Inbox:           'inbox',
+  Conveyor:        'conveyor',
 } as const
 
 export type MessageTypeValue = typeof MessageType[keyof typeof MessageType]

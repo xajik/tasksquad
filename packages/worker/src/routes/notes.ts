@@ -343,8 +343,8 @@ export async function critique(req: Request, env: Env, _ctx: unknown, auth: Auth
   const payload = JSON.stringify({ note_id: noteId, note_title: note.title, agent_id, agent_name: agentRow.name })
 
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, 1)')
-      .bind(taskId, teamId, agent_id, auth.userId, `Critique: ${note.title}`, TaskStatus.Pending, now),
+    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close, close_steps) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)')
+      .bind(taskId, teamId, agent_id, auth.userId, `Critique: ${note.title}`, TaskStatus.Pending, now, JSON.stringify(['/tsq-cleanup'])),
     // System message — tracks this as a critique task and stores note reference
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(ulid(), taskId, auth.userId, 'system', MessageType.NoteCritique, `Critique requested for "${note.title}"`, payload, now),
@@ -403,8 +403,8 @@ export async function convertToInbox(req: Request, env: Env, _ctx: unknown, auth
 
   await env.DB.batch([
     // Task
-    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(taskId, teamId, agent_id, auth.userId, `Note: ${note.title}`, TaskStatus.Pending, now, autoCloseVal),
+    env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close, close_steps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(taskId, teamId, agent_id, auth.userId, `Note: ${note.title}`, TaskStatus.Pending, now, autoCloseVal, JSON.stringify(['/tsq-cleanup'])),
     // System message — portal displays this as a pill showing the conversion event
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, json_payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(ulid(), taskId, auth.userId, 'system', MessageType.NoteToInbox, `Note "${note.title}" sent to inbox`, payload, now),

@@ -2,7 +2,7 @@ import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { bumpInboxVersion } from '../inbox_version.js'
-import { TaskStatus, AgentStatus, SessionStatus, AgentMode } from '../statuses.js'
+import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -132,7 +132,9 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   const autoCloseVal = auto_close ? 1 : 0
   const settingsVal = save_tokens ? JSON.stringify({ save_tokens }) : null
-  const closeStepsVal = close_steps?.length ? JSON.stringify(close_steps) : null
+  const closeStepsVal = close_steps?.length
+    ? JSON.stringify(close_steps)
+    : JSON.stringify(['/tsq-end-session-learning', '/tsq-cleanup'])
 
   if (isScheduled) {
     await env.DB.batch([
@@ -140,8 +142,8 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
       env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close, settings, close_steps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), TaskStatus.Scheduled, now, autoCloseVal, settingsVal, closeStepsVal),
       // Insert initial user message with scheduled_at
-      env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now, scheduled_at),
+      env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(ulid(), taskId, auth.userId, 'user', MessageType.Inbox, taskBody?.trim() || subject.trim(), now, scheduled_at),
     ])
     return json({ id: taskId, status: TaskStatus.Scheduled }, 201)
   }
@@ -150,8 +152,8 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     env.DB.prepare('INSERT INTO tasks (id, team_id, agent_id, sender_id, subject, status, created_at, auto_close, settings, close_steps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), TaskStatus.Pending, now, autoCloseVal, settingsVal, closeStepsVal),
     // Insert initial user message — use body if provided, else fall back to subject
-    env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(ulid(), taskId, auth.userId, 'user', taskBody?.trim() || subject.trim(), now),
+    env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(ulid(), taskId, auth.userId, 'user', MessageType.Inbox, taskBody?.trim() || subject.trim(), now),
   ])
 
   await bumpInboxVersion(env, agent_id)
