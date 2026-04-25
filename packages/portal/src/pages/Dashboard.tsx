@@ -768,20 +768,20 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
     } catch { /* ignore */ }
     return (
       <div className="flex justify-center my-3 px-4">
-        <div className="w-full max-w-2xl rounded-lg border border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20 overflow-hidden">
+        <div className="w-full max-w-2xl rounded-lg border border-border bg-muted overflow-hidden">
           <button
-            className="flex items-center gap-2 w-full px-3 py-1.5 border-b border-amber-200/60 dark:border-amber-900/40 hover:bg-amber-100/30 dark:hover:bg-amber-900/20 transition-colors"
+            className="flex items-center gap-2 w-full px-3 py-1.5 border-b border-border hover:bg-muted/70 transition-colors"
             onClick={() => setExpanded(e => !e)}
           >
-            <ShieldAlert className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 flex-1 text-left">Supervisor</span>
+            <ShieldAlert className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-600 flex-1 text-left">Supervisor</span>
             {summary && !expanded && (
-              <span className="text-[10px] text-amber-900 dark:text-amber-300 truncate max-w-[200px]">{summary}</span>
+              <span className="text-[10px] text-foreground/80 truncate max-w-[320px]">{summary}</span>
             )}
-            <span className="text-[10px] text-amber-900 dark:text-amber-300 shrink-0">{expanded ? 'Hide' : 'Show'}</span>
+            <span className="text-[10px] text-amber-600 shrink-0">{expanded ? 'Hide' : 'Show'}</span>
           </button>
           {expanded && (
-            <pre className="px-3 py-2 text-xs text-amber-900 dark:text-amber-200 whitespace-pre-wrap break-words font-mono leading-relaxed">
+            <pre className="px-3 py-2 text-xs text-foreground/80 whitespace-pre-wrap break-words font-mono leading-relaxed">
               {message.body}
             </pre>
           )}
