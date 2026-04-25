@@ -278,16 +278,23 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   -webkit-font-smoothing: antialiased;
 }
 #voice-header {
-  height: 40px;
+  height: 36px;
   background: var(--card);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
+  gap: 10px;
+  padding: 0 16px;
   flex-shrink: 0;
 }
-#voice-header .vm-title { font-size: 13px; font-weight: 500; color: var(--muted-fg); }
+#voice-header .vm-filename {
+  font-size: 12px;
+  color: var(--muted-fg);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Badges */
 .vm-badge {
@@ -382,15 +389,15 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 28px 32px 32px;
+  padding: 20px 24px 24px;
   width: 100%;
-  max-width: 460px;
+  max-width: 420px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   box-shadow: 0 1px 4px rgba(0,0,0,.06);
 }
-.vm-setup-card-title { font-size: 15px; font-weight: 600; color: var(--fg); letter-spacing: -0.2px; margin-bottom: 2px; }
+.vm-setup-card-title { font-size: 14px; font-weight: 600; color: var(--fg); letter-spacing: -0.2px; margin-bottom: 0; }
 .vm-hint { font-size: 12px; color: var(--muted-fg); line-height: 1.5; }
 
 /* Prereq warning */
@@ -422,8 +429,8 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 38px;
-  padding: 0 16px;
+  height: 32px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -432,8 +439,8 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
 #md-editor {
   flex: 1;
-  min-height: 160px;
-  padding: 14px 16px;
+  min-height: 0;
+  padding: 12px 14px;
   font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
   font-size: 13px;
   line-height: 1.65;
@@ -445,36 +452,45 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   overflow-y: auto;
 }
 #transcript-body {
-  max-height: 140px;
+  flex: 1;
   overflow-y: auto;
-  padding: 10px 16px;
+  padding: 8px 12px;
   font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--muted-fg);
 }
 #transcript-body .chunk { margin-bottom: 2px; }
 #transcript-body .chunk.new { color: var(--fg); }
 
-/* Controls bar */
-.vm-controls-bar {
-  display: flex;
+/* Floating controls panel */
+#vm-controls-float {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
   align-items: center;
-  justify-content: space-between;
-  height: 96px;
-  padding: 0 24px 8px;
+  gap: 12px;
+  padding: 10px 20px;
   background: var(--card);
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.10), 0 1px 4px rgba(0,0,0,.06);
+  z-index: 50;
 }
-.vm-controls-side { display: flex; align-items: center; min-width: 90px; }
-.vm-controls-side:last-child { justify-content: flex-end; }
-.vm-controls-center { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#vm-controls-float.active { display: flex; }
+
+/* Transcript expand/collapse */
+#transcript-panel { height: 88px; }
+#transcript-panel.expanded { height: 20vh; }
+#btn-toggle-transcript { font-size: 14px; line-height: 1; transition: transform 0.2s ease; }
+#transcript-panel.expanded #btn-toggle-transcript { transform: rotate(180deg); }
 
 /* Siri orb button */
 .vm-record-btn {
   position: relative;
-  width: 68px; height: 68px;
+  width: 52px; height: 52px;
   border-radius: 50%;
   border: none;
   cursor: pointer;
@@ -490,7 +506,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .vm-record-btn:active:not(:disabled) { transform: scale(0.94); }
 
 .siri-orb {
-  width: 68px; height: 68px;
+  width: 52px; height: 52px;
   border-radius: 50%;
   position: relative;
   overflow: hidden;
@@ -536,8 +552,8 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .siri-wave {
   display: flex;
   align-items: center;
-  gap: 3px;
-  height: 20px;
+  gap: 2px;
+  height: 18px;
   opacity: 0;
   transition: opacity 0.35s ease;
   pointer-events: none;
@@ -598,7 +614,6 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   <div class="header-right">
     <span class="email-label" id="email-label"></span>
     <span class="refresh-label" id="refresh-label"></span>
-    <button class="btn btn-secondary" onclick="showDaemonLog()">Daemon Logs</button>
     <button class="btn btn-primary" onclick="syncTools()">Sync Tools</button>
     <button class="btn btn-secondary" onclick="openPortal()">Open Web Portal</button>
   </div>
@@ -646,6 +661,27 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <div id="tasks-list"><div class="empty"><span class="spinner"></span></div></div>
   </div>
 
+  <div class="card animate-in" style="margin-top:16px;animation-delay:.15s">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Daemon Logs</div>
+        <div class="card-subtitle">today's output</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="showDaemonLog()">View</button>
+    </div>
+  </div>
+
+  <div class="card animate-in" style="margin-top:16px;animation-delay:.2s">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Voice Sessions</div>
+        <div class="card-subtitle" id="voice-sessions-subtitle">loading…</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="loadVoiceSessions()">Refresh</button>
+    </div>
+    <div id="voice-sessions-list"><div class="empty"><span class="spinner"></span></div></div>
+  </div>
+
   <div class="log-panel" id="task-panel">
     <div class="log-header">
       <span class="log-title" id="task-title">task</span>
@@ -668,8 +704,9 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 <div id="voice-view" class="view">
 
 <div id="voice-header">
-  <span class="vm-title">Voice to MD</span>
   <span class="vm-badge vm-badge-idle" id="state-badge">idle</span>
+  <span class="vm-filename" id="md-filename-header"></span>
+  <button class="vm-btn vm-btn-ghost vm-btn-sm" id="btn-copy-md" style="display:none">Copy</button>
 </div>
 
 <div id="setup-panel" style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px">
@@ -709,72 +746,68 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
     <button id="btn-start-session" class="vm-btn vm-btn-primary" style="width:100%;justify-content:center" disabled>
       <span id="start-spinner" class="vm-init-spinner" style="display:none;border-color:rgba(255,255,255,.3);border-top-color:#fff"></span>
-      <span id="start-label">Initialise agent</span>
+      <span id="start-label">Start session</span>
     </button>
 
-    <p class="vm-hint">Select a model (download if needed) and an agent, then click Initialise. Recording will enable once the agent is ready.</p>
+    <p class="vm-hint">Choose a model (download if needed) and an agent, then start the session. Recording enables once the agent is ready.</p>
   </div>
 </div>
 
-<div id="session-panel" style="flex:1;display:none;flex-direction:column;min-height:0">
-  <div id="session-content" style="flex:1;overflow-y:auto;overflow-x:hidden;padding:16px 24px;display:flex;flex-direction:column;gap:12px;min-height:0">
-    <div class="vm-panel" style="flex:1;min-height:0;display:flex;flex-direction:column">
+<div id="session-panel" style="flex:1;display:none;flex-direction:column;min-height:0;padding-bottom:80px">
+  <div id="session-content" style="padding:12px 16px 0;display:flex;flex-direction:column;gap:8px;width:60vw;margin:0 auto">
+
+    <div class="vm-panel" style="height:40vh;display:flex;flex-direction:column">
       <div class="vm-panel-header">
         <span class="vm-panel-header-label">Markdown</span>
-        <div class="vm-panel-header-right">
-          <span id="md-filename" style="font-size:12px;color:var(--muted-fg)">new-document.md</span>
-        </div>
+        <span id="md-filename" style="font-size:11px;color:var(--muted-fg)"></span>
       </div>
       <textarea id="md-editor" spellcheck="false" placeholder="Processed markdown will appear here…"></textarea>
     </div>
 
-    <div class="vm-panel" id="transcript-panel" style="flex-shrink:0">
+    <div class="vm-panel" id="transcript-panel" style="display:flex;flex-direction:column;overflow:hidden;transition:height 0.22s ease">
       <div class="vm-panel-header">
         <span class="vm-panel-header-label">Live transcript</span>
         <div class="vm-panel-header-right">
-          <button class="vm-btn vm-btn-ghost vm-btn-sm" id="btn-clear-transcript">Clear</button>
+          <button class="vm-btn vm-btn-ghost vm-btn-sm" id="btn-toggle-transcript" title="Expand transcript">⌃</button>
         </div>
       </div>
       <div id="transcript-body"></div>
     </div>
-  </div>
 
-  <div class="vm-controls-bar">
-    <div class="vm-controls-side">
-      <button class="vm-btn vm-btn-outline vm-btn-sm" id="btn-stop-session">Stop</button>
-    </div>
-    <div class="vm-controls-center">
-      <button class="vm-record-btn" id="btn-record" disabled title="Start recording">
-        <div class="siri-orb">
-          <div class="siri-orb-bg"></div>
-          <div class="siri-orb-gradient"></div>
-          <div class="siri-orb-center">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-              <line x1="12" y1="19" x2="12" y2="22"/>
-            </svg>
-          </div>
-        </div>
-      </button>
-      <div class="siri-wave" id="siri-wave">
-        <div class="wave-bar"></div>
-        <div class="wave-bar"></div>
-        <div class="wave-bar"></div>
-        <div class="wave-bar"></div>
-        <div class="wave-bar"></div>
-        <div class="wave-bar"></div>
-        <div class="wave-bar"></div>
-      </div>
-      <div id="init-banner">
-        <div class="vm-init-spinner"></div>
-        <span>Waiting for agent… (~15–30 s)</span>
-      </div>
-    </div>
-    <div class="vm-controls-side">
-      <button class="vm-btn vm-btn-outline vm-btn-sm" id="btn-pause" disabled>Pause</button>
-    </div>
   </div>
+</div>
+
+<!-- Floating controls panel -->
+<div id="vm-controls-float">
+  <button class="vm-btn vm-btn-outline vm-btn-sm" id="btn-stop-session">Stop</button>
+  <div class="siri-wave" id="siri-wave">
+    <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    <div class="wave-bar"></div>
+  </div>
+  <button class="vm-record-btn" id="btn-record" disabled title="Start recording">
+    <div class="siri-orb">
+      <div class="siri-orb-bg"></div>
+      <div class="siri-orb-gradient"></div>
+      <div class="siri-orb-center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="22"/>
+        </svg>
+      </div>
+    </div>
+  </button>
+  <div class="siri-wave" id="siri-wave-right" style="pointer-events:none">
+    <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    <div class="wave-bar"></div>
+  </div>
+  <div id="init-banner">
+    <div class="vm-init-spinner"></div>
+    <span>Waiting for agent…</span>
+  </div>
+  <button class="vm-btn vm-btn-outline vm-btn-sm" id="btn-pause" disabled>Pause</button>
 </div>
 
 <div id="vm-toast"></div>
@@ -810,6 +843,7 @@ async function loadDashboard() {
     document.getElementById('refresh-label').textContent = 'updated ' + ago(d.updated_at);
     renderAgents(d.agents || []);
     renderSessions(d.sessions || []);
+    loadVoiceSessions();
   } catch(e) { console.error(e); }
 }
 
@@ -977,6 +1011,44 @@ function closeLog() {
 
 function showDaemonLog() { openLog('daemon · today', '/api/logs/daemon'); }
 
+async function loadVoiceSessions() {
+  const list = document.getElementById('voice-sessions-list');
+  const sub = document.getElementById('voice-sessions-subtitle');
+  try {
+    const [sessR, statusR] = await Promise.all([
+      fetch('/api/voice-to-md/sessions'),
+      fetch('/api/voice-to-md/status'),
+    ]);
+    const sessions = sessR.ok ? await sessR.json() : [];
+    const status = statusR.ok ? await statusR.json() : {};
+    const activeMd = status.md_path || '';
+    sub.textContent = (sessions && sessions.length ? sessions.length + ' session' + (sessions.length === 1 ? '' : 's') : 'none') +
+      (status.state && status.state !== 'idle' ? ' · ' + status.state : '');
+    if (!sessions || !sessions.length) {
+      list.innerHTML = '<div class="empty">No sessions yet</div>';
+      return;
+    }
+    list.innerHTML = sessions.map(s => {
+      const ts = parseInt(s.id, 10);
+      const d = isNaN(ts) ? s.id : new Date(ts).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      const isActive = activeMd && s.md_path === activeMd;
+      const badge = isActive ? '<span class="badge badge-running" style="font-size:10px;padding:2px 6px">live</span>' : '';
+      return '<div class="row" style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border)">'
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:13px;font-weight:500">' + x(d) + ' ' + badge + '</div>'
+        + '</div>'
+        + '<div style="display:flex;gap:6px">'
+        + '<button class="btn btn-ghost btn-sm" onclick="openLog(' + q('voice · ' + d) + ', \'/api/voice-to-md/session/content?id=' + s.id + '&kind=md\')">MD</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="openLog(' + q('transcript · ' + d) + ', \'/api/voice-to-md/session/content?id=' + s.id + '&kind=txt\')">Txt</button>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+  } catch(e) {
+    sub.textContent = 'error';
+    list.innerHTML = '<div class="empty">Failed to load</div>';
+  }
+}
+
 async function syncTools() {
   const btn = event.target;
   btn.disabled = true;
@@ -1095,9 +1167,14 @@ const dlSpinner = document.getElementById('dl-spinner');
 const startSpinner = document.getElementById('start-spinner');
 const mdEditor = document.getElementById('md-editor');
 const mdFilename = document.getElementById('md-filename');
+const mdFilenameHeader = document.getElementById('md-filename-header');
+const btnCopyMd = document.getElementById('btn-copy-md');
 const transcriptBody = document.getElementById('transcript-body');
 const btnClearTx = document.getElementById('btn-clear-transcript');
 const initBanner = document.getElementById('init-banner');
+const vmControlsFloat = document.getElementById('vm-controls-float');
+const transcriptPanel = document.getElementById('transcript-panel');
+const btnToggleTx = document.getElementById('btn-toggle-transcript');
 
 function initVoicePage() {
   if (voiceInited) return;
@@ -1230,10 +1307,11 @@ btnStartSession.addEventListener('click', async () => {
     if (!res.ok) throw new Error(await res.text());
     sessionPanel.style.display = 'flex';
     setupPanel.style.display = 'none';
+    if (vmControlsFloat) vmControlsFloat.classList.add('active');
     setVoiceSessionState('initializing');
     connectVoiceSSE();
   } catch(e) { voiceToast('Error: ' + e.message); btnStartSession.disabled = false; }
-  finally { startSpinner.style.display = 'none'; document.getElementById('start-label').textContent = 'Initialise agent'; }
+  finally { startSpinner.style.display = 'none'; document.getElementById('start-label').textContent = 'Start session'; }
 });
 
 function connectVoiceSSE() {
@@ -1247,7 +1325,7 @@ function handleVoiceSSE(ev) {
   switch(ev.type) {
     case 'state': setVoiceSessionState(ev.payload); break;
     case 'transcript': appendVoiceTranscript(ev.payload); break;
-    case 'markdown': mdEditor.value = ev.payload; break;
+    case 'markdown': mdEditor.value = ev.payload; if (btnCopyMd && ev.payload) btnCopyMd.style.display = ''; break;
     case 'error': voiceToast('Agent error: ' + ev.payload); break;
   }
 }
@@ -1266,15 +1344,21 @@ function setVoiceSessionState(st) {
   initBanner.style.display = (st === 'initializing') ? 'flex' : 'none';
   btnRecord.disabled = (st !== 'ready' && st !== 'recording' && st !== 'paused');
   const siriWave = document.getElementById('siri-wave');
+  const siriWaveRight = document.getElementById('siri-wave-right');
   if (st === 'recording') {
     btnRecord.classList.add('recording'); btnRecord.title = 'Stop recording'; btnPause.disabled = false;
     if (siriWave) siriWave.classList.add('active');
+    if (siriWaveRight) siriWaveRight.classList.add('active');
   } else {
     btnRecord.classList.remove('recording'); btnRecord.title = 'Start recording'; btnPause.disabled = true;
     if (siriWave) siriWave.classList.remove('active');
+    if (siriWaveRight) siriWaveRight.classList.remove('active');
   }
   if (st === 'stopped') {
     stopMedia(); if (eventSource) { eventSource.close(); eventSource = null; }
+    if (btnCopyMd) btnCopyMd.style.display = 'none';
+    if (mdFilenameHeader) mdFilenameHeader.textContent = '';
+    if (vmControlsFloat) vmControlsFloat.classList.remove('active');
     sessionPanel.style.display = 'none'; setupPanel.style.display = 'flex'; loadModels();
   }
 }
@@ -1322,7 +1406,23 @@ async function sendAudioChunk(blob) {
 btnPause.addEventListener('click', async () => { await stopRecording(); });
 btnStop.addEventListener('click', async () => { stopMedia(); await new Promise(r => setTimeout(r, 400)); await fetch('/api/voice-to-md/session/stop', {method:'POST'}); });
 window.addEventListener('beforeunload', () => { if (sessionState !== 'idle' && sessionState !== 'stopped') { stopMedia(); navigator.sendBeacon('/api/voice-to-md/session/stop'); } });
-btnClearTx.addEventListener('click', () => { transcriptBody.innerHTML = ''; });
+if (btnClearTx) btnClearTx.addEventListener('click', () => { transcriptBody.innerHTML = ''; });
+
+if (btnToggleTx) btnToggleTx.addEventListener('click', () => {
+  transcriptPanel.classList.toggle('expanded');
+  btnToggleTx.title = transcriptPanel.classList.contains('expanded') ? 'Collapse transcript' : 'Expand transcript';
+});
+
+btnCopyMd.addEventListener('click', async () => {
+  const text = mdEditor.value;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = btnCopyMd.textContent;
+    btnCopyMd.textContent = 'Copied!';
+    setTimeout(() => { btnCopyMd.textContent = orig; }, 1800);
+  } catch(_) { voiceToast('Copy failed'); }
+});
 
 function appendVoiceTranscript(text) {
   const div = document.createElement('div'); div.className = 'chunk new'; div.textContent = text; transcriptBody.appendChild(div); transcriptBody.scrollTop = transcriptBody.scrollHeight;
@@ -1340,10 +1440,14 @@ async function restoreVoiceState() {
     const res = await fetch('/api/voice-to-md/status');
     const s = await res.json();
     if (s.state && s.state !== 'idle' && s.state !== 'stopped') {
-      if (s.md_path) mdFilename.textContent = s.md_path.split('/').pop();
+      if (s.md_path) {
+        const fname = s.md_path.split('/').pop();
+        mdFilename.textContent = fname;
+        if (mdFilenameHeader) mdFilenameHeader.textContent = fname;
+      }
       const mdRes = await fetch('/api/voice-to-md/content');
       const md = await mdRes.json();
-      if (md.content) mdEditor.value = md.content;
+      if (md.content) { mdEditor.value = md.content; if (btnCopyMd) btnCopyMd.style.display = ''; }
       sessionPanel.style.display = 'flex';
       setupPanel.style.display = 'none';
       connectVoiceSSE();

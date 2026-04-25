@@ -262,6 +262,24 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		json.NewEncoder(w).Encode(sessions) //nolint:errcheck
 	})
 
+	mux.HandleFunc("/api/voice-to-md/session/content", func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("id")
+		kind := r.URL.Query().Get("kind") // "md" or "txt"
+		if id == "" || (kind != "md" && kind != "txt") {
+			http.Error(w, "missing id or kind", http.StatusBadRequest)
+			return
+		}
+		home, _ := os.UserHomeDir()
+		path := filepath.Join(home, ".tasksquad", "voice-to-markdown", id, id+"."+kind)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(data) //nolint:errcheck
+	})
+
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		// Build lookup maps for matching tmux sessions to agents.
 		// Task sessions:       tsq-<sessionID>      — matched by agent's TmuxSession() value.
