@@ -50,16 +50,16 @@ var iconPausedData []byte
 
 // Run starts the system tray UI on the main OS thread (required by macOS AppKit).
 // It blocks until the user clicks Quit or the process is killed.
-func Run(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, dashboardURL string, configPath string, version string) {
+func Run(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, dashboardURL string, configPath string, version string, uiPort int) {
 	systray.Run(
 		func() {
-			onReady(agents, ctrl, authCtrl, autostartCtrl, skillsSyncer, conveyorSyncer, dashboardURL, configPath, version)
+			onReady(agents, ctrl, authCtrl, autostartCtrl, skillsSyncer, conveyorSyncer, dashboardURL, configPath, version, uiPort)
 		},
 		func() { os.Exit(0) },
 	)
 }
 
-func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, dashboardURL string, configPath string, version string) {
+func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, dashboardURL string, configPath string, version string, uiPort int) {
 	// Green icon = pulling active; red icon = paused.
 	if ctrl.IsPaused() {
 		systray.SetIcon(iconPaused())
@@ -90,12 +90,11 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 	// ── Pull toggle ────────────────────────────────────────────────────────
 	mToggle := systray.AddMenuItem(pullToggleLabel(ctrl.IsPaused()), "Toggle task pulling")
 
-	// ── Quick actions ──────────────────────────────────────────────────────
-	mDash := systray.AddMenuItem("Open Web Portal", dashboardURL)
+	systray.AddSeparator()
+
+	// ── Control Panel ───────────────────────────────────────────────────────
 	mSessions := systray.AddMenuItem("Control Panel", "Open unified control panel")
 	mBoot := systray.AddMenuItem(bootLabel(autostartCtrl.IsEnabled()), "Toggle run on OS boot")
-	mSyncSkills := systray.AddMenuItem("Sync Skills Now", "Force-sync skills from server")
-	mSyncConveyor := systray.AddMenuItem("Sync Conveyor Now", "Force a heartbeat poll immediately")
 
 	systray.AddSeparator()
 
@@ -137,8 +136,8 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 	mConfig := systray.AddMenuItem("Open Config", "Edit config.toml")
 	mQuit := systray.AddMenuItem("Quit", "Stop the tsq daemon")
 
-	// ── Start local control panel server ──────────────────────────────────
-	cpURL := StartDashboard(agents, authCtrl.Email(), dashboardURL, configPath)
+	// Start local control panel server with sync capabilities
+	cpURL := StartDashboard(agents, authCtrl.Email(), dashboardURL, configPath, skillsSyncer, conveyorSyncer, uiPort)
 	if cpURL != "" {
 		mSessions.SetTooltip(cpURL)
 	} else {
@@ -184,15 +183,6 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 	}()
 
 	go func() {
-		for range mDash.ClickedCh {
-			if authCtrl.Email() != "" {
-				openBrowser(dashboardURL + "/dashboard")
-			} else {
-				openBrowser(dashboardURL + "/auth")
-			}
-		}
-	}()
-	go func() {
 		for range mSessions.ClickedCh {
 			if cpURL != "" {
 				openBrowser(cpURL)
@@ -216,18 +206,6 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 					logger.Info("[ui] Run on OS boot enabled")
 				}
 			}
-		}
-	}()
-	go func() {
-		for range mSyncSkills.ClickedCh {
-			logger.Info("[ui] Force-sync skills triggered")
-			skillsSyncer.ForceSync()
-		}
-	}()
-	go func() {
-		for range mSyncConveyor.ClickedCh {
-			logger.Info("[ui] Force-sync conveyor triggered")
-			conveyorSyncer.ForcePoll()
 		}
 	}()
 	go func() {

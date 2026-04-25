@@ -43,6 +43,10 @@ type HooksConfig struct {
 	Port int `toml:"port"`
 }
 
+type UIConfig struct {
+	Port int `toml:"port"`
+}
+
 // FirebaseConfig holds Firebase project credentials for token refresh.
 // These are client-side (public) values — not secrets.
 type FirebaseConfig struct {
@@ -59,6 +63,7 @@ type Config struct {
 	Server     ServerConfig      `toml:"server"`
 	Agents     []AgentConfig     `toml:"agents"`
 	Hooks      HooksConfig       `toml:"hooks"`
+	UI         UIConfig          `toml:"ui"`
 	Firebase   FirebaseConfig    `toml:"firebase"`
 	Analytics  AnalyticsConfig   `toml:"analytics"`
 	Supervisor *SupervisorConfig `toml:"supervisor"`

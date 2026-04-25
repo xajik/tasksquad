@@ -62,7 +62,7 @@ type dashSession struct {
 
 // StartDashboard starts a local HTTP control panel server and returns the URL.
 // The server provides status, log reading, and session kill endpoints.
-func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) string {
+func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, port int) string {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -576,16 +576,35 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string) str
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0") // binds to loopback; URL uses localhost
+	mux.HandleFunc("/api/sync", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if skillsSyncer != nil {
+			skillsSyncer.ForceSync()
+		}
+		if conveyorSyncer != nil {
+			conveyorSyncer.ForcePoll()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+	})
+
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
-		return ""
+		// port already in use — fall back to a random port
+		ln, err = net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return ""
+		}
 	}
 	go func() { //nolint:errcheck
 		srv := &http.Server{Handler: mux}
 		srv.Serve(ln) //nolint:errcheck
 	}()
-	port := ln.Addr().(*net.TCPAddr).Port
-	return fmt.Sprintf("http://localhost:%d", port)
+	boundPort := ln.Addr().(*net.TCPAddr).Port
+	return fmt.Sprintf("http://localhost:%d", boundPort)
 }
 
 // whisperModelStatus returns download status for all known Whisper models.
