@@ -13,6 +13,10 @@ import (
 	"github.com/tasksquad/daemon/tmux"
 )
 
+// maxEscalationLogLines is how many trailing lines of the supervisor log are
+// appended to the escalation message so the user can see what was tried.
+const maxEscalationLogLines = 150
+
 // waitForVerdictOrKill waits for the supervisor agent to POST /hooks/supervisor
 // (delivered via HandleVerdict), the session to die naturally, or the timeout.
 // Returns the verdict and whether one was received.
@@ -94,6 +98,20 @@ func appendToLog(path, text string) {
 	fmt.Fprint(f, text) //nolint:errcheck
 }
 
+// readLastLines reads the last max lines of a file. Returns "" if the file is
+// missing or empty.
+func readLastLines(path string, max int) string {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) > max {
+		lines = lines[len(lines)-max:]
+	}
+	return strings.Join(lines, "\n")
+}
+
 // reportToWorker posts a supervisor message to the task inbox via the daemon API.
 func (s *Supervisor) reportToWorker(taskID, agentID, body string) {
 	if s.cfg == nil {
@@ -149,6 +167,9 @@ func (s *Supervisor) escalate(taskID, agentID string, attempts int) {
 			"Manual intervention required — check `tmux ls` or restart the agent.",
 		attempts, time.Duration(attempts)*inactivityTimeout,
 	)
+	if tail := readLastLines(SupervisorLogPath(taskID), maxEscalationLogLines); tail != "" {
+		body += fmt.Sprintf("\n\nSupervisor log (last %d lines):\n```\n%s\n```", maxEscalationLogLines, tail)
+	}
 	token, err := auth.GetToken(s.cfg.Firebase.APIKey, s.cfg.Server.URL)
 	if err != nil {
 		logger.Error(fmt.Sprintf("[supervisor] Auth failed for escalation (task %s): %v", taskID, err))
