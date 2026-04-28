@@ -32,7 +32,7 @@ func (p *Gemini) ExtraArgs() []string        { return nil }
 func (p *Gemini) TmuxReadyIndicator() string { return "Ready" }
 
 // SetupVoice writes .gemini/settings.json with an AfterAgent hook pointing at
-// the voice-to-md notification endpoint.
+// the speech-to-md notification endpoint.
 func (p *Gemini) SetupVoice(workDir string, hooksPort int) error {
 	settingsPath := filepath.Join(workDir, ".gemini", "settings.json")
 	err := writeHooks(settingsPath, map[string]any{
@@ -41,9 +41,9 @@ func (p *Gemini) SetupVoice(workDir string, hooksPort int) error {
 				"matcher": "*",
 				"hooks": []any{
 					map[string]any{
-						"name":    "tasksquad-voice",
+						"name":    "tasksquad-speech",
 						"type":    "command",
-						"command": geminiHookCmd(fmt.Sprintf("http://localhost:%d/hooks/voice-to-md/notification", hooksPort)),
+						"command": geminiHookCmd(fmt.Sprintf("http://localhost:%d/hooks/speech-to-md/notification", hooksPort)),
 						"timeout": 5000,
 					},
 				},

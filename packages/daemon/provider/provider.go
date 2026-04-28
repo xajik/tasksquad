@@ -27,8 +27,8 @@ type Provider interface {
 	// agentID (server-assigned UUID) and taskID are embedded in hook URLs so the
 	// hook server can route to the correct agent and reject stale events.
 	Setup(workDir string, hooksPort int, agentID string, taskID string) error
-	// SetupVoice writes hook config for voice-to-md notification.
-	// Returns ErrNotSupported if the provider doesn't support voice hooks.
+	// SetupVoice writes hook config for speech-to-md notification.
+	// Returns ErrNotSupported if the provider doesn't support speech hooks.
 	SetupVoice(workDir string, hooksPort int) error
 	Env(hooksPort int) []string
 	UsesHooks() bool

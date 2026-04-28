@@ -61,7 +61,7 @@ func (p *ClaudeCode) Setup(workDir string, hooksPort int, agentID string, taskID
 }
 
 // SetupVoice writes .claude/settings.json with a Notification hook pointing at
-// the voice-to-md notification endpoint. Called by voicetomd.AgentSession.Start().
+// the speech-to-md notification endpoint. Called by speechtomd.AgentSession.Start().
 func (p *ClaudeCode) SetupVoice(workDir string, hooksPort int) error {
 	settingsPath := filepath.Join(workDir, ".claude", "settings.json")
 	err := writeHooks(settingsPath, map[string]any{
@@ -71,7 +71,7 @@ func (p *ClaudeCode) SetupVoice(workDir string, hooksPort int) error {
 				"hooks": []any{
 					map[string]any{
 						"type": "http",
-						"url":  fmt.Sprintf("http://localhost:%d/hooks/voice-to-md/notification", hooksPort),
+						"url":  fmt.Sprintf("http://localhost:%d/hooks/speech-to-md/notification", hooksPort),
 					},
 				},
 			},

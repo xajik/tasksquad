@@ -26,7 +26,7 @@ type hookServer struct {
 	cfg          *config.Config
 	agents       []Agent
 	reporter     SupervisorReporter
-	voiceHandler VoiceToMDHandler // nil when voice-to-md feature is not active
+	speechHandler SpeechToMDHandler // nil when speech-to-md feature is not active
 }
 
 // handleStop handles POST /hooks/stop.

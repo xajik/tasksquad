@@ -1,6 +1,7 @@
-package voicetomd
+package speechtomd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,7 +19,7 @@ const (
 	blankAudioMarker  = "[BLANK_AUDIO]"
 )
 
-// Manager orchestrates a voice-to-markdown session: audio → transcription →
+// Manager orchestrates a speech-to-markdown session: audio → transcription →
 // agent processing → markdown update → UI broadcast.
 type Manager struct {
 	mu           sync.Mutex
@@ -28,6 +29,7 @@ type Manager struct {
 	bc           *Broadcaster
 	cfg          *config.Config
 	silenceTimer *time.Timer
+	editMode     bool
 }
 
 // New creates a Manager wired to the given daemon config.
@@ -47,7 +49,7 @@ func (m *Manager) HandleInit() {
 		as.MarkInitialized()
 	}
 	m.setSessionState(StateReady)
-	logger.Info("[voicetomd] Agent initialised — recording enabled")
+	logger.Info("[speechtomd] Agent initialised — recording enabled")
 }
 
 // HandleResponse is called by the hook server with processed markdown from the agent.
@@ -67,7 +69,7 @@ func (m *Manager) HandleResponse(markdown string) {
 	}
 
 	if err := sess.WriteMarkdown(markdown); err != nil {
-		logger.Warn(fmt.Sprintf("[voicetomd] WriteMarkdown: %v", err))
+		logger.Warn(fmt.Sprintf("[speechtomd] WriteMarkdown: %v", err))
 	}
 	m.bc.Send(Event{Type: EventMarkdown, Payload: markdown})
 
@@ -79,8 +81,6 @@ func (m *Manager) HandleResponse(markdown string) {
 
 // HandleNotification is called by the hook server when Claude's Notification hook fires
 // (Claude finished its turn and is waiting for the next user message).
-// We use this to read the last assistant response from the transcript and treat it
-// as the processed markdown response when the agent hasn't posted an explicit hook yet.
 func (m *Manager) HandleNotification(transcriptPath string) {
 	m.mu.Lock()
 	sess := m.session
@@ -98,6 +98,13 @@ func (m *Manager) HandleNotification(transcriptPath string) {
 			m.HandleResponse(text)
 		}
 	}
+}
+
+// SetEditMode updates the edit mode flag for subsequent chunk flushes.
+func (m *Manager) SetEditMode(enabled bool) {
+	m.mu.Lock()
+	m.editMode = enabled
+	m.mu.Unlock()
 }
 
 // StartSession creates a new session, installs command file, and starts the agent.
@@ -139,7 +146,7 @@ func (m *Manager) StartSession(agentName, modelSize string) error {
 
 	go func() {
 		if err := as.Start(); err != nil {
-			logger.Error(fmt.Sprintf("[voicetomd] Agent start failed: %v", err))
+			logger.Error(fmt.Sprintf("[speechtomd] Agent start failed: %v", err))
 			m.setSessionState(StateStopped)
 			m.bc.Send(Event{Type: EventError, Payload: "agent start failed: " + err.Error()})
 			m.bc.SendAgentStatus(AgentStatusInfo{Status: "error", Label: "error", Message: err.Error()})
@@ -148,7 +155,7 @@ func (m *Manager) StartSession(agentName, modelSize string) error {
 		m.bc.SendAgentStatus(AgentStatusInfo{Status: "processing", Label: "waiting"})
 		// Wait up to 90 s for init hook; fall back to ready state.
 		if err := as.WaitForInit(90 * time.Second); err != nil {
-			logger.Warn("[voicetomd] Agent init timeout; enabling recording as fallback")
+			logger.Warn("[speechtomd] Agent init timeout; enabling recording as fallback")
 			m.setSessionState(StateReady)
 			m.bc.SendAgentStatus(AgentStatusInfo{Status: "ready", Label: "idle"})
 		} else {
@@ -160,8 +167,8 @@ func (m *Manager) StartSession(agentName, modelSize string) error {
 	return nil
 }
 
-// StartRecording transitions to recording state.
-func (m *Manager) StartRecording() error {
+// StartRecording transitions to recording state and applies the edit mode setting.
+func (m *Manager) StartRecording(editMode bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.session == nil {
@@ -170,6 +177,7 @@ func (m *Manager) StartRecording() error {
 	if m.session.State != StateReady && m.session.State != StatePaused {
 		return fmt.Errorf("cannot start recording in state %s", m.session.State)
 	}
+	m.editMode = editMode
 	m.session.State = StateRecording
 	m.bc.Send(Event{Type: EventState, Payload: StateRecording.String()})
 	return nil
@@ -207,9 +215,9 @@ func (m *Manager) StopSession() {
 	m.mu.Unlock()
 
 	if buf != nil && sess != nil {
-		if text := buf.ForceFlush(); text != "" && as != nil {
-			if err := as.SendChunk(sess.ReadMarkdown(), text); err != nil {
-				logger.Warn(fmt.Sprintf("[voicetomd] Final flush: %v", err))
+		if text, em := buf.ForceFlush(); text != "" && as != nil {
+			if err := as.SendChunk(sess.ReadMarkdown(), text, em); err != nil {
+				logger.Warn(fmt.Sprintf("[speechtomd] Final flush: %v", err))
 			}
 		}
 	}
@@ -231,6 +239,7 @@ func (m *Manager) StopSession() {
 func (m *Manager) ReceiveAudioChunk(modelSize string, audioData []byte) error {
 	m.mu.Lock()
 	sess := m.session
+	editMode := m.editMode
 	m.mu.Unlock()
 
 	if sess == nil || sess.State != StateRecording {
@@ -244,7 +253,7 @@ func (m *Manager) ReceiveAudioChunk(modelSize string, audioData []byte) error {
 
 	text, err := whisperer.TranscribeBytes(audioData, modelPath)
 	if err != nil {
-		logger.Warn(fmt.Sprintf("[voicetomd] transcribe: %v", err))
+		logger.Warn(fmt.Sprintf("[speechtomd] transcribe: %v", err))
 		return err
 	}
 	text = strings.TrimSpace(text)
@@ -254,7 +263,7 @@ func (m *Manager) ReceiveAudioChunk(modelSize string, audioData []byte) error {
 
 	// Whisper signals silence as [BLANK_AUDIO] — flush buffered input to the agent.
 	if strings.Contains(text, blankAudioMarker) {
-		logger.Info("[voicetomd] blank audio detected — flushing buffer")
+		logger.Info("[speechtomd] blank audio detected — flushing buffer")
 		m.flushToAgent()
 		return nil
 	}
@@ -263,11 +272,12 @@ func (m *Manager) ReceiveAudioChunk(modelSize string, audioData []byte) error {
 	m.resetSilenceTimer()
 
 	if err := sess.AppendTranscript(text); err != nil {
-		logger.Warn(fmt.Sprintf("[voicetomd] AppendTranscript: %v", err))
+		logger.Warn(fmt.Sprintf("[speechtomd] AppendTranscript: %v", err))
 	}
-	m.bc.Send(Event{Type: EventTranscript, Payload: text})
+	transcriptJSON, _ := json.Marshal(map[string]any{"text": text, "edit_mode": editMode})
+	m.bc.Send(Event{Type: EventTranscript, Payload: string(transcriptJSON)})
 
-	if m.buffer.Add(text) {
+	if m.buffer.Add(text, editMode) {
 		m.flushToAgent()
 	}
 	return nil
@@ -305,6 +315,7 @@ func (m *Manager) Status() map[string]any {
 		"txt_path":   m.session.TxtPath,
 		"md_path":    m.session.MdPath,
 		"notes_path": notesPath,
+		"edit_mode":  m.editMode,
 	}
 }
 
@@ -347,18 +358,17 @@ func (m *Manager) flushToAgent() {
 		return
 	}
 
-	text := buf.Flush()
+	text, flushEditMode := buf.Flush()
 	if text == "" {
 		return
 	}
 
-	// Notify UI that agent is processing
 	m.bc.SendAgentStatus(AgentStatusInfo{Status: "processing", Label: "processing"})
 
 	currentMD := sess.ReadMarkdown()
 	go func() {
-		if err := as.SendChunk(currentMD, text); err != nil {
-			logger.Warn(fmt.Sprintf("[voicetomd] SendChunk: %v", err))
+		if err := as.SendChunk(currentMD, text, flushEditMode); err != nil {
+			logger.Warn(fmt.Sprintf("[speechtomd] SendChunk: %v", err))
 			m.bc.SendAgentStatus(AgentStatusInfo{Status: "error", Label: "error", Message: err.Error()})
 			buf.AgentDone()
 		}

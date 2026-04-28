@@ -76,7 +76,7 @@ func EnsureModelsDir() error {
 
 // ExtractLastAssistantText reads a Claude Code JSONL transcript and returns the
 // last assistant text block. Used as a fallback when the agent has not posted
-// an explicit /hooks/voice-to-md/response.
+// an explicit /hooks/speech-to-md/response.
 func ExtractLastAssistantText(path string) string {
 	if path == "" {
 		return ""

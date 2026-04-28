@@ -8,32 +8,32 @@ import (
 	"github.com/tasksquad/daemon/logger"
 )
 
-// VoiceToMDHandler receives voice-to-md lifecycle events from the agent.
-type VoiceToMDHandler interface {
+// SpeechToMDHandler receives speech-to-md lifecycle events from the agent.
+type SpeechToMDHandler interface {
 	HandleInit()
 	HandleResponse(markdown string)
 	HandleNotification(transcriptPath string)
 }
 
-// handleVoiceToMDInit handles POST /hooks/voice-to-md/init.
-// The agent fires this after executing /tsq-voice-to-md to signal it is ready.
-func (s *hookServer) handleVoiceToMDInit(w http.ResponseWriter, r *http.Request) {
-	if s.voiceHandler == nil {
+// handleSpeechToMDInit handles POST /hooks/speech-to-md/init.
+// The agent fires this after executing /tsq-speech-to-md to signal it is ready.
+func (s *hookServer) handleSpeechToMDInit(w http.ResponseWriter, r *http.Request) {
+	if s.speechHandler == nil {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		return
 	}
-	logger.Info("[hooks] POST /hooks/voice-to-md/init — agent ready")
-	s.voiceHandler.HandleInit()
+	logger.Info("[hooks] POST /hooks/speech-to-md/init — agent ready")
+	s.speechHandler.HandleInit()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// handleVoiceToMDResponse handles POST /hooks/voice-to-md/response.
+// handleSpeechToMDResponse handles POST /hooks/speech-to-md/response.
 // The agent posts the processed markdown here after each chunk.
-func (s *hookServer) handleVoiceToMDResponse(w http.ResponseWriter, r *http.Request) {
+func (s *hookServer) handleSpeechToMDResponse(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
-	logger.Info("[hooks] POST /hooks/voice-to-md/response")
+	logger.Info("[hooks] POST /hooks/speech-to-md/response")
 
-	if s.voiceHandler == nil {
+	if s.speechHandler == nil {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		return
 	}
@@ -46,18 +46,18 @@ func (s *hookServer) handleVoiceToMDResponse(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	s.voiceHandler.HandleResponse(payload.Markdown)
+	s.speechHandler.HandleResponse(payload.Markdown)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// handleVoiceToMDNotification handles POST /hooks/voice-to-md/notification.
+// handleSpeechToMDNotification handles POST /hooks/speech-to-md/notification.
 // Fired by each provider after a turn completes (Claude via Notification hook,
 // Gemini via AfterAgent hook). Used as a fallback signal to read processed markdown.
-func (s *hookServer) handleVoiceToMDNotification(w http.ResponseWriter, r *http.Request) {
+func (s *hookServer) handleSpeechToMDNotification(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
-	logger.Info("[hooks] POST /hooks/voice-to-md/notification")
+	logger.Info("[hooks] POST /hooks/speech-to-md/notification")
 
-	if s.voiceHandler == nil {
+	if s.speechHandler == nil {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		return
 	}
@@ -67,6 +67,6 @@ func (s *hookServer) handleVoiceToMDNotification(w http.ResponseWriter, r *http.
 	}
 	json.Unmarshal(body, &payload) //nolint:errcheck
 
-	s.voiceHandler.HandleNotification(payload.TranscriptPath)
+	s.speechHandler.HandleNotification(payload.TranscriptPath)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

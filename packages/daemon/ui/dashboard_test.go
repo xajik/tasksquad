@@ -10,19 +10,19 @@ import (
 	"testing"
 )
 
-func TestVoiceToMdAPI(t *testing.T) {
+func TestSpeechToMdAPI(t *testing.T) {
 	t.Run("status returns idle when no session", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/voice-to-md/status", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/speech-to-md/status", nil)
 		w := httptest.NewRecorder()
 
-		mgr := GetVoiceManager()
+		mgr := GetSpeechManager()
 		if mgr != nil {
 			mgr.StopSession()
 		}
 
 		handler := func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			m := GetVoiceManager()
+			m := GetSpeechManager()
 			if m == nil {
 				json.NewEncoder(w).Encode(map[string]any{"state": "idle"})
 				return
@@ -47,7 +47,7 @@ func TestVoiceToMdAPI(t *testing.T) {
 
 	t.Run("session start requires agent", func(t *testing.T) {
 		body := `{"agent":"","model":"base"}`
-		req := httptest.NewRequest(http.MethodPost, "/api/voice-to-md/session/start", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/speech-to-md/session/start", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -75,7 +75,7 @@ func TestVoiceToMdAPI(t *testing.T) {
 	})
 
 	t.Run("recording pause returns error when not recording", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/voice-to-md/recording/pause", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/speech-to-md/recording/pause", nil)
 		w := httptest.NewRecorder()
 
 		handler := func(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +83,7 @@ func TestVoiceToMdAPI(t *testing.T) {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			mgr := GetVoiceManager()
+			mgr := GetSpeechManager()
 			if mgr == nil {
 				http.Error(w, "no active session", http.StatusBadRequest)
 				return

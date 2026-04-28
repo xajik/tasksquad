@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tasksquad/daemon/voicetomd"
+	"github.com/tasksquad/daemon/speechtomd"
 	"github.com/tasksquad/daemon/whisperer"
 )
 
@@ -106,15 +106,15 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		w.Write([]byte(getPortalHTML())) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/voice-to-md", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/speech-to-md", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 	})
 
-	// ── Voice-to-MD API ───────────────────────────────────────────────────────
+	// ── Speech-to-MD API ──────────────────────────────────────────────────────
 
-	mux.HandleFunc("/api/voice-to-md/status", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		mgr := GetVoiceManager()
+		mgr := GetSpeechManager()
 		if mgr == nil {
 			json.NewEncoder(w).Encode(map[string]any{"state": "idle"}) //nolint:errcheck
 			return
@@ -122,16 +122,16 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		json.NewEncoder(w).Encode(mgr.Status()) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/api/voice-to-md/stream", func(w http.ResponseWriter, r *http.Request) {
-		mgr := GetVoiceManager()
+	mux.HandleFunc("/api/speech-to-md/stream", func(w http.ResponseWriter, r *http.Request) {
+		mgr := GetSpeechManager()
 		if mgr == nil {
-			http.Error(w, "voice-to-md not initialised", http.StatusServiceUnavailable)
+			http.Error(w, "speech-to-md not initialised", http.StatusServiceUnavailable)
 			return
 		}
 		mgr.ServeSSE(w, r)
 	})
 
-	mux.HandleFunc("/api/voice-to-md/session/start", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/session/start", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -148,9 +148,9 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		if body.Model == "" {
 			body.Model = "base"
 		}
-		mgr := GetVoiceManager()
+		mgr := GetSpeechManager()
 		if mgr == nil {
-			http.Error(w, "voice-to-md not initialised", http.StatusServiceUnavailable)
+			http.Error(w, "speech-to-md not initialised", http.StatusServiceUnavailable)
 			return
 		}
 		if err := mgr.StartSession(body.Agent, body.Model); err != nil {
@@ -161,17 +161,21 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/api/voice-to-md/recording/start", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/recording/start", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		mgr := GetVoiceManager()
+		var body struct {
+			EditMode bool `json:"edit_mode"`
+		}
+		json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
+		mgr := GetSpeechManager()
 		if mgr == nil {
 			http.Error(w, "no active session", http.StatusBadRequest)
 			return
 		}
-		if err := mgr.StartRecording(); err != nil {
+		if err := mgr.StartRecording(body.EditMode); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -179,12 +183,31 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/api/voice-to-md/recording/pause", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/edit-mode", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		mgr := GetVoiceManager()
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
+		mgr := GetSpeechManager()
+		if mgr == nil {
+			http.Error(w, "speech-to-md not initialised", http.StatusBadRequest)
+			return
+		}
+		mgr.SetEditMode(body.Enabled)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/speech-to-md/recording/pause", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		mgr := GetSpeechManager()
 		if mgr == nil {
 			http.Error(w, "no active session", http.StatusBadRequest)
 			return
@@ -197,12 +220,12 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/api/voice-to-md/session/stop", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/session/stop", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		mgr := GetVoiceManager()
+		mgr := GetSpeechManager()
 		if mgr != nil {
 			mgr.StopSession()
 		}
@@ -210,12 +233,12 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/api/voice-to-md/upload", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/upload", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		mgr := GetVoiceManager()
+		mgr := GetSpeechManager()
 		if mgr == nil {
 			http.Error(w, "no active session - start a session first", http.StatusBadRequest)
 			return
@@ -232,18 +255,18 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/api/voice-to-md/content", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/content", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		content, fileName := GetVoiceContent()
+		content, fileName := GetSpeechContent()
 		json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
 			"content":  content,
 			"fileName": fileName,
 		})
 	})
 
-	mux.HandleFunc("/api/voice-to-md/transcript", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/transcript", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		mgr := GetVoiceManager()
+		mgr := GetSpeechManager()
 		transcript := ""
 		if mgr != nil {
 			transcript = mgr.Transcript()
@@ -251,17 +274,17 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		json.NewEncoder(w).Encode(map[string]string{"transcript": transcript}) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/api/voice-to-md/models", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/models", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(whisperModelStatus()) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/api/voice-to-md/prereqs", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/prereqs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(whisperer.CheckPrereqs()) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/api/voice-to-md/models/download", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/models/download", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -274,7 +297,7 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 			http.Error(w, "model required", http.StatusBadRequest)
 			return
 		}
-		mgr := GetVoiceManager()
+		mgr := GetSpeechManager()
 		if mgr == nil {
 			http.Error(w, "manager not ready", http.StatusServiceUnavailable)
 			return
@@ -292,7 +315,7 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		}
 	})
 
-	mux.HandleFunc("/api/voice-to-md/agents", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/agents", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		var names []string
 		for _, a := range agents {
@@ -301,13 +324,13 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		json.NewEncoder(w).Encode(names) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/api/voice-to-md/sessions", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		sessions, _ := voicetomd.ListSessions()
+		sessions, _ := speechtomd.ListSessions()
 		json.NewEncoder(w).Encode(sessions) //nolint:errcheck
 	})
 
-	mux.HandleFunc("/api/voice-to-md/session/content", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/speech-to-md/session/content", func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
 		kind := r.URL.Query().Get("kind") // "md" or "txt"
 		if id == "" || (kind != "md" && kind != "txt") {
@@ -315,7 +338,7 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 			return
 		}
 		home, _ := os.UserHomeDir()
-		path := filepath.Join(home, ".tasksquad", "voice-to-markdown", id, id+"."+kind)
+		path := filepath.Join(home, ".tasksquad", "speech-to-markdown", id, id+"."+kind)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			http.Error(w, "not found", http.StatusNotFound)

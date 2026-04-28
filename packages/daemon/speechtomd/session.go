@@ -1,4 +1,4 @@
-package voicetomd
+package speechtomd
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// State tracks the lifecycle of a voice-to-md session.
+// State tracks the lifecycle of a speech-to-md session.
 type State int
 
 const (
@@ -59,7 +59,7 @@ func NewSession(agentName, modelSize string) (*Session, error) {
 		return nil, err
 	}
 	ts := fmt.Sprintf("%d", time.Now().UnixMilli())
-	dir := filepath.Join(home, ".tasksquad", "voice-to-markdown", ts)
+	dir := filepath.Join(home, ".tasksquad", "speech-to-markdown", ts)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create session dir: %w", err)
 	}
@@ -109,7 +109,7 @@ func (s *Session) ReadTranscript() string {
 // ListSessions returns past session metadata, newest first.
 func ListSessions() ([]map[string]any, error) {
 	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".tasksquad", "voice-to-markdown")
+	dir := filepath.Join(home, ".tasksquad", "speech-to-markdown")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {

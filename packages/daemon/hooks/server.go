@@ -64,11 +64,11 @@ type SupervisorReporter interface {
 //	POST /hooks/codex                   — Codex turn completion
 //	POST /hooks/skill                   — agent pushes a learned skill
 //	POST /hooks/supervisor              — supervisor verdict
-//	POST /hooks/voice-to-md/init        — voice agent signalled ready
-//	POST /hooks/voice-to-md/response    — voice agent posted processed markdown
-//	POST /hooks/voice-to-md/notification — Claude Notification hook for voice session
-func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorReporter, voiceHandler VoiceToMDHandler) {
-	srv := &hookServer{cfg: cfg, agents: agents, reporter: reporter, voiceHandler: voiceHandler}
+//	POST /hooks/speech-to-md/init        — speech agent signalled ready
+//	POST /hooks/speech-to-md/response    — speech agent posted processed markdown
+//	POST /hooks/speech-to-md/notification — Claude Notification hook for speech session
+func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorReporter, speechHandler SpeechToMDHandler) {
+	srv := &hookServer{cfg: cfg, agents: agents, reporter: reporter, speechHandler: speechHandler}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/hooks/stop", srv.handleStop)
@@ -78,13 +78,13 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 	mux.HandleFunc("/hooks/codex", srv.handleCodex)
 	mux.HandleFunc("/hooks/skill", srv.handleSkill)
 	mux.HandleFunc("/hooks/supervisor", srv.handleSupervisor)
-	mux.HandleFunc("/hooks/voice-to-md/init", srv.handleVoiceToMDInit)
-	mux.HandleFunc("/hooks/voice-to-md/response", srv.handleVoiceToMDResponse)
-	mux.HandleFunc("/hooks/voice-to-md/notification", srv.handleVoiceToMDNotification)
+	mux.HandleFunc("/hooks/speech-to-md/init", srv.handleSpeechToMDInit)
+	mux.HandleFunc("/hooks/speech-to-md/response", srv.handleSpeechToMDResponse)
+	mux.HandleFunc("/hooks/speech-to-md/notification", srv.handleSpeechToMDNotification)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
 	logger.Info(fmt.Sprintf("[hooks] Server listening on http://localhost:%d", cfg.Hooks.Port))
-	logger.Info("[hooks] Registered endpoints: /hooks/stop, /hooks/notification, /hooks/after_agent, /hooks/opencode, /hooks/skill, /hooks/supervisor, /hooks/voice-to-md/*")
+	logger.Info("[hooks] Registered endpoints: /hooks/stop, /hooks/notification, /hooks/after_agent, /hooks/opencode, /hooks/skill, /hooks/supervisor, /hooks/speech-to-md/*")
 	go http.ListenAndServe(addr, mux) //nolint:errcheck
 }
 

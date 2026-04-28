@@ -88,7 +88,7 @@ header {
 /* View containers */
 .view { display: none; }
 .view.active { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-#voice-view.active { display: flex; }
+#speech-view.active { display: flex; }
 
 /* Buttons */
 .btn {
@@ -258,7 +258,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* VOICE TO MD — Apple Siri Design */
+/* SPEECH TO MD — Apple Siri Design */
 :root {
   --vm-bg:     #F5F5F7;
   --vm-card:   rgba(255,255,255,0.82);
@@ -275,14 +275,14 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   --siri-4:    #FF375F;
   --siri-5:    #FF9F0A;
 }
-#voice-view {
+#speech-view {
   background: var(--muted);
   flex-direction: column;
   min-height: calc(100vh - 97px);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-#voice-header {
+#speech-header {
   height: 36px;
   background: var(--card);
   border-bottom: 1px solid var(--border);
@@ -292,7 +292,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   padding: 0 16px;
   flex-shrink: 0;
 }
-#voice-header .vm-filename {
+#speech-header .vm-filename {
   font-size: 12px;
   color: var(--muted-fg);
   flex: 1;
@@ -508,6 +508,8 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 }
 #transcript-body .chunk { margin-bottom: 2px; }
 #transcript-body .chunk.new { color: var(--fg); }
+#transcript-body .chunk.edit-mode { color: var(--accent); padding-left: 4px; border-left: 2px solid var(--accent); }
+.chunk-edit-badge { display:inline-block; font-size:9px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,transparent); border-radius:3px; padding:1px 4px; margin-right:5px; vertical-align:middle; }
 
 /* Floating controls panel */
 #vm-controls-float {
@@ -526,6 +528,24 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   z-index: 50;
 }
 #vm-controls-float.active { display: flex; }
+
+.vm-edit-toggle {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--muted-fg); cursor: pointer; user-select: none;
+}
+.vm-edit-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.vm-edit-toggle .toggle-track {
+  position: relative; width: 28px; height: 16px; border-radius: 8px;
+  background: #9CA3AF; transition: background .2s;
+  flex-shrink: 0;
+}
+.vm-edit-toggle .toggle-track::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #fff; transition: transform .2s;
+}
+#edit-mode-toggle:checked + .toggle-track { background: var(--accent); }
+#edit-mode-toggle:checked + .toggle-track::after { transform: translateX(12px); }
 
 /* Transcript expand/collapse */
 #transcript-panel { height: 88px; }
@@ -763,13 +783,13 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   background: hsl(222.2 47.4% 9%); border-bottom: 1px solid hsl(222.2 30% 16%); flex-shrink: 0;
 }
 .log-drawer .log-body { flex: 1; max-height: none; overflow-y: auto; }
-.voice-log-item {
+.speech-log-item {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 14px; border-bottom: 1px solid hsl(222.2 30% 14%);
   font-size: 12px; color: hsl(210 40% 70%);
 }
-.voice-log-item .vi-date { flex: 1; font-family: ui-monospace,"JetBrains Mono",Menlo,monospace; font-size: 11px; }
-.voice-log-item .vi-btns { display: flex; gap: 4px; }
+.speech-log-item .vi-date { flex: 1; font-family: ui-monospace,"JetBrains Mono",Menlo,monospace; font-size: 11px; }
+.speech-log-item .vi-btns { display: flex; gap: 4px; }
 .drawer-backdrop { position: fixed; inset: 97px 0 0 0; background: rgba(0,0,0,.18); z-index: 39; }
 
 /* ── Responsive sidebar ──────────────────────────────────────────── */
@@ -807,7 +827,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
 <div class="tabs">
   <div class="tab active" data-view="dashboard" onclick="switchTab(this)">Control Panel</div>
-  <div class="tab" data-view="voice" onclick="switchTab(this)">Voice to MD</div>
+  <div class="tab" data-view="speech" onclick="switchTab(this)">Speech to MD</div>
 </div>
 
 <!-- Dashboard View -->
@@ -837,9 +857,9 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <button class="cp-nav-item" data-section="daemon-logs" onclick="navTo('daemon-logs')">
       <span class="cp-nav-label">Daemon Logs</span>
     </button>
-    <button class="cp-nav-item" data-section="voice-sessions" onclick="navTo('voice-sessions')">
-      <span class="cp-nav-label">Voice Sessions</span>
-      <span class="cp-nav-count" id="nav-count-voice"></span>
+    <button class="cp-nav-item" data-section="speech-sessions" onclick="navTo('speech-sessions')">
+      <span class="cp-nav-label">Speech Sessions</span>
+      <span class="cp-nav-count" id="nav-count-speech"></span>
     </button>
     <button class="cp-nav-item" data-section="tools" onclick="navTo('tools')">
       <span class="cp-nav-label">Tools</span>
@@ -924,17 +944,17 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
       </div>
     </section>
 
-    <!-- Voice Sessions section -->
-    <section id="section-voice-sessions" class="cp-section">
+    <!-- Speech Sessions section -->
+    <section id="section-speech-sessions" class="cp-section">
       <div class="card animate-in">
         <div class="card-header">
           <div>
-            <div class="card-title">Voice Sessions</div>
-            <div class="card-subtitle" id="voice-sessions-subtitle">loading…</div>
+            <div class="card-title">Speech Sessions</div>
+            <div class="card-subtitle" id="speech-sessions-subtitle">loading…</div>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="loadVoiceSessions()">Refresh</button>
+          <button class="btn btn-ghost btn-sm" onclick="loadSpeechSessions()">Refresh</button>
         </div>
-        <div id="voice-sessions-list"><div class="empty"><span class="spinner"></span></div></div>
+        <div id="speech-sessions-list"><div class="empty"><span class="spinner"></span></div></div>
       </div>
     </section>
 
@@ -955,7 +975,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   <div class="log-drawer-tabs">
     <button class="log-tab" data-tab="daemon" onclick="switchLogTab('daemon')">Daemon</button>
     <button class="log-tab active" data-tab="agents" onclick="switchLogTab('agents')">Agents</button>
-    <button class="log-tab" data-tab="voice" onclick="switchLogTab('voice')">Voice</button>
+    <button class="log-tab" data-tab="speech" onclick="switchLogTab('speech')">Speech</button>
     <button class="log-tab" data-tab="tasks" onclick="switchLogTab('tasks')">Tasks</button>
     <div class="log-tab-spacer"></div>
     <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 50%);padding:0 12px;height:38px" onclick="closeLog()">✕</button>
@@ -979,10 +999,10 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <div class="log-body" id="log-body"><pre id="log-pre" style="color:hsl(210 40% 88%)"></pre></div>
   </div>
 
-  <!-- Voice tab -->
-  <div class="log-tab-content" id="logtab-voice">
-    <div class="log-drawer-sub">voice sessions — MD or Txt to view content</div>
-    <div style="overflow-y:auto;flex:1" id="voice-log-list">
+  <!-- Speech tab -->
+  <div class="log-tab-content" id="logtab-speech">
+    <div class="log-drawer-sub">speech sessions — MD or Txt to view content</div>
+    <div style="overflow-y:auto;flex:1" id="speech-log-list">
       <div class="empty" style="color:hsl(210 40% 55%)">Loading…</div>
     </div>
   </div>
@@ -1004,10 +1024,10 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
 </div>
 
-<!-- Voice to MD View -->
-<div id="voice-view" class="view">
+<!-- Speech to MD View -->
+<div id="speech-view" class="view">
 
-<div id="voice-header">
+<div id="speech-header">
   <span class="vm-badge vm-badge-idle" id="state-badge">idle</span>
   <span id="agent-status-badge" class="vm-badge vm-badge-idle" style="display:none;margin-left:8px">agent: idle</span>
   <span class="vm-filename" id="md-filename-header"></span>
@@ -1092,6 +1112,11 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 <!-- Floating controls panel -->
 <div id="vm-controls-float">
   <button class="vm-btn vm-btn-outline vm-btn-sm" id="btn-stop-session">Stop</button>
+  <label class="vm-edit-toggle" title="Edit mode: spoken commands edit existing content instead of appending">
+    <input type="checkbox" id="edit-mode-toggle">
+    <span class="toggle-track"></span>
+    <span>Edit</span>
+  </label>
   <div class="siri-wave" id="siri-wave">
     <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
     <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
@@ -1132,7 +1157,7 @@ function switchTab(el) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   el.classList.add('active');
   document.getElementById(el.dataset.view + '-view').classList.add('active');
-  if (el.dataset.view === 'voice') initVoicePage();
+  if (el.dataset.view === 'speech') initSpeechPage();
   else loadDashboard();
 }
 
@@ -1175,7 +1200,7 @@ async function loadDashboard() {
     renderAgents(lastAgents);
     renderSupervisorSessions(lastSessions);
     renderSessions(lastSessions);
-    loadVoiceSessions();
+    loadSpeechSessions();
     updateNavCounts(lastAgents, lastSessions);
     updateStatusBar(lastAgents, lastSessions, allTasks.length);
   } catch(e) { console.error(e); }
@@ -1463,7 +1488,7 @@ function switchLogTab(tab) {
   document.querySelectorAll('.log-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.log-tab-content').forEach(c => c.classList.toggle('active', c.id === 'logtab-' + tab));
   if (tab === 'daemon') loadDaemonTab();
-  if (tab === 'voice') loadVoiceLogTab();
+  if (tab === 'speech') loadSpeechLogTab();
 }
 
 function loadDaemonTab() {
@@ -1480,20 +1505,20 @@ function loadDaemonTab() {
     .catch(err => { if (pre) pre.textContent = 'Error: ' + err; });
 }
 
-async function loadVoiceLogTab() {
-  const list = document.getElementById('voice-log-list');
+async function loadSpeechLogTab() {
+  const list = document.getElementById('speech-log-list');
   if (!list) return;
   list.innerHTML = '<div class="empty" style="color:hsl(210 40% 55%)">Loading…</div>';
   try {
     const [sessR, statusR] = await Promise.all([
-      fetch('/api/voice-to-md/sessions'),
-      fetch('/api/voice-to-md/status'),
+      fetch('/api/speech-to-md/sessions'),
+      fetch('/api/speech-to-md/status'),
     ]);
     const sessions = sessR.ok ? await sessR.json() : [];
     const status = statusR.ok ? await statusR.json() : {};
     const activeMd = status.md_path || '';
     if (!sessions || !sessions.length) {
-      list.innerHTML = '<div class="empty" style="color:hsl(210 40% 55%)">No voice sessions yet</div>';
+      list.innerHTML = '<div class="empty" style="color:hsl(210 40% 55%)">No speech sessions yet</div>';
       return;
     }
     list.innerHTML = sessions.map(s => {
@@ -1501,13 +1526,13 @@ async function loadVoiceLogTab() {
       const d = isNaN(ts) ? s.id : new Date(ts).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
       const isActive = activeMd && s.md_path === activeMd;
       const badge = isActive ? '<span class="badge badge-running" style="font-size:10px;padding:1px 5px;margin-left:4px">live</span>' : '';
-      const voiceDir = HOME_DIR ? HOME_DIR + '/.tasksquad/voice-to-markdown/' + s.id : '';
-      return '<div class="voice-log-item">'
+      const speechDir = HOME_DIR ? HOME_DIR + '/.tasksquad/speech-to-markdown/' + s.id : '';
+      return '<div class="speech-log-item">'
         + '<span class="vi-date">' + x(d) + badge + '</span>'
         + '<div class="vi-btns">'
-        + '<button class="btn btn-ghost btn-sm" onclick="openVoiceLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'md\')">MD</button>'
-        + '<button class="btn btn-ghost btn-sm" onclick="openVoiceLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'txt\')">Txt</button>'
-        + (voiceDir ? '<button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 60%)" onclick="openFolder(' + q(voiceDir) + ')" title="Open folder">↗</button>' : '')
+        + '<button class="btn btn-ghost btn-sm" onclick="openSpeechLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'md\')">MD</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="openSpeechLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'txt\')">Txt</button>'
+        + (speechDir ? '<button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 60%)" onclick="openFolder(' + q(speechDir) + ')" title="Open folder">↗</button>' : '')
         + '</div>'
         + '</div>';
     }).join('');
@@ -1516,9 +1541,9 @@ async function loadVoiceLogTab() {
   }
 }
 
-function openVoiceLogInDrawer(id, label, kind) {
-  const title = (kind === 'md' ? 'voice · ' : 'transcript · ') + label;
-  const url = '/api/voice-to-md/session/content?id=' + encodeURIComponent(id) + '&kind=' + kind;
+function openSpeechLogInDrawer(id, label, kind) {
+  const title = (kind === 'md' ? 'speech · ' : 'transcript · ') + label;
+  const url = '/api/speech-to-md/session/content?id=' + encodeURIComponent(id) + '&kind=' + kind;
   openLog(title, url);
 }
 
@@ -1548,7 +1573,7 @@ function openFileInDrawer(path, title) {
   openLog(name, url, false, path);
 }
 
-async function toggleVoicePreview(id, kind) {
+async function toggleSpeechPreview(id, kind) {
   const el = document.getElementById('vsp-' + id);
   if (!el) return;
   if (el.dataset.kind === kind && el.style.display !== 'none') {
@@ -1560,7 +1585,7 @@ async function toggleVoicePreview(id, kind) {
   el.style.display = 'block';
   el.dataset.kind = kind;
   try {
-    const r = await fetch('/api/voice-to-md/session/content?id=' + encodeURIComponent(id) + '&kind=' + kind);
+    const r = await fetch('/api/speech-to-md/session/content?id=' + encodeURIComponent(id) + '&kind=' + kind);
     if (!r.ok) throw new Error('Not found');
     const txt = await r.text();
     if (kind === 'md') {
@@ -1640,13 +1665,13 @@ function filterDaemonLog() {
   pre.textContent = raw.split('\n').filter(l => l.toLowerCase().includes(term)).join('\n');
 }
 
-async function loadVoiceSessions() {
-  const list = document.getElementById('voice-sessions-list');
-  const sub = document.getElementById('voice-sessions-subtitle');
+async function loadSpeechSessions() {
+  const list = document.getElementById('speech-sessions-list');
+  const sub = document.getElementById('speech-sessions-subtitle');
   try {
     const [sessR, statusR] = await Promise.all([
-      fetch('/api/voice-to-md/sessions'),
-      fetch('/api/voice-to-md/status'),
+      fetch('/api/speech-to-md/sessions'),
+      fetch('/api/speech-to-md/status'),
     ]);
     const sessions = sessR.ok ? await sessR.json() : [];
     const status = statusR.ok ? await statusR.json() : {};
@@ -1654,7 +1679,7 @@ async function loadVoiceSessions() {
     const countLabel = (sessions && sessions.length ? sessions.length + ' session' + (sessions.length === 1 ? '' : 's') : 'none') +
       (status.state && status.state !== 'idle' ? ' · ' + status.state : '');
     if (sub) sub.textContent = countLabel;
-    const navCount = document.getElementById('nav-count-voice');
+    const navCount = document.getElementById('nav-count-speech');
     if (navCount) navCount.textContent = (sessions && sessions.length) ? sessions.length : '';
     if (!sessions || !sessions.length) {
       list.innerHTML = '<div class="empty">No sessions yet</div>';
@@ -1665,17 +1690,17 @@ async function loadVoiceSessions() {
       const d = isNaN(ts) ? s.id : new Date(ts).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
       const isActive = activeMd && s.md_path === activeMd;
       const badge = isActive ? '<span class="badge badge-running" style="font-size:10px;padding:2px 6px">live</span>' : '';
-      const sessionDir = HOME_DIR ? HOME_DIR + '/.tasksquad/voice-to-markdown/' + s.id : '';
+      const sessionDir = HOME_DIR ? HOME_DIR + '/.tasksquad/speech-to-markdown/' + s.id : '';
       return '<div style="border-bottom:1px solid var(--border)">'
         + '<div style="display:flex;align-items:center;gap:8px;padding:8px 16px">'
         + '<div style="flex:1;min-width:0">'
         + '<div style="font-size:13px;font-weight:500">' + x(d) + ' ' + badge + '</div>'
         + '</div>'
         + '<div style="display:flex;gap:6px">'
-        + '<button class="btn btn-ghost btn-sm" onclick="toggleVoicePreview(' + q(s.id) + ',\'md\')">MD</button>'
-        + '<button class="btn btn-ghost btn-sm" onclick="toggleVoicePreview(' + q(s.id) + ',\'txt\')">Txt</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="toggleSpeechPreview(' + q(s.id) + ',\'md\')">MD</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="toggleSpeechPreview(' + q(s.id) + ',\'txt\')">Txt</button>'
         + (sessionDir ? '<button class="btn btn-ghost btn-sm" onclick="openFolder(' + q(sessionDir) + ')" title="Open session folder">↗</button>' : '')
-        + '<button class="btn btn-destructive btn-sm" onclick="deleteVoiceSession(' + q(s.id) + ')" title="Delete session">✕</button>'
+        + '<button class="btn btn-destructive btn-sm" onclick="deleteSpeechSession(' + q(s.id) + ')" title="Delete session">✕</button>'
         + '</div>'
         + '</div>'
         + '<div id="vsp-' + s.id + '" style="display:none;background:var(--muted);border-top:1px solid var(--border)"></div>'
@@ -1687,11 +1712,11 @@ async function loadVoiceSessions() {
   }
 }
 
-async function deleteVoiceSession(id) {
-  if (!confirm('Delete voice session ' + id + '? This cannot be undone.')) return;
+async function deleteSpeechSession(id) {
+  if (!confirm('Delete speech session ' + id + '? This cannot be undone.')) return;
   try {
-    const r = await fetch('/api/voice-to-md/sessions/' + encodeURIComponent(id), { method: 'DELETE' });
-    if (r.ok || r.status === 204) { loadVoiceSessions(); return; }
+    const r = await fetch('/api/speech-to-md/sessions/' + encodeURIComponent(id), { method: 'DELETE' });
+    if (r.ok || r.status === 204) { loadSpeechSessions(); return; }
     if (r.status === 404 || r.status === 405) { alert('Delete not supported by this daemon version.'); }
     else { alert('Delete failed: ' + await r.text()); }
   } catch(e) { alert('Error: ' + e.message); }
@@ -1895,8 +1920,8 @@ function shortPath(dir) {
   return parts.length > 2 ? '…/' + parts.slice(-2).join('/') : home;
 }
 
-/* ========== VOICE TO MD ========== */
-let voiceInited = false;
+/* ========== SPEECH TO MD ========== */
+let speechInited = false;
 let sessionState = 'idle';
 let mediaRecorder = null;
 let audioStream = null;
@@ -1908,7 +1933,7 @@ let modelDownloaded = false;
 const setupPanel = document.getElementById('setup-panel');
 const sessionPanel = document.getElementById('session-panel');
 const stateBadge = document.getElementById('state-badge');
-let voiceStateBadge = null;
+let speechStateBadge = null;
 
 const modelSelect = document.getElementById('model-select');
 const modelStatus = document.getElementById('model-status');
@@ -1933,21 +1958,21 @@ const vmControlsFloat = document.getElementById('vm-controls-float');
 const transcriptPanel = document.getElementById('transcript-panel');
 const btnToggleTx = document.getElementById('btn-toggle-transcript');
 
-function initVoicePage() {
-  if (voiceInited) return;
-  voiceInited = true;
-  voiceStateBadge = document.getElementById('state-badge');
+function initSpeechPage() {
+  if (speechInited) return;
+  speechInited = true;
+  speechStateBadge = document.getElementById('state-badge');
   checkPrereqs();
   loadAgents();
   loadModels();
   modelSelect.addEventListener('change', loadModels);
-  agentSelect.addEventListener('change', voiceUpdateStartBtn);
-  restoreVoiceState();
+  agentSelect.addEventListener('change', speechUpdateStartBtn);
+  restoreSpeechState();
 }
 
 async function checkPrereqs() {
   try {
-    const res = await fetch('/api/voice-to-md/prereqs');
+    const res = await fetch('/api/speech-to-md/prereqs');
     const issues = await res.json();
     const entries = Object.values(issues || {});
     const prereqWarn = document.getElementById('prereq-warn');
@@ -1957,19 +1982,19 @@ async function checkPrereqs() {
       prereqWarn.innerHTML = '<strong>Missing dependencies:</strong>' + entries.map(msg => '<span>• <code>' + msg + '</code></span>').join('');
       prereqWarn.style.display = 'flex';
     }
-    voiceUpdateStartBtn();
-  } catch(e) { console.error('checkPrereqs error:', e); voiceUpdateStartBtn(); }
+    speechUpdateStartBtn();
+  } catch(e) { console.error('checkPrereqs error:', e); speechUpdateStartBtn(); }
 }
 
 async function loadAgents() {
   try {
-    const res = await fetch('/api/voice-to-md/agents');
+    const res = await fetch('/api/speech-to-md/agents');
     const names = await res.json();
     const sel = document.getElementById('agent-select');
     sel.innerHTML = '';
     if (!names || names.length === 0) { sel.innerHTML = '<option value="">No agents configured</option>'; }
     else { names.forEach(n => { const opt = document.createElement('option'); opt.value = n; opt.textContent = n; sel.appendChild(opt); }); }
-    voiceUpdateStartBtn();
+    speechUpdateStartBtn();
   } catch(e) { document.getElementById('agent-select').innerHTML = '<option value="">Failed to load agents</option>'; }
 }
 
@@ -1979,7 +2004,7 @@ async function loadModels() {
   modelStatus.className = 'vm-model-status';
   btnDownload.style.display = 'none';
   try {
-    const res = await fetch('/api/voice-to-md/models');
+    const res = await fetch('/api/speech-to-md/models');
     const models = await res.json();
     // Auto-select the first downloaded model if current selection isn't downloaded
     const isModelDownloaded = (m) => m && (m.downloaded === true || m.downloaded === 'true' || m.downloaded === 1);
@@ -2012,14 +2037,14 @@ async function loadModels() {
     modelStatus.textContent = 'Error';
     modelDownloaded = false;
   }
-  voiceUpdateStartBtn();
+  speechUpdateStartBtn();
 }
 
-function voiceUpdateStartBtn() {
+function speechUpdateStartBtn() {
   const hasAgent = agentSelect.value !== '';
   const canStart = hasAgent && modelDownloaded;
   btnStartSession.disabled = !canStart;
-  console.log('voiceUpdateStartBtn: agent=', hasAgent, 'model=', modelDownloaded, 'canStart=', canStart);
+  console.log('speechUpdateStartBtn: agent=', hasAgent, 'model=', modelDownloaded, 'canStart=', canStart);
 }
 
 btnDownload.addEventListener('click', async () => {
@@ -2027,7 +2052,7 @@ btnDownload.addEventListener('click', async () => {
   dlSpinner.style.display = 'inline-block';
   dlProgressBar.style.display = 'block';
   dlProgressFill.style.width = '0%';
-  const res = await fetch('/api/voice-to-md/models/download', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({model: selectedModel}) });
+  const res = await fetch('/api/speech-to-md/models/download', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({model: selectedModel}) });
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = '';
@@ -2041,7 +2066,7 @@ btnDownload.addEventListener('click', async () => {
       if (!line.startsWith('data: ')) continue;
       try {
         const p = JSON.parse(line.slice(6));
-        if (p.error) { voiceToast('Download failed: ' + p.error); break; }
+        if (p.error) { speechToast('Download failed: ' + p.error); break; }
         if (p.done) { dlProgressFill.style.width = '100%'; break; }
         if (p.pct !== undefined) dlProgressFill.style.width = p.pct + '%';
       } catch(_) {}
@@ -2050,7 +2075,7 @@ btnDownload.addEventListener('click', async () => {
   dlSpinner.style.display = 'none';
   btnDownload.disabled = false;
   await loadModels();
-  voiceToast('Model downloaded');
+  speechToast('Model downloaded');
 });
 
 btnStartSession.addEventListener('click', async () => {
@@ -2060,41 +2085,46 @@ btnStartSession.addEventListener('click', async () => {
   startSpinner.style.display = 'inline-block';
   document.getElementById('start-label').textContent = ' Initialising…';
   try {
-    const res = await fetch('/api/voice-to-md/session/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({agent, model: modelSelect.value}) });
+    const res = await fetch('/api/speech-to-md/session/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({agent, model: modelSelect.value}) });
     if (!res.ok) throw new Error(await res.text());
     sessionPanel.style.display = 'flex';
     setupPanel.style.display = 'none';
     if (vmControlsFloat) vmControlsFloat.classList.add('active');
-    setVoiceSessionState('initializing');
-    connectVoiceSSE();
-  } catch(e) { voiceToast('Error: ' + e.message); btnStartSession.disabled = false; }
+    setSpeechSessionState('initializing');
+    connectSpeechSSE();
+  } catch(e) { speechToast('Error: ' + e.message); btnStartSession.disabled = false; }
   finally { startSpinner.style.display = 'none'; document.getElementById('start-label').textContent = 'Start session'; }
 });
 
-function connectVoiceSSE() {
+function connectSpeechSSE() {
   if (eventSource) eventSource.close();
-  eventSource = new EventSource('/api/voice-to-md/stream');
-  eventSource.onmessage = (e) => { try { handleVoiceSSE(JSON.parse(e.data)); } catch(_) {} };
-  eventSource.onerror = () => { setTimeout(connectVoiceSSE, 3000); };
+  eventSource = new EventSource('/api/speech-to-md/stream');
+  eventSource.onmessage = (e) => { try { handleSpeechSSE(JSON.parse(e.data)); } catch(_) {} };
+  eventSource.onerror = () => { setTimeout(connectSpeechSSE, 3000); };
 }
 
-function handleVoiceSSE(ev) {
+function handleSpeechSSE(ev) {
   switch(ev.type) {
-    case 'state': setVoiceSessionState(ev.payload); break;
+    case 'state': setSpeechSessionState(ev.payload); break;
     case 'agent_status': 
       try {
         const info = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
         updateAgentStatus(info);
       } catch(e) { console.warn('agent_status parse error:', e); }
       break;
-    case 'transcript': appendVoiceTranscript(ev.payload); break;
+    case 'transcript': {
+      let text = ev.payload, editMode = false;
+      try { const p = JSON.parse(ev.payload); text = p.text; editMode = !!p.edit_mode; } catch(e) {}
+      appendSpeechTranscript(text, editMode);
+      break;
+    }
     case 'markdown': 
       mdEditor.value = ev.payload; 
       renderMdPreview(ev.payload);
       if (btnCopyMd && ev.payload) btnCopyMd.style.display = ''; 
       break;
     case 'error': 
-      voiceToast('Agent error: ' + ev.payload); 
+      speechToast('Agent error: ' + ev.payload); 
       updateAgentStatus({status: 'error', label: 'error', message: ev.payload});
       break;
   }
@@ -2115,28 +2145,28 @@ function updateAgentStatus(info) {
   else badge.classList.add('vm-badge-agent-loading');
 }
 
-function setVoiceSessionState(st) {
+function setSpeechSessionState(st) {
   sessionState = st;
   let badgeText = st;
-  if (voiceStateBadge) {
-    voiceStateBadge.className = 'vm-badge';
+  if (speechStateBadge) {
+    speechStateBadge.className = 'vm-badge';
     if (st === 'initializing') {
-      voiceStateBadge.classList.add('vm-badge-loading');
+      speechStateBadge.classList.add('vm-badge-loading');
       badgeText = 'loading';
     } else if (st === 'recording') {
-      voiceStateBadge.classList.add('vm-badge-recording');
+      speechStateBadge.classList.add('vm-badge-recording');
       badgeText = 'recording';
     } else if (st === 'processing') {
-      voiceStateBadge.classList.add('vm-badge-processing');
+      speechStateBadge.classList.add('vm-badge-processing');
       badgeText = 'processing';
     } else if (st === 'ready' || st === 'paused') {
-      voiceStateBadge.classList.add('vm-badge-idle');
+      speechStateBadge.classList.add('vm-badge-idle');
       badgeText = 'idle';
     } else {
-      voiceStateBadge.classList.add('vm-badge-idle');
+      speechStateBadge.classList.add('vm-badge-idle');
       badgeText = 'idle';
     }
-    voiceStateBadge.textContent = badgeText;
+    speechStateBadge.textContent = badgeText;
   }
   initBanner.style.display = (st === 'initializing') ? 'flex' : 'none';
   btnRecord.disabled = (st !== 'ready' && st !== 'recording' && st !== 'paused');
@@ -2162,38 +2192,47 @@ function setVoiceSessionState(st) {
 
 btnRecord.addEventListener('click', async () => { if (sessionState === 'recording') { await stopRecording(); } else { await startRecording(); } });
 
+const editToggle = document.getElementById('edit-mode-toggle');
+const editToggleLabel = editToggle?.closest('.vm-edit-toggle');
+editToggle?.addEventListener('change', async () => {
+  const on = editToggle.checked;
+  if (editToggleLabel) editToggleLabel.style.color = on ? 'var(--accent)' : '';
+  await fetch('/api/speech-to-md/edit-mode', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({enabled: on})});
+});
+
 async function startRecording() {
-  const res = await fetch('/api/voice-to-md/recording/start', {method:'POST'});
-  if (!res.ok) { voiceToast(await res.text()); return; }
-  try { audioStream = await navigator.mediaDevices.getUserMedia({audio: true}); } catch(e) { voiceToast('Microphone access denied'); return; }
-  startVoiceChunk(); scheduleNextVoiceChunk();
+  const editMode = document.getElementById('edit-mode-toggle')?.checked || false;
+  const res = await fetch('/api/speech-to-md/recording/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({edit_mode: editMode})});
+  if (!res.ok) { speechToast(await res.text()); return; }
+  try { audioStream = await navigator.mediaDevices.getUserMedia({audio: true}); } catch(e) { speechToast('Microphone access denied'); return; }
+  startSpeechChunk(); scheduleNextSpeechChunk();
 }
 
-function startVoiceChunk() {
+function startSpeechChunk() {
   const mimeType = getSupportedMimeType();
   const options = mimeType ? {mimeType} : {};
-  console.log('[voice] starting MediaRecorder with options:', options);
+  console.log('[speech] starting MediaRecorder with options:', options);
   mediaRecorder = new MediaRecorder(audioStream, options);
-  mediaRecorder.onerror = (e) => { console.error('[voice] MediaRecorder error:', e); };
+  mediaRecorder.onerror = (e) => { console.error('[speech] MediaRecorder error:', e); };
   mediaRecorder.ondataavailable = (evt) => { if (evt.data && evt.data.size > 0) sendAudioChunk(evt.data); };
   try {
     mediaRecorder.start();
   } catch(e) {
-    console.error('[voice] MediaRecorder.start() failed:', e.message);
-    voiceToast('Recording error: ' + e.message);
+    console.error('[speech] MediaRecorder.start() failed:', e.message);
+    speechToast('Recording error: ' + e.message);
     stopMedia();
-    setVoiceSessionState('idle');
+    setSpeechSessionState('idle');
   }
 }
 
-function cycleVoiceChunk() {
+function cycleSpeechChunk() {
   if (!audioStream || sessionState !== 'recording') return;
   if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
-  startVoiceChunk(); scheduleNextVoiceChunk();
+  startSpeechChunk(); scheduleNextSpeechChunk();
 }
 
-function scheduleNextVoiceChunk() { clearTimeout(chunkTimer); chunkTimer = setTimeout(cycleVoiceChunk, 5000); }
-async function stopRecording() { stopMedia(); await fetch('/api/voice-to-md/recording/pause', {method:'POST'}); }
+function scheduleNextSpeechChunk() { clearTimeout(chunkTimer); chunkTimer = setTimeout(cycleSpeechChunk, 5000); }
+async function stopRecording() { stopMedia(); await fetch('/api/speech-to-md/recording/pause', {method:'POST'}); }
 function stopMedia() {
   clearTimeout(chunkTimer); chunkTimer = null;
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
@@ -2213,35 +2252,35 @@ function getSupportedMimeType() {
     'audio/wav'
   ];
   const supported = types.find(t => MediaRecorder.isTypeSupported(t)) || '';
-  console.log('[voice] supported mimeType:', supported || 'none - MediaRecorder may fail');
+  console.log('[speech] supported mimeType:', supported || 'none - MediaRecorder may fail');
   return supported;
 }
 
 async function sendAudioChunk(blob) {
   const model = modelSelect.value || 'base';
   try {
-    const res = await fetch('/api/voice-to-md/upload?model=' + encodeURIComponent(model), {
+    const res = await fetch('/api/speech-to-md/upload?model=' + encodeURIComponent(model), {
       method: 'POST',
       headers: {'Content-Type': blob.type || 'audio/webm'},
       body: blob
     });
     if (!res.ok) {
       const err = await res.text();
-      console.error('[voice] upload failed:', res.status, err);
-      voiceToast('Upload failed: ' + err);
+      console.error('[speech] upload failed:', res.status, err);
+      speechToast('Upload failed: ' + err);
     }
   } catch(e) { console.warn('Chunk upload failed:', e); }
 }
 
 btnPause.addEventListener('click', async () => {
-  const res = await fetch('/api/voice-to-md/recording/pause', {method:'POST'});
+  const res = await fetch('/api/speech-to-md/recording/pause', {method:'POST'});
   if (!res.ok) {
-    voiceToast('Cannot pause: ' + (await res.text()));
+    speechToast('Cannot pause: ' + (await res.text()));
     return;
   }
 });
-btnStop.addEventListener('click', async () => { stopMedia(); await new Promise(r => setTimeout(r, 400)); await fetch('/api/voice-to-md/session/stop', {method:'POST'}); });
-window.addEventListener('beforeunload', () => { if (sessionState !== 'idle' && sessionState !== 'stopped') { stopMedia(); navigator.sendBeacon('/api/voice-to-md/session/stop'); } });
+btnStop.addEventListener('click', async () => { stopMedia(); await new Promise(r => setTimeout(r, 400)); await fetch('/api/speech-to-md/session/stop', {method:'POST'}); });
+window.addEventListener('beforeunload', () => { if (sessionState !== 'idle' && sessionState !== 'stopped') { stopMedia(); navigator.sendBeacon('/api/speech-to-md/session/stop'); } });
 if (btnClearTx) btnClearTx.addEventListener('click', () => { transcriptBody.innerHTML = ''; });
 
 if (btnToggleTx) btnToggleTx.addEventListener('click', () => {
@@ -2257,7 +2296,7 @@ btnCopyMd.addEventListener('click', async () => {
     const orig = btnCopyMd.textContent;
     btnCopyMd.textContent = 'Copied!';
     setTimeout(() => { btnCopyMd.textContent = orig; }, 1800);
-  } catch(_) { voiceToast('Copy failed'); }
+  } catch(_) { speechToast('Copy failed'); }
 });
 
 function setMdView(view) {
@@ -2306,20 +2345,30 @@ function renderMdPreview(md, target) {
   preview.innerHTML = html;
 }
 
-function appendVoiceTranscript(text) {
-  const div = document.createElement('div'); div.className = 'chunk new'; div.textContent = text; transcriptBody.appendChild(div); transcriptBody.scrollTop = transcriptBody.scrollHeight;
+function appendSpeechTranscript(text, editMode) {
+  const div = document.createElement('div');
+  div.className = 'chunk new' + (editMode ? ' edit-mode' : '');
+  if (editMode) {
+    const badge = document.createElement('span');
+    badge.className = 'chunk-edit-badge';
+    badge.textContent = 'edit';
+    div.appendChild(badge);
+  }
+  div.appendChild(document.createTextNode(text));
+  transcriptBody.appendChild(div);
+  transcriptBody.scrollTop = transcriptBody.scrollHeight;
   setTimeout(() => div.classList.remove('new'), 3000);
 }
 
-function voiceToast(msg) {
+function speechToast(msg) {
   const el = document.getElementById('vm-toast');
   el.textContent = msg; el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 3500);
 }
 
-async function restoreVoiceState() {
+async function restoreSpeechState() {
   try {
-    const res = await fetch('/api/voice-to-md/status');
+    const res = await fetch('/api/speech-to-md/status');
     const s = await res.json();
     if (s.state && s.state !== 'idle' && s.state !== 'stopped') {
       if (s.md_path) {
@@ -2327,13 +2376,13 @@ async function restoreVoiceState() {
         mdFilename.textContent = fname;
         if (mdFilenameHeader) mdFilenameHeader.textContent = fname;
       }
-      const mdRes = await fetch('/api/voice-to-md/content');
+      const mdRes = await fetch('/api/speech-to-md/content');
       const md = await mdRes.json();
       if (md.content) { mdEditor.value = md.content; renderMdPreview(md.content); if (btnCopyMd) btnCopyMd.style.display = ''; }
       sessionPanel.style.display = 'flex';
       setupPanel.style.display = 'none';
-      connectVoiceSSE();
-      setVoiceSessionState(s.state);
+      connectSpeechSSE();
+      setSpeechSessionState(s.state);
     }
   } catch(_) {}
 }

@@ -1,4 +1,4 @@
-package voicetomd
+package speechtomd
 
 import (
 	"encoding/json"
