@@ -11,12 +11,26 @@ import (
 type EventType string
 
 const (
-	EventTranscript EventType = "transcript" // new raw transcript segment
-	EventMarkdown   EventType = "markdown"   // updated processed document
-	EventState      EventType = "state"      // session state change
-	EventError      EventType = "error"      // error message
-	EventProgress   EventType = "progress"   // model download progress (0–100)
+	EventTranscript   EventType = "transcript"   // new raw transcript segment
+	EventMarkdown     EventType = "markdown"     // updated processed document
+	EventState        EventType = "state"        // session state change
+	EventError        EventType = "error"        // error message
+	EventProgress     EventType = "progress"     // model download progress (0–100)
+	EventAgentStatus  EventType = "agent_status" // agent processing status
 )
+
+// AgentStatusEvent carries agent processing state for the UI badge.
+type AgentStatusEvent struct {
+	Type    EventType       `json:"type"`
+	Payload AgentStatusInfo `json:"payload"`
+}
+
+// AgentStatusInfo describes the agent's current processing state.
+type AgentStatusInfo struct {
+	Status  string `json:"status"`  // loading, processing, ready, error
+	Label   string `json:"label"`   // human-readable label
+	Message string `json:"message"` // optional detail (e.g. error text)
+}
 
 // Event is the payload sent to all connected SSE clients.
 type Event struct {
@@ -45,6 +59,15 @@ func (b *Broadcaster) Send(ev Event) {
 		default:
 		}
 	}
+}
+
+// SendAgentStatus broadcasts an agent status update as a structured event.
+func (b *Broadcaster) SendAgentStatus(info AgentStatusInfo) {
+	data, _ := json.Marshal(AgentStatusEvent{
+		Type:    EventAgentStatus,
+		Payload: info,
+	})
+	b.Send(Event{Type: EventAgentStatus, Payload: string(data)})
 }
 
 func (b *Broadcaster) add() chan Event {

@@ -135,18 +135,25 @@ func (m *Manager) StartSession(agentName, modelSize string) error {
 
 	m.session.State = StateInitializing
 	m.bc.Send(Event{Type: EventState, Payload: StateInitializing.String()})
+	m.bc.SendAgentStatus(AgentStatusInfo{Status: "loading", Label: "loading"})
 
 	go func() {
 		if err := as.Start(); err != nil {
 			logger.Error(fmt.Sprintf("[voicetomd] Agent start failed: %v", err))
 			m.setSessionState(StateStopped)
 			m.bc.Send(Event{Type: EventError, Payload: "agent start failed: " + err.Error()})
+			m.bc.SendAgentStatus(AgentStatusInfo{Status: "error", Label: "error", Message: err.Error()})
 			return
 		}
+		m.bc.SendAgentStatus(AgentStatusInfo{Status: "processing", Label: "waiting"})
 		// Wait up to 90 s for init hook; fall back to ready state.
 		if err := as.WaitForInit(90 * time.Second); err != nil {
 			logger.Warn("[voicetomd] Agent init timeout; enabling recording as fallback")
 			m.setSessionState(StateReady)
+			m.bc.SendAgentStatus(AgentStatusInfo{Status: "ready", Label: "idle"})
+		} else {
+			m.setSessionState(StateReady)
+			m.bc.SendAgentStatus(AgentStatusInfo{Status: "ready", Label: "idle"})
 		}
 	}()
 
@@ -345,10 +352,14 @@ func (m *Manager) flushToAgent() {
 		return
 	}
 
+	// Notify UI that agent is processing
+	m.bc.SendAgentStatus(AgentStatusInfo{Status: "processing", Label: "processing"})
+
 	currentMD := sess.ReadMarkdown()
 	go func() {
 		if err := as.SendChunk(currentMD, text); err != nil {
 			logger.Warn(fmt.Sprintf("[voicetomd] SendChunk: %v", err))
+			m.bc.SendAgentStatus(AgentStatusInfo{Status: "error", Label: "error", Message: err.Error()})
 			buf.AgentDone()
 		}
 	}()

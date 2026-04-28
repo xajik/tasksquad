@@ -28,11 +28,17 @@ body {
   line-height: 1.5;
   background: var(--muted);
   color: var(--fg);
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .page { max-width: 960px; margin: 0 auto; padding: 20px 24px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .grid-3 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .grid-3 { grid-template-columns: 1fr; } }
 
 header {
   background: var(--card);
@@ -42,9 +48,7 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  flex-shrink: 0;
 }
 .header-brand { display: flex; align-items: center; gap: 10px; }
 .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-blue); flex-shrink: 0; }
@@ -60,6 +64,7 @@ header {
   padding: 0 24px;
   background: var(--card);
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .tab {
   padding: 12px 16px;
@@ -82,7 +87,8 @@ header {
 
 /* View containers */
 .view { display: none; }
-.view.active { display: block; }
+.view.active { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#voice-view.active { display: flex; }
 
 /* Buttons */
 .btn {
@@ -271,7 +277,6 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 }
 #voice-view {
   background: var(--muted);
-  display: flex;
   flex-direction: column;
   min-height: calc(100vh - 97px);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif;
@@ -311,15 +316,26 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .vm-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .vm-badge-idle      { background: rgba(110,110,115,0.12); color: #6E6E73; }
 .vm-badge-idle::before { background: #6E6E73; }
+.vm-badge-loading   { background: rgba(124,58,237,0.12); color: #7c3aed; }
+.vm-badge-loading::before { background: #7c3aed; animation: spinner .8s linear infinite; }
 .vm-badge-recording { background: rgba(255,59,48,0.12); color: #FF3B30; animation: badge-pulse 1.5s ease-in-out infinite; }
 .vm-badge-recording::before { background: #FF3B30; }
 .vm-badge-processing { background: rgba(255,159,10,0.12); color: #FF9F0A; }
-.vm-badge-processing::before { background: #FF9F0A; }
+.vm-badge-processing::before { background: #FF9F0A; animation: spinner .6s linear infinite; }
 .vm-badge-ready  { background: rgba(52,199,89,0.12); color: #34C759; }
 .vm-badge-ready::before { background: #34C759; }
 .vm-badge-paused { background: rgba(52,199,89,0.12); color: #34C759; }
 .vm-badge-paused::before { background: #34C759; }
+.vm-badge-agent-loading { background: rgba(124,58,237,0.12); color: #7c3aed; }
+.vm-badge-agent-loading::before { background: #7c3aed; }
+.vm-badge-agent-ready { background: rgba(52,199,89,0.12); color: #34C759; }
+.vm-badge-agent-ready::before { background: #34C759; }
+.vm-badge-agent-processing { background: rgba(255,159,10,0.12); color: #FF9F0A; }
+.vm-badge-agent-processing::before { background: #FF9F0A; }
+.vm-badge-agent-error { background: rgba(239,68,68,0.12); color: #dc2626; }
+.vm-badge-agent-error::before { background: #dc2626; }
 @keyframes badge-pulse { 0%,100% { opacity:1; } 50% { opacity:.6; } }
+@keyframes spinner { to { transform: rotate(360deg); } }
 
 /* Buttons */
 .vm-btn {
@@ -436,6 +452,36 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 }
 .vm-panel-header-label { font-size: 12px; font-weight: 600; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.4px; }
 .vm-panel-header-right { display: flex; align-items: center; gap: 8px; }
+
+/* Markdown view toggle */
+.vm-md-tabs { display: flex; gap: 2px; background: var(--muted); border-radius: 6px; padding: 2px; }
+.vm-md-tab {
+  padding: 3px 10px; border: none; background: none; border-radius: 4px;
+  font-size: 11px; font-weight: 500; color: var(--muted-fg); cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.vm-md-tab:hover { color: var(--fg); }
+.vm-md-tab.active { background: var(--card); color: var(--fg); shadow: 0 1px 2px rgba(0,0,0,.06); }
+
+/* Markdown preview */
+#md-preview { display: none; flex: 1; min-height: 0; padding: 14px 16px; overflow-y: auto; }
+#md-preview.active { display: block; }
+#md-editor.hidden { display: none; }
+#md-preview h1, #md-preview h2, #md-preview h3, #md-preview h4 { margin: 1em 0 0.5em; font-weight: 600; line-height: 1.3; }
+#md-preview h1 { font-size: 1.5em; }
+#md-preview h2 { font-size: 1.25em; }
+#md-preview h3 { font-size: 1.1em; }
+#md-preview p { margin: 0.6em 0; line-height: 1.65; }
+#md-preview ul, #md-preview ol { margin: 0.5em 0; padding-left: 1.5em; }
+#md-preview li { margin: 0.25em 0; }
+#md-preview code { background: var(--muted); padding: 2px 5px; border-radius: 3px; font-family: ui-monospace,"JetBrains Mono",Menlo,monospace; font-size: 0.9em; }
+#md-preview pre { background: hsl(222.2 47.4% 7%); padding: 12px; border-radius: 6px; overflow-x: auto; margin: 0.8em 0; }
+#md-preview pre code { background: none; padding: 0; }
+#md-preview blockquote { border-left: 3px solid var(--accent-blue); padding-left: 12px; margin: 0.8em 0; color: var(--muted-fg); }
+#md-preview a { color: var(--accent-blue); }
+#md-preview table { border-collapse: collapse; width: 100%; margin: 0.8em 0; }
+#md-preview th, #md-preview td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+#md-preview th { background: var(--muted); }
 
 #md-editor {
   flex: 1;
@@ -602,6 +648,147 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   letter-spacing: -0.1px;
 }
 #vm-toast.show { opacity: 1; transform: translateY(0); }
+
+/* ── App Shell ───────────────────────────────────────────────────── */
+.cp-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.cp-sidebar {
+  width: 180px; flex-shrink: 0;
+  background: var(--card); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 8px 0; overflow-y: auto;
+  position: relative; z-index: 41;
+}
+.cp-nav-item {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 9px 14px;
+  background: none; border: none; border-left: 3px solid transparent;
+  font-size: 13px; font-weight: 500; color: var(--muted-fg);
+  cursor: pointer; text-align: left;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.cp-nav-item:hover { background: var(--muted); color: var(--fg); }
+.cp-nav-item.active { background: hsl(214 80% 96%); color: var(--accent-blue); border-left-color: var(--accent-blue); }
+.cp-nav-label { flex: 1; }
+.cp-nav-count {
+  font-size: 11px; font-weight: 600;
+  background: var(--secondary); color: var(--muted-fg);
+  padding: 1px 6px; border-radius: 9999px; min-width: 20px; text-align: center;
+}
+.cp-nav-item.active .cp-nav-count { background: hsl(214 80% 88%); color: var(--accent-blue); }
+.cp-sidebar-footer { margin-top: auto; padding: 10px; border-top: 1px solid var(--border); }
+.cp-main { flex: 1; overflow-y: auto; padding: 16px 20px; background: var(--muted); }
+.cp-section { display: none; }
+.cp-section.active { display: block; }
+
+/* ── Status bar ──────────────────────────────────────────────────── */
+.status-bar {
+  padding: 5px 20px 5px 196px;
+  background: var(--card); border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--muted-fg); letter-spacing: -0.1px;
+  flex-shrink: 0;
+}
+
+/* ── Section toolbar ─────────────────────────────────────────────── */
+.section-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  height: 26px; padding: 0 10px; border-radius: 9999px;
+  border: 1px solid var(--border); background: var(--card);
+  font-size: 12px; font-weight: 500; color: var(--muted-fg);
+  cursor: pointer; white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.chip:hover { background: var(--secondary); color: var(--fg); }
+.chip.active { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
+.search-input {
+  height: 28px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 12px; font-family: inherit;
+  background: var(--card); color: var(--fg); outline: none; width: 200px;
+}
+.search-input:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,.12); }
+
+/* ── Compact rows in main panel ──────────────────────────────────── */
+.cp-main .row { padding: 9px 14px; }
+
+/* ── Collapsible group headers ───────────────────────────────────── */
+.group-header { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+.group-header:hover { background: hsl(215 20% 92%); }
+.group-collapse-icon { font-size: 9px; color: var(--muted-fg); transition: transform 0.15s; flex-shrink: 0; }
+.group-collapse-icon.open { transform: rotate(90deg); }
+
+/* ── Task pagination ─────────────────────────────────────────────── */
+.pagination-bar { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px 0 4px; }
+.page-info { font-size: 12px; color: var(--muted-fg); }
+
+/* ── Inline log (daemon logs section) ────────────────────────────── */
+.inline-log-body { max-height: calc(100vh - 200px); overflow-y: auto; background: hsl(222.2 47.4% 7%); padding: 14px 16px; }
+.inline-log-body pre { font-family: ui-monospace,"JetBrains Mono",Menlo,Monaco,monospace; font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-all; color: hsl(210 40% 88%); }
+
+/* ── Unified log drawer ──────────────────────────────────────────── */
+.log-drawer {
+  position: fixed; top: 97px; right: 0;
+  width: 480px; max-width: 92vw; height: calc(100vh - 97px);
+  background: hsl(222.2 47.4% 7%); border-left: 1px solid hsl(222.2 30% 18%);
+  display: flex; flex-direction: column; z-index: 40;
+  transform: translateX(100%); transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+}
+.log-drawer.open { transform: translateX(0); }
+.log-drawer-tabs {
+  display: flex; align-items: center;
+  background: hsl(222.2 47.4% 9%); border-bottom: 1px solid hsl(222.2 30% 18%);
+  flex-shrink: 0; padding: 0 2px;
+}
+.log-tab {
+  height: 38px; padding: 0 13px;
+  background: none; border: none; border-bottom: 2px solid transparent;
+  font-size: 12px; font-weight: 500;
+  color: hsl(210 40% 50%); cursor: pointer; white-space: nowrap;
+  font-family: ui-monospace,"JetBrains Mono",Menlo,monospace;
+  transition: color 0.15s, border-color 0.15s;
+}
+.log-tab:hover { color: hsl(210 40% 78%); }
+.log-tab.active { color: hsl(210 40% 90%); border-bottom-color: var(--accent-blue); }
+.log-tab-spacer { flex: 1; }
+.log-tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; min-height: 0; }
+.log-tab-content.active { display: flex; }
+.log-drawer-sub {
+  padding: 5px 14px; font-size: 11px;
+  font-family: ui-monospace,"JetBrains Mono",Menlo,monospace;
+  color: hsl(210 40% 50%); background: hsl(222.2 47.4% 8%);
+  border-bottom: 1px solid hsl(222.2 30% 15%);
+  flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.log-drawer-action-bar {
+  display: flex; align-items: center; gap: 8px; padding: 6px 14px;
+  background: hsl(222.2 47.4% 9%); border-bottom: 1px solid hsl(222.2 30% 16%); flex-shrink: 0;
+}
+.log-drawer .log-body { flex: 1; max-height: none; overflow-y: auto; }
+.voice-log-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-bottom: 1px solid hsl(222.2 30% 14%);
+  font-size: 12px; color: hsl(210 40% 70%);
+}
+.voice-log-item .vi-date { flex: 1; font-family: ui-monospace,"JetBrains Mono",Menlo,monospace; font-size: 11px; }
+.voice-log-item .vi-btns { display: flex; gap: 4px; }
+.drawer-backdrop { position: fixed; inset: 97px 0 0 0; background: rgba(0,0,0,.18); z-index: 39; }
+
+/* ── Responsive sidebar ──────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .cp-sidebar { width: 42px; }
+  .cp-nav-label, .cp-nav-count, .cp-sidebar-footer { display: none; }
+  .cp-nav-item { padding: 10px 12px; justify-content: center; border-left-width: 2px; }
+  .status-bar { padding-left: 54px; }
+}
+
+/* ── Clickable path links ─────────────────────────────────────────── */
+.link-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--accent-blue); font-size: 11px; font-family: inherit;
+  padding: 0 4px; border-radius: 3px;
+  text-decoration: underline; text-decoration-color: transparent;
+  transition: text-decoration-color 0.1s, background 0.1s;
+}
+.link-btn:hover { text-decoration-color: currentColor; background: rgba(37,99,235,.06); }
 </style>
 </head>
 <body>
@@ -614,7 +801,6 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   <div class="header-right">
     <span class="email-label" id="email-label"></span>
     <span class="refresh-label" id="refresh-label"></span>
-    <button class="btn btn-primary" onclick="syncTools()">Sync Tools</button>
     <button class="btn btn-secondary" onclick="openPortal()">Open Web Portal</button>
   </div>
 </header>
@@ -626,78 +812,196 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
 <!-- Dashboard View -->
 <div id="dashboard-view" class="view active">
-<div class="page">
-  <div class="grid-2">
-    <div class="card animate-in">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Agents</div>
-          <div class="card-subtitle" id="agents-subtitle"></div>
+
+<div class="status-bar" id="status-bar">&nbsp;</div>
+
+<div class="cp-shell">
+  <!-- Sidebar navigation -->
+  <nav class="cp-sidebar">
+    <button class="cp-nav-item active" data-section="agents" onclick="navTo('agents')">
+      <span class="cp-nav-label">Agents</span>
+      <span class="cp-nav-count" id="nav-count-agents"></span>
+    </button>
+    <button class="cp-nav-item" data-section="supervisor" onclick="navTo('supervisor')">
+      <span class="cp-nav-label">Supervisor</span>
+      <span class="cp-nav-count" id="nav-count-supervisor"></span>
+    </button>
+    <button class="cp-nav-item" data-section="sessions" onclick="navTo('sessions')">
+      <span class="cp-nav-label">Sessions</span>
+      <span class="cp-nav-count" id="nav-count-sessions"></span>
+    </button>
+    <button class="cp-nav-item" data-section="tasks" onclick="navTo('tasks')">
+      <span class="cp-nav-label">Task History</span>
+      <span class="cp-nav-count" id="nav-count-tasks"></span>
+    </button>
+    <button class="cp-nav-item" data-section="daemon-logs" onclick="navTo('daemon-logs')">
+      <span class="cp-nav-label">Daemon Logs</span>
+    </button>
+    <button class="cp-nav-item" data-section="voice-sessions" onclick="navTo('voice-sessions')">
+      <span class="cp-nav-label">Voice Sessions</span>
+      <span class="cp-nav-count" id="nav-count-voice"></span>
+    </button>
+    <button class="cp-nav-item" data-section="tools" onclick="navTo('tools')">
+      <span class="cp-nav-label">Tools</span>
+      <span class="cp-nav-count" id="nav-count-tools"></span>
+    </button>
+    <div class="cp-sidebar-footer">
+      <button class="btn btn-ghost btn-sm" style="width:100%;font-size:12px" onclick="openConfigFolder()">Edit Config</button>
+    </div>
+  </nav>
+
+  <!-- Main content panel -->
+  <main class="cp-main">
+
+    <!-- Agents section -->
+    <section id="section-agents" class="cp-section active">
+      <div class="section-toolbar">
+        <div class="filter-chips" id="agent-filters">
+          <button class="chip active" data-filter="all"           onclick="setAgentFilter(this)">All</button>
+          <button class="chip"        data-filter="running"       onclick="setAgentFilter(this)">Running</button>
+          <button class="chip"        data-filter="waiting_input" onclick="setAgentFilter(this)">Waiting</button>
+          <button class="chip"        data-filter="idle"          onclick="setAgentFilter(this)">Idle</button>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="openConfigFolder()">Edit</button>
+        <input class="search-input" id="agent-search" placeholder="Search agents…" oninput="applyAgentFilter()">
       </div>
-      <div id="agents-list"><div class="empty"><span class="spinner"></span></div></div>
-    </div>
+      <div class="card animate-in">
+        <div id="agents-list"><div class="empty"><span class="spinner"></span></div></div>
+      </div>
+    </section>
 
-    <div class="card animate-in" style="animation-delay:.05s">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Sessions</div>
-          <div class="card-subtitle">tmux managed</div>
+    <!-- Supervisor section -->
+    <section id="section-supervisor" class="cp-section">
+      <div class="card animate-in">
+        <div id="supervisor-list"><div class="empty"><span class="spinner"></span></div></div>
+      </div>
+    </section>
+
+    <!-- Sessions section -->
+    <section id="section-sessions" class="cp-section">
+      <div class="section-toolbar">
+        <div class="filter-chips" id="session-filters">
+          <button class="chip active" data-filter="all"    onclick="setSessionFilter(this)">All</button>
+          <button class="chip"        data-filter="linked" onclick="setSessionFilter(this)">Linked</button>
+          <button class="chip"        data-filter="orphan" onclick="setSessionFilter(this)">Orphan</button>
         </div>
+        <button class="btn btn-destructive btn-sm" id="btn-kill-all-orphans" style="display:none" onclick="killAllOrphans()">Kill All Orphans</button>
       </div>
-      <div id="sessions-list"><div class="empty"><span class="spinner"></span></div></div>
-    </div>
-  </div>
-
-  <div class="card animate-in" style="margin-top:16px;animation-delay:.1s">
-    <div class="card-header">
-      <div>
-        <div class="card-title">Task History</div>
-        <div class="card-subtitle">local JSONL records · <span id="tasks-count">…</span></div>
+      <div class="card animate-in">
+        <div id="sessions-list"><div class="empty"><span class="spinner"></span></div></div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="loadTasks()">Refresh</button>
-    </div>
-    <div id="tasks-list"><div class="empty"><span class="spinner"></span></div></div>
-  </div>
+    </section>
 
-  <div class="card animate-in" style="margin-top:16px;animation-delay:.15s">
-    <div class="card-header">
-      <div>
-        <div class="card-title">Daemon Logs</div>
-        <div class="card-subtitle">today's output</div>
+    <!-- Task History section -->
+    <section id="section-tasks" class="cp-section">
+      <div class="section-toolbar">
+        <input class="search-input" id="task-search" placeholder="Search by subject or agent…" oninput="applyTaskFilter()">
+        <button class="btn btn-ghost btn-sm" onclick="loadTasks()">Refresh</button>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="showDaemonLog()">View</button>
-    </div>
-  </div>
-
-  <div class="card animate-in" style="margin-top:16px;animation-delay:.2s">
-    <div class="card-header">
-      <div>
-        <div class="card-title">Voice Sessions</div>
-        <div class="card-subtitle" id="voice-sessions-subtitle">loading…</div>
+      <div class="card animate-in">
+        <div id="tasks-list"><div class="empty"><span class="spinner"></span></div></div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="loadVoiceSessions()">Refresh</button>
-    </div>
-    <div id="voice-sessions-list"><div class="empty"><span class="spinner"></span></div></div>
+      <div class="pagination-bar" id="tasks-pagination" style="display:none">
+        <button class="btn btn-secondary btn-sm" id="btn-prev-page" onclick="tasksPage(-1)">← Prev</button>
+        <span class="page-info" id="page-info"></span>
+        <button class="btn btn-secondary btn-sm" id="btn-next-page" onclick="tasksPage(1)">Next →</button>
+      </div>
+    </section>
+
+    <!-- Daemon Logs section -->
+    <section id="section-daemon-logs" class="cp-section">
+      <div class="section-toolbar">
+        <input class="search-input" id="daemon-log-filter" placeholder="Filter log lines…" oninput="filterDaemonLog()" style="width:260px">
+        <button class="btn btn-ghost btn-sm" onclick="showDaemonLogInline()">Reload</button>
+      </div>
+      <div class="card animate-in">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Daemon Logs</div>
+            <div class="card-subtitle">today's output · auto-refreshes every 2s when open</div>
+          </div>
+        </div>
+        <div class="inline-log-body" id="daemon-log-inline"><div class="empty">Loading…</div></div>
+      </div>
+    </section>
+
+    <!-- Voice Sessions section -->
+    <section id="section-voice-sessions" class="cp-section">
+      <div class="card animate-in">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Voice Sessions</div>
+            <div class="card-subtitle" id="voice-sessions-subtitle">loading…</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="loadVoiceSessions()">Refresh</button>
+        </div>
+        <div id="voice-sessions-list"><div class="empty"><span class="spinner"></span></div></div>
+      </div>
+    </section>
+
+    <!-- Tools section -->
+    <section id="section-tools" class="cp-section">
+      <div class="section-toolbar">
+        <button class="btn btn-primary btn-sm" id="btn-sync-tools" onclick="syncTools(this)">Sync</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadToolsSection()">Refresh</button>
+      </div>
+      <div id="tools-list"><div class="empty"><span class="spinner"></span></div></div>
+    </section>
+
+  </main>
+</div><!-- /.cp-shell -->
+
+<!-- Unified log drawer -->
+<div class="log-drawer" id="log-drawer">
+  <div class="log-drawer-tabs">
+    <button class="log-tab" data-tab="daemon" onclick="switchLogTab('daemon')">Daemon</button>
+    <button class="log-tab active" data-tab="agents" onclick="switchLogTab('agents')">Agents</button>
+    <button class="log-tab" data-tab="voice" onclick="switchLogTab('voice')">Voice</button>
+    <button class="log-tab" data-tab="tasks" onclick="switchLogTab('tasks')">Tasks</button>
+    <div class="log-tab-spacer"></div>
+    <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 50%);padding:0 12px;height:38px" onclick="closeLog()">✕</button>
   </div>
 
-  <div class="log-panel" id="task-panel">
-    <div class="log-header">
-      <span class="log-title" id="task-title">task</span>
-      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%)" onclick="closeTaskPanel()">Close</button>
+  <!-- Daemon tab -->
+  <div class="log-tab-content" id="logtab-daemon">
+    <div class="log-drawer-action-bar">
+      <span class="log-title" style="flex:1">daemon · today</span>
+      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%)" onclick="loadDaemonTab()">Reload</button>
     </div>
-    <div class="log-body" id="task-body"></div>
+    <div class="log-body"><pre id="log-pre-daemon" style="color:hsl(210 40% 88%)">Click Reload to view</pre></div>
   </div>
 
-  <div class="log-panel" id="log-panel">
-    <div class="log-header">
-      <span class="log-title" id="log-title">log</span>
-      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%)" onclick="closeLog()">Close</button>
+  <!-- Agents tab -->
+  <div class="log-tab-content active" id="logtab-agents">
+    <div class="log-drawer-action-bar">
+      <span class="log-title" id="log-title" style="flex:1;color:hsl(210 40% 60%)">Select an agent and click Logs</span>
+      <button id="btn-open-log-file" class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%);display:none" onclick="openCurrentLogFile()">Open ↗</button>
     </div>
-    <div class="log-body" id="log-body"><pre id="log-pre"></pre></div>
+    <div class="log-body" id="log-body"><pre id="log-pre" style="color:hsl(210 40% 88%)"></pre></div>
+  </div>
+
+  <!-- Voice tab -->
+  <div class="log-tab-content" id="logtab-voice">
+    <div class="log-drawer-sub">voice sessions — MD or Txt to view content</div>
+    <div style="overflow-y:auto;flex:1" id="voice-log-list">
+      <div class="empty" style="color:hsl(210 40% 55%)">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Tasks tab -->
+  <div class="log-tab-content" id="logtab-tasks">
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:11px;font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;color:hsl(210 40% 50%);background:hsl(222.2 47.4% 8%);border-bottom:1px solid hsl(222.2 30% 15%);flex-shrink:0">
+      <span id="task-title" style="flex:1">Select a task from Task History</span>
+      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 60%);height:24px;padding:0 8px;font-size:11px" onclick="loadTaskRaw()">Raw JSON</button>
+    </div>
+    <div class="log-body" id="task-body">
+      <div style="padding:16px;color:hsl(210 40% 50%);font-size:12px">Click any task in Task History to view its timeline here.</div>
+    </div>
   </div>
 </div>
+
+<!-- Backdrop (click to close drawer) -->
+<div class="drawer-backdrop" id="drawer-backdrop" onclick="closeLog()" style="display:none"></div>
+
 </div>
 
 <!-- Voice to MD View -->
@@ -705,6 +1009,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
 <div id="voice-header">
   <span class="vm-badge vm-badge-idle" id="state-badge">idle</span>
+  <span id="agent-status-badge" class="vm-badge vm-badge-idle" style="display:none;margin-left:8px">agent: idle</span>
   <span class="vm-filename" id="md-filename-header"></span>
   <button class="vm-btn vm-btn-ghost vm-btn-sm" id="btn-copy-md" style="display:none">Copy</button>
 </div>
@@ -759,9 +1064,16 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <div class="vm-panel" style="height:40vh;display:flex;flex-direction:column">
       <div class="vm-panel-header">
         <span class="vm-panel-header-label">Markdown</span>
-        <span id="md-filename" style="font-size:11px;color:var(--muted-fg)"></span>
+        <div class="vm-panel-header-right">
+          <span id="md-filename" style="font-size:11px;color:var(--muted-fg)"></span>
+          <div class="vm-md-tabs" id="md-tabs">
+            <button class="vm-md-tab active" data-view="code" onclick="setMdView('code')">Code</button>
+            <button class="vm-md-tab" data-view="preview" onclick="setMdView('preview')">Preview</button>
+          </div>
+        </div>
       </div>
       <textarea id="md-editor" spellcheck="false" placeholder="Processed markdown will appear here…"></textarea>
+      <div id="md-preview"></div>
     </div>
 
     <div class="vm-panel" id="transcript-panel" style="display:flex;flex-direction:column;overflow:hidden;transition:height 0.22s ease">
@@ -828,8 +1140,24 @@ function switchTab(el) {
 let DASH_URL = '';
 let PORTAL_URL = '';
 let CONFIG_DIR = '';
+let HOME_DIR = '';
 let activeLog = null;
 let logTimer = null;
+
+/* ── Sidebar / filter / pagination state ── */
+let activeSection = 'agents';
+let activeLogTab = 'agents';
+let agentFilter = 'all';
+let sessionFilter = 'all';
+let agentSearchTerm = '';
+let allTasks = [];
+let filteredTasks = [];
+let taskPage = 0;
+let currentTaskId = null;
+const TASKS_PER_PAGE = 20;
+let collapsedGroups = new Set();
+let lastAgents = [];
+let lastSessions = [];
 
 async function loadDashboard() {
   try {
@@ -839,12 +1167,50 @@ async function loadDashboard() {
     DASH_URL = d.dash_url || '';
     PORTAL_URL = d.portal_url || '';
     CONFIG_DIR = d.config_dir || '';
+    HOME_DIR = CONFIG_DIR ? CONFIG_DIR.replace(/\/\.tasksquad.*$/, '') : '';
+    lastAgents = d.agents || [];
+    lastSessions = d.sessions || [];
     document.getElementById('email-label').textContent = d.email || '';
     document.getElementById('refresh-label').textContent = 'updated ' + ago(d.updated_at);
-    renderAgents(d.agents || []);
-    renderSessions(d.sessions || []);
+    renderAgents(lastAgents);
+    renderSupervisorSessions(lastSessions);
+    renderSessions(lastSessions);
     loadVoiceSessions();
+    updateNavCounts(lastAgents, lastSessions);
+    updateStatusBar(lastAgents, lastSessions, allTasks.length);
   } catch(e) { console.error(e); }
+}
+
+function updateStatusBar(agents, sessions, tasksCount) {
+  const running = (agents || []).filter(a => a.mode === 'running').length;
+  const orphans = (sessions || []).filter(s => !s.is_supervisor && s.orphan).length;
+  const sesCount = (sessions || []).filter(s => !s.is_supervisor).length;
+  const bar = document.getElementById('status-bar');
+  if (bar) bar.textContent = (agents||[]).length + ' agents (' + running + ' running) · ' +
+    sesCount + ' sessions' + (orphans ? ' · ' + orphans + ' orphan' : '') +
+    ' · ' + (tasksCount || 0) + ' tasks';
+}
+
+function updateNavCounts(agents, sessions) {
+  const running = (agents||[]).filter(a => a.mode === 'running').length;
+  const waiting = (agents||[]).filter(a => a.mode === 'waiting_input').length;
+  const supCount = (sessions||[]).filter(s => s.is_supervisor).length;
+  const sesCount = (sessions||[]).filter(s => !s.is_supervisor).length;
+  const setCount = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val || ''; };
+  setCount('nav-count-agents', agents.length ? agents.length + (running ? ' · ' + running + '▶' : '') + (waiting ? ' · ' + waiting + '…' : '') : '');
+  setCount('nav-count-supervisor', supCount || '');
+  setCount('nav-count-sessions', sesCount || '');
+}
+
+function navTo(section) {
+  closeLog();
+  activeSection = section;
+  document.querySelectorAll('.cp-nav-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.section === section));
+  document.querySelectorAll('.cp-section').forEach(el =>
+    el.classList.toggle('active', el.id === 'section-' + section));
+  if (section === 'daemon-logs') showDaemonLogInline();
+  if (section === 'tools') loadToolsSection();
 }
 
 function ago(ms) {
@@ -859,11 +1225,8 @@ function badgeClass(mode) { return {running:'badge-running', waiting_input:'badg
 function modeLabel(mode) { return {running:'running', waiting_input:'waiting', idle:'idle'}[mode] || (mode || 'idle'); }
 
 function renderAgents(agents) {
+  lastAgents = agents;
   const el = document.getElementById('agents-list');
-  const subEl = document.getElementById('agents-subtitle');
-  const running = agents.filter(a => a.mode === 'running').length;
-  const waiting = agents.filter(a => a.mode === 'waiting_input').length;
-  subEl.textContent = running + ' running · ' + waiting + ' waiting · ' + (agents.length - running - waiting) + ' idle';
   if (!agents.length) { el.innerHTML = '<div class="empty">No agents configured</div>'; return; }
 
   const groups = {};
@@ -877,25 +1240,81 @@ function renderAgents(agents) {
   let html = '';
   let idx = 0;
   for (const dir of groupOrder) {
-    html += '<div class="group-header">' + x(shortPath(dir)) + '</div>';
+    const collapsed = collapsedGroups.has(dir);
+    const iconCls = 'group-collapse-icon' + (collapsed ? '' : ' open');
+    const openDirBtn = dir !== '(unknown)' ? '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:0 6px;height:20px;margin-left:4px" onclick="event.stopPropagation();openFolder(' + q(dir) + ')" title="Open in Finder">↗</button>' : '';
+    html += '<div class="group-header" onclick="toggleGroupCollapse(' + q(dir) + ')">'
+          + '<span class="' + iconCls + '">▶</span>'
+          + '<span style="flex:1">' + x(shortPath(dir)) + '</span>'
+          + openDirBtn + '</div>';
+    html += '<div class="group-body" id="grp-' + encodeURIComponent(dir) + '"' + (collapsed ? ' style="display:none"' : '') + '>';
     for (const a of groups[dir]) {
       const i = idx++;
-      const logBtn = a.task_id ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ')">Logs</button>' : '';
+      const logBtn = a.task_id ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ',' + q(a.log_path||'') + ')">Logs</button>' : '';
+      const pendingBadge = (a.pending_steps && a.pending_steps.length) ? '<span class="badge badge-waiting" style="font-size:10px">' + a.pending_steps.length + ' pending</span>' : '';
       const subTxt = a.task_id ? 'task ' + a.task_id.slice(0,10) + '… · pull ' + a.pull_ago : 'pull ' + a.pull_ago;
       html += '<div class="row expandable" onclick="toggleAgentDetail(' + i + ')">'
         + '<span class="expand-icon" id="ei-' + i + '">▶</span>'
         + '<div class="status-dot ' + dotClass(a.mode) + '"></div>'
         + '<div class="row-info"><div class="row-name">' + x(a.name) + '</div><div class="row-sub">' + x(subTxt) + '</div></div>'
-        + '<div class="row-actions"><span class="badge ' + badgeClass(a.mode) + '">' + modeLabel(a.mode) + '</span>' + logBtn + '</div>'
+        + '<div class="row-actions">' + pendingBadge + '<span class="badge ' + badgeClass(a.mode) + '">' + modeLabel(a.mode) + '</span>' + logBtn + '</div>'
         + '</div>'
         + '<div class="agent-detail" id="ad-' + i + '">'
         + (a.command  ? '<div class="detail-row"><span class="detail-key">Command</span><span class="detail-val">' + x(a.command)  + '</span></div>' : '')
         + (a.provider ? '<div class="detail-row"><span class="detail-key">Provider</span><span class="detail-val">' + x(a.provider) + '</span></div>' : '')
         + (a.id       ? '<div class="detail-row"><span class="detail-key">Agent ID</span><span class="detail-val">' + x(a.id)       + '</span></div>' : '')
+        + (a.log_path ? '<div class="detail-row"><span class="detail-key">Log</span><span class="detail-val" style="flex:1;overflow:hidden;text-overflow:ellipsis">' + x(a.log_path) + '</span><button class="link-btn" onclick="event.stopPropagation();openFolder(' + q(a.log_path) + ')">Open</button></div>' : '')
+        + (a.work_dir ? '<div class="detail-row"><span class="detail-key">Work Dir</span><span class="detail-val" style="flex:1;overflow:hidden;text-overflow:ellipsis">' + x(shortPath(a.work_dir)) + '</span><button class="link-btn" onclick="event.stopPropagation();openFolder(' + q(a.work_dir) + ')">Open</button></div>' : '')
         + '</div>';
     }
+    html += '</div>';
   }
   el.innerHTML = html;
+}
+
+function toggleGroupCollapse(dir) {
+  if (collapsedGroups.has(dir)) collapsedGroups.delete(dir);
+  else collapsedGroups.add(dir);
+  const bodyEl = document.getElementById('grp-' + encodeURIComponent(dir));
+  if (bodyEl) bodyEl.style.display = collapsedGroups.has(dir) ? 'none' : '';
+  const headers = document.querySelectorAll('#agents-list .group-header');
+  headers.forEach(h => {
+    const icon = h.querySelector('.group-collapse-icon');
+    if (icon && h.textContent.trim().endsWith(shortPath(dir))) {
+      icon.classList.toggle('open', !collapsedGroups.has(dir));
+    }
+  });
+}
+
+function setAgentFilter(chip) {
+  document.querySelectorAll('#agent-filters .chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  agentFilter = chip.dataset.filter;
+  applyAgentFilter();
+}
+
+function applyAgentFilter() {
+  agentSearchTerm = (document.getElementById('agent-search')?.value || '').toLowerCase();
+  document.querySelectorAll('#agents-list .group-body').forEach(gb => {
+    let anyVisible = false;
+    const rows = gb.querySelectorAll('.row.expandable');
+    rows.forEach(row => {
+      const name = (row.querySelector('.row-name')?.textContent || '').toLowerCase();
+      const badge = row.querySelector('.badge');
+      const modeMatch = agentFilter === 'all' ||
+        (agentFilter === 'running'       && badge?.classList.contains('badge-running')) ||
+        (agentFilter === 'waiting_input' && badge?.classList.contains('badge-waiting')) ||
+        (agentFilter === 'idle'          && badge?.classList.contains('badge-idle'));
+      const searchMatch = !agentSearchTerm || name.includes(agentSearchTerm);
+      const show = modeMatch && searchMatch;
+      row.style.display = show ? '' : 'none';
+      const detail = row.nextElementSibling;
+      if (detail?.classList.contains('agent-detail')) detail.style.display = show && detail.classList.contains('open') ? 'block' : (show ? '' : 'none');
+      if (show) anyVisible = true;
+    });
+    const header = gb.previousElementSibling;
+    if (header?.classList.contains('group-header')) header.style.display = anyVisible ? '' : 'none';
+  });
 }
 
 function toggleAgentDetail(i) {
@@ -906,35 +1325,100 @@ function toggleAgentDetail(i) {
   if (icon) icon.classList.toggle('open');
 }
 
-function renderSessions(sessions) {
-  const el = document.getElementById('sessions-list');
-  if (!sessions.length) { el.innerHTML = '<div class="empty">No active sessions</div>'; return; }
-  el.innerHTML = sessions.map(s => {
-    let dotCls, badgeCls, badgeTxt, sub, logBtn;
-    if (s.is_supervisor) {
-      dotCls = 'dot-supervisor'; badgeCls = 'badge-supervisor'; badgeTxt = 'supervisor';
-      sub = s.agent_name ? 'watching: ' + x(s.agent_name) : 'no linked agent';
-      logBtn = s.task_id ? '<button class="btn btn-secondary btn-sm" onclick="showSupervisorLog(event,' + q(s.task_id) + ',' + q(s.agent_name||'') + ')">Logs</button>' : '';
-    } else if (s.orphan) {
-      dotCls = 'dot-orphan'; badgeCls = 'badge-orphan'; badgeTxt = 'orphan';
-      sub = 'no linked agent'; logBtn = '';
-    } else {
-      dotCls = 'dot-running'; badgeCls = 'badge-linked'; badgeTxt = 'linked';
-      sub = 'agent: ' + x(s.agent_name);
-      logBtn = s.task_id ? '<button class="btn btn-secondary btn-sm" onclick="showSessionLog(event,' + x(JSON.stringify(s)) + ')">Logs</button>' : '';
-    }
-    const killBtn = '<button class="btn btn-destructive btn-sm" onclick="killSession(event,' + q(s.name) + ')">Kill</button>';
-    return '<div class="row"><div class="status-dot ' + dotCls + '"></div>'
+function renderSupervisorSessions(sessions) {
+  const supSessions = (sessions || []).filter(s => s.is_supervisor);
+  const el = document.getElementById('supervisor-list');
+  if (!supSessions.length) { el.innerHTML = '<div class="empty">No supervisor sessions</div>'; return; }
+  let html = '';
+  supSessions.forEach((s, i) => {
+    const sub = s.agent_name ? 'watching: ' + x(s.agent_name) : 'no linked agent';
+    const logBtn = s.task_id ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showSupervisorLog(event,' + q(s.task_id) + ',' + q(s.agent_name||'') + ')">Logs</button>' : '';
+    const killBtn = '<button class="btn btn-destructive btn-sm" onclick="event.stopPropagation();killSession(event,' + q(s.name) + ')">Kill</button>';
+    html += '<div class="row expandable" onclick="toggleSupDetail(' + i + ')">'
+      + '<span class="expand-icon" id="sei-' + i + '">▶</span>'
+      + '<div class="status-dot dot-supervisor"></div>'
       + '<div class="row-info"><div class="row-name">' + x(s.name) + '</div><div class="row-sub">' + sub + '</div></div>'
-      + '<div class="row-actions"><span class="badge ' + badgeCls + '">' + badgeTxt + '</span>' + logBtn + killBtn + '</div></div>';
-  }).join('');
+      + '<div class="row-actions"><span class="badge badge-supervisor">supervisor</span>' + logBtn + killBtn + '</div>'
+      + '</div>'
+      + '<div class="agent-detail" id="sd-' + i + '">'
+      + (s.task_id   ? '<div class="detail-row"><span class="detail-key">Task ID</span><span class="detail-val" style="flex:1">' + x(s.task_id) + '</span><button class="link-btn" onclick="event.stopPropagation();showTask(' + q(s.task_id) + ',' + q('supervisor · ' + (s.agent_name||'')) + ')">View →</button></div>' : '')
+      + (s.agent_name ? '<div class="detail-row"><span class="detail-key">Agent</span><span class="detail-val">' + x(s.agent_name) + '</span></div>' : '')
+      + (s.orphan    ? '<div class="detail-row"><span class="detail-key">Note</span><span class="detail-val" style="color:var(--destructive)">orphan — no linked agent</span></div>' : '')
+      + '</div>';
+  });
+  el.innerHTML = html;
 }
 
-async function showAgentLog(e, agentName, taskId) {
+function toggleSupDetail(i) {
+  const det = document.getElementById('sd-' + i);
+  const icon = document.getElementById('sei-' + i);
+  if (!det) return;
+  det.classList.toggle('open');
+  if (icon) icon.classList.toggle('open');
+}
+
+function renderSessions(sessions) {
+  const el = document.getElementById('sessions-list');
+  const regSessions = (sessions || []).filter(s => !s.is_supervisor);
+  if (!regSessions.length) { el.innerHTML = '<div class="empty">No active sessions</div>'; }
+  else {
+    el.innerHTML = regSessions.map(s => {
+      let dotCls, badgeCls, badgeTxt, sub, logBtn;
+      if (s.orphan) {
+        dotCls = 'dot-orphan'; badgeCls = 'badge-orphan'; badgeTxt = 'orphan';
+        sub = 'no linked agent'; logBtn = '';
+      } else {
+        dotCls = 'dot-running'; badgeCls = 'badge-linked'; badgeTxt = 'linked';
+        sub = 'agent: ' + x(s.agent_name);
+        logBtn = s.task_id ? '<button class="btn btn-secondary btn-sm" onclick="showSessionLog(event,' + x(JSON.stringify(s)) + ')">Logs</button>' : '';
+      }
+      const killBtn = '<button class="btn btn-destructive btn-sm" onclick="killSession(event,' + q(s.name) + ')">Kill</button>';
+      return '<div class="row"><div class="status-dot ' + dotCls + '"></div>'
+        + '<div class="row-info"><div class="row-name">' + x(s.name) + '</div><div class="row-sub">' + sub + '</div></div>'
+        + '<div class="row-actions"><span class="badge ' + badgeCls + '">' + badgeTxt + '</span>' + logBtn + killBtn + '</div></div>';
+    }).join('');
+  }
+  const orphanCount = regSessions.filter(s => s.orphan).length;
+  const killAllBtn = document.getElementById('btn-kill-all-orphans');
+  if (killAllBtn) killAllBtn.style.display = orphanCount > 0 ? '' : 'none';
+  applySessionFilter();
+}
+
+function setSessionFilter(chip) {
+  document.querySelectorAll('#session-filters .chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  sessionFilter = chip.dataset.filter;
+  applySessionFilter();
+}
+
+function applySessionFilter() {
+  document.querySelectorAll('#sessions-list .row').forEach(row => {
+    const isOrphan = !!row.querySelector('.badge-orphan');
+    const show = sessionFilter === 'all' ||
+                 (sessionFilter === 'orphan' && isOrphan) ||
+                 (sessionFilter === 'linked' && !isOrphan);
+    row.style.display = show ? '' : 'none';
+  });
+}
+
+async function killAllOrphans() {
+  const orphanRows = [...document.querySelectorAll('#sessions-list .row')].filter(r => r.querySelector('.badge-orphan'));
+  if (!orphanRows.length) return;
+  if (!confirm('Kill all ' + orphanRows.length + ' orphaned session(s)?')) return;
+  const btn = document.getElementById('btn-kill-all-orphans');
+  btn.disabled = true; btn.textContent = 'Killing…';
+  const names = orphanRows.map(r => r.querySelector('.row-name')?.textContent).filter(Boolean);
+  await Promise.all(names.map(name =>
+    fetch('/api/session/kill', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) }).catch(() => {})
+  ));
+  loadDashboard();
+}
+
+async function showAgentLog(e, agentName, taskId, logPath) {
   e.stopPropagation();
   if (!taskId) return;
   const url = '/api/logs?agent=' + encodeURIComponent(agentName) + '&task=' + encodeURIComponent(taskId);
-  openLog(agentName + ' · ' + taskId.slice(0, 14) + '…', url, true);
+  openLog(agentName + ' · ' + taskId.slice(0, 14) + '…', url, true, logPath || '');
 }
 
 async function showSessionLog(e, session) {
@@ -974,16 +1458,126 @@ async function openFolder(path) {
   try { await fetch('/api/open', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path}) }); } catch(e) { console.error('openFolder:', e); }
 }
 
-function openLog(title, url, poll = false) {
-  activeLog = (url && poll) ? {url} : null;
+function switchLogTab(tab) {
+  activeLogTab = tab;
+  document.querySelectorAll('.log-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.log-tab-content').forEach(c => c.classList.toggle('active', c.id === 'logtab-' + tab));
+  if (tab === 'daemon') loadDaemonTab();
+  if (tab === 'voice') loadVoiceLogTab();
+}
+
+function loadDaemonTab() {
+  const pre = document.getElementById('log-pre-daemon');
+  if (pre) pre.textContent = 'Loading…';
+  fetch('/api/logs/daemon')
+    .then(r => r.ok ? r.text() : Promise.reject('not found'))
+    .then(txt => {
+      if (!pre) return;
+      pre.textContent = txt;
+      const body = pre.parentElement;
+      if (body) body.scrollTop = body.scrollHeight;
+    })
+    .catch(err => { if (pre) pre.textContent = 'Error: ' + err; });
+}
+
+async function loadVoiceLogTab() {
+  const list = document.getElementById('voice-log-list');
+  if (!list) return;
+  list.innerHTML = '<div class="empty" style="color:hsl(210 40% 55%)">Loading…</div>';
+  try {
+    const [sessR, statusR] = await Promise.all([
+      fetch('/api/voice-to-md/sessions'),
+      fetch('/api/voice-to-md/status'),
+    ]);
+    const sessions = sessR.ok ? await sessR.json() : [];
+    const status = statusR.ok ? await statusR.json() : {};
+    const activeMd = status.md_path || '';
+    if (!sessions || !sessions.length) {
+      list.innerHTML = '<div class="empty" style="color:hsl(210 40% 55%)">No voice sessions yet</div>';
+      return;
+    }
+    list.innerHTML = sessions.map(s => {
+      const ts = parseInt(s.id, 10);
+      const d = isNaN(ts) ? s.id : new Date(ts).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      const isActive = activeMd && s.md_path === activeMd;
+      const badge = isActive ? '<span class="badge badge-running" style="font-size:10px;padding:1px 5px;margin-left:4px">live</span>' : '';
+      const voiceDir = HOME_DIR ? HOME_DIR + '/.tasksquad/voice-to-markdown/' + s.id : '';
+      return '<div class="voice-log-item">'
+        + '<span class="vi-date">' + x(d) + badge + '</span>'
+        + '<div class="vi-btns">'
+        + '<button class="btn btn-ghost btn-sm" onclick="openVoiceLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'md\')">MD</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="openVoiceLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'txt\')">Txt</button>'
+        + (voiceDir ? '<button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 60%)" onclick="openFolder(' + q(voiceDir) + ')" title="Open folder">↗</button>' : '')
+        + '</div>'
+        + '</div>';
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div class="empty" style="color:hsl(210 40% 55%)">Failed to load</div>';
+  }
+}
+
+function openVoiceLogInDrawer(id, label, kind) {
+  const title = (kind === 'md' ? 'voice · ' : 'transcript · ') + label;
+  const url = '/api/voice-to-md/session/content?id=' + encodeURIComponent(id) + '&kind=' + kind;
+  openLog(title, url);
+}
+
+function openLog(title, url, poll = false, filePath = '') {
+  activeLog = url ? {url, filePath} : null;
   if (logTimer) { clearInterval(logTimer); logTimer = null; }
-  document.getElementById('log-title').textContent = title;
-  document.getElementById('log-pre').textContent = 'Loading…';
-  const panel = document.getElementById('log-panel');
-  panel.classList.add('open');
-  panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+  const titleEl = document.getElementById('log-title');
+  if (titleEl) titleEl.textContent = title;
+  const pre = document.getElementById('log-pre');
+  if (pre) pre.textContent = 'Loading…';
+  const openBtn = document.getElementById('btn-open-log-file');
+  if (openBtn) openBtn.style.display = filePath ? '' : 'none';
+  switchLogTab('agents');
+  document.getElementById('log-drawer').classList.add('open');
+  document.getElementById('drawer-backdrop').style.display = '';
   if (url) fetchLog(url);
   if (poll) startLogPolling();
+}
+
+function openCurrentLogFile() {
+  if (activeLog && activeLog.filePath) openFolder(activeLog.filePath);
+}
+
+function openFileInDrawer(path, title) {
+  const name = title || path.split('/').pop();
+  const url = '/api/file?path=' + encodeURIComponent(path);
+  openLog(name, url, false, path);
+}
+
+async function toggleVoicePreview(id, kind) {
+  const el = document.getElementById('vsp-' + id);
+  if (!el) return;
+  if (el.dataset.kind === kind && el.style.display !== 'none') {
+    el.style.display = 'none';
+    el.dataset.kind = '';
+    return;
+  }
+  el.innerHTML = '<div style="padding:12px 16px;color:var(--muted-fg);font-size:12px"><span class="spinner"></span> Loading…</div>';
+  el.style.display = 'block';
+  el.dataset.kind = kind;
+  try {
+    const r = await fetch('/api/voice-to-md/session/content?id=' + encodeURIComponent(id) + '&kind=' + kind);
+    if (!r.ok) throw new Error('Not found');
+    const txt = await r.text();
+    if (kind === 'md') {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'padding:14px 16px;max-height:360px;overflow-y:auto';
+      const inner = document.createElement('div');
+      inner.style.cssText = 'font-size:13px;line-height:1.65;color:var(--fg)';
+      el.innerHTML = '';
+      el.appendChild(wrap);
+      wrap.appendChild(inner);
+      renderMdPreview(txt, inner);
+    } else {
+      el.innerHTML = '<pre style="padding:12px 16px;font-size:11.5px;max-height:260px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;color:var(--muted-fg);margin:0">' + x(txt) + '</pre>';
+    }
+  } catch(err) {
+    el.innerHTML = '<div style="padding:10px 16px;color:var(--destructive);font-size:12px">' + x(String(err)) + '</div>';
+  }
 }
 
 async function fetchLog(url) {
@@ -1004,12 +1598,47 @@ function startLogPolling() {
 }
 
 function closeLog() {
-  document.getElementById('log-panel').classList.remove('open');
+  document.getElementById('log-drawer').classList.remove('open');
+  document.getElementById('drawer-backdrop').style.display = 'none';
   activeLog = null;
   if (logTimer) { clearInterval(logTimer); logTimer = null; }
 }
 
-function showDaemonLog() { openLog('daemon · today', '/api/logs/daemon'); }
+function closeAllDrawers() { closeLog(); }
+
+function showDaemonLog() {
+  if (activeSection === 'daemon-logs') { showDaemonLogInline(); return; }
+  document.getElementById('log-drawer').classList.add('open');
+  document.getElementById('drawer-backdrop').style.display = '';
+  switchLogTab('daemon');
+}
+
+function showDaemonLogInline() {
+  const el = document.getElementById('daemon-log-inline');
+  if (!el) return;
+  el.innerHTML = '<pre>Loading…</pre>';
+  fetch('/api/logs/daemon')
+    .then(r => r.ok ? r.text() : Promise.reject('not found'))
+    .then(txt => {
+      const pre = document.createElement('pre');
+      pre.dataset.raw = txt;
+      pre.textContent = txt;
+      el.innerHTML = '';
+      el.appendChild(pre);
+      el.scrollTop = el.scrollHeight;
+      filterDaemonLog();
+    })
+    .catch(err => { el.innerHTML = '<pre>' + x('Error: ' + err) + '</pre>'; });
+}
+
+function filterDaemonLog() {
+  const term = (document.getElementById('daemon-log-filter')?.value || '').toLowerCase();
+  const pre = document.getElementById('daemon-log-inline')?.querySelector('pre');
+  if (!pre) return;
+  const raw = pre.dataset.raw || '';
+  if (!term) { pre.textContent = raw; return; }
+  pre.textContent = raw.split('\n').filter(l => l.toLowerCase().includes(term)).join('\n');
+}
 
 async function loadVoiceSessions() {
   const list = document.getElementById('voice-sessions-list');
@@ -1022,8 +1651,11 @@ async function loadVoiceSessions() {
     const sessions = sessR.ok ? await sessR.json() : [];
     const status = statusR.ok ? await statusR.json() : {};
     const activeMd = status.md_path || '';
-    sub.textContent = (sessions && sessions.length ? sessions.length + ' session' + (sessions.length === 1 ? '' : 's') : 'none') +
+    const countLabel = (sessions && sessions.length ? sessions.length + ' session' + (sessions.length === 1 ? '' : 's') : 'none') +
       (status.state && status.state !== 'idle' ? ' · ' + status.state : '');
+    if (sub) sub.textContent = countLabel;
+    const navCount = document.getElementById('nav-count-voice');
+    if (navCount) navCount.textContent = (sessions && sessions.length) ? sessions.length : '';
     if (!sessions || !sessions.length) {
       list.innerHTML = '<div class="empty">No sessions yet</div>';
       return;
@@ -1033,47 +1665,111 @@ async function loadVoiceSessions() {
       const d = isNaN(ts) ? s.id : new Date(ts).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
       const isActive = activeMd && s.md_path === activeMd;
       const badge = isActive ? '<span class="badge badge-running" style="font-size:10px;padding:2px 6px">live</span>' : '';
-      return '<div class="row" style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border)">'
+      const sessionDir = HOME_DIR ? HOME_DIR + '/.tasksquad/voice-to-markdown/' + s.id : '';
+      return '<div style="border-bottom:1px solid var(--border)">'
+        + '<div style="display:flex;align-items:center;gap:8px;padding:8px 16px">'
         + '<div style="flex:1;min-width:0">'
         + '<div style="font-size:13px;font-weight:500">' + x(d) + ' ' + badge + '</div>'
         + '</div>'
         + '<div style="display:flex;gap:6px">'
-        + '<button class="btn btn-ghost btn-sm" onclick="openLog(' + q('voice · ' + d) + ', \'/api/voice-to-md/session/content?id=' + s.id + '&kind=md\')">MD</button>'
-        + '<button class="btn btn-ghost btn-sm" onclick="openLog(' + q('transcript · ' + d) + ', \'/api/voice-to-md/session/content?id=' + s.id + '&kind=txt\')">Txt</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="toggleVoicePreview(' + q(s.id) + ',\'md\')">MD</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="toggleVoicePreview(' + q(s.id) + ',\'txt\')">Txt</button>'
+        + (sessionDir ? '<button class="btn btn-ghost btn-sm" onclick="openFolder(' + q(sessionDir) + ')" title="Open session folder">↗</button>' : '')
+        + '<button class="btn btn-destructive btn-sm" onclick="deleteVoiceSession(' + q(s.id) + ')" title="Delete session">✕</button>'
         + '</div>'
+        + '</div>'
+        + '<div id="vsp-' + s.id + '" style="display:none;background:var(--muted);border-top:1px solid var(--border)"></div>'
         + '</div>';
     }).join('');
   } catch(e) {
-    sub.textContent = 'error';
+    if (sub) sub.textContent = 'error';
     list.innerHTML = '<div class="empty">Failed to load</div>';
   }
 }
 
-async function syncTools() {
-  const btn = event.target;
-  btn.disabled = true;
-  btn.textContent = 'Syncing...';
+async function deleteVoiceSession(id) {
+  if (!confirm('Delete voice session ' + id + '? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/voice-to-md/sessions/' + encodeURIComponent(id), { method: 'DELETE' });
+    if (r.ok || r.status === 204) { loadVoiceSessions(); return; }
+    if (r.status === 404 || r.status === 405) { alert('Delete not supported by this daemon version.'); }
+    else { alert('Delete failed: ' + await r.text()); }
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function syncTools(btn) {
+  if (!btn) btn = document.getElementById('btn-sync-tools');
+  const origText = btn ? btn.textContent : 'Sync';
+  if (btn) { btn.disabled = true; btn.textContent = 'Syncing...'; }
   try {
     const res = await fetch('/api/sync', { method: 'POST' });
-    if (res.ok) {
-      btn.textContent = 'Synced!';
-      setTimeout(() => {
-        btn.textContent = 'Sync Tools';
-        btn.disabled = false;
-      }, 2000);
-    } else {
-      btn.textContent = 'Error';
-      setTimeout(() => {
-        btn.textContent = 'Sync Tools';
-        btn.disabled = false;
-      }, 2000);
+    if (btn) {
+      btn.textContent = res.ok ? 'Synced!' : 'Error';
+      setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
     }
+    if (res.ok) setTimeout(loadToolsSection, 2500);
   } catch (e) {
-    btn.textContent = 'Error';
-    setTimeout(() => {
-      btn.textContent = 'Sync Tools';
-      btn.disabled = false;
-    }, 2000);
+    if (btn) { btn.textContent = 'Error'; setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000); }
+  }
+}
+
+async function loadToolsSection() {
+  const el = document.getElementById('tools-list');
+  if (!el) return;
+  try {
+    const res = await fetch('/api/tools');
+    if (!res.ok) { el.innerHTML = '<div class="empty">Failed to load tools</div>'; return; }
+    const groups = await res.json();
+    if (!groups || !groups.length) { el.innerHTML = '<div class="empty">No tools installed</div>'; return; }
+
+    const toolPills = (items, pathFn, prefix = '') => items.map(i => {
+      const path = pathFn ? pathFn(i) : null;
+      const clickAttr = path ? `onclick="openFileInDrawer(${JSON.stringify(path)},${JSON.stringify(i)})" title="View file content" style="cursor:pointer;display:inline-flex;align-items:center;height:24px;padding:0 10px;background:var(--muted);border:1px solid var(--border);border-radius:9999px;font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;font-size:12px;color:var(--accent-blue);white-space:nowrap"` : `style="display:inline-flex;align-items:center;height:24px;padding:0 10px;background:var(--muted);border:1px solid var(--border);border-radius:9999px;font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;font-size:12px;color:var(--fg);white-space:nowrap"`;
+      return `<span ${clickAttr}>${prefix}${x(i)}</span>`;
+    }).join('');
+
+    const toolBlock = (label, items, pathFn, prefix = '') => {
+      if (!items || !items.length) return '';
+      return `<div style="padding:12px 16px 14px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;font-weight:600;color:var(--muted-fg);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">
+          ${label} <span style="font-weight:400;opacity:.6">${items.length}</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${toolPills(items, pathFn, prefix)}</div>
+      </div>`;
+    };
+
+    let html = '';
+    for (const g of groups) {
+      const label = g.agents && g.agents.length ? g.agents.join(', ') : shortPath(g.work_dir);
+      const total = (g.skills||[]).length + (g.commands||[]).length + (g.sub_agents||[]).length;
+      const wd = g.work_dir || '';
+      html += `<div class="card animate-in" style="margin-bottom:12px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${x(label)}</div>
+            <div class="card-subtitle" style="cursor:pointer" onclick="openFolder(${JSON.stringify(wd)})" title="Open in Finder">${x(wd)} ↗</div>
+          </div>
+          <span class="badge badge-idle">${total} installed</span>
+        </div>`;
+
+      html += toolBlock('Skills', g.skills, i => wd + '/.tsq/skills/' + i + '/SKILL.md');
+      html += toolBlock('Commands', g.commands, i => wd + '/.tsq/commands/' + i + '.md', '/');
+      html += toolBlock('Sub-Agents', g.sub_agents, i => wd + '/.claude/agents/' + i + '.md');
+
+      if (!total) {
+        html += `<div class="empty" style="padding:16px">No tools installed yet — click Sync to fetch from server</div>`;
+      }
+
+      html += `</div>`;
+    }
+    el.innerHTML = html;
+
+    // update nav count with total skills+commands across all work dirs
+    const totalTools = groups.reduce((n, g) => n + (g.skills||[]).length + (g.commands||[]).length + (g.sub_agents||[]).length, 0);
+    const navCount = document.getElementById('nav-count-tools');
+    if (navCount) navCount.textContent = totalTools || '';
+  } catch (e) {
+    el.innerHTML = '<div class="empty">Error loading tools</div>';
   }
 }
 
@@ -1081,27 +1777,68 @@ async function loadTasks() {
   try {
     const r = await fetch('/api/tasks');
     if (!r.ok) { document.getElementById('tasks-list').innerHTML = '<div class="empty">No tasks yet</div>'; return; }
-    const tasks = await r.json();
-    document.getElementById('tasks-count').textContent = tasks.length + ' task' + (tasks.length === 1 ? '' : 's');
-    if (!tasks.length) { document.getElementById('tasks-list').innerHTML = '<div class="empty">No tasks recorded yet</div>'; return; }
-    document.getElementById('tasks-list').innerHTML = tasks.map(t => {
-      const sub = x(t.subject || '(no subject)');
-      const detail = x(t.agent || '') + (t.task_id ? ' · ' + t.task_id.slice(0,14) + '…' : '');
-      const ts = t.ts ? new Date(t.ts).toLocaleString() : '';
-      return '<div class="row" style="cursor:pointer" onclick="showTask(' + q(t.task_id) + ',' + q(t.subject||'') + ')">'
-        + '<div class="status-dot dot-start"></div>'
-        + '<div class="row-info"><div class="row-name">' + sub + '</div><div class="row-sub">' + detail + '</div></div>'
-        + '<div class="row-actions" style="font-size:11px;color:var(--muted-fg)">' + x(ts) + '</div></div>';
-    }).join('');
+    allTasks = await r.json();
+    const navCount = document.getElementById('nav-count-tasks');
+    if (navCount) navCount.textContent = allTasks.length || '';
+    taskPage = 0;
+    applyTaskFilter();
+    updateStatusBar(lastAgents, lastSessions, allTasks.length);
   } catch(e) { document.getElementById('tasks-list').innerHTML = '<div class="empty">Error loading tasks</div>'; }
+}
+
+function applyTaskFilter() {
+  const term = (document.getElementById('task-search')?.value || '').toLowerCase();
+  filteredTasks = allTasks.filter(t =>
+    !term || (t.subject||'').toLowerCase().includes(term) || (t.agent||'').toLowerCase().includes(term)
+  );
+  taskPage = 0;
+  renderTasksPage();
+}
+
+function renderTasksPage() {
+  const start = taskPage * TASKS_PER_PAGE;
+  const slice = filteredTasks.slice(start, start + TASKS_PER_PAGE);
+  const pageCount = Math.max(1, Math.ceil(filteredTasks.length / TASKS_PER_PAGE));
+  const paginationBar = document.getElementById('tasks-pagination');
+  if (!filteredTasks.length) {
+    document.getElementById('tasks-list').innerHTML = '<div class="empty">No tasks match filter</div>';
+    if (paginationBar) paginationBar.style.display = 'none';
+    return;
+  }
+  document.getElementById('tasks-list').innerHTML = slice.map(t => {
+    const sub = x(t.subject || '(no subject)');
+    const agentBadge = t.agent ? '<span class="badge badge-idle" style="font-size:10px;margin-left:6px">' + x(t.agent) + '</span>' : '';
+    const taskIdPart = t.task_id ? '<span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">' + t.task_id.slice(0,12) + '…</span>' : '';
+    const tsRel = t.ts ? ago(new Date(t.ts).getTime()) : '';
+    return '<div class="row" style="cursor:pointer" onclick="showTask(' + q(t.task_id) + ',' + q(t.subject||'') + ')">'
+      + '<div class="status-dot dot-start"></div>'
+      + '<div class="row-info"><div class="row-name">' + sub + agentBadge + '</div><div class="row-sub">' + taskIdPart + (tsRel ? ' · ' + x(tsRel) : '') + '</div></div>'
+      + '<div class="row-actions"><button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="event.stopPropagation();showTask(' + q(t.task_id) + ',' + q(t.subject||'') + ')">View →</button></div></div>';
+  }).join('');
+  const pageInfo = document.getElementById('page-info');
+  const prevBtn = document.getElementById('btn-prev-page');
+  const nextBtn = document.getElementById('btn-next-page');
+  if (pageInfo) pageInfo.textContent = 'Page ' + (taskPage + 1) + ' of ' + pageCount + ' (' + filteredTasks.length + ' total)';
+  if (prevBtn) prevBtn.disabled = taskPage === 0;
+  if (nextBtn) nextBtn.disabled = taskPage >= pageCount - 1;
+  if (paginationBar) paginationBar.style.display = pageCount > 1 ? 'flex' : 'none';
+}
+
+function tasksPage(delta) {
+  const pageCount = Math.max(1, Math.ceil(filteredTasks.length / TASKS_PER_PAGE));
+  taskPage = Math.max(0, Math.min(pageCount - 1, taskPage + delta));
+  renderTasksPage();
 }
 
 async function showTask(taskId, subject) {
   if (!taskId) return;
-  document.getElementById('task-title').textContent = (subject || taskId).slice(0, 60);
+  currentTaskId = taskId;
+  const titleEl = document.getElementById('task-title');
+  if (titleEl) titleEl.textContent = (subject || taskId).slice(0, 60);
   document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:hsl(210 40% 70%);font-size:12px"><span class="spinner"></span> Loading…</div>';
-  document.getElementById('task-panel').classList.add('open');
-  document.getElementById('task-panel').scrollIntoView({behavior:'smooth', block:'start'});
+  document.getElementById('log-drawer').classList.add('open');
+  document.getElementById('drawer-backdrop').style.display = '';
+  switchLogTab('tasks');
   try {
     const r = await fetch('/api/tasks/' + encodeURIComponent(taskId));
     if (!r.ok) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Not found</div>'; return; }
@@ -1110,25 +1847,45 @@ async function showTask(taskId, subject) {
   } catch(e) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Error: ' + x(e.message) + '</div>'; }
 }
 
+async function loadTaskRaw() {
+  if (!currentTaskId) return;
+  const body = document.getElementById('task-body');
+  body.innerHTML = '<div style="padding:16px;color:hsl(210 40% 70%);font-size:12px"><span class="spinner"></span> Loading raw JSON…</div>';
+  try {
+    const r = await fetch('/api/tasks-log/' + encodeURIComponent(currentTaskId) + '?raw=true');
+    if (!r.ok) { body.innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Not found</div>'; return; }
+    const text = await r.text();
+    body.innerHTML = '<pre style="color:hsl(210 40% 85%);font-size:11.5px;line-height:1.6;white-space:pre-wrap;word-break:break-all">' + x(text) + '</pre>';
+  } catch(e) { body.innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Error: ' + x(e.message) + '</div>'; }
+}
+
 function renderTaskTimeline(jsonl) {
   const lines = jsonl.trim().split('\n').filter(Boolean);
   const events = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
   if (!events.length) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--muted-fg);font-size:12px">Empty record</div>'; return; }
   const html = events.map(ev => {
-    let dotCls = 'dot-end', label = ev.type || '', bodyTxt = '', ts = ev.ts || '';
+    let dotCls = 'dot-end', label = ev.type || '', bodyTxt = '', ts = ev.ts || '', extraHtml = '';
     switch(ev.type) {
-      case 'task_start': dotCls = 'dot-start'; label = 'Task started'; bodyTxt = (ev.subject||'') + (ev.log_path ? '\nLog: ' + ev.log_path : ''); break;
+      case 'task_start': dotCls = 'dot-start'; label = 'Task started'; bodyTxt = ev.subject || '';
+        if (ev.log_path) {
+          const _lUrl = ev.agent && ev.task_id
+            ? '/api/logs?agent=' + encodeURIComponent(ev.agent||'') + '&task=' + encodeURIComponent(ev.task_id||'')
+            : '/api/file?path=' + encodeURIComponent(ev.log_path);
+          const _lTitle = (ev.agent ? ev.agent + ' · ' : '') + (ev.task_id ? ev.task_id.slice(0,14) + '…' : ev.log_path.split('/').pop());
+          extraHtml = '<div style="margin-top:4px"><button class="link-btn" onclick="openLog(' + JSON.stringify(_lTitle) + ',' + JSON.stringify(_lUrl) + ',false,' + JSON.stringify(ev.log_path) + ')">View log ↗</button></div>';
+        }
+        break;
       case 'message': dotCls = ev.role === 'agent' ? 'dot-agent' : 'dot-user'; label = ev.role === 'agent' ? 'Agent' : 'User'; bodyTxt = ev.body || ''; break;
       case 'agent_turn': dotCls = 'dot-agent'; label = 'Agent (waiting)'; bodyTxt = ev.body || ''; break;
       case 'user_reply': dotCls = 'dot-user'; label = 'User reply'; bodyTxt = ev.body || ''; break;
       case 'task_end': dotCls = ev.status === 'closed' ? 'dot-agent' : 'dot-orphan'; label = 'Task ended · ' + (ev.status||''); bodyTxt = ev.final_text || ''; break;
     }
-    return '<div class="tl-event"><div class="tl-dot ' + dotCls + '"></div><div class="tl-body"><div class="tl-label">' + x(label) + '</div>' + (bodyTxt ? '<div class="tl-text">' + x(bodyTxt) + '</div>' : '') + '<div class="tl-ts">' + x(new Date(ts).toLocaleString()) + '</div></div></div>';
+    return '<div class="tl-event"><div class="tl-dot ' + dotCls + '"></div><div class="tl-body"><div class="tl-label">' + x(label) + '</div>' + (bodyTxt ? '<div class="tl-text">' + x(bodyTxt) + '</div>' : '') + extraHtml + '<div class="tl-ts">' + x(new Date(ts).toLocaleString()) + '</div></div></div>';
   }).join('');
   document.getElementById('task-body').innerHTML = '<div class="task-timeline">' + html + '</div>';
 }
 
-function closeTaskPanel() { document.getElementById('task-panel').classList.remove('open'); }
+function closeTaskPanel() { closeLog(); }
 
 function x(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function q(s) { return x(JSON.stringify(String(s || ''))); }
@@ -1324,22 +2081,62 @@ function connectVoiceSSE() {
 function handleVoiceSSE(ev) {
   switch(ev.type) {
     case 'state': setVoiceSessionState(ev.payload); break;
+    case 'agent_status': 
+      try {
+        const info = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+        updateAgentStatus(info);
+      } catch(e) { console.warn('agent_status parse error:', e); }
+      break;
     case 'transcript': appendVoiceTranscript(ev.payload); break;
-    case 'markdown': mdEditor.value = ev.payload; if (btnCopyMd && ev.payload) btnCopyMd.style.display = ''; break;
-    case 'error': voiceToast('Agent error: ' + ev.payload); break;
+    case 'markdown': 
+      mdEditor.value = ev.payload; 
+      renderMdPreview(ev.payload);
+      if (btnCopyMd && ev.payload) btnCopyMd.style.display = ''; 
+      break;
+    case 'error': 
+      voiceToast('Agent error: ' + ev.payload); 
+      updateAgentStatus({status: 'error', label: 'error', message: ev.payload});
+      break;
   }
+}
+
+function updateAgentStatus(info) {
+  const badge = document.getElementById('agent-status-badge');
+  if (!badge) return;
+  badge.style.display = '';
+  badge.className = 'vm-badge';
+  const status = info.status || 'idle';
+  const label = info.label || status;
+  badge.textContent = 'agent: ' + label;
+  if (status === 'loading' || status === 'waiting') badge.classList.add('vm-badge-agent-loading');
+  else if (status === 'ready' || status === 'idle') badge.classList.add('vm-badge-agent-ready');
+  else if (status === 'processing') badge.classList.add('vm-badge-agent-processing');
+  else if (status === 'error') badge.classList.add('vm-badge-agent-error');
+  else badge.classList.add('vm-badge-agent-loading');
 }
 
 function setVoiceSessionState(st) {
   sessionState = st;
+  let badgeText = st;
   if (voiceStateBadge) {
-    voiceStateBadge.textContent = st;
     voiceStateBadge.className = 'vm-badge';
-    if (st === 'recording') voiceStateBadge.classList.add('vm-badge-recording');
-    else if (st === 'processing') voiceStateBadge.classList.add('vm-badge-processing');
-    else if (st === 'ready') voiceStateBadge.classList.add('vm-badge-ready');
-    else if (st === 'paused') voiceStateBadge.classList.add('vm-badge-paused');
-    else voiceStateBadge.classList.add('vm-badge-idle');
+    if (st === 'initializing') {
+      voiceStateBadge.classList.add('vm-badge-loading');
+      badgeText = 'loading';
+    } else if (st === 'recording') {
+      voiceStateBadge.classList.add('vm-badge-recording');
+      badgeText = 'recording';
+    } else if (st === 'processing') {
+      voiceStateBadge.classList.add('vm-badge-processing');
+      badgeText = 'processing';
+    } else if (st === 'ready' || st === 'paused') {
+      voiceStateBadge.classList.add('vm-badge-idle');
+      badgeText = 'idle';
+    } else {
+      voiceStateBadge.classList.add('vm-badge-idle');
+      badgeText = 'idle';
+    }
+    voiceStateBadge.textContent = badgeText;
   }
   initBanner.style.display = (st === 'initializing') ? 'flex' : 'none';
   btnRecord.disabled = (st !== 'ready' && st !== 'recording' && st !== 'paused');
@@ -1374,9 +2171,19 @@ async function startRecording() {
 
 function startVoiceChunk() {
   const mimeType = getSupportedMimeType();
-  mediaRecorder = new MediaRecorder(audioStream, mimeType ? {mimeType} : {});
+  const options = mimeType ? {mimeType} : {};
+  console.log('[voice] starting MediaRecorder with options:', options);
+  mediaRecorder = new MediaRecorder(audioStream, options);
+  mediaRecorder.onerror = (e) => { console.error('[voice] MediaRecorder error:', e); };
   mediaRecorder.ondataavailable = (evt) => { if (evt.data && evt.data.size > 0) sendAudioChunk(evt.data); };
-  mediaRecorder.start();
+  try {
+    mediaRecorder.start();
+  } catch(e) {
+    console.error('[voice] MediaRecorder.start() failed:', e.message);
+    voiceToast('Recording error: ' + e.message);
+    stopMedia();
+    setVoiceSessionState('idle');
+  }
 }
 
 function cycleVoiceChunk() {
@@ -1395,15 +2202,44 @@ function stopMedia() {
 }
 
 function getSupportedMimeType() {
-  const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg'];
-  return types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+  const types = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/ogg',
+    'audio/mp4',
+    'audio/mpeg',
+    'audio/3gpp',
+    'audio/wav'
+  ];
+  const supported = types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+  console.log('[voice] supported mimeType:', supported || 'none - MediaRecorder may fail');
+  return supported;
 }
 
 async function sendAudioChunk(blob) {
-  try { await fetch('/api/voice-to-md/upload?model=' + encodeURIComponent(modelSelect.value || 'base'), { method: 'POST', headers: {'Content-Type': blob.type || 'audio/webm'}, body: blob }); } catch(e) { console.warn('Chunk upload failed:', e); }
+  const model = modelSelect.value || 'base';
+  try {
+    const res = await fetch('/api/voice-to-md/upload?model=' + encodeURIComponent(model), {
+      method: 'POST',
+      headers: {'Content-Type': blob.type || 'audio/webm'},
+      body: blob
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('[voice] upload failed:', res.status, err);
+      voiceToast('Upload failed: ' + err);
+    }
+  } catch(e) { console.warn('Chunk upload failed:', e); }
 }
 
-btnPause.addEventListener('click', async () => { await stopRecording(); });
+btnPause.addEventListener('click', async () => {
+  const res = await fetch('/api/voice-to-md/recording/pause', {method:'POST'});
+  if (!res.ok) {
+    voiceToast('Cannot pause: ' + (await res.text()));
+    return;
+  }
+});
 btnStop.addEventListener('click', async () => { stopMedia(); await new Promise(r => setTimeout(r, 400)); await fetch('/api/voice-to-md/session/stop', {method:'POST'}); });
 window.addEventListener('beforeunload', () => { if (sessionState !== 'idle' && sessionState !== 'stopped') { stopMedia(); navigator.sendBeacon('/api/voice-to-md/session/stop'); } });
 if (btnClearTx) btnClearTx.addEventListener('click', () => { transcriptBody.innerHTML = ''; });
@@ -1423,6 +2259,52 @@ btnCopyMd.addEventListener('click', async () => {
     setTimeout(() => { btnCopyMd.textContent = orig; }, 1800);
   } catch(_) { voiceToast('Copy failed'); }
 });
+
+function setMdView(view) {
+  document.querySelectorAll('#md-tabs .vm-md-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  if (view === 'code') {
+    mdEditor.classList.remove('hidden');
+    document.getElementById('md-preview').classList.remove('active');
+  } else {
+    mdEditor.classList.add('hidden');
+    document.getElementById('md-preview').classList.add('active');
+  }
+}
+
+function renderMdPreview(md, target) {
+  const preview = target || document.getElementById('md-preview');
+  if (!md) { preview.innerHTML = ''; return; }
+  let html = md
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^\- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\|(.+)\|/g, (m) => {
+      const cells = m.split('|').filter(c => c.trim());
+      if (cells.some(c => c.match(/^-+$/))) return '';
+      return '<tr>' + cells.map(c => '<td>' + c.trim() + '</td>').join('') + '</tr>';
+    })
+    .replace(/(<tr>.*<\/tr>\n?)+/g, '<table>$&</table>')
+    .replace(/^(?!<[a-z])/gm, '');
+  html = '<p>' + html + '</p>';
+  html = html.replace(/<p><\/p>/g, '');
+  html = html.replace(/<p>(<[hupolbtd])/g, '$1');
+  html = html.replace(/(<\/[a-z]+>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<table>)/g, '$1');
+  html = html.replace(/(<\/table>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<ul>)/g, '$1');
+  html = html.replace(/(<\/ul>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<pre>)/g, '$1');
+  html = html.replace(/(<\/pre>)<\/p>/g, '$1');
+  preview.innerHTML = html;
+}
 
 function appendVoiceTranscript(text) {
   const div = document.createElement('div'); div.className = 'chunk new'; div.textContent = text; transcriptBody.appendChild(div); transcriptBody.scrollTop = transcriptBody.scrollHeight;
@@ -1447,7 +2329,7 @@ async function restoreVoiceState() {
       }
       const mdRes = await fetch('/api/voice-to-md/content');
       const md = await mdRes.json();
-      if (md.content) { mdEditor.value = md.content; if (btnCopyMd) btnCopyMd.style.display = ''; }
+      if (md.content) { mdEditor.value = md.content; renderMdPreview(md.content); if (btnCopyMd) btnCopyMd.style.display = ''; }
       sessionPanel.style.display = 'flex';
       setupPanel.style.display = 'none';
       connectVoiceSSE();

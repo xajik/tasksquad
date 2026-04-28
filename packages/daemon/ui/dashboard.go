@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -25,7 +26,42 @@ import (
 // button variants, and typography. Source lives in dashboard.html alongside this file.
 //
 //go:embed portal.html
-var portalHTML string
+var embeddedPortalHTML string
+
+var (
+	cachedPortalHTML  string
+	cachedPortalMtime int64
+)
+
+func getPortalHTML() string {
+	cwd, _ := os.Getwd()
+	searchPaths := []string{
+		filepath.Join(cwd, "ui", "portal.html"),
+		filepath.Join(filepath.Dir(os.Args[0]), "ui", "portal.html"),
+		filepath.Join(filepath.Dir(os.Args[0]), "packages", "daemon", "ui", "portal.html"),
+		filepath.Join(os.Getenv("HOME"), "Projects", "tasksquad-doc", "packages", "daemon", "ui", "portal.html"),
+	}
+
+	for _, path := range searchPaths {
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		currentMtime := info.ModTime().Unix()
+		if cachedPortalHTML == "" || currentMtime > cachedPortalMtime {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			cachedPortalHTML = string(data)
+			cachedPortalMtime = currentMtime
+			log.Printf("[ui] loaded portal.html from: %s", path)
+		}
+		return cachedPortalHTML
+	}
+
+	return embeddedPortalHTML
+}
 
 type dashStatus struct {
 	Email     string        `json:"email"`
@@ -67,7 +103,7 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(portalHTML)) //nolint:errcheck
+		w.Write([]byte(getPortalHTML())) //nolint:errcheck
 	})
 
 	mux.HandleFunc("/voice-to-md", func(w http.ResponseWriter, r *http.Request) {
@@ -149,8 +185,13 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 			return
 		}
 		mgr := GetVoiceManager()
-		if mgr != nil {
-			mgr.PauseRecording() //nolint:errcheck
+		if mgr == nil {
+			http.Error(w, "no active session", http.StatusBadRequest)
+			return
+		}
+		if err := mgr.PauseRecording(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
@@ -176,11 +217,15 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		}
 		mgr := GetVoiceManager()
 		if mgr == nil {
-			http.Error(w, "no active session", http.StatusBadRequest)
+			http.Error(w, "no active session - start a session first", http.StatusBadRequest)
 			return
 		}
 		if err := mgr.HandleUploadRequest(r); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpStatus := http.StatusInternalServerError
+			if strings.Contains(err.Error(), "not recording") || strings.Contains(err.Error(), "model not found") {
+				httpStatus = http.StatusBadRequest
+			}
+			http.Error(w, err.Error(), httpStatus)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -328,9 +373,8 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 					continue
 				}
 				// Supervisor sessions: tsq-sup-<taskID>
-				if strings.HasPrefix(line, "tsq-sup-") {
-					taskID := strings.TrimPrefix(line, "tsq-sup-")
-					lnk, ok := byTaskID[taskID]
+				if supTaskID, isSup := strings.CutPrefix(line, "tsq-sup-"); isSup {
+					lnk, ok := byTaskID[supTaskID]
 					sessions = append(sessions, dashSession{
 						Name:         line,
 						AgentName:    lnk.agent,
@@ -472,6 +516,42 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		w.Write(content) //nolint:errcheck
 	})
 
+	mux.HandleFunc("/api/tasks-log/", func(w http.ResponseWriter, r *http.Request) {
+		taskID := strings.TrimPrefix(r.URL.Path, "/api/tasks-log/")
+		taskID = dashSanitize(taskID)
+		if taskID == "" {
+			http.Error(w, "missing task id", http.StatusBadRequest)
+			return
+		}
+		raw := r.URL.Query().Get("raw") == "true"
+		home, _ := os.UserHomeDir()
+		path := filepath.Join(home, ".tasksquad", "tasks", taskID+".jsonl")
+		content, err := os.ReadFile(path)
+		if err != nil {
+			http.Error(w, "task not found", http.StatusNotFound)
+			return
+		}
+		if raw {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(content) //nolint:errcheck
+			return
+		}
+		lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+		var events []map[string]any
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			var ev map[string]any
+			if err := json.Unmarshal([]byte(line), &ev); err == nil {
+				events = append(events, ev)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(events) //nolint:errcheck
+	})
+
 	mux.HandleFunc("/api/tasks", func(w http.ResponseWriter, r *http.Request) {
 		home, _ := os.UserHomeDir()
 		dir := filepath.Join(home, ".tasksquad", "tasks")
@@ -574,6 +654,36 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		w.WriteHeader(http.StatusNoContent)
 	})
 
+	mux.HandleFunc("/api/file", func(w http.ResponseWriter, r *http.Request) {
+		rawPath := r.URL.Query().Get("path")
+		if rawPath == "" {
+			http.Error(w, "missing path", http.StatusBadRequest)
+			return
+		}
+		if rest, ok := strings.CutPrefix(rawPath, "~/"); ok {
+			home, _ := os.UserHomeDir()
+			rawPath = filepath.Join(home, rest)
+		}
+		clean := filepath.Clean(rawPath)
+		ext := strings.ToLower(filepath.Ext(clean))
+		allowed := map[string]bool{".md": true, ".log": true, ".jsonl": true, ".txt": true}
+		if !allowed[ext] {
+			http.Error(w, "file type not allowed", http.StatusForbidden)
+			return
+		}
+		content, err := os.ReadFile(clean)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		const maxBytes = 512 * 1024
+		if len(content) > maxBytes {
+			content = append(content[:maxBytes], []byte("\n[… truncated …]")...)
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(content) //nolint:errcheck
+	})
+
 	mux.HandleFunc("/api/session/kill", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -607,6 +717,74 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/tools", func(w http.ResponseWriter, r *http.Request) {
+		type toolsEntry struct {
+			WorkDir   string   `json:"work_dir"`
+			Agents    []string `json:"agents"`
+			Skills    []string `json:"skills"`
+			Commands  []string `json:"commands"`
+			SubAgents []string `json:"sub_agents"`
+		}
+
+		seen := map[string]*toolsEntry{}
+		var order []string
+		for _, a := range agents {
+			wd := a.WorkDir()
+			if wd == "" {
+				continue
+			}
+			if _, ok := seen[wd]; !ok {
+				seen[wd] = &toolsEntry{WorkDir: wd, Agents: []string{}, Skills: []string{}, Commands: []string{}, SubAgents: []string{}}
+				order = append(order, wd)
+			}
+			seen[wd].Agents = append(seen[wd].Agents, a.Name())
+		}
+
+		for _, wd := range order {
+			entry := seen[wd]
+
+			// Skills: scan .tsq/skills/ for subdirs containing SKILL.md
+			skillsBase := filepath.Join(wd, ".tsq", "skills")
+			if des, err := os.ReadDir(skillsBase); err == nil {
+				for _, de := range des {
+					if de.IsDir() {
+						if _, err2 := os.Stat(filepath.Join(skillsBase, de.Name(), "SKILL.md")); err2 == nil {
+							entry.Skills = append(entry.Skills, de.Name())
+						}
+					}
+				}
+			}
+
+			// Commands: scan .tsq/commands/ for *.md files
+			cmdsBase := filepath.Join(wd, ".tsq", "commands")
+			if des, err := os.ReadDir(cmdsBase); err == nil {
+				for _, de := range des {
+					if !de.IsDir() && strings.HasSuffix(de.Name(), ".md") {
+						entry.Commands = append(entry.Commands, strings.TrimSuffix(de.Name(), ".md"))
+					}
+				}
+			}
+
+			// Sub-agents: scan .claude/agents/ for *.md files
+			agentsBase := filepath.Join(wd, ".claude", "agents")
+			if des, err := os.ReadDir(agentsBase); err == nil {
+				for _, de := range des {
+					if !de.IsDir() && strings.HasSuffix(de.Name(), ".md") {
+						entry.SubAgents = append(entry.SubAgents, strings.TrimSuffix(de.Name(), ".md"))
+					}
+				}
+			}
+		}
+
+		result := make([]*toolsEntry, 0, len(order))
+		for _, wd := range order {
+			result = append(result, seen[wd])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result) //nolint:errcheck
 	})
 
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
