@@ -85,6 +85,13 @@ type AgentSession struct {
 	stopped     bool
 }
 
+// TmuxName returns the tmux session name.
+func (s *AgentSession) TmuxName() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tmuxName
+}
+
 // ChunkPayload is the JSON sent to the agent for each transcript chunk.
 type ChunkPayload struct {
 	CurrentMarkdown string `json:"current_markdown"`
@@ -193,10 +200,13 @@ func (s *AgentSession) NotesPath() string { return s.notesPath }
 
 // WaitForInit blocks until the agent fires the init hook, or times out.
 func (s *AgentSession) WaitForInit(timeout time.Duration) error {
+	logger.Info(fmt.Sprintf("[speech-agent] %s waiting for init hook (timeout: %s)", s.tmuxName, timeout))
 	select {
 	case <-s.initCh:
+		logger.Info(fmt.Sprintf("[speech-agent] %s init hook received!", s.tmuxName))
 		return nil
 	case <-time.After(timeout):
+		logger.Warn(fmt.Sprintf("[speech-agent] %s init timeout after %s", s.tmuxName, timeout))
 		return fmt.Errorf("agent init timed out after %s", timeout)
 	}
 }

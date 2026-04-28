@@ -2138,10 +2138,10 @@ function updateAgentStatus(info) {
   const status = info.status || 'idle';
   const label = info.label || status;
   badge.textContent = 'agent: ' + label;
-  if (status === 'loading' || status === 'waiting') badge.classList.add('vm-badge-agent-loading');
-  else if (status === 'ready' || status === 'idle') badge.classList.add('vm-badge-agent-ready');
+  if (status === 'not_started') badge.classList.add('vm-badge-agent-loading');
+  else if (status === 'idle') badge.classList.add('vm-badge-agent-ready');
   else if (status === 'processing') badge.classList.add('vm-badge-agent-processing');
-  else if (status === 'error') badge.classList.add('vm-badge-agent-error');
+  else if (status === 'error' || status === 'stopped') badge.classList.add('vm-badge-agent-error');
   else badge.classList.add('vm-badge-agent-loading');
 }
 

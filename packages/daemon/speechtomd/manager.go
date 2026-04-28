@@ -77,6 +77,9 @@ func (m *Manager) HandleResponse(markdown string) {
 	if buf != nil && buf.AgentDone() {
 		m.flushToAgent()
 	}
+
+	// Agent finished processing, ready for next chunk.
+	m.bc.SendAgentStatus(AgentStatusInfo{Status: "idle", Label: "idle"})
 }
 
 // HandleNotification is called by the hook server when Claude's Notification hook fires
@@ -101,10 +104,20 @@ func (m *Manager) HandleNotification(transcriptPath string) {
 }
 
 // SetEditMode updates the edit mode flag for subsequent chunk flushes.
+// If recording is active, it flushes the buffer to ensure any pending chunks
+// use the previous edit mode before switching.
 func (m *Manager) SetEditMode(enabled bool) {
 	m.mu.Lock()
+	wasRecording := m.session != nil && m.session.State == StateRecording
+	oldEditMode := m.editMode
 	m.editMode = enabled
 	m.mu.Unlock()
+
+	// Flush buffer on edit mode change during active recording to preserve mode per chunk
+	if wasRecording && oldEditMode != enabled {
+		logger.Info(fmt.Sprintf("[speechtomd] Edit mode changed mid-recording (%v -> %v) — flushing buffer", oldEditMode, enabled))
+		m.flushToAgent()
+	}
 }
 
 // StartSession creates a new session, installs command file, and starts the agent.
@@ -142,7 +155,7 @@ func (m *Manager) StartSession(agentName, modelSize string) error {
 
 	m.session.State = StateInitializing
 	m.bc.Send(Event{Type: EventState, Payload: StateInitializing.String()})
-	m.bc.SendAgentStatus(AgentStatusInfo{Status: "loading", Label: "loading"})
+	m.bc.SendAgentStatus(AgentStatusInfo{Status: "not_started", Label: "not started"})
 
 	go func() {
 		if err := as.Start(); err != nil {
@@ -153,14 +166,17 @@ func (m *Manager) StartSession(agentName, modelSize string) error {
 			return
 		}
 		m.bc.SendAgentStatus(AgentStatusInfo{Status: "processing", Label: "waiting"})
-		// Wait up to 90 s for init hook; fall back to ready state.
+		// Wait up to 90 s for init hook; on timeout, report error with tmux session ID.
 		if err := as.WaitForInit(90 * time.Second); err != nil {
-			logger.Warn("[speechtomd] Agent init timeout; enabling recording as fallback")
-			m.setSessionState(StateReady)
-			m.bc.SendAgentStatus(AgentStatusInfo{Status: "ready", Label: "idle"})
+			tmuxName := as.TmuxName()
+			errMsg := fmt.Sprintf("Agent init timeout after 90s. Run: tmux kill-session -t %s", tmuxName)
+			logger.Error(fmt.Sprintf("[speechtomd] %s", errMsg))
+			m.setSessionState(StateStopped)
+			m.bc.Send(Event{Type: EventError, Payload: errMsg})
+			m.bc.SendAgentStatus(AgentStatusInfo{Status: "error", Label: "timeout", Message: tmuxName})
 		} else {
 			m.setSessionState(StateReady)
-			m.bc.SendAgentStatus(AgentStatusInfo{Status: "ready", Label: "idle"})
+			m.bc.SendAgentStatus(AgentStatusInfo{Status: "idle", Label: "idle"})
 		}
 	}()
 
@@ -233,6 +249,7 @@ func (m *Manager) StopSession() {
 	m.mu.Unlock()
 
 	m.bc.Send(Event{Type: EventState, Payload: StateStopped.String()})
+	m.bc.SendAgentStatus(AgentStatusInfo{Status: "stopped", Label: "stopped"})
 }
 
 // ReceiveAudioChunk transcribes an audio chunk and feeds the text into the pipeline.
@@ -242,8 +259,13 @@ func (m *Manager) ReceiveAudioChunk(modelSize string, audioData []byte) error {
 	editMode := m.editMode
 	m.mu.Unlock()
 
-	if sess == nil || sess.State != StateRecording {
-		return fmt.Errorf("not recording")
+	if sess == nil {
+		logger.Warn("[speechtomd] upload received but no session active")
+		return fmt.Errorf("no active session")
+	}
+	if sess.State != StateRecording {
+		logger.Warn(fmt.Sprintf("[speechtomd] upload received but not recording (state: %s)", sess.State))
+		return fmt.Errorf("not recording (state: %s)", sess.State)
 	}
 
 	modelPath, err := whisperer.ModelPath(whisperer.ModelSize(modelSize))

@@ -27,7 +27,7 @@ type AgentStatusEvent struct {
 
 // AgentStatusInfo describes the agent's current processing state.
 type AgentStatusInfo struct {
-	Status  string `json:"status"`  // loading, processing, ready, error
+	Status  string `json:"status"`  // not_started, idle, processing, error, stopped
 	Label   string `json:"label"`   // human-readable label
 	Message string `json:"message"` // optional detail (e.g. error text)
 }
