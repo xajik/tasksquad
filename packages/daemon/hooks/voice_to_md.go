@@ -2,9 +2,11 @@ package hooks
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
+	hookadapter "github.com/tasksquad/daemon/adapter"
 	"github.com/tasksquad/daemon/logger"
 )
 
@@ -12,7 +14,10 @@ import (
 type SpeechToMDHandler interface {
 	HandleInit()
 	HandleResponse(markdown string)
-	HandleNotification(transcriptPath string)
+	// HandleNotification is called when the provider signals a turn is complete.
+	// message is the ready-to-use text extracted by the hook handler; empty means
+	// the agent has not yet posted a result and no fallback text was available.
+	HandleNotification(message string)
 }
 
 // handleSpeechToMDInit handles POST /hooks/speech-to-md/init.
@@ -52,10 +57,12 @@ func (s *hookServer) handleSpeechToMDResponse(w http.ResponseWriter, r *http.Req
 
 // handleSpeechToMDNotification handles POST /hooks/speech-to-md/notification.
 // Fired by each provider after a turn completes (Claude via Notification hook,
-// Gemini via AfterAgent hook). Used as a fallback signal to read processed markdown.
+// Gemini via AfterAgent hook, OpenCode via plugin, Codex via notify command).
+// Mirrors the adapter-based extraction pattern used in handleStop/handleAfterAgent.
 func (s *hookServer) handleSpeechToMDNotification(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
-	logger.Info("[hooks] POST /hooks/speech-to-md/notification")
+	provider := r.URL.Query().Get("provider")
+	logger.Info(fmt.Sprintf("[hooks] POST /hooks/speech-to-md/notification provider=%s", provider))
 
 	if s.speechHandler == nil {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -64,9 +71,15 @@ func (s *hookServer) handleSpeechToMDNotification(w http.ResponseWriter, r *http
 
 	var payload struct {
 		TranscriptPath string `json:"transcript_path"`
+		Message        string `json:"message"`
 	}
 	json.Unmarshal(body, &payload) //nolint:errcheck
 
-	s.speechHandler.HandleNotification(payload.TranscriptPath)
+	message := payload.Message
+	if message == "" && payload.TranscriptPath != "" {
+		message = hookadapter.For(provider).ExtractTranscript(payload.TranscriptPath)
+	}
+
+	s.speechHandler.HandleNotification(message)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

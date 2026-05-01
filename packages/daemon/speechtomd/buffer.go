@@ -92,6 +92,13 @@ func (b *Buffer) ForceFlush() (string, bool) {
 	return strings.Join(texts, " "), editMode
 }
 
+// IsAgentBusy reports whether the agent is currently processing a chunk.
+func (b *Buffer) IsAgentBusy() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.agentBusy
+}
+
 // AgentDone marks the agent as free and promotes pending → accumulated.
 // Returns true if the new accumulated content is already ready to flush.
 func (b *Buffer) AgentDone() bool {

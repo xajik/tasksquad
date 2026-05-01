@@ -43,7 +43,7 @@ func (p *Gemini) SetupVoice(workDir string, hooksPort int) error {
 					map[string]any{
 						"name":    "tasksquad-speech",
 						"type":    "command",
-						"command": geminiHookCmd(fmt.Sprintf("http://localhost:%d/hooks/speech-to-md/notification", hooksPort)),
+						"command": geminiHookCmd(fmt.Sprintf("http://localhost:%d/hooks/speech-to-md/notification?provider=gemini", hooksPort)),
 						"timeout": 5000,
 					},
 				},

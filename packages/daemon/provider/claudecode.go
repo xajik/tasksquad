@@ -71,7 +71,7 @@ func (p *ClaudeCode) SetupVoice(workDir string, hooksPort int) error {
 				"hooks": []any{
 					map[string]any{
 						"type": "http",
-						"url":  fmt.Sprintf("http://localhost:%d/hooks/speech-to-md/notification", hooksPort),
+						"url":  fmt.Sprintf("http://localhost:%d/hooks/speech-to-md/notification?provider=claude-code", hooksPort),
 					},
 				},
 			},

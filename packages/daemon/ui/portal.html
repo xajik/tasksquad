@@ -334,6 +334,10 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .vm-badge-agent-processing::before { background: #FF9F0A; }
 .vm-badge-agent-error { background: rgba(239,68,68,0.12); color: #dc2626; }
 .vm-badge-agent-error::before { background: #dc2626; }
+.vm-badge-mode-edit { background: rgba(124,58,237,0.12); color: #7c3aed; }
+.vm-badge-mode-edit::before { background: #7c3aed; }
+.vm-badge-mode-append { background: rgba(110,110,115,0.12); color: #6E6E73; }
+.vm-badge-mode-append::before { background: #6E6E73; }
 @keyframes badge-pulse { 0%,100% { opacity:1; } 50% { opacity:.6; } }
 @keyframes spinner { to { transform: rotate(360deg); } }
 
@@ -1112,6 +1116,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 <!-- Floating controls panel -->
 <div id="vm-controls-float">
   <button class="vm-btn vm-btn-outline vm-btn-sm" id="btn-stop-session">Stop</button>
+  <span class="vm-badge vm-badge-mode-append" id="mode-chip">append</span>
   <label class="vm-edit-toggle" title="Edit mode: spoken commands edit existing content instead of appending">
     <input type="checkbox" id="edit-mode-toggle">
     <span class="toggle-track"></span>
@@ -2194,9 +2199,16 @@ btnRecord.addEventListener('click', async () => { if (sessionState === 'recordin
 
 const editToggle = document.getElementById('edit-mode-toggle');
 const editToggleLabel = editToggle?.closest('.vm-edit-toggle');
+const modeChip = document.getElementById('mode-chip');
+function updateModeChip(enabled) {
+  if (!modeChip) return;
+  modeChip.textContent = enabled ? 'edit' : 'append';
+  modeChip.className = 'vm-badge ' + (enabled ? 'vm-badge-mode-edit' : 'vm-badge-mode-append');
+}
 editToggle?.addEventListener('change', async () => {
   const on = editToggle.checked;
   if (editToggleLabel) editToggleLabel.style.color = on ? 'var(--accent)' : '';
+  updateModeChip(on);
   await fetch('/api/speech-to-md/edit-mode', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({enabled: on})});
 });
 
@@ -2383,6 +2395,13 @@ async function restoreSpeechState() {
       setupPanel.style.display = 'none';
       connectSpeechSSE();
       setSpeechSessionState(s.state);
+      if (s.edit_mode !== undefined) {
+        const editMode = !!s.edit_mode;
+        if (editToggle && editToggle.checked !== editMode) {
+          editToggle.checked = editMode;
+          updateModeChip(editMode);
+        }
+      }
     }
   } catch(_) {}
 }

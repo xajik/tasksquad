@@ -82,24 +82,20 @@ func (m *Manager) HandleResponse(markdown string) {
 	m.bc.SendAgentStatus(AgentStatusInfo{Status: "idle", Label: "idle"})
 }
 
-// HandleNotification is called by the hook server when Claude's Notification hook fires
-// (Claude finished its turn and is waiting for the next user message).
-func (m *Manager) HandleNotification(transcriptPath string) {
+// HandleNotification is a fallback: calls HandleResponse only if the agent
+// hasn't already posted a result via the /response endpoint.
+func (m *Manager) HandleNotification(message string) {
 	m.mu.Lock()
 	sess := m.session
 	buf := m.buffer
 	m.mu.Unlock()
 
-	if sess == nil {
+	if sess == nil || message == "" {
 		return
 	}
 
-	// If agent is still busy (hasn't posted via /response endpoint), try transcript.
-	if buf != nil && buf.agentBusy {
-		text := whisperer.ExtractLastAssistantText(transcriptPath)
-		if text != "" {
-			m.HandleResponse(text)
-		}
+	if buf != nil && buf.IsAgentBusy() {
+		m.HandleResponse(message)
 	}
 }
 

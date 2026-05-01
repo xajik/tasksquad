@@ -33,34 +33,60 @@ type Codex struct{}
 
 func (p *Codex) Name() string            { return "codex" }
 func (p *Codex) UsesHooks() bool         { return true }
-func (p *Codex) Env(_ int) []string      { return nil }
+func (p *Codex) Env(_ int) []string       { return nil }
 func (p *Codex) Stdin(_ string) string   { return "" }
 func (p *Codex) ExtraArgs() []string     { return nil }
-func (p *Codex) SetupVoice(_ string, _ int) error { return ErrNotSupported }
+
+// SetupVoice updates ~/.codex/config.toml with a notify command pointing at
+// the speech-to-md notification endpoint.
+func (p *Codex) SetupVoice(_ string, hooksPort int) error {
+	url := fmt.Sprintf("http://localhost:%d/hooks/speech-to-md/notification?provider=codex", hooksPort)
+	configPath, err := codexConfigPath()
+	if err != nil {
+		return err
+	}
+	if err := setCodexNotifyLine(configPath, fmt.Sprintf("notify = %q", codexNotifyCmd(url))); err != nil {
+		return err
+	}
+	logger.Debug(fmt.Sprintf("[provider/codex] Wrote voice notify hook to %s (port %d)", configPath, hooksPort))
+	return nil
+}
 
 // Setup updates ~/.codex/config.toml with a notify command that POSTs the
 // codex turn-complete payload to the daemon's local hook server.
 func (p *Codex) Setup(_ string, hooksPort int, agentID string, taskID string) error {
+	url := fmt.Sprintf("http://localhost:%d/hooks/codex?agent=%s&task_id=%s", hooksPort, agentID, taskID)
+	configPath, err := codexConfigPath()
+	if err != nil {
+		return err
+	}
+	if err := setCodexNotifyLine(configPath, fmt.Sprintf("notify = %q", codexNotifyCmd(url))); err != nil {
+		return err
+	}
+	logger.Debug(fmt.Sprintf("[provider/codex] Wrote notify hook to %s (port %d, agent %s)", configPath, hooksPort, agentID))
+	return nil
+}
+
+// codexConfigPath returns the path to ~/.codex/config.toml, creating the dir if needed.
+func codexConfigPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("get home dir: %w", err)
+		return "", fmt.Errorf("get home dir: %w", err)
 	}
-
-	codexDir := filepath.Join(home, ".codex")
-	if err := os.MkdirAll(codexDir, 0755); err != nil {
-		return fmt.Errorf("create .codex dir: %w", err)
+	dir := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("create .codex dir: %w", err)
 	}
+	return filepath.Join(dir, "config.toml"), nil
+}
 
-	configPath := filepath.Join(codexDir, "config.toml")
-	stopURL := fmt.Sprintf("http://localhost:%d/hooks/codex?agent=%s&task_id=%s", hooksPort, agentID, taskID)
-	notifyLine := fmt.Sprintf("notify = %q", codexNotifyCmd(stopURL))
-
-	// Read existing config and replace/append the notify line, preserving other settings.
+// setCodexNotifyLine replaces an existing `notify = ...` line in the TOML file
+// or appends one, preserving all other settings.
+func setCodexNotifyLine(configPath, notifyLine string) error {
 	var lines []string
 	if data, err := os.ReadFile(configPath); err == nil {
 		lines = strings.Split(string(data), "\n")
 	}
-
 	replaced := false
 	for i, line := range lines {
 		if strings.HasPrefix(strings.TrimSpace(line), "notify") {
@@ -72,12 +98,9 @@ func (p *Codex) Setup(_ string, hooksPort int, agentID string, taskID string) er
 	if !replaced {
 		lines = append(lines, notifyLine)
 	}
-
 	if err := os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
 		return fmt.Errorf("write codex config: %w", err)
 	}
-
-	logger.Debug(fmt.Sprintf("[provider/codex] Wrote notify hook to %s (port %d, agent %s)", configPath, hooksPort, agentID))
 	return nil
 }
 
