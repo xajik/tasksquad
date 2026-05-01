@@ -38,9 +38,9 @@ func (p *Codex) Stdin(_ string) string   { return "" }
 func (p *Codex) ExtraArgs() []string     { return nil }
 
 // SetupVoice updates ~/.codex/config.toml with a notify command pointing at
-// the speech-to-md notification endpoint.
+// the daemon stop endpoint with speech=true.
 func (p *Codex) SetupVoice(_ string, hooksPort int) error {
-	url := fmt.Sprintf("http://localhost:%d/hooks/speech-to-md/notification?provider=codex", hooksPort)
+	url := fmt.Sprintf("http://localhost:%d/hooks/stop?speech=true&provider=codex", hooksPort)
 	configPath, err := codexConfigPath()
 	if err != nil {
 		return err

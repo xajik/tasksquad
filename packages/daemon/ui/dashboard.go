@@ -137,8 +137,9 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 			return
 		}
 		var body struct {
-			Agent string `json:"agent"`
-			Model string `json:"model"`
+			Agent  string `json:"agent"`
+			Model  string `json:"model"`
+			Prompt string `json:"prompt"`
 		}
 		json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
 		if body.Agent == "" {
@@ -153,7 +154,7 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 			http.Error(w, "speech-to-md not initialised", http.StatusServiceUnavailable)
 			return
 		}
-		if err := mgr.StartSession(body.Agent, body.Model); err != nil {
+		if err := mgr.StartSession(body.Agent, body.Model, body.Prompt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -328,6 +329,35 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		w.Header().Set("Content-Type", "application/json")
 		sessions, _ := speechtomd.ListSessions()
 		json.NewEncoder(w).Encode(sessions) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/speech-to-md/prompts", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			prompts, err := speechtomd.ListPrompts()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if prompts == nil {
+				prompts = []speechtomd.PromptEntry{}
+			}
+			json.NewEncoder(w).Encode(prompts) //nolint:errcheck
+		case http.MethodPost:
+			var body speechtomd.PromptEntry
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+				http.Error(w, "name and content required", http.StatusBadRequest)
+				return
+			}
+			if err := speechtomd.SavePrompt(body.Name, body.Content); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 
 	mux.HandleFunc("/api/speech-to-md/session/content", func(w http.ResponseWriter, r *http.Request) {

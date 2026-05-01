@@ -73,24 +73,46 @@ func (m *Manager) HandleResponse(markdown string) {
 	}
 	m.bc.Send(Event{Type: EventMarkdown, Payload: markdown})
 
-	// Promote pending chunks and flush if ready.
-	if buf != nil && buf.AgentDone() {
-		m.flushToAgent()
+	// Promote pending chunks and flush if ready or if recording is paused
+	// (paused sessions get no new audio so the threshold would never be reached).
+	if buf != nil {
+		shouldFlush := buf.AgentDone()
+		m.mu.Lock()
+		isPaused := m.session != nil && m.session.State == StatePaused
+		m.mu.Unlock()
+		if shouldFlush || isPaused {
+			m.flushToAgent()
+		}
 	}
 
 	// Agent finished processing, ready for next chunk.
 	m.bc.SendAgentStatus(AgentStatusInfo{Status: "idle", Label: "idle"})
 }
 
-// HandleNotification is a fallback: calls HandleResponse only if the agent
-// hasn't already posted a result via the /response endpoint.
+// HandleNotification handles a provider turn-complete signal.
+// The first stop event while the session is still initializing is treated
+// as the agent's readiness acknowledgement regardless of whether message text
+// was extracted (the hook firing is itself the ready signal).
+// Subsequent messages are treated as the markdown result for the current chunk.
 func (m *Manager) HandleNotification(message string) {
 	m.mu.Lock()
 	sess := m.session
 	buf := m.buffer
+	initializing := sess != nil && sess.State == StateInitializing
 	m.mu.Unlock()
 
-	if sess == nil || message == "" {
+	if sess == nil {
+		return
+	}
+
+	// Any stop event during init = agent is ready; don't require message text.
+	if initializing {
+		logger.Info("[speechtomd] HandleNotification: session initializing — marking ready")
+		m.HandleInit()
+		return
+	}
+
+	if message == "" {
 		return
 	}
 
@@ -117,7 +139,8 @@ func (m *Manager) SetEditMode(enabled bool) {
 }
 
 // StartSession creates a new session, installs command file, and starts the agent.
-func (m *Manager) StartSession(agentName, modelSize string) error {
+// prompt overrides the default system prompt sent to the agent; empty uses the built-in default.
+func (m *Manager) StartSession(agentName, modelSize, prompt string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -146,7 +169,7 @@ func (m *Manager) StartSession(agentName, modelSize string) error {
 	m.session = sess
 	m.buffer = &Buffer{}
 
-	as := newAgentSession(agentCfg, m.cfg.Hooks.Port, sess.DirPath)
+	as := newAgentSession(agentCfg, m.cfg.Hooks.Port, sess.DirPath, prompt)
 	m.agentSess = as
 
 	m.session.State = StateInitializing
@@ -321,10 +344,6 @@ func (m *Manager) Status() map[string]any {
 	if m.session == nil {
 		return map[string]any{"state": "idle"}
 	}
-	notesPath := ""
-	if m.agentSess != nil {
-		notesPath = m.agentSess.NotesPath()
-	}
 	return map[string]any{
 		"state":      m.session.State.String(),
 		"session_id": m.session.ID,
@@ -332,7 +351,6 @@ func (m *Manager) Status() map[string]any {
 		"model":      m.session.ModelSize,
 		"txt_path":   m.session.TxtPath,
 		"md_path":    m.session.MdPath,
-		"notes_path": notesPath,
 		"edit_mode":  m.editMode,
 	}
 }

@@ -55,6 +55,20 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	logger.Info(fmt.Sprintf("[hooks] Stop received: provider=%s stop_reason=%s transcript_path=%s",
 		provider, ev.Reason, ev.TranscriptPath))
 
+	// Speech-to-md turn completion — dispatch to speech handler and return early.
+	if r.URL.Query().Get("speech") == "true" {
+		if s.speechHandler != nil {
+			message := ev.HookMessage
+			if message == "" && ev.TranscriptPath != "" {
+				message = adpt.ExtractTranscript(ev.TranscriptPath)
+			}
+			logger.Info(fmt.Sprintf("[hooks] speech stop: transcript_path=%q message_len=%d", ev.TranscriptPath, len(message)))
+			s.speechHandler.HandleNotification(message)
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
+
 	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
 		switch agentmode.Mode(a.GetMode()) {
 		case agentmode.ModeLearning:

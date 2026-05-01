@@ -395,6 +395,61 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .vm-select:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
 .vm-label { font-size: 13px; font-weight: 500; color: var(--muted-fg); display: block; margin-bottom: 6px; }
 .vm-form-group { display: flex; flex-direction: column; }
+.vm-input {
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--fg);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+.vm-input:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+.vm-textarea {
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.55;
+  font-family: var(--mono, monospace);
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+.vm-textarea:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+
+/* Prompt modal */
+.vm-modal-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 24px 24px;
+  width: 540px;
+  max-width: calc(100vw - 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+}
+.vm-modal-header { display: flex; align-items: center; justify-content: space-between; }
+.vm-modal-title { font-size: 16px; font-weight: 600; color: var(--ink); }
+.vm-modal-close {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: none; background: rgba(0,0,0,0.06);
+  cursor: pointer; font-size: 13px; color: var(--muted-fg);
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.vm-modal-close:hover { background: rgba(0,0,0,0.12); }
 
 /* Progress */
 .vm-progress { height: 4px; background: rgba(0,0,0,0.08); border-radius: 2px; overflow: hidden; }
@@ -1071,6 +1126,14 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
       <select id="agent-select" class="vm-select">
         <option value="">Loading agents…</option>
       </select>
+    </div>
+
+    <div class="vm-form-group">
+      <label class="vm-label" for="prompt-select">Prompt</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="prompt-select" class="vm-select" style="flex:1"></select>
+        <button id="btn-new-prompt" class="vm-btn vm-btn-outline vm-btn-sm" title="Create new prompt" style="flex-shrink:0">＋ New</button>
+      </div>
     </div>
 
     <button id="btn-start-session" class="vm-btn vm-btn-primary" style="width:100%;justify-content:center" disabled>
@@ -1934,6 +1997,30 @@ let eventSource = null;
 let selectedModel = 'base';
 let chunkTimer = null;
 let modelDownloaded = false;
+let savedPrompts = [];
+
+const defaultPromptText = `You are a structured documentation assistant. You process spoken thoughts and convert them into clean, well-organised markdown — product specs, requirements, meeting notes, technical plans, and similar documents.
+
+**Initialization**
+Signal readiness by replying with a single word: ready
+
+**Processing chunks**
+For each user message you receive (a JSON object with current_markdown, new_transcript, and edit_mode):
+
+**If edit_mode is false (default — append mode):**
+1. Clean the transcript: remove filler words (um, uh, like, you know, so, actually, basically), fix grammar, compress verbose phrasing.
+2. Preserve all technical terms, names, numbers, and code identifiers exactly as spoken — including CLI commands, flags, and identifiers (e.g. npx wrangler deploy, --env production, Cloudflare Worker names).
+3. Integrate the cleaned text into current_markdown — do NOT rewrite or reformat existing sections.
+4. Reply ONLY with the complete updated markdown content (no explanations, no code fences).
+
+**If edit_mode is true (edit mode — spoken commands modify existing content):**
+1. Interpret new_transcript as a precise editing instruction targeting current_markdown.
+   Examples: change the title to X, split the second paragraph into two, remove the last bullet point, replace the wrangler command with npx wrangler deploy --env staging, make the intro shorter.
+2. Apply the instruction to current_markdown. Do not append new content beyond what the instruction explicitly requires.
+3. Preserve all sections not mentioned in the instruction exactly as-is.
+4. Reply ONLY with the complete updated markdown content (no explanations, no code fences).
+
+Remain in this mode for the entire session, processing one chunk at a time.`;
 
 const setupPanel = document.getElementById('setup-panel');
 const sessionPanel = document.getElementById('session-panel');
@@ -1970,8 +2057,16 @@ function initSpeechPage() {
   checkPrereqs();
   loadAgents();
   loadModels();
+  loadPrompts();
   modelSelect.addEventListener('change', loadModels);
   agentSelect.addEventListener('change', speechUpdateStartBtn);
+  document.getElementById('btn-new-prompt').addEventListener('click', openPromptModal);
+  document.getElementById('btn-prompt-modal-close').addEventListener('click', closePromptModal);
+  document.getElementById('btn-prompt-cancel').addEventListener('click', closePromptModal);
+  document.getElementById('btn-save-prompt').addEventListener('click', savePrompt);
+  document.getElementById('prompt-modal-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closePromptModal();
+  });
   restoreSpeechState();
 }
 
@@ -2001,6 +2096,50 @@ async function loadAgents() {
     else { names.forEach(n => { const opt = document.createElement('option'); opt.value = n; opt.textContent = n; sel.appendChild(opt); }); }
     speechUpdateStartBtn();
   } catch(e) { document.getElementById('agent-select').innerHTML = '<option value="">Failed to load agents</option>'; }
+}
+
+async function loadPrompts() {
+  const sel = document.getElementById('prompt-select');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Default (/tsq-speech-to-md)</option>';
+  try {
+    const res = await fetch('/api/speech-to-md/prompts');
+    savedPrompts = await res.json() || [];
+    savedPrompts.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+  } catch(e) { savedPrompts = []; }
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+}
+
+function openPromptModal() {
+  document.getElementById('prompt-name-input').value = '';
+  document.getElementById('prompt-content-input').value = defaultPromptText;
+  const overlay = document.getElementById('prompt-modal-overlay');
+  overlay.style.display = 'flex';
+  setTimeout(() => document.getElementById('prompt-name-input').focus(), 50);
+}
+
+function closePromptModal() {
+  document.getElementById('prompt-modal-overlay').style.display = 'none';
+}
+
+async function savePrompt() {
+  const name = document.getElementById('prompt-name-input').value.trim();
+  const content = document.getElementById('prompt-content-input').value.trim();
+  if (!name || !content) { speechToast('Name and content required'); return; }
+  const res = await fetch('/api/speech-to-md/prompts', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name, content})
+  });
+  if (!res.ok) { speechToast('Failed to save prompt'); return; }
+  closePromptModal();
+  speechToast('Prompt saved');
+  await loadPrompts();
+  document.getElementById('prompt-select').value = name;
 }
 
 async function loadModels() {
@@ -2090,7 +2229,13 @@ btnStartSession.addEventListener('click', async () => {
   startSpinner.style.display = 'inline-block';
   document.getElementById('start-label').textContent = ' Initialising…';
   try {
-    const res = await fetch('/api/speech-to-md/session/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({agent, model: modelSelect.value}) });
+    const promptVal = document.getElementById('prompt-select').value;
+    let prompt = '';
+    if (promptVal !== '') {
+      const p = savedPrompts.find(x => x.name === promptVal);
+      if (p) prompt = p.content;
+    }
+    const res = await fetch('/api/speech-to-md/session/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({agent, model: modelSelect.value, prompt}) });
     if (!res.ok) throw new Error(await res.text());
     sessionPanel.style.display = 'flex';
     setupPanel.style.display = 'none';
@@ -2411,5 +2556,28 @@ loadDashboard();
 loadTasks();
 setInterval(loadDashboard, 5000);
 </script>
+
+<!-- Prompt creation modal -->
+<div id="prompt-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center">
+  <div class="vm-modal-card">
+    <div class="vm-modal-header">
+      <span class="vm-modal-title">New prompt</span>
+      <button class="vm-modal-close" id="btn-prompt-modal-close" aria-label="Close">✕</button>
+    </div>
+    <div class="vm-form-group">
+      <label class="vm-label" for="prompt-name-input">Name</label>
+      <input id="prompt-name-input" class="vm-input" type="text" placeholder="e.g. meeting-notes" autocomplete="off">
+    </div>
+    <div class="vm-form-group">
+      <label class="vm-label" for="prompt-content-input">Content</label>
+      <textarea id="prompt-content-input" class="vm-textarea" rows="14" placeholder="Prompt text…"></textarea>
+    </div>
+    <p class="vm-hint" style="margin:0">Use <code>PORT</code> and <code>NOTES_PATH</code> as placeholders — the daemon substitutes them at session start.</p>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+      <button class="vm-btn vm-btn-outline" id="btn-prompt-cancel">Cancel</button>
+      <button class="vm-btn vm-btn-primary" id="btn-save-prompt">Save prompt</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

@@ -203,7 +203,7 @@ export const SpeechToTSDPlugin = async ({ client }) => {
             if (cached.completed) lastCompleted = cached
           }
           const message = lastCompleted ? lastCompleted.textParts.map(p => p.text).join("") : ""
-          await post("/hooks/speech-to-md/notification?provider=opencode", { transcript_path: "", message })
+          await post("/hooks/stop?speech=true&provider=opencode", { stop_reason: "idle", message })
           sessionIdleSent = true
         }
       }
@@ -216,7 +216,7 @@ export const SpeechToTSDPlugin = async ({ client }) => {
             if (cached.completed) lastCompleted = cached
           }
           const message = lastCompleted ? lastCompleted.textParts.map(p => p.text).join("") : ""
-          await post("/hooks/speech-to-md/notification?provider=opencode", { transcript_path: "", message })
+          await post("/hooks/stop?speech=true&provider=opencode", { stop_reason: "idle", message })
           sessionIdleSent = true
         }
       }
