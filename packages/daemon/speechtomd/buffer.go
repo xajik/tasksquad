@@ -92,20 +92,28 @@ func (b *Buffer) ForceFlush() (string, bool) {
 	return strings.Join(texts, " "), editMode
 }
 
-// IsAgentBusy reports whether the agent is currently processing a chunk.
-func (b *Buffer) IsAgentBusy() bool {
+// ClaimAgentResponse atomically marks the agent as done and promotes pending chunks.
+// Returns (shouldFlush, true) if this call claimed the busy slot; the caller must
+// process the response. Returns (false, false) if the agent was already idle — a
+// concurrent call already claimed it.
+func (b *Buffer) ClaimAgentResponse() (bool, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.agentBusy
+	if !b.agentBusy {
+		return false, false
+	}
+	b.agentBusy = false
+	b.accumulated = append(b.accumulated, b.pending...)
+	b.pending = nil
+	return b.shouldFlush(), true
 }
 
-// AgentDone marks the agent as free and promotes pending → accumulated.
-// Returns true if the new accumulated content is already ready to flush.
-func (b *Buffer) AgentDone() bool {
+// AgentDone marks the agent as free without requiring a response claim.
+// Used only in the SendChunk error path to reset the busy flag.
+func (b *Buffer) AgentDone() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.agentBusy = false
 	b.accumulated = append(b.accumulated, b.pending...)
 	b.pending = nil
-	return b.shouldFlush()
 }

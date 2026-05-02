@@ -52,40 +52,33 @@ func (m *Manager) HandleInit() {
 	logger.Info("[speechtomd] Agent initialised — recording enabled")
 }
 
-// HandleResponse is called by the hook server with processed markdown from the agent.
-func (m *Manager) HandleResponse(markdown string) {
+// handleAgentResponse processes the markdown result after the caller has atomically
+// claimed the agent-busy slot via ClaimAgentResponse. shouldFlush comes from that claim.
+func (m *Manager) handleAgentResponse(markdown string, shouldFlush bool) {
 	markdown = strings.TrimSpace(markdown)
-	if markdown == "" {
-		return
-	}
 
-	m.mu.Lock()
-	sess := m.session
-	buf := m.buffer
-	m.mu.Unlock()
-
-	if sess == nil {
-		return
-	}
-
-	if err := sess.WriteMarkdown(markdown); err != nil {
-		logger.Warn(fmt.Sprintf("[speechtomd] WriteMarkdown: %v", err))
-	}
-	m.bc.Send(Event{Type: EventMarkdown, Payload: markdown})
-
-	// Promote pending chunks and flush if ready or if recording is paused
-	// (paused sessions get no new audio so the threshold would never be reached).
-	if buf != nil {
-		shouldFlush := buf.AgentDone()
+	if markdown != "" {
 		m.mu.Lock()
-		isPaused := m.session != nil && m.session.State == StatePaused
+		sess := m.session
 		m.mu.Unlock()
-		if shouldFlush || isPaused {
-			m.flushToAgent()
+
+		if sess != nil {
+			if err := sess.WriteMarkdown(markdown); err != nil {
+				logger.Warn(fmt.Sprintf("[speechtomd] WriteMarkdown: %v", err))
+			}
+			m.bc.Send(Event{Type: EventMarkdown, Payload: markdown})
 		}
 	}
 
-	// Agent finished processing, ready for next chunk.
+	// Flush if the word threshold was reached, or if recording is paused
+	// (paused sessions get no new audio so the threshold would never be reached).
+	m.mu.Lock()
+	isPaused := m.session != nil && m.session.State == StatePaused
+	m.mu.Unlock()
+	if shouldFlush || isPaused {
+		m.flushToAgent()
+	}
+
 	m.bc.SendAgentStatus(AgentStatusInfo{Status: "idle", Label: "idle"})
 }
 
@@ -116,8 +109,10 @@ func (m *Manager) HandleNotification(message string) {
 		return
 	}
 
-	if buf != nil && buf.IsAgentBusy() {
-		m.HandleResponse(message)
+	if buf != nil {
+		if shouldFlush, claimed := buf.ClaimAgentResponse(); claimed {
+			m.handleAgentResponse(message, shouldFlush)
+		}
 	}
 }
 
@@ -406,7 +401,7 @@ func (m *Manager) flushToAgent() {
 		if err := as.SendChunk(currentMD, text, flushEditMode); err != nil {
 			logger.Warn(fmt.Sprintf("[speechtomd] SendChunk: %v", err))
 			m.bc.SendAgentStatus(AgentStatusInfo{Status: "error", Label: "error", Message: err.Error()})
-			buf.AgentDone()
+			buf.AgentDone() // reset busy flag on error; no stop hook will fire
 		}
 	}()
 }

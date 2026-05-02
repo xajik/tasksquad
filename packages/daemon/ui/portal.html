@@ -19,6 +19,7 @@
   --destructive:  hsl(0 84.2% 60.2%);
   --destructive-fg: hsl(210 40% 98%);
   --accent-blue:  #2563eb;
+  --accent:       #7c3aed;
   --radius:       0.5rem;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -603,8 +604,8 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   width: 12px; height: 12px; border-radius: 50%;
   background: #fff; transition: transform .2s;
 }
-#edit-mode-toggle:checked + .toggle-track { background: var(--accent); }
-#edit-mode-toggle:checked + .toggle-track::after { transform: translateX(12px); }
+.vm-edit-toggle.is-on .toggle-track { background: var(--accent); }
+.vm-edit-toggle.is-on .toggle-track::after { transform: translateX(12px); }
 
 /* Transcript expand/collapse */
 #transcript-panel { height: 88px; }
@@ -1099,14 +1100,17 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <div id="prereq-warn" class="vm-prereq-warn" style="display:none"></div>
 
     <div class="vm-form-group">
-      <label class="vm-label" for="model-select">Whisper model</label>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <label class="vm-label" style="margin:0" for="model-select">Whisper model</label>
+        <a id="btn-open-models-dir" href="#" style="font-size:11px;color:var(--accent);text-decoration:none">Open folder</a>
+      </div>
       <div style="display:flex;align-items:center;gap:10px">
         <select id="model-select" class="vm-select">
           <option value="tiny">Tiny (75 MB) — fastest</option>
           <option value="base" selected>Base (142 MB) — recommended</option>
           <option value="small">Small (466 MB)</option>
           <option value="medium">Medium (1.5 GB)</option>
-          <option value="large">Large (2.9 GB)</option>
+          <option value="large">Large v3 (2.9 GB)</option>
         </select>
         <span id="model-status" class="vm-model-status">checking…</span>
       </div>
@@ -1212,7 +1216,6 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <div class="vm-init-spinner"></div>
     <span>Waiting for agent…</span>
   </div>
-  <button class="vm-btn vm-btn-outline vm-btn-sm" id="btn-pause" disabled>Pause</button>
 </div>
 
 <div id="vm-toast"></div>
@@ -2032,7 +2035,6 @@ const modelStatus = document.getElementById('model-status');
 const agentSelect = document.getElementById('agent-select');
 const btnStartSession = document.getElementById('btn-start-session');
 const btnRecord = document.getElementById('btn-record');
-const btnPause = document.getElementById('btn-pause');
 const btnStop = document.getElementById('btn-stop-session');
 const btnDownload = document.getElementById('btn-download');
 const dlProgressBar = document.getElementById('dl-progress-bar');
@@ -2056,9 +2058,13 @@ function initSpeechPage() {
   speechStateBadge = document.getElementById('state-badge');
   checkPrereqs();
   loadAgents();
-  loadModels();
+  loadModels(true);
   loadPrompts();
-  modelSelect.addEventListener('change', loadModels);
+  modelSelect.addEventListener('change', () => loadModels(false));
+  document.getElementById('btn-open-models-dir')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    await fetch('/api/speech-to-md/models/open-folder', {method:'POST'});
+  });
   agentSelect.addEventListener('change', speechUpdateStartBtn);
   document.getElementById('btn-new-prompt').addEventListener('click', openPromptModal);
   document.getElementById('btn-prompt-modal-close').addEventListener('click', closePromptModal);
@@ -2142,7 +2148,7 @@ async function savePrompt() {
   document.getElementById('prompt-select').value = name;
 }
 
-async function loadModels() {
+async function loadModels(autoSelect = false) {
   selectedModel = modelSelect.value;
   modelStatus.textContent = 'checking…';
   modelStatus.className = 'vm-model-status';
@@ -2150,22 +2156,17 @@ async function loadModels() {
   try {
     const res = await fetch('/api/speech-to-md/models');
     const models = await res.json();
-    // Auto-select the first downloaded model if current selection isn't downloaded
-    const isModelDownloaded = (m) => m && (m.downloaded === true || m.downloaded === 'true' || m.downloaded === 1);
+    const isDownloaded = (m) => m && (m.downloaded === true || m.downloaded === 'true' || m.downloaded === 1);
     let m = (models || []).find(x => x.size === selectedModel);
-    if (!isModelDownloaded(m)) {
-      const first = (models || []).find(isModelDownloaded);
-      if (first) {
-        modelSelect.value = first.size;
-        selectedModel = first.size;
-        m = first;
-      }
+    // On initial load only: auto-select the first downloaded model
+    if (autoSelect && !isDownloaded(m)) {
+      const first = (models || []).find(isDownloaded);
+      if (first) { modelSelect.value = first.size; selectedModel = first.size; m = first; }
     }
-    if (isModelDownloaded(m)) {
+    if (isDownloaded(m)) {
       const mb = (m.bytes / 1048576).toFixed(0);
       modelStatus.textContent = '✓ ' + mb + ' MB';
       modelStatus.className = 'vm-model-status ok';
-      btnDownload.style.display = 'none';
       modelDownloaded = true;
     } else if (m && m.bytes > 0) {
       const mb = (m.bytes / 1048576).toFixed(0);
@@ -2196,30 +2197,37 @@ btnDownload.addEventListener('click', async () => {
   dlSpinner.style.display = 'inline-block';
   dlProgressBar.style.display = 'block';
   dlProgressFill.style.width = '0%';
-  const res = await fetch('/api/speech-to-md/models/download', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({model: selectedModel}) });
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
-  while (true) {
-    const {done, value} = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, {stream: true});
-    const lines = buf.split('\n');
-    buf = lines.pop();
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      try {
-        const p = JSON.parse(line.slice(6));
-        if (p.error) { speechToast('Download failed: ' + p.error); break; }
-        if (p.done) { dlProgressFill.style.width = '100%'; break; }
-        if (p.pct !== undefined) dlProgressFill.style.width = p.pct + '%';
-      } catch(_) {}
+  let succeeded = false;
+  try {
+    const res = await fetch('/api/speech-to-md/models/download', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({model: selectedModel}) });
+    if (!res.ok) { speechToast('Download failed: ' + await res.text()); }
+    else {
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '', stop = false;
+      outer: while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, {stream: true});
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const p = JSON.parse(line.slice(6));
+            if (p.error) { speechToast('Download failed: ' + p.error); stop = true; break; }
+            if (p.done) { dlProgressFill.style.width = '100%'; succeeded = true; stop = true; break; }
+            if (p.pct !== undefined) dlProgressFill.style.width = p.pct + '%';
+          } catch(_) {}
+        }
+        if (stop) { reader.cancel(); break outer; }
+      }
     }
-  }
+  } catch(e) { speechToast('Download error: ' + e.message); }
   dlSpinner.style.display = 'none';
+  dlProgressBar.style.display = succeeded ? 'none' : 'block';
   btnDownload.disabled = false;
-  await loadModels();
-  speechToast('Model downloaded');
+  if (succeeded) { await loadModels(false); speechToast('Model downloaded'); }
 });
 
 btnStartSession.addEventListener('click', async () => {
@@ -2323,11 +2331,11 @@ function setSpeechSessionState(st) {
   const siriWave = document.getElementById('siri-wave');
   const siriWaveRight = document.getElementById('siri-wave-right');
   if (st === 'recording') {
-    btnRecord.classList.add('recording'); btnRecord.title = 'Stop recording'; btnPause.disabled = false;
+    btnRecord.classList.add('recording'); btnRecord.title = 'Pause recording';
     if (siriWave) siriWave.classList.add('active');
     if (siriWaveRight) siriWaveRight.classList.add('active');
   } else {
-    btnRecord.classList.remove('recording'); btnRecord.title = 'Start recording'; btnPause.disabled = true;
+    btnRecord.classList.remove('recording'); btnRecord.title = 'Start recording';
     if (siriWave) siriWave.classList.remove('active');
     if (siriWaveRight) siriWaveRight.classList.remove('active');
   }
@@ -2350,11 +2358,13 @@ function updateModeChip(enabled) {
   modeChip.textContent = enabled ? 'edit' : 'append';
   modeChip.className = 'vm-badge ' + (enabled ? 'vm-badge-mode-edit' : 'vm-badge-mode-append');
 }
-editToggle?.addEventListener('change', async () => {
-  const on = editToggle.checked;
-  if (editToggleLabel) editToggleLabel.style.color = on ? 'var(--accent)' : '';
+function applyEditMode(on) {
+  if (editToggleLabel) editToggleLabel.classList.toggle('is-on', on);
   updateModeChip(on);
-  await fetch('/api/speech-to-md/edit-mode', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({enabled: on})});
+}
+editToggle?.addEventListener('change', async () => {
+  applyEditMode(editToggle.checked);
+  await fetch('/api/speech-to-md/edit-mode', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({enabled: editToggle.checked})});
 });
 
 async function startRecording() {
@@ -2371,7 +2381,11 @@ function startSpeechChunk() {
   console.log('[speech] starting MediaRecorder with options:', options);
   mediaRecorder = new MediaRecorder(audioStream, options);
   mediaRecorder.onerror = (e) => { console.error('[speech] MediaRecorder error:', e); };
-  mediaRecorder.ondataavailable = (evt) => { if (evt.data && evt.data.size > 0) sendAudioChunk(evt.data); };
+  mediaRecorder.ondataavailable = (evt) => {
+    // Skip blobs that are too small to contain real audio (just a WebM init segment).
+    // Also skip if we're no longer actively recording (e.g. the final blob after pause).
+    if (evt.data && evt.data.size > 1000 && sessionState === 'recording') sendAudioChunk(evt.data);
+  };
   try {
     mediaRecorder.start();
   } catch(e) {
@@ -2389,7 +2403,7 @@ function cycleSpeechChunk() {
 }
 
 function scheduleNextSpeechChunk() { clearTimeout(chunkTimer); chunkTimer = setTimeout(cycleSpeechChunk, 5000); }
-async function stopRecording() { stopMedia(); await fetch('/api/speech-to-md/recording/pause', {method:'POST'}); }
+async function stopRecording() { setSpeechSessionState('paused'); stopMedia(); await fetch('/api/speech-to-md/recording/pause', {method:'POST'}); }
 function stopMedia() {
   clearTimeout(chunkTimer); chunkTimer = null;
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
@@ -2429,13 +2443,6 @@ async function sendAudioChunk(blob) {
   } catch(e) { console.warn('Chunk upload failed:', e); }
 }
 
-btnPause.addEventListener('click', async () => {
-  const res = await fetch('/api/speech-to-md/recording/pause', {method:'POST'});
-  if (!res.ok) {
-    speechToast('Cannot pause: ' + (await res.text()));
-    return;
-  }
-});
 btnStop.addEventListener('click', async () => { stopMedia(); await new Promise(r => setTimeout(r, 400)); await fetch('/api/speech-to-md/session/stop', {method:'POST'}); });
 window.addEventListener('beforeunload', () => { if (sessionState !== 'idle' && sessionState !== 'stopped') { stopMedia(); navigator.sendBeacon('/api/speech-to-md/session/stop'); } });
 if (btnClearTx) btnClearTx.addEventListener('click', () => { transcriptBody.innerHTML = ''; });
