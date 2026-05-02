@@ -23,16 +23,18 @@ const (
 // AllSizes lists models from smallest to largest.
 var AllSizes = []ModelSize{Tiny, Base, Small, Medium, Large}
 
-// modelsDir returns ~/.tasksquad/models/tts.
-func modelsDir() string {
+// ModelsDir returns ~/.tasksquad/models/tts.
+func ModelsDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".tasksquad", "models", "tts")
 }
 
+func modelsDir() string { return ModelsDir() }
+
 // ModelPath returns the absolute path for a model file, or an error if it is not present.
 func ModelPath(size ModelSize) (string, error) {
 	dir := modelsDir()
-	path := filepath.Join(dir, fmt.Sprintf("ggml-%s.bin", size))
+	path := filepath.Join(dir, huggingFaceFilename(size))
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return "", fmt.Errorf("model %s not found at %s — use the UI to download it", size, path)
 	}
@@ -44,7 +46,7 @@ func ModelStatus() []map[string]any {
 	dir := modelsDir()
 	var result []map[string]any
 	for _, size := range AllSizes {
-		path := filepath.Join(dir, fmt.Sprintf("ggml-%s.bin", size))
+		path := filepath.Join(dir, huggingFaceFilename(size))
 		info, err := os.Stat(path)
 		downloaded := err == nil
 		var sizeBytes int64
@@ -61,12 +63,18 @@ func ModelStatus() []map[string]any {
 	return result
 }
 
+// huggingFaceFilename maps a ModelSize to its actual filename in the HuggingFace repo.
+// The large model was versioned; there is no plain ggml-large.bin.
+func huggingFaceFilename(size ModelSize) string {
+	if size == Large {
+		return "ggml-large-v3.bin"
+	}
+	return fmt.Sprintf("ggml-%s.bin", size)
+}
+
 // HuggingFaceURL returns the download URL for a model from the ggerganov/whisper.cpp repo.
 func HuggingFaceURL(size ModelSize) string {
-	return fmt.Sprintf(
-		"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-%s.bin",
-		size,
-	)
+	return "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/" + huggingFaceFilename(size)
 }
 
 // EnsureModelsDir creates the models directory if it does not exist.

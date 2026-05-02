@@ -37,7 +37,7 @@ func downloadModel(size ModelSize, progress chan<- DownloadProgress) error {
 	}
 
 	dir := modelsDir()
-	destPath := filepath.Join(dir, fmt.Sprintf("ggml-%s.bin", size))
+	destPath := filepath.Join(dir, huggingFaceFilename(size))
 	tmpPath := destPath + ".tmp"
 
 	url := HuggingFaceURL(size)
@@ -102,7 +102,7 @@ func downloadModel(size ModelSize, progress chan<- DownloadProgress) error {
 // Checks for the presence of a .tmp file.
 func IsDownloading(size ModelSize) bool {
 	dir := modelsDir()
-	tmpPath := filepath.Join(dir, fmt.Sprintf("ggml-%s.bin.tmp", size))
+	tmpPath := filepath.Join(dir, huggingFaceFilename(size)+".tmp")
 	_, err := os.Stat(tmpPath)
 	return err == nil
 }

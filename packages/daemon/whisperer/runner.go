@@ -85,11 +85,12 @@ func TranscribeFile(audioPath, modelPath string) (string, error) {
 // convertToWAV runs ffmpeg to convert any audio format to 16 kHz mono PCM-16 WAV.
 func convertToWAV(input, output string) error {
 	cmd := exec.Command("ffmpeg",
-		"-y",          // overwrite
-		"-i", input,   // input file
-		"-ar", "16000", // 16 kHz
-		"-ac", "1",    // mono
-		"-c:a", "pcm_s16le", // PCM 16-bit little-endian
+		"-y",                    // overwrite
+		"-err_detect", "ignore_err", // tolerate minor container issues
+		"-i", input,             // input file
+		"-ar", "16000",          // 16 kHz
+		"-ac", "1",              // mono
+		"-c:a", "pcm_s16le",     // PCM 16-bit little-endian
 		output,
 	)
 	out, err := cmd.CombinedOutput()
