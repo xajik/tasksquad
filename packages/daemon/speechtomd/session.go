@@ -15,7 +15,6 @@ const (
 	StateInitializing       // agent tmux session starting, awaiting init hook
 	StateReady              // agent initialised, record button enabled
 	StateRecording          // actively recording and transcribing
-	StateProcessing         // agent processing a transcript chunk
 	StatePaused             // recording paused, agent still alive
 	StateStopped            // session ended
 )
@@ -30,8 +29,6 @@ func (s State) String() string {
 		return "ready"
 	case StateRecording:
 		return "recording"
-	case StateProcessing:
-		return "processing"
 	case StatePaused:
 		return "paused"
 	case StateStopped:
@@ -42,9 +39,8 @@ func (s State) String() string {
 
 // Session is a single recording session with paired raw-transcript and markdown files.
 type Session struct {
-	ID        string
-	Timestamp string
-	DirPath   string
+	ID      string
+	DirPath string
 	TxtPath   string // append-only raw transcript
 	MdPath    string // actively-rewritten processed markdown
 	State     State
@@ -64,9 +60,8 @@ func NewSession(agentName, modelSize string) (*Session, error) {
 		return nil, fmt.Errorf("create session dir: %w", err)
 	}
 	return &Session{
-		ID:        ts,
-		Timestamp: ts,
-		DirPath:   dir,
+		ID:      ts,
+		DirPath: dir,
 		TxtPath:   filepath.Join(dir, ts+".txt"),
 		MdPath:    filepath.Join(dir, ts+".md"),
 		State:     StateIdle,

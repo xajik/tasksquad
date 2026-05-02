@@ -15,8 +15,7 @@ const (
 	EventMarkdown     EventType = "markdown"     // updated processed document
 	EventState        EventType = "state"        // session state change
 	EventError        EventType = "error"        // error message
-	EventProgress     EventType = "progress"     // model download progress (0–100)
-	EventAgentStatus  EventType = "agent_status" // agent processing status
+EventAgentStatus  EventType = "agent_status" // agent processing status
 )
 
 // AgentStatusEvent carries agent processing state for the UI badge.

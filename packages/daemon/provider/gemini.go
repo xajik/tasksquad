@@ -28,8 +28,7 @@ func (p *Gemini) Env(_ int) []string {
 // can run non-interactively without the -p flag.
 func (p *Gemini) Stdin(prompt string) string { return prompt }
 
-func (p *Gemini) ExtraArgs() []string        { return nil }
-func (p *Gemini) TmuxReadyIndicator() string { return "Ready" }
+func (p *Gemini) ExtraArgs() []string { return nil }
 
 // SetupVoice writes .gemini/settings.json with an AfterAgent hook pointing at
 // the speech-to-md notification endpoint.
