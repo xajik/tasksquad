@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/speechtomd"
 	"github.com/tasksquad/daemon/whisperer"
 )
@@ -280,6 +281,17 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		json.NewEncoder(w).Encode(whisperModelStatus()) //nolint:errcheck
 	})
 
+	mux.HandleFunc("/api/speech-to-md/models/open-folder", func(w http.ResponseWriter, r *http.Request) {
+		dir := whisperer.ModelsDir()
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		exec.Command("open", dir).Start() //nolint:errcheck
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`)) //nolint:errcheck
+	})
+
 	mux.HandleFunc("/api/speech-to-md/prereqs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(whisperer.CheckPrereqs()) //nolint:errcheck
@@ -296,11 +308,6 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 		json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
 		if body.Model == "" {
 			http.Error(w, "model required", http.StatusBadRequest)
-			return
-		}
-		mgr := GetSpeechManager()
-		if mgr == nil {
-			http.Error(w, "manager not ready", http.StatusServiceUnavailable)
 			return
 		}
 		// Stream download progress as SSE.
@@ -868,9 +875,11 @@ func startModelDownload(modelName string) <-chan string {
 	go func() {
 		defer close(ch)
 		size := whisperer.ModelSize(modelName)
+		logger.Info(fmt.Sprintf("[download] Starting download of model %q", size))
 		for p := range whisperer.DownloadModel(size) {
 			var msg string
 			if p.Err != nil {
+				logger.Warn(fmt.Sprintf("[download] Model %q download failed: %v", size, p.Err))
 				msg = fmt.Sprintf(`{"error":%q}`, p.Err.Error())
 			} else if p.Done {
 				msg = `{"done":true}`
