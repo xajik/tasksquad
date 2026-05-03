@@ -1896,9 +1896,15 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
 
   const load = useCallback(async () => {
     setIsLoading(true)
-    const d = await api.members.list(teamId)
-    setMembers(d.members ?? [])
-    setIsLoading(false)
+    try {
+      const d = await api.members.list(teamId)
+      setMembers(d.members ?? [])
+    } catch (err) {
+      console.error('[MembersView] failed to load members:', err)
+      setMembers([])
+    } finally {
+      setIsLoading(false)
+    }
   }, [teamId])
 
   useEffect(() => { load() }, [load])
@@ -1980,7 +1986,7 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
               <Card key={m.id} className="group border shadow-none hover:bg-accent/50 transition-colors">
                 <CardContent className="p-3 sm:p-4 flex items-center gap-4">
                   <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0">
-                    {(m.email[0] || '?').toUpperCase()}
+                    {((m.email || '')[0] || '?').toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -2330,7 +2336,7 @@ export default function Dashboard() {
     }).catch(() => {})
     requestNotificationPermission().then(perm => {
       if (perm === 'granted') registerPushToken()
-    })
+    }).catch(e => console.error('[dashboard] notification permission error:', e))
   }, [])
 
   function handleNav(path: string) {
@@ -2538,7 +2544,7 @@ export default function Dashboard() {
             <BookMarked className="mr-2 h-4 w-4" />
             Docs
           </Button>
-          <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { trackEvent('user_logged_out'); signOut(auth); }}>
+          <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { trackEvent('user_logged_out'); auth && signOut(auth); }}>
             <LogOut className="mr-2 h-4 w-4" />
             Sign out
           </Button>
