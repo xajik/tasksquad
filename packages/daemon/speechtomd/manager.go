@@ -16,6 +16,7 @@ import (
 
 const (
 	maxBatchDuration = 15 * time.Second
+	minFlushWords    = 30
 	blankAudioMarker = "[BLANK_AUDIO]"
 )
 
@@ -88,10 +89,10 @@ func (m *Manager) HandleNotification(message string) {
 
 	// Atomically claim the next batch. If chunks accumulated during processing,
 	// MarkDone keeps processing=true and returns them; otherwise goes idle.
-	if nextText, hasNext := queue.MarkDone(); hasNext {
+	if next, hasNext := queue.MarkDone(); hasNext {
 		m.bc.SendAgentStatus(AgentStatusInfo{Status: "processing", Label: "processing"})
 		go func() {
-			if err := as.SendChunk(nextText); err != nil {
+			if err := as.SendChunk(withModePrefix(next)); err != nil {
 				logger.Warn(fmt.Sprintf("[speechtomd] SendChunk (next batch): %v", err))
 				m.bc.SendAgentStatus(AgentStatusInfo{Status: "error", Label: "error", Message: err.Error()})
 				queue.AgentDone()
@@ -273,13 +274,18 @@ func (m *Manager) ReceiveAudioChunk(modelSize string, audioData []byte) error {
 	if err := sess.AppendTranscript(text); err != nil {
 		logger.Warn(fmt.Sprintf("[speechtomd] AppendTranscript: %v", err))
 	}
-	transcriptJSON, _ := json.Marshal(map[string]any{"text": text, "edit_mode": editMode})
+	transcriptJSON, _ := json.Marshal(struct {
+		Text     string `json:"text"`
+		EditMode bool   `json:"edit_mode"`
+	}{text, editMode})
 	m.bc.Send(Event{Type: EventTranscript, Payload: string(transcriptJSON)})
 
-	// Enqueue the chunk. If this is the first chunk of a new idle batch, start
-	// the 15 s timer so the batch is flushed even if the user talks non-stop.
-	if isFirst := m.queue.Enqueue(text, editMode); isFirst {
+	isFirst, words := m.queue.Enqueue(text, editMode)
+	if isFirst {
 		m.startBatchTimer()
+	}
+	if words >= minFlushWords {
+		m.flushToAgent()
 	}
 	return nil
 }
@@ -342,7 +348,6 @@ func (m *Manager) ServeSSE(w http.ResponseWriter, r *http.Request) {
 	m.bc.ServeSSE(w, r)
 }
 
-// flushToAgent sends all queued chunks to the agent.
 func (m *Manager) flushToAgent() {
 	m.stopBatchTimer()
 
@@ -356,15 +361,15 @@ func (m *Manager) flushToAgent() {
 		return
 	}
 
-	text := queue.Flush()
-	if text == "" {
+	batch := queue.Flush()
+	if batch.Text == "" {
 		return
 	}
 
 	m.bc.SendAgentStatus(AgentStatusInfo{Status: "processing", Label: "processing"})
 
 	go func() {
-		if err := as.SendChunk(text); err != nil {
+		if err := as.SendChunk(withModePrefix(batch)); err != nil {
 			logger.Warn(fmt.Sprintf("[speechtomd] SendChunk: %v", err))
 			m.bc.SendAgentStatus(AgentStatusInfo{Status: "error", Label: "error", Message: err.Error()})
 			queue.AgentDone()
@@ -373,8 +378,6 @@ func (m *Manager) flushToAgent() {
 	}()
 }
 
-// startBatchTimer starts the 15 s one-shot timer that flushes the current batch
-// if the user keeps talking without a natural pause.
 func (m *Manager) startBatchTimer() {
 	m.mu.Lock()
 	if m.batchTimer != nil {
@@ -384,7 +387,6 @@ func (m *Manager) startBatchTimer() {
 	m.mu.Unlock()
 }
 
-// stopBatchTimer cancels the batch timer if running.
 func (m *Manager) stopBatchTimer() {
 	m.mu.Lock()
 	if m.batchTimer != nil {
@@ -402,4 +404,11 @@ func (m *Manager) setSessionState(state State) {
 	}
 	m.mu.Unlock()
 	m.bc.Send(Event{Type: EventState, Payload: state.String()})
+}
+
+func withModePrefix(b Batch) string {
+	if b.EditMode {
+		return "[Mode: edit]\n" + b.Text
+	}
+	return "[Mode: append]\n" + b.Text
 }
