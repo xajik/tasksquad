@@ -29,7 +29,9 @@ func (p *Gemini) Env(_ int) []string {
 // can run non-interactively without the -p flag.
 func (p *Gemini) Stdin(prompt string) string { return prompt }
 
-func (p *Gemini) ExtraArgs() []string { return nil }
+func (p *Gemini) ExtraArgs() []string       { return nil }
+func (p *Gemini) VoiceCLIArg() string       { return "" }
+func (p *Gemini) VoiceInitCommand() string  { return "@tsq-speech-to-md" }
 
 // SetupVoice writes .gemini/settings.json with an AfterAgent hook pointing at
 // /hooks/stop?speech=true, mirroring the inbox setup but with the speech flag.

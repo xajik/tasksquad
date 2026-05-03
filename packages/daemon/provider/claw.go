@@ -24,7 +24,9 @@ func (p *Claw) Env(_ int) []string { return nil }
 // can run non-interactively without the -p flag.
 func (p *Claw) Stdin(prompt string) string { return prompt }
 
-func (p *Claw) ExtraArgs() []string { return nil }
+func (p *Claw) ExtraArgs() []string       { return nil }
+func (p *Claw) VoiceCLIArg() string      { return "--agent tsq-speech-to-md" }
+func (p *Claw) VoiceInitCommand() string { return "/tsq-speech-to-md" }
 
 // Setup writes .agent/settings.json into workDir with Stop hooks
 // pointing to the daemon's local hook server on hooksPort.

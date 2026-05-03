@@ -25,7 +25,9 @@ func (p *ClaudeCode) Env(_ int) []string { return nil }
 // can run non-interactively without the -p flag.
 func (p *ClaudeCode) Stdin(prompt string) string { return prompt }
 
-func (p *ClaudeCode) ExtraArgs() []string { return nil }
+func (p *ClaudeCode) ExtraArgs() []string      { return nil }
+func (p *ClaudeCode) VoiceCLIArg() string       { return "--agent tsq-speech-to-md" }
+func (p *ClaudeCode) VoiceInitCommand() string  { return "/tsq-speech-to-md" }
 
 // Setup writes .claude/settings.json into workDir with Stop hooks
 // pointing to the daemon's local hook server on hooksPort.

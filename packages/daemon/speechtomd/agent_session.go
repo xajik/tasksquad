@@ -71,6 +71,9 @@ func (s *AgentSession) Start() error {
 	if cmd == "" {
 		cmd = "claude"
 	}
+	if extra := prov.VoiceCLIArg(); extra != "" {
+		cmd += " " + extra
+	}
 
 	newArgs := append([]string{
 		"new-session", "-d", "-s", sessionName,
@@ -110,11 +113,16 @@ func (s *AgentSession) Start() error {
 		tmux.DeleteBuffer(bufName)
 		logger.Info(fmt.Sprintf("[speech-agent] Sent custom prompt to %s; awaiting ready", sessionName))
 	} else {
-		// Default: invoke the pre-installed @tsq-speech-to-md slash command.
-		if err := tmux.SendKeys(sessionName, "@tsq-speech-to-md"); err != nil {
-			return fmt.Errorf("tmux send @tsq-speech-to-md: %w", err)
+		initCmd := prov.VoiceInitCommand()
+		if err := tmux.SendKeys(sessionName, initCmd); err != nil {
+			return fmt.Errorf("tmux send %s: %w", initCmd, err)
 		}
-		logger.Info(fmt.Sprintf("[speech-agent] Sent @tsq-speech-to-md to %s; awaiting ready", sessionName))
+		if prov.VoiceCLIArg() != "" {
+			if err := tmux.SendKeys(sessionName, "C-n"); err != nil {
+				return fmt.Errorf("tmux send C-n: %w", err)
+			}
+		}
+		logger.Info(fmt.Sprintf("[speech-agent] Sent %s to %s; awaiting ready", initCmd, sessionName))
 	}
 
 	return nil

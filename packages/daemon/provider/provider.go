@@ -40,6 +40,14 @@ type Provider interface {
 	Stdin(prompt string) string
 	// ExtraArgs returns additional CLI arguments to prepend (e.g. --dangerously-skip-permissions).
 	ExtraArgs() []string
+
+	// VoiceCLIArg returns an extra argument string to append to the CLI command
+	// when starting a speech-to-md session (e.g. "--agent tsq-speech-to-md"), or "".
+	VoiceCLIArg() string
+	// VoiceInitCommand returns the command to send via tmux.SendKeys after the
+	// session starts, to invoke the speech-to-md skill. Can be overridden by
+	// the user's promptOverride. For Claude-style: "/tsq-speech-to-md". For Gemini: "@tsq-speech-to-md".
+	VoiceInitCommand() string
 }
 
 // registry maps canonical provider name strings to factory functions.

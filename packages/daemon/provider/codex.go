@@ -36,7 +36,9 @@ func (p *Codex) CLIName() string         { return "codex" }
 func (p *Codex) UsesHooks() bool         { return true }
 func (p *Codex) Env(_ int) []string       { return nil }
 func (p *Codex) Stdin(_ string) string   { return "" }
-func (p *Codex) ExtraArgs() []string     { return nil }
+func (p *Codex) ExtraArgs() []string       { return nil }
+func (p *Codex) VoiceCLIArg() string       { return "" }
+func (p *Codex) VoiceInitCommand() string  { return "@tsq-speech-to-md" }
 
 // SetupVoice updates ~/.codex/config.toml with a notify command pointing at
 // the daemon stop endpoint with speech=true.
