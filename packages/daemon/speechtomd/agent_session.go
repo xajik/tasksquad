@@ -110,11 +110,11 @@ func (s *AgentSession) Start() error {
 		tmux.DeleteBuffer(bufName)
 		logger.Info(fmt.Sprintf("[speech-agent] Sent custom prompt to %s; awaiting ready", sessionName))
 	} else {
-		// Default: invoke the pre-installed /tsq-speech-to-md slash command.
-		if err := tmux.SendKeys(sessionName, "/tsq-speech-to-md"); err != nil {
-			return fmt.Errorf("tmux send /tsq-speech-to-md: %w", err)
+		// Default: invoke the pre-installed @tsq-speech-to-md slash command.
+		if err := tmux.SendKeys(sessionName, "@tsq-speech-to-md"); err != nil {
+			return fmt.Errorf("tmux send @tsq-speech-to-md: %w", err)
 		}
-		logger.Info(fmt.Sprintf("[speech-agent] Sent /tsq-speech-to-md to %s; awaiting ready", sessionName))
+		logger.Info(fmt.Sprintf("[speech-agent] Sent @tsq-speech-to-md to %s; awaiting ready", sessionName))
 	}
 
 	return nil
