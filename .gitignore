@@ -74,6 +74,7 @@ logs
 
 # claw code
 .agent
+.claw
 
 .mcp.json
 .opencode.json
