@@ -55,6 +55,7 @@ var adapterRegistry = map[string]Adapter{
 	"codex":    CodexAdapter{},
 	"opencode": OpenCodeAdapter{},
 	"stdout":   StdoutAdapter{},
+	"claw":     ClawAdapter{},
 }
 
 // For returns the Adapter for the given provider name.

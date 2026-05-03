@@ -13,6 +13,7 @@ package provider
 type Stdout struct{}
 
 func (p *Stdout) Name() string                { return "stdout" }
+func (p *Stdout) CLIName() string             { return "" }
 func (p *Stdout) UsesHooks() bool             { return false }
 func (p *Stdout) Env(_ int) []string          { return nil }
 func (p *Stdout) Stdin(_ string) string       { return "" }

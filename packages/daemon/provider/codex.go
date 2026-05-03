@@ -32,6 +32,7 @@ import (
 type Codex struct{}
 
 func (p *Codex) Name() string            { return "codex" }
+func (p *Codex) CLIName() string         { return "codex" }
 func (p *Codex) UsesHooks() bool         { return true }
 func (p *Codex) Env(_ int) []string       { return nil }
 func (p *Codex) Stdin(_ string) string   { return "" }

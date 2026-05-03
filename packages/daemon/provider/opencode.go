@@ -16,7 +16,8 @@ import (
 // on session.idle combines all parts and POSTs to /hooks/stop with the full text.
 type OpenCode struct{}
 
-func (p *OpenCode) Name() string { return "opencode" }
+func (p *OpenCode) Name() string    { return "opencode" }
+func (p *OpenCode) CLIName() string { return "opencode" }
 
 // Setup writes .opencode/plugins/tasksquad.ts in workDir.
 // The plugin exports event handlers for lifecycle events following the Go SDK

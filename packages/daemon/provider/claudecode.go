@@ -17,6 +17,7 @@ import (
 type ClaudeCode struct{}
 
 func (p *ClaudeCode) Name() string       { return "claude-code" }
+func (p *ClaudeCode) CLIName() string    { return "claude" }
 func (p *ClaudeCode) UsesHooks() bool    { return true }
 func (p *ClaudeCode) Env(_ int) []string { return nil }
 

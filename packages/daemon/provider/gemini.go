@@ -19,6 +19,7 @@ import (
 type Gemini struct{}
 
 func (p *Gemini) Name() string    { return "gemini" }
+func (p *Gemini) CLIName() string { return "gemini" }
 func (p *Gemini) UsesHooks() bool { return true }
 func (p *Gemini) Env(_ int) []string {
 	return []string{"GEMINI_TRUST_WORKSPACE=1"}
