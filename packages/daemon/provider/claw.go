@@ -9,7 +9,7 @@ import (
 
 // Claw is the provider for the Claw Code CLI (command: agent).
 //
-// Completion is signalled via hooks written to <workDir>/.claw/settings.json:
+// Completion is signalled via hooks written to <workDir>/.agent/settings.json:
 //   - Stop hook → POST /hooks/stop (task finished)
 //
 // Skills, sub-agents, and commands are loaded from <workDir>/.agent/ by the CLI.
@@ -26,10 +26,10 @@ func (p *Claw) Stdin(prompt string) string { return prompt }
 
 func (p *Claw) ExtraArgs() []string { return nil }
 
-// Setup writes .claw/settings.json into workDir with Stop hooks
+// Setup writes .agent/settings.json into workDir with Stop hooks
 // pointing to the daemon's local hook server on hooksPort.
 func (p *Claw) Setup(workDir string, hooksPort int, agentID string, taskID string) error {
-	settingsPath := filepath.Join(workDir, ".claw", "settings.json")
+	settingsPath := filepath.Join(workDir, ".agent", "settings.json")
 	err := writeHooks(settingsPath, map[string]any{
 		"Stop": []any{
 			map[string]any{
@@ -60,10 +60,10 @@ func (p *Claw) Setup(workDir string, hooksPort int, agentID string, taskID strin
 	return nil
 }
 
-// SetupVoice writes .claw/settings.json with Stop hooks pointing at the
+// SetupVoice writes .agent/settings.json with Stop hooks pointing at the
 // daemon's /hooks/stop endpoint with speech=true, mirroring the inbox setup.
 func (p *Claw) SetupVoice(workDir string, hooksPort int) error {
-	settingsPath := filepath.Join(workDir, ".claw", "settings.json")
+	settingsPath := filepath.Join(workDir, ".agent", "settings.json")
 	url := fmt.Sprintf("http://localhost:%d/hooks/stop?speech=true&provider=claw", hooksPort)
 	stopHook := []any{
 		map[string]any{
