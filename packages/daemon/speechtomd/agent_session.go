@@ -1,7 +1,6 @@
 package speechtomd
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -37,12 +36,6 @@ func (s *AgentSession) TmuxName() string {
 	return s.tmuxName
 }
 
-// ChunkPayload is the JSON sent to the agent for each transcript chunk.
-type ChunkPayload struct {
-	CurrentMarkdown string `json:"current_markdown"`
-	NewTranscript   string `json:"new_transcript"`
-	EditMode        bool   `json:"edit_mode"`
-}
 
 func newAgentSession(agentCfg config.AgentConfig, hooksPort int, sessionDir, promptOverride string) *AgentSession {
 	return &AgentSession{
@@ -150,9 +143,8 @@ func (s *AgentSession) MarkInitialized() {
 	}
 }
 
-// SendChunk writes the payload to a temp file and pastes it into the tmux session
-// using tmux.PastePromptFile — the same mechanism used for multi-line task prompts.
-func (s *AgentSession) SendChunk(currentMarkdown, newTranscript string, editMode bool) error {
+// SendChunk writes the transcript text to a temp file and pastes it into the tmux session.
+func (s *AgentSession) SendChunk(text string) error {
 	s.mu.Lock()
 	sessionName := s.tmuxName
 	s.mu.Unlock()
@@ -160,22 +152,12 @@ func (s *AgentSession) SendChunk(currentMarkdown, newTranscript string, editMode
 		return fmt.Errorf("agent session not started")
 	}
 
-	payload := ChunkPayload{
-		CurrentMarkdown: currentMarkdown,
-		NewTranscript:   newTranscript,
-		EditMode:        editMode,
-	}
-	data, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	f, err := os.CreateTemp("", "tsq-speech-chunk-*.json")
+	f, err := os.CreateTemp("", "tsq-speech-chunk-*.txt")
 	if err != nil {
 		return fmt.Errorf("create temp: %w", err)
 	}
 	defer os.Remove(f.Name())
-	if _, err := f.Write(data); err != nil {
+	if _, err := f.WriteString(text); err != nil {
 		f.Close()
 		return fmt.Errorf("write temp: %w", err)
 	}

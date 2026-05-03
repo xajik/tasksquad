@@ -2371,6 +2371,7 @@ async function startRecording() {
   const editMode = document.getElementById('edit-mode-toggle')?.checked || false;
   const res = await fetch('/api/speech-to-md/recording/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({edit_mode: editMode})});
   if (!res.ok) { speechToast(await res.text()); return; }
+  setSpeechSessionState('recording');
   try { audioStream = await navigator.mediaDevices.getUserMedia({audio: true}); } catch(e) { speechToast('Microphone access denied'); return; }
   startSpeechChunk(); scheduleNextSpeechChunk();
 }

@@ -12,6 +12,7 @@ Select a topic from the sidebar to get started.
 - [Security](/docs/concepts/security)
 - [Lifecycle Hooks](/docs/concepts/hooks)
 - [Available Skills](/docs/concepts/available-skills)
+- [Voice to Markdown](/docs/concepts/voice-to-md)
 
 ## Need help?
 

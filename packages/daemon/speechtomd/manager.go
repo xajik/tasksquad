@@ -15,21 +15,21 @@ import (
 )
 
 const (
-	silenceFlushDelay = 5 * time.Second
-	blankAudioMarker  = "[BLANK_AUDIO]"
+	maxBatchDuration = 15 * time.Second
+	blankAudioMarker = "[BLANK_AUDIO]"
 )
 
 // Manager orchestrates a speech-to-markdown session: audio → transcription →
 // agent processing → markdown update → UI broadcast.
 type Manager struct {
-	mu           sync.Mutex
-	session      *Session
-	buffer       *Buffer
-	agentSess    *AgentSession
-	bc           *Broadcaster
-	cfg          *config.Config
-	silenceTimer *time.Timer
-	editMode     bool
+	mu         sync.Mutex
+	session    *Session
+	queue      *ChunkQueue
+	agentSess  *AgentSession
+	bc         *Broadcaster
+	cfg        *config.Config
+	batchTimer *time.Timer
+	editMode   bool
 }
 
 // New creates a Manager wired to the given daemon config.
@@ -52,45 +52,14 @@ func (m *Manager) HandleInit() {
 	logger.Info("[speechtomd] Agent initialised — recording enabled")
 }
 
-// handleAgentResponse processes the markdown result after the caller has atomically
-// claimed the agent-busy slot via ClaimAgentResponse. shouldFlush comes from that claim.
-func (m *Manager) handleAgentResponse(markdown string, shouldFlush bool) {
-	markdown = strings.TrimSpace(markdown)
-
-	if markdown != "" {
-		m.mu.Lock()
-		sess := m.session
-		m.mu.Unlock()
-
-		if sess != nil {
-			if err := sess.WriteMarkdown(markdown); err != nil {
-				logger.Warn(fmt.Sprintf("[speechtomd] WriteMarkdown: %v", err))
-			}
-			m.bc.Send(Event{Type: EventMarkdown, Payload: markdown})
-		}
-	}
-
-	// Flush if the word threshold was reached, or if recording is paused
-	// (paused sessions get no new audio so the threshold would never be reached).
-	m.mu.Lock()
-	isPaused := m.session != nil && m.session.State == StatePaused
-	m.mu.Unlock()
-	if shouldFlush || isPaused {
-		m.flushToAgent()
-	}
-
-	m.bc.SendAgentStatus(AgentStatusInfo{Status: "idle", Label: "idle"})
-}
-
 // HandleNotification handles a provider turn-complete signal.
-// The first stop event while the session is still initializing is treated
-// as the agent's readiness acknowledgement regardless of whether message text
-// was extracted (the hook firing is itself the ready signal).
-// Subsequent messages are treated as the markdown result for the current chunk.
+// The first stop event while initializing is treated as the ready signal.
+// Subsequent events carry the markdown result for the current chunk batch.
 func (m *Manager) HandleNotification(message string) {
 	m.mu.Lock()
 	sess := m.session
-	buf := m.buffer
+	as := m.agentSess
+	queue := m.queue
 	initializing := sess != nil && sess.State == StateInitializing
 	m.mu.Unlock()
 
@@ -98,27 +67,43 @@ func (m *Manager) HandleNotification(message string) {
 		return
 	}
 
-	// Any stop event during init = agent is ready; don't require message text.
 	if initializing {
 		logger.Info("[speechtomd] HandleNotification: session initializing — marking ready")
 		m.HandleInit()
 		return
 	}
 
-	if message == "" {
+	if queue == nil {
 		return
 	}
 
-	if buf != nil {
-		if shouldFlush, claimed := buf.ClaimAgentResponse(); claimed {
-			m.handleAgentResponse(message, shouldFlush)
+	// Write markdown while processing=true — no concurrent flush possible.
+	markdown := strings.TrimSpace(message)
+	if markdown != "" {
+		if err := sess.WriteMarkdown(markdown); err != nil {
+			logger.Warn(fmt.Sprintf("[speechtomd] WriteMarkdown: %v", err))
 		}
+		m.bc.Send(Event{Type: EventMarkdown, Payload: markdown})
+	}
+
+	// Atomically claim the next batch. If chunks accumulated during processing,
+	// MarkDone keeps processing=true and returns them; otherwise goes idle.
+	if nextText, hasNext := queue.MarkDone(); hasNext {
+		m.bc.SendAgentStatus(AgentStatusInfo{Status: "processing", Label: "processing"})
+		go func() {
+			if err := as.SendChunk(nextText); err != nil {
+				logger.Warn(fmt.Sprintf("[speechtomd] SendChunk (next batch): %v", err))
+				m.bc.SendAgentStatus(AgentStatusInfo{Status: "error", Label: "error", Message: err.Error()})
+				queue.AgentDone()
+				m.bc.SendAgentStatus(AgentStatusInfo{Status: "idle", Label: "idle"})
+			}
+		}()
+	} else {
+		m.bc.SendAgentStatus(AgentStatusInfo{Status: "idle", Label: "idle"})
 	}
 }
 
-// SetEditMode updates the edit mode flag for subsequent chunk flushes.
-// If recording is active, it flushes the buffer to ensure any pending chunks
-// use the previous edit mode before switching.
+// SetEditMode updates the edit mode flag. Flushes if recording is active and mode changed.
 func (m *Manager) SetEditMode(enabled bool) {
 	m.mu.Lock()
 	wasRecording := m.session != nil && m.session.State == StateRecording
@@ -126,15 +111,13 @@ func (m *Manager) SetEditMode(enabled bool) {
 	m.editMode = enabled
 	m.mu.Unlock()
 
-	// Flush buffer on edit mode change during active recording to preserve mode per chunk
 	if wasRecording && oldEditMode != enabled {
-		logger.Info(fmt.Sprintf("[speechtomd] Edit mode changed mid-recording (%v -> %v) — flushing buffer", oldEditMode, enabled))
+		logger.Info(fmt.Sprintf("[speechtomd] Edit mode changed mid-recording (%v -> %v) — flushing", oldEditMode, enabled))
 		m.flushToAgent()
 	}
 }
 
-// StartSession creates a new session, installs command file, and starts the agent.
-// prompt overrides the default system prompt sent to the agent; empty uses the built-in default.
+// StartSession creates a new session and starts the agent.
 func (m *Manager) StartSession(agentName, modelSize, prompt string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -143,7 +126,6 @@ func (m *Manager) StartSession(agentName, modelSize, prompt string) error {
 		return fmt.Errorf("session already active (state=%s)", m.session.State)
 	}
 
-	// Resolve agent config.
 	var agentCfg config.AgentConfig
 	found := false
 	for _, a := range m.cfg.Agents {
@@ -162,7 +144,7 @@ func (m *Manager) StartSession(agentName, modelSize, prompt string) error {
 		return fmt.Errorf("create session: %w", err)
 	}
 	m.session = sess
-	m.buffer = &Buffer{}
+	m.queue = NewChunkQueue()
 
 	as := newAgentSession(agentCfg, m.cfg.Hooks.Port, sess.DirPath, prompt)
 	m.agentSess = as
@@ -180,7 +162,6 @@ func (m *Manager) StartSession(agentName, modelSize, prompt string) error {
 			return
 		}
 		m.bc.SendAgentStatus(AgentStatusInfo{Status: "processing", Label: "waiting"})
-		// Wait up to 90 s for init hook; on timeout, report error with tmux session ID.
 		if err := as.WaitForInit(90 * time.Second); err != nil {
 			tmuxName := as.TmuxName()
 			errMsg := fmt.Sprintf("Agent init timeout after 90s. Run: tmux kill-session -t %s", tmuxName)
@@ -197,7 +178,7 @@ func (m *Manager) StartSession(agentName, modelSize, prompt string) error {
 	return nil
 }
 
-// StartRecording transitions to recording state and applies the edit mode setting.
+// StartRecording transitions to recording state.
 func (m *Manager) StartRecording(editMode bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -213,7 +194,7 @@ func (m *Manager) StartRecording(editMode bool) error {
 	return nil
 }
 
-// PauseRecording pauses without killing the agent and flushes any buffered input.
+// PauseRecording pauses and flushes any buffered input.
 func (m *Manager) PauseRecording() error {
 	m.mu.Lock()
 	if m.session == nil || m.session.State != StateRecording {
@@ -221,36 +202,21 @@ func (m *Manager) PauseRecording() error {
 		return fmt.Errorf("not recording")
 	}
 	m.session.State = StatePaused
-	if m.silenceTimer != nil {
-		m.silenceTimer.Stop()
-		m.silenceTimer = nil
-	}
 	m.mu.Unlock()
 
+	m.stopBatchTimer()
 	m.bc.Send(Event{Type: EventState, Payload: StatePaused.String()})
 	m.flushToAgent()
 	return nil
 }
 
-// StopSession flushes any remaining transcript, kills the agent, and ends the session.
+// StopSession kills the agent and ends the session without flushing remaining chunks.
 func (m *Manager) StopSession() {
+	m.stopBatchTimer()
+
 	m.mu.Lock()
 	as := m.agentSess
-	sess := m.session
-	buf := m.buffer
-	if m.silenceTimer != nil {
-		m.silenceTimer.Stop()
-		m.silenceTimer = nil
-	}
 	m.mu.Unlock()
-
-	if buf != nil && sess != nil {
-		if text, em := buf.ForceFlush(); text != "" && as != nil {
-			if err := as.SendChunk(sess.ReadMarkdown(), text, em); err != nil {
-				logger.Warn(fmt.Sprintf("[speechtomd] Final flush: %v", err))
-			}
-		}
-	}
 
 	if as != nil {
 		as.Stop()
@@ -258,7 +224,7 @@ func (m *Manager) StopSession() {
 
 	m.mu.Lock()
 	m.session = nil
-	m.buffer = nil
+	m.queue = nil
 	m.agentSess = nil
 	m.mu.Unlock()
 
@@ -297,15 +263,12 @@ func (m *Manager) ReceiveAudioChunk(modelSize string, audioData []byte) error {
 		return nil
 	}
 
-	// Whisper signals silence as [BLANK_AUDIO] — flush buffered input to the agent.
+	// Silence detected — flush immediately without enqueuing the marker.
 	if strings.Contains(text, blankAudioMarker) {
-		logger.Info("[speechtomd] blank audio detected — flushing buffer")
+		logger.Info("[speechtomd] blank audio detected — flushing")
 		m.flushToAgent()
 		return nil
 	}
-
-	// Real speech: reset the 5-second silence timer.
-	m.resetSilenceTimer()
 
 	if err := sess.AppendTranscript(text); err != nil {
 		logger.Warn(fmt.Sprintf("[speechtomd] AppendTranscript: %v", err))
@@ -313,8 +276,10 @@ func (m *Manager) ReceiveAudioChunk(modelSize string, audioData []byte) error {
 	transcriptJSON, _ := json.Marshal(map[string]any{"text": text, "edit_mode": editMode})
 	m.bc.Send(Event{Type: EventTranscript, Payload: string(transcriptJSON)})
 
-	if m.buffer.Add(text, editMode) {
-		m.flushToAgent()
+	// Enqueue the chunk. If this is the first chunk of a new idle batch, start
+	// the 15 s timer so the batch is flushed even if the user talks non-stop.
+	if isFirst := m.queue.Enqueue(text, editMode); isFirst {
+		m.startBatchTimer()
 	}
 	return nil
 }
@@ -377,42 +342,55 @@ func (m *Manager) ServeSSE(w http.ResponseWriter, r *http.Request) {
 	m.bc.ServeSSE(w, r)
 }
 
-// flushToAgent sends accumulated transcript to the agent.
+// flushToAgent sends all queued chunks to the agent.
 func (m *Manager) flushToAgent() {
+	m.stopBatchTimer()
+
 	m.mu.Lock()
 	sess := m.session
 	as := m.agentSess
-	buf := m.buffer
+	queue := m.queue
 	m.mu.Unlock()
 
-	if sess == nil || as == nil || buf == nil {
+	if sess == nil || as == nil || queue == nil {
 		return
 	}
 
-	text, flushEditMode := buf.Flush()
+	text := queue.Flush()
 	if text == "" {
 		return
 	}
 
 	m.bc.SendAgentStatus(AgentStatusInfo{Status: "processing", Label: "processing"})
 
-	currentMD := sess.ReadMarkdown()
 	go func() {
-		if err := as.SendChunk(currentMD, text, flushEditMode); err != nil {
+		if err := as.SendChunk(text); err != nil {
 			logger.Warn(fmt.Sprintf("[speechtomd] SendChunk: %v", err))
 			m.bc.SendAgentStatus(AgentStatusInfo{Status: "error", Label: "error", Message: err.Error()})
-			buf.AgentDone() // reset busy flag on error; no stop hook will fire
+			queue.AgentDone()
+			m.bc.SendAgentStatus(AgentStatusInfo{Status: "idle", Label: "idle"})
 		}
 	}()
 }
 
-// resetSilenceTimer restarts the 5-second silence flush timer.
-func (m *Manager) resetSilenceTimer() {
+// startBatchTimer starts the 15 s one-shot timer that flushes the current batch
+// if the user keeps talking without a natural pause.
+func (m *Manager) startBatchTimer() {
 	m.mu.Lock()
-	if m.silenceTimer != nil {
-		m.silenceTimer.Stop()
+	if m.batchTimer != nil {
+		m.batchTimer.Stop()
 	}
-	m.silenceTimer = time.AfterFunc(silenceFlushDelay, m.flushToAgent)
+	m.batchTimer = time.AfterFunc(maxBatchDuration, m.flushToAgent)
+	m.mu.Unlock()
+}
+
+// stopBatchTimer cancels the batch timer if running.
+func (m *Manager) stopBatchTimer() {
+	m.mu.Lock()
+	if m.batchTimer != nil {
+		m.batchTimer.Stop()
+		m.batchTimer = nil
+	}
 	m.mu.Unlock()
 }
 

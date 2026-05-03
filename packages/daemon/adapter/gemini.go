@@ -13,6 +13,7 @@ func (GeminiAdapter) ParseStop(body []byte, isFailure bool) (StopEvent, error) {
 	var p struct {
 		Reason         string `json:"reason"`
 		TranscriptPath string `json:"transcript_path"`
+		PromptResponse string `json:"prompt_response"`
 	}
 	if err := json.Unmarshal(body, &p); err != nil {
 		return StopEvent{IsFailure: isFailure}, err
@@ -20,6 +21,7 @@ func (GeminiAdapter) ParseStop(body []byte, isFailure bool) (StopEvent, error) {
 	return StopEvent{
 		Reason:         p.Reason,
 		TranscriptPath: p.TranscriptPath,
+		HookMessage:    p.PromptResponse,
 		IsFailure:      isFailure || p.Reason == "error",
 	}, nil
 }

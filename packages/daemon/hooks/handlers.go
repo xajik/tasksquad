@@ -58,8 +58,11 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	// Speech-to-md turn completion — dispatch to speech handler and return early.
 	if r.URL.Query().Get("speech") == "true" {
 		if s.speechHandler != nil {
-			message := ev.HookMessage
-			if message == "" && ev.TranscriptPath != "" {
+			// Always read full content from the transcript file.
+			// Payload fields (last_assistant_message, prompt_response) are truncated
+			// summaries; the file contains the complete assistant response.
+			var message string
+			if ev.TranscriptPath != "" {
 				message = adpt.ExtractTranscript(ev.TranscriptPath)
 			}
 			logger.Info(fmt.Sprintf("[hooks] speech stop: transcript_path=%q message_len=%d", ev.TranscriptPath, len(message)))

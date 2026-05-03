@@ -25,8 +25,9 @@ func (ClaudeAdapter) ParseStop(body []byte, isFailure bool) (StopEvent, error) {
 		return StopEvent{Reason: p.ErrorType, TranscriptPath: p.TranscriptPath, IsFailure: true}, nil
 	}
 	var p struct {
-		StopReason     string `json:"stop_reason"`
-		TranscriptPath string `json:"transcript_path"`
+		StopReason           string `json:"stop_reason"`
+		TranscriptPath       string `json:"transcript_path"`
+		LastAssistantMessage string `json:"last_assistant_message"`
 	}
 	if err := json.Unmarshal(body, &p); err != nil {
 		return StopEvent{}, err
@@ -34,6 +35,7 @@ func (ClaudeAdapter) ParseStop(body []byte, isFailure bool) (StopEvent, error) {
 	return StopEvent{
 		Reason:         p.StopReason,
 		TranscriptPath: p.TranscriptPath,
+		HookMessage:    p.LastAssistantMessage,
 		IsFailure:      p.StopReason == "error",
 	}, nil
 }

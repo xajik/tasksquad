@@ -5,115 +5,79 @@ import (
 	"sync"
 )
 
-const minWordsToFlush = 30 // flush to agent once this many words accumulate
-
-// chunk is a single transcript segment with its capture-time edit mode.
 type chunk struct {
 	text     string
 	editMode bool
 }
 
-// Buffer accumulates transcript chunks and decides when to flush to the agent.
-// New chunks are added to "accumulated" while the agent is free; once the agent
-// is processing they go into "pending" so they are not lost. When the agent
-// finishes, pending chunks are promoted to accumulated and readiness is re-evaluated.
-type Buffer struct {
-	mu          sync.Mutex
-	accumulated []chunk
-	pending     []chunk
-	agentBusy   bool
+// ChunkQueue is a single chronological queue of transcript chunks.
+// Enqueue always appends. Flush and MarkDone enforce strict serial processing:
+// only one agent call runs at a time.
+type ChunkQueue struct {
+	mu         sync.Mutex
+	queue      []chunk
+	processing bool
 }
 
-// Add appends a transcript segment with its edit mode. Returns true if ready to flush.
-func (b *Buffer) Add(text string, editMode bool) bool {
+func NewChunkQueue() *ChunkQueue {
+	return &ChunkQueue{}
+}
+
+// Enqueue appends a chunk. Returns true when this is the first chunk of a new
+// idle batch — the caller should start the 15 s batch timer.
+func (q *ChunkQueue) Enqueue(text string, editMode bool) bool {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return false
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	c := chunk{text: text, editMode: editMode}
-	if b.agentBusy {
-		b.pending = append(b.pending, c)
-		return false
-	}
-	b.accumulated = append(b.accumulated, c)
-	return b.shouldFlush()
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	isFirst := len(q.queue) == 0 && !q.processing
+	q.queue = append(q.queue, chunk{text: text, editMode: editMode})
+	return isFirst
 }
 
-// shouldFlush returns true when enough text is ready. Must hold mu.
-func (b *Buffer) shouldFlush() bool {
-	words := 0
-	for _, c := range b.accumulated {
-		words += len(strings.Fields(c.text))
+// Flush atomically takes all queued chunks and marks processing=true.
+// Returns "" if already processing or the queue is empty.
+func (q *ChunkQueue) Flush() string {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.processing || len(q.queue) == 0 {
+		return ""
 	}
-	return words >= minWordsToFlush
+	text := joinChunks(q.queue)
+	q.queue = nil
+	q.processing = true
+	return text
 }
 
-// Flush returns the accumulated text and the edit mode of the batch.
-// Returns ("", false) if nothing has accumulated.
-// All chunks in a batch share the same edit mode because SetEditMode flushes on change.
-func (b *Buffer) Flush() (string, bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if len(b.accumulated) == 0 {
-		return "", false
+// MarkDone is called when the agent replies.
+// If chunks accumulated during processing, keeps processing=true and returns
+// the next batch. Otherwise sets processing=false and returns ("", false).
+func (q *ChunkQueue) MarkDone() (string, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.queue) > 0 {
+		text := joinChunks(q.queue)
+		q.queue = nil
+		// processing stays true — next batch is already claimed
+		return text, true
 	}
-	editMode := b.accumulated[0].editMode
-	texts := make([]string, len(b.accumulated))
-	for i, c := range b.accumulated {
+	q.processing = false
+	return "", false
+}
+
+// AgentDone resets the processing flag on the error path (no agent reply expected).
+func (q *ChunkQueue) AgentDone() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.processing = false
+}
+
+func joinChunks(chunks []chunk) string {
+	texts := make([]string, len(chunks))
+	for i, c := range chunks {
 		texts[i] = c.text
 	}
-	text := strings.Join(texts, " ")
-	b.accumulated = nil
-	b.agentBusy = true
-	return text, editMode
-}
-
-// ForceFlush flushes regardless of the word threshold. Used on session stop.
-func (b *Buffer) ForceFlush() (string, bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if len(b.accumulated) == 0 && len(b.pending) == 0 {
-		return "", false
-	}
-	all := append(b.accumulated, b.pending...)
-	b.accumulated = nil
-	b.pending = nil
-	b.agentBusy = true
-	if len(all) == 0 {
-		return "", false
-	}
-	editMode := all[0].editMode
-	texts := make([]string, len(all))
-	for i, c := range all {
-		texts[i] = c.text
-	}
-	return strings.Join(texts, " "), editMode
-}
-
-// ClaimAgentResponse atomically marks the agent as done and promotes pending chunks.
-// Returns (shouldFlush, true) if this call claimed the busy slot; the caller must
-// process the response. Returns (false, false) if the agent was already idle — a
-// concurrent call already claimed it.
-func (b *Buffer) ClaimAgentResponse() (bool, bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if !b.agentBusy {
-		return false, false
-	}
-	b.agentBusy = false
-	b.accumulated = append(b.accumulated, b.pending...)
-	b.pending = nil
-	return b.shouldFlush(), true
-}
-
-// AgentDone marks the agent as free without requiring a response claim.
-// Used only in the SendChunk error path to reset the busy flag.
-func (b *Buffer) AgentDone() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.agentBusy = false
-	b.accumulated = append(b.accumulated, b.pending...)
-	b.pending = nil
+	return strings.Join(texts, " ")
 }

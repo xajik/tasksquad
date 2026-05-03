@@ -31,9 +31,10 @@ func (p *Gemini) Stdin(prompt string) string { return prompt }
 func (p *Gemini) ExtraArgs() []string { return nil }
 
 // SetupVoice writes .gemini/settings.json with an AfterAgent hook pointing at
-// the speech-to-md notification endpoint.
+// /hooks/stop?speech=true, mirroring the inbox setup but with the speech flag.
 func (p *Gemini) SetupVoice(workDir string, hooksPort int) error {
 	settingsPath := filepath.Join(workDir, ".gemini", "settings.json")
+	stopURL := fmt.Sprintf("http://localhost:%d/hooks/stop?speech=true&provider=gemini", hooksPort)
 	err := writeHooks(settingsPath, map[string]any{
 		"AfterAgent": []any{
 			map[string]any{
@@ -42,7 +43,7 @@ func (p *Gemini) SetupVoice(workDir string, hooksPort int) error {
 					map[string]any{
 						"name":    "tasksquad-speech",
 						"type":    "command",
-						"command": geminiHookCmd(fmt.Sprintf("http://localhost:%d/hooks/speech-to-md/notification?provider=gemini", hooksPort)),
+						"command": geminiHookCmd(stopURL),
 						"timeout": 5000,
 					},
 				},
