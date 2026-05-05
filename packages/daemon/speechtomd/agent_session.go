@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,10 +15,17 @@ import (
 	"github.com/tasksquad/daemon/tmux"
 )
 
-const tmuxSessionPrefix = "tsq-stm-"
+const (
+	tmuxSessionPrefix    = "tsq-stm-"
+	tmuxAgentInitTimeout = 90 * time.Second
+	tmuxResultTimeout    = 5 * time.Minute
+)
 
-// AgentSession manages the persistent tmux session for speech-to-md chunk processing.
-type AgentSession struct {
+// tmuxAgent manages the persistent tmux session for speech-to-md chunk processing.
+// It implements ChunkAgent (synchronous Complete that blocks until the hook delivers
+// the result) and HookNotifiable (MarkInitialized + DeliverResult called by the
+// Manager when hook callbacks arrive).
+type tmuxAgent struct {
 	mu             sync.Mutex
 	tmuxName       string
 	agentCfg       config.AgentConfig
@@ -26,37 +34,40 @@ type AgentSession struct {
 	promptOverride string
 	initialized    bool
 	initCh         chan struct{}
-	stopped        bool
+	stopOnce       sync.Once
+	stopCh         chan struct{}
+	pendingMu      sync.Mutex
+	pending        chan string // unblocked by DeliverResult from hook callback
 }
 
-// TmuxName returns the tmux session name.
-func (s *AgentSession) TmuxName() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.tmuxName
-}
-
-
-func newAgentSession(agentCfg config.AgentConfig, hooksPort int, sessionDir, promptOverride string) *AgentSession {
-	return &AgentSession{
+func newTmuxAgent(agentCfg config.AgentConfig, hooksPort int, sessionDir, promptOverride string) *tmuxAgent {
+	return &tmuxAgent{
 		agentCfg:       agentCfg,
 		hooksPort:      hooksPort,
 		sessionDir:     sessionDir,
 		promptOverride: promptOverride,
 		initCh:         make(chan struct{}),
+		stopCh:         make(chan struct{}),
 	}
 }
 
-// Start spawns the agent's tmux session, waits for it to load, then sends
-// either /tsq-speech-to-md (default) or the user's custom prompt.
-func (s *AgentSession) Start() error {
-	workDir := s.agentCfg.WorkDir
+// TmuxName returns the tmux session name.
+func (a *tmuxAgent) TmuxName() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.tmuxName
+}
+
+// Start spawns the tmux session, sends the init command, and blocks until the
+// agent fires the init hook (or the 90 s timeout elapses).
+func (a *tmuxAgent) Start() error {
+	workDir := a.agentCfg.WorkDir
 	if workDir == "" {
-		workDir = s.sessionDir
+		workDir = a.sessionDir
 	}
 
-	prov := provider.Detect(s.agentCfg.Command, s.agentCfg.Provider)
-	if err := prov.SetupVoice(workDir, s.hooksPort); err != nil {
+	prov := provider.Detect(a.agentCfg.Command, a.agentCfg.Provider)
+	if err := prov.SetupVoice(workDir, a.hooksPort); err != nil {
 		if errors.Is(err, provider.ErrNotSupported) {
 			logger.Warn(fmt.Sprintf("[speech-agent] provider %s does not support voice hooks", prov.Name()))
 		} else {
@@ -67,7 +78,7 @@ func (s *AgentSession) Start() error {
 	ts := fmt.Sprintf("%d", time.Now().UnixMilli())
 	sessionName := tmuxSessionPrefix + ts[:8]
 
-	cmd := s.agentCfg.Command
+	cmd := a.agentCfg.Command
 	if cmd == "" {
 		cmd = "claude"
 	}
@@ -81,27 +92,26 @@ func (s *AgentSession) Start() error {
 	}, cmd)
 	tmuxCmd := exec.Command("tmux", newArgs...)
 	tmuxCmd.Env = append(os.Environ(),
-		fmt.Sprintf("TSQ_HOOKS_PORT=%d", s.hooksPort),
+		fmt.Sprintf("TSQ_HOOKS_PORT=%d", a.hooksPort),
 	)
 	if out, err := tmuxCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("tmux new-session: %w (output: %s)", err, out)
 	}
 
-	s.mu.Lock()
-	s.tmuxName = sessionName
-	s.mu.Unlock()
+	a.mu.Lock()
+	a.tmuxName = sessionName
+	a.mu.Unlock()
 
 	logger.Info(fmt.Sprintf("[speech-agent] Session %s spawned in %s; waiting for CLI to load (%s)", sessionName, workDir, tmux.SessionReadyWait))
 	tmux.WaitForReady()
 
-	if s.promptOverride != "" {
-		// Custom prompt: paste via temp file so it handles multi-line content.
+	if a.promptOverride != "" {
 		initFile, err := os.CreateTemp("", "tsq-speech-init-*.md")
 		if err != nil {
 			return fmt.Errorf("create init temp: %w", err)
 		}
 		defer os.Remove(initFile.Name())
-		if _, err := initFile.WriteString(s.promptOverride); err != nil {
+		if _, err := initFile.WriteString(a.promptOverride); err != nil {
 			initFile.Close()
 			return fmt.Errorf("write init temp: %w", err)
 		}
@@ -125,37 +135,79 @@ func (s *AgentSession) Start() error {
 		logger.Info(fmt.Sprintf("[speech-agent] Sent %s to %s; awaiting ready", initCmd, sessionName))
 	}
 
-	return nil
-}
-
-// WaitForInit blocks until the agent fires the init hook, or times out.
-func (s *AgentSession) WaitForInit(timeout time.Duration) error {
-	logger.Info(fmt.Sprintf("[speech-agent] %s waiting for ready signal (timeout: %s)", s.tmuxName, timeout))
+	logger.Info(fmt.Sprintf("[speech-agent] %s waiting for ready signal (timeout: %s)", sessionName, tmuxAgentInitTimeout))
+	t := time.NewTimer(tmuxAgentInitTimeout)
+	defer t.Stop()
 	select {
-	case <-s.initCh:
-		logger.Info(fmt.Sprintf("[speech-agent] %s ready!", s.tmuxName))
+	case <-a.initCh:
+		logger.Info(fmt.Sprintf("[speech-agent] %s ready!", sessionName))
 		return nil
-	case <-time.After(timeout):
-		logger.Warn(fmt.Sprintf("[speech-agent] %s init timeout after %s", s.tmuxName, timeout))
-		return fmt.Errorf("agent init timed out after %s", timeout)
+	case <-t.C:
+		return fmt.Errorf("agent init timed out after %s — run: tmux kill-session -t %s", tmuxAgentInitTimeout, sessionName)
+	case <-a.stopCh:
+		return fmt.Errorf("agent stopped before init")
 	}
 }
 
-// MarkInitialized is called by the hook server when the init hook fires.
-func (s *AgentSession) MarkInitialized() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.initialized {
-		s.initialized = true
-		close(s.initCh)
+// MarkInitialized signals that the agent is ready; called via HookNotifiable when
+// the init hook fires.
+func (a *tmuxAgent) MarkInitialized() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.initialized {
+		a.initialized = true
+		close(a.initCh)
 	}
 }
 
-// SendChunk writes the transcript text to a temp file and pastes it into the tmux session.
-func (s *AgentSession) SendChunk(text string) error {
-	s.mu.Lock()
-	sessionName := s.tmuxName
-	s.mu.Unlock()
+// Complete sends transcript text to the tmux session and blocks until the hook
+// callback delivers the markdown result (or the agent is stopped).
+func (a *tmuxAgent) Complete(currentMD, transcript string, editMode bool) (string, error) {
+	ch := make(chan string, 1)
+	a.pendingMu.Lock()
+	a.pending = ch
+	a.pendingMu.Unlock()
+
+	sessionName := a.TmuxName()
+	logger.Info(fmt.Sprintf("[speech-agent] %s → sending chunk (%d words)", sessionName, len(strings.Fields(transcript))))
+
+	if err := a.sendChunk(withModePrefix(Batch{Text: transcript, EditMode: editMode})); err != nil {
+		a.pendingMu.Lock()
+		a.pending = nil
+		a.pendingMu.Unlock()
+		return "", err
+	}
+
+	t := time.NewTimer(tmuxResultTimeout)
+	defer t.Stop()
+	select {
+	case markdown := <-ch:
+		logger.Info(fmt.Sprintf("[speech-agent] %s ← result received (%d chars)", sessionName, len(markdown)))
+		return markdown, nil
+	case <-t.C:
+		logger.Warn(fmt.Sprintf("[speech-agent] %s result timed out after %s — will retry next cycle", sessionName, tmuxResultTimeout))
+		return "", errAgentTimeout
+	case <-a.stopCh:
+		return "", fmt.Errorf("agent stopped")
+	}
+}
+
+// DeliverResult delivers the hook result to the blocked Complete call; called via
+// HookNotifiable when the agent's turn-complete hook fires.
+func (a *tmuxAgent) DeliverResult(markdown string) {
+	a.pendingMu.Lock()
+	ch := a.pending
+	a.pending = nil
+	a.pendingMu.Unlock()
+	if ch != nil {
+		ch <- markdown
+	}
+}
+
+func (a *tmuxAgent) sendChunk(text string) error {
+	a.mu.Lock()
+	sessionName := a.tmuxName
+	a.mu.Unlock()
 	if sessionName == "" {
 		return fmt.Errorf("agent session not started")
 	}
@@ -179,15 +231,24 @@ func (s *AgentSession) SendChunk(text string) error {
 	return nil
 }
 
-// Stop kills the tmux session.
-func (s *AgentSession) Stop() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.tmuxName == "" || s.stopped {
-		return
+func withModePrefix(b Batch) string {
+	if b.EditMode {
+		return "[Mode: edit]\n" + b.Text
 	}
-	s.stopped = true
-	tmux.KillSession(s.tmuxName) //nolint:errcheck
-	logger.Info(fmt.Sprintf("[speech-agent] Session %s killed", s.tmuxName))
-	s.tmuxName = ""
+	return "[Mode: append]\n" + b.Text
+}
+
+func (a *tmuxAgent) Stop() {
+	a.mu.Lock()
+	name := a.tmuxName
+	a.tmuxName = ""
+	a.mu.Unlock()
+
+	a.stopOnce.Do(func() {
+		close(a.stopCh)
+		if name != "" {
+			tmux.KillSession(name) //nolint:errcheck
+			logger.Info(fmt.Sprintf("[speech-agent] Session %s killed", name))
+		}
+	})
 }

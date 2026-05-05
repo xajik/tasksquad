@@ -2000,6 +2000,7 @@ let eventSource = null;
 let selectedModel = 'base';
 let chunkTimer = null;
 let modelDownloaded = false;
+let prereqsMet = false;
 let savedPrompts = [];
 
 const defaultPromptText = `You are a structured documentation assistant. You process spoken thoughts and convert them into clean, well-organised markdown — product specs, requirements, meeting notes, technical plans, and similar documents.
@@ -2082,26 +2083,40 @@ async function checkPrereqs() {
     const issues = await res.json();
     const entries = Object.values(issues || {});
     const prereqWarn = document.getElementById('prereq-warn');
-    console.log('checkPrereqs:', issues, 'entries:', entries);
-    if (entries.length === 0) { prereqWarn.style.display = 'none'; }
-    else {
+    if (entries.length === 0) {
+      prereqWarn.style.display = 'none';
+      prereqsMet = true;
+    } else {
       prereqWarn.innerHTML = '<strong>Missing dependencies:</strong>' + entries.map(msg => '<span>• <code>' + msg + '</code></span>').join('');
       prereqWarn.style.display = 'flex';
+      prereqsMet = false;
     }
     speechUpdateStartBtn();
-  } catch(e) { console.error('checkPrereqs error:', e); speechUpdateStartBtn(); }
+  } catch(e) { console.error('checkPrereqs error:', e); prereqsMet = true; speechUpdateStartBtn(); }
 }
 
 async function loadAgents() {
+  const sel = document.getElementById('agent-select');
   try {
-    const res = await fetch('/api/speech-to-md/agents');
-    const names = await res.json();
-    const sel = document.getElementById('agent-select');
+    const [agentsRes, localRes] = await Promise.all([
+      fetch('/api/speech-to-md/agents'),
+      fetch('/api/speech-to-md/local-models')
+    ]);
+    const names = await agentsRes.json();
+    const localData = localRes.ok ? await localRes.json() : {};
+    const localModels = localData.models || [];
     sel.innerHTML = '';
-    if (!names || names.length === 0) { sel.innerHTML = '<option value="">No agents configured</option>'; }
-    else { names.forEach(n => { const opt = document.createElement('option'); opt.value = n; opt.textContent = n; sel.appendChild(opt); }); }
+    const hasAgents = names && names.length > 0;
+    if (hasAgents) {
+      names.forEach(n => { const opt = document.createElement('option'); opt.value = n; opt.textContent = n; sel.appendChild(opt); });
+    }
+    if (localModels.length > 0) {
+      if (hasAgents) { const sep = document.createElement('option'); sep.disabled = true; sep.textContent = '── Local Models ──'; sel.appendChild(sep); }
+      localModels.forEach(m => { const opt = document.createElement('option'); opt.value = m; opt.textContent = '⚡ ' + m; opt.dataset.localModel = m; sel.appendChild(opt); });
+    }
+    if (sel.options.length === 0) { sel.innerHTML = '<option value="">No agents available</option>'; }
     speechUpdateStartBtn();
-  } catch(e) { document.getElementById('agent-select').innerHTML = '<option value="">Failed to load agents</option>'; }
+  } catch(e) { sel.innerHTML = '<option value="">Failed to load agents</option>'; }
 }
 
 async function loadPrompts() {
@@ -2187,9 +2202,8 @@ async function loadModels(autoSelect = false) {
 
 function speechUpdateStartBtn() {
   const hasAgent = agentSelect.value !== '';
-  const canStart = hasAgent && modelDownloaded;
+  const canStart = hasAgent && modelDownloaded && prereqsMet;
   btnStartSession.disabled = !canStart;
-  console.log('speechUpdateStartBtn: agent=', hasAgent, 'model=', modelDownloaded, 'canStart=', canStart);
 }
 
 btnDownload.addEventListener('click', async () => {
@@ -2231,7 +2245,9 @@ btnDownload.addEventListener('click', async () => {
 });
 
 btnStartSession.addEventListener('click', async () => {
-  const agent = agentSelect.value;
+  const selectedOpt = agentSelect.selectedIndex >= 0 ? agentSelect.options[agentSelect.selectedIndex] : null;
+  const localModel = selectedOpt && selectedOpt.dataset.localModel;
+  const agent = localModel ? 'local' : agentSelect.value;
   if (!agent) return;
   btnStartSession.disabled = true;
   startSpinner.style.display = 'inline-block';
@@ -2243,7 +2259,9 @@ btnStartSession.addEventListener('click', async () => {
       const p = savedPrompts.find(x => x.name === promptVal);
       if (p) prompt = p.content;
     }
-    const res = await fetch('/api/speech-to-md/session/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({agent, model: modelSelect.value, prompt}) });
+    const startBody = {agent, model: modelSelect.value, prompt};
+    if (localModel) startBody.local_model = localModel;
+    const res = await fetch('/api/speech-to-md/session/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(startBody) });
     if (!res.ok) throw new Error(await res.text());
     sessionPanel.style.display = 'flex';
     setupPanel.style.display = 'none';
@@ -2368,32 +2386,57 @@ editToggle?.addEventListener('change', async () => {
 });
 
 async function startRecording() {
+  // Request mic access first — if denied we never disturb the server state.
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio: true});
+  } catch(e) {
+    speechToast('Microphone access denied: ' + (e.message || e));
+    return;
+  }
+
   const editMode = document.getElementById('edit-mode-toggle')?.checked || false;
   const res = await fetch('/api/speech-to-md/recording/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({edit_mode: editMode})});
-  if (!res.ok) { speechToast(await res.text()); return; }
+  if (!res.ok) {
+    stream.getTracks().forEach(t => t.stop());
+    speechToast(await res.text());
+    return;
+  }
+
+  audioStream = stream;
   setSpeechSessionState('recording');
-  try { audioStream = await navigator.mediaDevices.getUserMedia({audio: true}); } catch(e) { speechToast('Microphone access denied'); return; }
   startSpeechChunk(); scheduleNextSpeechChunk();
 }
 
 function startSpeechChunk() {
+  if (!audioStream) return;
+  const tracks = audioStream.getAudioTracks();
+  if (tracks.length === 0 || tracks[0].readyState !== 'live') {
+    console.warn('[speech] audio track ended — pausing session');
+    speechToast('Microphone disconnected — recording paused');
+    stopRecording();
+    return;
+  }
   const mimeType = getSupportedMimeType();
   const options = mimeType ? {mimeType} : {};
-  console.log('[speech] starting MediaRecorder with options:', options);
-  mediaRecorder = new MediaRecorder(audioStream, options);
+  try {
+    mediaRecorder = new MediaRecorder(audioStream, options);
+  } catch(e) {
+    console.error('[speech] MediaRecorder creation failed:', e.message);
+    speechToast('Recording error — mic may have disconnected');
+    stopRecording();
+    return;
+  }
   mediaRecorder.onerror = (e) => { console.error('[speech] MediaRecorder error:', e); };
   mediaRecorder.ondataavailable = (evt) => {
-    // Skip blobs that are too small to contain real audio (just a WebM init segment).
-    // Also skip if we're no longer actively recording (e.g. the final blob after pause).
     if (evt.data && evt.data.size > 1000 && sessionState === 'recording') sendAudioChunk(evt.data);
   };
   try {
     mediaRecorder.start();
   } catch(e) {
     console.error('[speech] MediaRecorder.start() failed:', e.message);
-    speechToast('Recording error: ' + e.message);
-    stopMedia();
-    setSpeechSessionState('idle');
+    speechToast('Recording error — mic may have disconnected');
+    stopRecording();
   }
 }
 
@@ -2439,7 +2482,12 @@ async function sendAudioChunk(blob) {
     if (!res.ok) {
       const err = await res.text();
       console.error('[speech] upload failed:', res.status, err);
-      speechToast('Upload failed: ' + err);
+      // Detect common root causes and surface actionable messages.
+      if (err.includes('whisper') || err.includes('ffmpeg')) {
+        speechToast('Transcription failed — check missing tools in the prereq banner above');
+      } else {
+        speechToast('Transcription error: ' + err);
+      }
     }
   } catch(e) { console.warn('Chunk upload failed:', e); }
 }

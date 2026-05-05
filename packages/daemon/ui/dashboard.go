@@ -138,9 +138,10 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 			return
 		}
 		var body struct {
-			Agent  string `json:"agent"`
-			Model  string `json:"model"`
-			Prompt string `json:"prompt"`
+			Agent      string `json:"agent"`
+			Model      string `json:"model"`
+			Prompt     string `json:"prompt"`
+			LocalModel string `json:"local_model"` // omlx model name when agent=="local"
 		}
 		json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
 		if body.Agent == "" {
@@ -155,8 +156,14 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 			http.Error(w, "speech-to-md not initialised", http.StatusServiceUnavailable)
 			return
 		}
-		if err := mgr.StartSession(body.Agent, body.Model, body.Prompt); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		var startErr error
+		if body.Agent == "local" {
+			startErr = mgr.StartLocalSession(body.LocalModel, body.Model, body.Prompt)
+		} else {
+			startErr = mgr.StartSession(body.Agent, body.Model, body.Prompt)
+		}
+		if startErr != nil {
+			http.Error(w, startErr.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -330,6 +337,16 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 			names = append(names, a.Name())
 		}
 		json.NewEncoder(w).Encode(names) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/speech-to-md/local-models", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		models, err := speechtomd.ListLocalModels("")
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]any{"models": []string{}, "error": err.Error()}) //nolint:errcheck
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"models": models}) //nolint:errcheck
 	})
 
 	mux.HandleFunc("/api/speech-to-md/sessions", func(w http.ResponseWriter, r *http.Request) {
