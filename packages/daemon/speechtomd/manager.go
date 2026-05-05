@@ -161,6 +161,7 @@ func (m *Manager) dispatchChunk(batch Batch) {
 	}
 
 	go func() {
+		m.sendAgentStatus(AgentStatusInfo{Status: "processing", Label: "processing"})
 		result, err := agent.Complete(currentMD, batch.Text, batch.EditMode)
 		if errors.Is(err, errAgentTimeout) {
 			logger.Warn("[speechtomd] agent timed out — batch dropped, continuing next cycle")
