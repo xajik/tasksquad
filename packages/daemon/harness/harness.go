@@ -15,12 +15,14 @@ import (
 //	.agents — Gemini, Codex
 //	.agent  — Claw Code
 //	.gemini — Gemini CLI
-var All = []string{".claude", ".agents", ".agent", ".gemini"}
+//	.pi     — Pi (pi.dev)
+//	.forge  — Forge
+var All = []string{".claude", ".agents", ".agent", ".gemini", ".pi", ".forge"}
 
 // CommandBases is the list of harness base directories that support slash
-// commands. OpenCode is included here (it uses .opencode/commands/) but is
-// not in All because its skills and agents follow a different layout.
-var CommandBases = []string{".claude", ".agents", ".agent", ".gemini", ".opencode"}
+// commands. OpenCode, Pi, and Forge are included here (they use .opencode/commands/,
+// .pi/commands/, and .forge/commands/ respectively) but use TypeScript plugins for hook delivery.
+var CommandBases = []string{".claude", ".agents", ".agent", ".gemini", ".opencode", ".pi", ".forge"}
 
 // SkillDirs returns the on-disk skill directories for all harnesses under workDir.
 func SkillDirs(workDir string) []string {

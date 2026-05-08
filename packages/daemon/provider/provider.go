@@ -57,6 +57,7 @@ var registry = map[string]func() Provider{
 	"claude":      func() Provider { return &ClaudeCode{} },
 	"gemini":      func() Provider { return &Gemini{} },
 	"opencode":    func() Provider { return &OpenCode{} },
+	"pi":          func() Provider { return &Pi{} },
 	"codex":       func() Provider { return &Codex{} },
 	"stdout":      func() Provider { return &Stdout{} },
 	"claw":        func() Provider { return &Claw{} },

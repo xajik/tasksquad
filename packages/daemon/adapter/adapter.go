@@ -54,6 +54,7 @@ var adapterRegistry = map[string]Adapter{
 	"gemini":   GeminiAdapter{},
 	"codex":    CodexAdapter{},
 	"opencode": OpenCodeAdapter{},
+	"pi":       PiAdapter{},
 	"stdout":   StdoutAdapter{},
 	"claw":     ClawAdapter{},
 }
