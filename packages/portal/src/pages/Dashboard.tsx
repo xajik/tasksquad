@@ -85,6 +85,8 @@ import {
   ShieldAlert,
   BookOpen,
   BookMarked,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react'
 
 import { Notes } from './Notes'
@@ -727,12 +729,13 @@ function ActivityRow({ message }: { message: Message }) {
   )
 }
 
-function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
+function MessageBubble({ message, agentName, taskId, onDelete, onEdit, onGrade }: {
   message: Message;
   agentName?: string;
   taskId?: string;
   onDelete?: (msgId: string) => void;
   onEdit?: (msg: Message) => void;
+  onGrade?: (msgId: string, grade: number | null) => void;
 }) {
   const isUser = message.role === 'user'
   const isAgent = message.role === 'agent'
@@ -882,6 +885,34 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit }: {
         <button onClick={copyBody} className="ml-1 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Copy message">
           {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
         </button>
+        {onGrade && (
+          <>
+            <button
+              onClick={() => onGrade(message.id, message.grade === 1 ? null : 1)}
+              className={cn(
+                'ml-1 p-1 rounded transition-colors',
+                message.grade === 1
+                  ? 'bg-green-500/15 text-green-600'
+                  : 'text-muted-foreground hover:text-green-600 hover:bg-green-500/10'
+              )}
+              title="Good"
+            >
+              <ThumbsUp className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => onGrade(message.id, message.grade === 0 ? null : 0)}
+              className={cn(
+                'ml-1 p-1 rounded transition-colors',
+                message.grade === 0
+                  ? 'bg-destructive/15 text-destructive'
+                  : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
+              )}
+              title="Bad"
+            >
+              <ThumbsDown className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
       </div>
       <div className="px-4 py-3.5">
         <div className={cn('text-sm leading-relaxed whitespace-pre-wrap select-text', isScheduled ? 'text-foreground/80' : 'text-foreground/90')}>
@@ -911,6 +942,9 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined)
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
+  const [taskGrade, setTaskGrade] = useState<number | null | undefined>(undefined)
+  const pendingTaskGrade = useRef(false)
+  const pendingMsgGrades = useRef<Set<string>>(new Set())
   const bottomRef = useRef<HTMLDivElement>(null)
   const replyFormRef = useRef<HTMLFormElement>(null)
   const nav = useNavigate()
@@ -923,7 +957,15 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
       api.agents.list(teamId)
     ])
     setTask(t)
-    setMessages(m.messages ?? [])
+    if (!pendingTaskGrade.current) setTaskGrade(t.grade ?? null)
+    setMessages(prev => {
+      const incoming = m.messages ?? []
+      if (pendingMsgGrades.current.size === 0) return incoming
+      const prevMap = new Map(prev.map(p => [p.id, p]))
+      return incoming.map(msg =>
+        pendingMsgGrades.current.has(msg.id) ? { ...msg, grade: prevMap.get(msg.id)?.grade ?? msg.grade } : msg
+      )
+    })
     setAgents(ad.agents ?? [])
   }, [taskId, teamId])
 
@@ -989,6 +1031,22 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
     await api.tasks.close(taskId)
     trackEvent('task_closed', { task_id: taskId });
     nav('/dashboard')
+  }
+
+  async function gradeTask(grade: number | null) {
+    if (!taskId) return
+    pendingTaskGrade.current = true
+    setTaskGrade(grade)
+    await api.tasks.grade(taskId, grade)
+    pendingTaskGrade.current = false
+  }
+
+  async function gradeMessage(msgId: string, grade: number | null) {
+    if (!taskId) return
+    pendingMsgGrades.current.add(msgId)
+    setMessages(msgs => msgs.map(m => m.id === msgId ? { ...m, grade } : m))
+    await api.messages.grade(taskId, msgId, grade)
+    pendingMsgGrades.current.delete(msgId)
   }
 
   async function forwardToAgent() {
@@ -1229,6 +1287,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
             taskId={taskId}
             onDelete={deleteScheduledMessage}
             onEdit={editScheduledMessage}
+            onGrade={gradeMessage}
           />
         ))}
 
@@ -1415,37 +1474,71 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
       ) : null}
 
       {/* ── Sticky action bar ── */}
-      {task && !['done', 'failed'].includes(task.status) && (
-        <div className="sticky bottom-0 pt-3 pb-1 flex justify-start bg-gradient-to-t from-background via-background to-transparent">
-          {task.status === 'wrapping_up' ? (
-            <Button size="sm" disabled className="bg-emerald-600 text-white shadow-sm opacity-80 cursor-not-allowed">
-              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-              {activeCloseStep(task) ? `Wrapping up ${activeCloseStep(task)}` : 'Wrapping up…'}
-            </Button>
-          ) : (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
-                  <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
-                  Close Session
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Close Session?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will mark the task as done. You can always follow up later if needed.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Keep open</AlertDialogCancel>
-                  <AlertDialogAction onClick={closeTask} className="bg-emerald-600 hover:bg-emerald-700">
+      {task && (
+        <div className="sticky bottom-0">
+          <div className="h-6 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+          <div className="pb-2 flex items-center gap-2 bg-background">
+          {!['done', 'failed', 'cancelled'].includes(task.status) && (
+            task.status === 'wrapping_up' ? (
+              <Button size="sm" disabled className="bg-emerald-600 text-white shadow-sm opacity-80 cursor-not-allowed">
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                {activeCloseStep(task) ? `Wrapping up ${activeCloseStep(task)}` : 'Wrapping up…'}
+              </Button>
+            ) : (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                    <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
                     Close Session
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Close Session?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will mark the task as done. You can always follow up later if needed.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Keep open</AlertDialogCancel>
+                    <AlertDialogAction onClick={closeTask} className="bg-emerald-600 hover:bg-emerald-700">
+                      Close Session
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )
           )}
+          <div className={cn(
+            'flex items-center gap-1',
+            !['done', 'failed', 'cancelled'].includes(task.status) && 'ml-2 pl-2 border-l border-border/40'
+          )}>
+            <button
+              onClick={() => gradeTask(taskGrade === 1 ? null : 1)}
+              className={cn(
+                'p-1 rounded transition-colors',
+                taskGrade === 1
+                  ? 'bg-green-500/15 text-green-600'
+                  : 'text-muted-foreground hover:text-green-600 hover:bg-green-500/10'
+              )}
+              title="Good task"
+            >
+              <ThumbsUp className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => gradeTask(taskGrade === 0 ? null : 0)}
+              className={cn(
+                'p-1 rounded transition-colors',
+                taskGrade === 0
+                  ? 'bg-destructive/15 text-destructive'
+                  : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
+              )}
+              title="Bad task"
+            >
+              <ThumbsDown className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          </div>
         </div>
       )}
 

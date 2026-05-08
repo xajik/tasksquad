@@ -27,7 +27,7 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   const rows = await env.DB
     .prepare(`
       SELECT m.id, m.task_id, m.sender_id, m.role, m.body, m.type,
-             m.json_payload, m.transcript_key, m.created_at, m.scheduled_at,
+             m.json_payload, m.transcript_key, m.created_at, m.scheduled_at, m.grade,
              pe.interaction_status, pe.interaction_response
       FROM messages m
       LEFT JOIN (
@@ -97,6 +97,34 @@ export async function getTranscript(req: Request, env: Env, _ctx: unknown, auth:
       'Content-Type': 'application/x-ndjson',
     },
   })
+}
+
+export async function gradeMessage(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const parts = new URL(req.url).pathname.split('/')
+  const taskId = parts[2]
+  const msgId = parts[4]
+
+  const body = await req.json<{ grade?: number | null }>().catch(() => ({} as { grade?: number | null }))
+
+  const task = await env.DB
+    .prepare('SELECT team_id FROM tasks WHERE id = ?')
+    .bind(taskId)
+    .first<{ team_id: string }>()
+  if (!task) return err('not_found', 404)
+  if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('forbidden', 403)
+
+  const msg = await env.DB
+    .prepare('SELECT id FROM messages WHERE id = ? AND task_id = ?')
+    .bind(msgId, taskId)
+    .first<{ id: string }>()
+  if (!msg) return err('not_found', 404)
+
+  await env.DB
+    .prepare('UPDATE messages SET grade = ? WHERE id = ?')
+    .bind(body.grade ?? null, msgId)
+    .run()
+
+  return json({ ok: true })
 }
 
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

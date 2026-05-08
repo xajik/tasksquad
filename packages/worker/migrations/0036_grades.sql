@@ -1,0 +1,2 @@
+ALTER TABLE tasks    ADD COLUMN grade INTEGER;
+ALTER TABLE messages ADD COLUMN grade INTEGER;

@@ -48,9 +48,9 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
   const taskId = url.pathname.split('/')[2]
 
   const task = await env.DB
-    .prepare('SELECT id, team_id, agent_id, sender_id, subject, status, created_at, started_at, completed_at, settings, close_steps, close_steps_active_idx FROM tasks WHERE id = ?')
+    .prepare('SELECT id, team_id, agent_id, sender_id, subject, status, created_at, started_at, completed_at, settings, close_steps, close_steps_active_idx, grade FROM tasks WHERE id = ?')
     .bind(taskId)
-    .first<{ id: string; team_id: string; agent_id: string; sender_id: string; subject: string; status: string; created_at: number; started_at: number | null; completed_at: number | null; settings: string | null; close_steps: string | null; close_steps_active_idx: number }>()
+    .first<{ id: string; team_id: string; agent_id: string; sender_id: string; subject: string; status: string; created_at: number; started_at: number | null; completed_at: number | null; settings: string | null; close_steps: string | null; close_steps_active_idx: number; grade: number | null }>()
 
   if (!task) return err('not_found', 404)
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
@@ -59,6 +59,27 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
   try { closeSteps = task.close_steps ? JSON.parse(task.close_steps) : null } catch { closeSteps = null }
 
   return json({ ...task, settings: task.settings ? JSON.parse(task.settings) : null, close_steps: closeSteps })
+}
+
+export async function gradeTask(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const taskId = url.pathname.split('/')[2]
+
+  const body = await req.json<{ grade?: number | null }>().catch(() => ({} as { grade?: number | null }))
+
+  const task = await env.DB
+    .prepare('SELECT team_id FROM tasks WHERE id = ?')
+    .bind(taskId)
+    .first<{ team_id: string }>()
+  if (!task) return err('not_found', 404)
+  if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('forbidden', 403)
+
+  await env.DB
+    .prepare('UPDATE tasks SET grade = ? WHERE id = ?')
+    .bind(body.grade ?? null, taskId)
+    .run()
+
+  return json({ ok: true })
 }
 
 export async function updateSettings(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

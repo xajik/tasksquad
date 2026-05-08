@@ -88,6 +88,8 @@ export const api = {
       request<{ ok: boolean }>(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify(body) }),
     updateSettings: (taskId: string, settings: TaskSettings) =>
       request<{ ok: boolean }>(`/tasks/${taskId}/settings`, { method: 'PATCH', body: JSON.stringify(settings) }),
+    grade: (taskId: string, grade: number | null) =>
+      request<{ ok: boolean }>(`/tasks/${taskId}/grade`, { method: 'PATCH', body: JSON.stringify({ grade }) }),
     close: (taskId: string) =>
       request<{ ok: boolean }>(`/tasks/${taskId}/close`, { method: 'POST' }),
     delete: (taskId: string) =>
@@ -163,6 +165,8 @@ export const api = {
       request<void>(`/tasks/${taskId}/messages/${msgId}`, {
         method: 'DELETE',
       }),
+    grade: (taskId: string, msgId: string, grade: number | null) =>
+      request<{ ok: boolean }>(`/tasks/${taskId}/messages/${msgId}/grade`, { method: 'PATCH', body: JSON.stringify({ grade }) }),
   },
   notes: {
     list: (teamId: string, params?: { archived?: boolean; limit?: number; offset?: number }) => {
@@ -351,6 +355,7 @@ export interface Task {
   settings?: TaskSettings | null
   close_steps?: string[] | null
   close_steps_active_idx?: number
+  grade?: number | null
 }
 
 export interface Message {
@@ -369,6 +374,7 @@ export interface Message {
   /** Only present on permission_request messages. */
   interaction_status?: 'pending' | 'resolved' | null
   interaction_response?: string | null
+  grade?: number | null
 }
 
 export interface Note {
