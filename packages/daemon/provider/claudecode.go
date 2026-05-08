@@ -47,6 +47,7 @@ func (p *ClaudeCode) Setup(workDir string, hooksPort int, agentID string, taskID
 		},
 		"StopFailure": []any{
 			map[string]any{
+				"matcher": "*",
 				"hooks": []any{
 					map[string]any{
 						"type": "http",

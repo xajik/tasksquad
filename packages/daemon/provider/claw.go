@@ -46,6 +46,7 @@ func (p *Claw) Setup(workDir string, hooksPort int, agentID string, taskID strin
 		},
 		"StopFailure": []any{
 			map[string]any{
+				"matcher": "*",
 				"hooks": []any{
 					map[string]any{
 						"type": "http",
