@@ -812,22 +812,6 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   transform: translateX(100%); transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
 }
 .log-drawer.open { transform: translateX(0); }
-.log-drawer-tabs {
-  display: flex; align-items: center;
-  background: hsl(222.2 47.4% 9%); border-bottom: 1px solid hsl(222.2 30% 18%);
-  flex-shrink: 0; padding: 0 2px;
-}
-.log-tab {
-  height: 38px; padding: 0 13px;
-  background: none; border: none; border-bottom: 2px solid transparent;
-  font-size: 12px; font-weight: 500;
-  color: hsl(210 40% 50%); cursor: pointer; white-space: nowrap;
-  font-family: ui-monospace,"JetBrains Mono",Menlo,monospace;
-  transition: color 0.15s, border-color 0.15s;
-}
-.log-tab:hover { color: hsl(210 40% 78%); }
-.log-tab.active { color: hsl(210 40% 90%); border-bottom-color: var(--accent-blue); }
-.log-tab-spacer { flex: 1; }
 .log-tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; min-height: 0; }
 .log-tab-content.active { display: flex; }
 .log-drawer-sub {
@@ -868,6 +852,92 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   transition: text-decoration-color 0.1s, background 0.1s;
 }
 .link-btn:hover { text-decoration-color: currentColor; background: rgba(37,99,235,.06); }
+
+/* ── Health metric cards ──────────────────────────────────────────── */
+.metric-strip { display: flex; gap: 10px; margin-bottom: 14px; }
+.metric-card {
+  flex: 1; background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 14px;
+  cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; min-width: 0;
+}
+.metric-card:hover { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,.08); }
+.metric-card.alert { border-color: var(--destructive); background: #fff5f5; }
+.metric-val { font-size: 22px; font-weight: 700; line-height: 1; color: var(--fg); letter-spacing: -0.5px; }
+.metric-label { font-size: 11px; color: var(--muted-fg); margin-top: 3px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+.metric-sub { font-size: 11px; color: var(--muted-fg); margin-top: 2px; }
+.metric-card.alert .metric-val { color: var(--destructive); }
+
+/* ── Inline mini-log (in agent detail) ───────────────────────────── */
+.mini-log { margin: 8px 0 2px; background: hsl(222.2 47.4% 6%); border-radius: 4px; overflow: hidden; }
+.mini-log-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 10px; background: hsl(222.2 47.4% 8%);
+  border-bottom: 1px solid hsl(222.2 30% 14%);
+}
+.mini-log-label { font-size: 10px; color: hsl(210 40% 45%); font-family: ui-monospace,'JetBrains Mono',Menlo,monospace; }
+.mini-log pre {
+  padding: 8px 10px; max-height: 130px; overflow-y: auto;
+  font-size: 10.5px; color: hsl(210 40% 78%);
+  white-space: pre-wrap; word-break: break-all; margin: 0;
+}
+
+/* ── Transcript renderer ──────────────────────────────────────────── */
+.tx-entry { margin-bottom: 18px; }
+.tx-role { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; margin-bottom: 4px; }
+.tx-role.tx-user { color: hsl(214 80% 62%); }
+.tx-role.tx-claude { color: hsl(152 60% 45%); }
+.tx-role.tx-gemini { color: hsl(247 70% 65%); }
+.tx-role.tx-system { color: hsl(210 20% 48%); }
+.tx-body { border-left: 2px solid; padding-left: 10px; }
+.tx-body.tx-user { border-color: hsl(214 80% 60% / .3); }
+.tx-body.tx-claude { border-color: hsl(152 60% 45% / .3); }
+.tx-body.tx-gemini { border-color: hsl(247 70% 60% / .3); }
+.tx-body.tx-system { border-color: hsl(210 20% 40% / .2); }
+.tx-text { font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: hsl(210 30% 88%); }
+.tx-system-line { font-size: 11px; color: hsl(210 20% 50%); font-style: italic; padding: 5px 0; border-top: 1px solid hsl(222 30% 15%); margin-top: 10px; }
+/* ── Tool call block ──────────────────────────────────────────────── */
+.tx-tool { border: 1px solid hsl(222 30% 20%); border-radius: 5px; overflow: hidden; margin: 6px 0; }
+.tx-tool-hdr {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px; background: hsl(222 47% 8%);
+  cursor: pointer; font-size: 11px;
+  font-family: ui-monospace,'JetBrains Mono',Menlo,monospace;
+  border-bottom: 1px solid hsl(222 30% 12%);
+}
+.tx-tool-hdr:hover { background: hsl(222 47% 10%); }
+.tx-tool-nm { color: hsl(210 70% 75%); font-weight: 600; }
+.tx-tool-status { font-size: 10px; margin-left: auto; }
+.tx-tool-status.ok { color: hsl(152 60% 45%); }
+.tx-tool-status.err { color: hsl(0 70% 60%); }
+.tx-tool-body { display: none; }
+.tx-tool-body.open { display: block; }
+.tx-code-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; padding: 3px 10px; color: hsl(210 30% 45%); background: hsl(222 30% 6%); border-bottom: 1px solid hsl(222 30% 12%); }
+.tx-code {
+  font-size: 10.5px; font-family: ui-monospace,'JetBrains Mono',Menlo,monospace;
+  padding: 8px 10px; margin: 0; white-space: pre-wrap; word-break: break-all;
+  max-height: 180px; overflow-y: auto;
+}
+.tx-code.in { background: hsl(222 40% 5%); color: hsl(152 40% 72%); border-bottom: 1px solid hsl(222 30% 12%); }
+.tx-code.out { background: hsl(222 30% 7%); color: hsl(210 30% 78%); }
+.tx-code.err { background: hsl(0 30% 6%); color: hsl(0 60% 70%); }
+/* ── Thinking block ───────────────────────────────────────────────── */
+.tx-thoughts { border: 1px solid hsl(247 50% 28% / .5); border-radius: 5px; overflow: hidden; margin: 6px 0; }
+.tx-thoughts-hdr {
+  display: flex; align-items: center; gap: 6px; padding: 5px 10px;
+  background: hsl(247 40% 8%); cursor: pointer; font-size: 11px;
+  color: hsl(247 60% 65%); font-style: italic;
+}
+.tx-thoughts-hdr:hover { background: hsl(247 40% 10%); }
+.tx-thoughts-body { display: none; }
+.tx-thoughts-body.open { display: block; }
+.tx-thought-item { padding: 6px 12px; border-bottom: 1px solid hsl(247 30% 12%); }
+.tx-thought-subj { font-size: 10.5px; font-weight: 700; color: hsl(247 60% 65%); margin-bottom: 2px; }
+.tx-thought-desc { font-size: 11px; color: hsl(210 20% 65%); line-height: 1.5; white-space: pre-wrap; }
+/* ── Token footer ─────────────────────────────────────────────────── */
+.tx-tokens { display: flex; gap: 14px; font-size: 10px; color: hsl(210 20% 50%); padding-top: 6px; border-top: 1px solid hsl(222 30% 12%); margin-top: 6px; flex-wrap: wrap; }
+.tx-tokens span b { color: hsl(210 20% 65%); }
+/* ── Transcript container ─────────────────────────────────────────── */
+#transcript-view { padding: 14px 16px; }
 </style>
 </head>
 <body>
@@ -922,11 +992,36 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     </button>
     <div class="cp-sidebar-footer">
       <button class="btn btn-ghost btn-sm" style="width:100%;font-size:12px" onclick="openConfigFolder()">Edit Config</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;font-size:12px;color:hsl(0 60% 55%);margin-top:4px" onclick="doLogout()">Logout</button>
     </div>
   </nav>
 
   <!-- Main content panel -->
   <main class="cp-main">
+
+    <!-- Health metric strip (always visible) -->
+    <div class="metric-strip" id="metric-strip">
+      <div class="metric-card" id="mc-agents" onclick="navTo('agents')" title="Go to Agents">
+        <div class="metric-val" id="mv-agents">—</div>
+        <div class="metric-label">Agents</div>
+        <div class="metric-sub" id="ms-agents">loading…</div>
+      </div>
+      <div class="metric-card" id="mc-sessions" onclick="navTo('sessions')" title="Go to Sessions">
+        <div class="metric-val" id="mv-sessions">—</div>
+        <div class="metric-label">Sessions</div>
+        <div class="metric-sub" id="ms-sessions">loading…</div>
+      </div>
+      <div class="metric-card" id="mc-tasks" onclick="navTo('tasks')" title="Go to Task History">
+        <div class="metric-val" id="mv-tasks">—</div>
+        <div class="metric-label">Tasks</div>
+        <div class="metric-sub" id="ms-tasks">total recorded</div>
+      </div>
+      <div class="metric-card" style="cursor:default" title="Last data refresh">
+        <div class="metric-val" id="mv-refresh" style="font-size:15px;font-weight:600;color:var(--accent-blue)">●</div>
+        <div class="metric-label">Live</div>
+        <div class="metric-sub" id="ms-refresh">—</div>
+      </div>
+    </div>
 
     <!-- Agents section -->
     <section id="section-agents" class="cp-section active">
@@ -1027,46 +1122,48 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
 <!-- Unified log drawer -->
 <div class="log-drawer" id="log-drawer">
-  <div class="log-drawer-tabs">
-    <button class="log-tab" data-tab="daemon" onclick="switchLogTab('daemon')">Daemon</button>
-    <button class="log-tab active" data-tab="agents" onclick="switchLogTab('agents')">Agents</button>
-    <button class="log-tab" data-tab="speech" onclick="switchLogTab('speech')">Speech</button>
-    <button class="log-tab" data-tab="tasks" onclick="switchLogTab('tasks')">Tasks</button>
-    <div class="log-tab-spacer"></div>
-    <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 50%);padding:0 12px;height:38px" onclick="closeLog()">✕</button>
+
+  <!-- Logs pane (agent / speech content) -->
+  <div class="log-tab-content active" id="logtab-agents">
+    <div class="log-drawer-action-bar">
+      <span class="log-title" id="log-title" style="flex:1;color:hsl(210 40% 60%)">Select an agent and click Logs</span>
+      <button id="btn-toggle-raw" class="btn btn-ghost btn-sm" style="color:hsl(210 40% 60%);display:none;font-size:10px" onclick="toggleRawLog()">Raw</button>
+      <button id="btn-open-log-file" class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%);display:none" onclick="openCurrentLogFile()">Open ↗</button>
+      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 45%);padding:0 8px" onclick="closeLog()">✕</button>
+    </div>
+    <div class="log-body" id="log-body">
+      <pre id="log-pre" style="color:hsl(210 40% 88%);padding:14px 16px;margin:0"></pre>
+      <div id="transcript-view" style="display:none"></div>
+    </div>
   </div>
 
-  <!-- Daemon tab -->
+  <!-- Daemon pane -->
   <div class="log-tab-content" id="logtab-daemon">
     <div class="log-drawer-action-bar">
       <span class="log-title" style="flex:1">daemon · today</span>
       <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%)" onclick="loadDaemonTab()">Reload</button>
+      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 45%);padding:0 8px" onclick="closeLog()">✕</button>
     </div>
-    <div class="log-body"><pre id="log-pre-daemon" style="color:hsl(210 40% 88%)">Click Reload to view</pre></div>
+    <div class="log-body"><pre id="log-pre-daemon" style="color:hsl(210 40% 88%);padding:14px 16px;margin:0">Click Reload to view</pre></div>
   </div>
 
-  <!-- Agents tab -->
-  <div class="log-tab-content active" id="logtab-agents">
-    <div class="log-drawer-action-bar">
-      <span class="log-title" id="log-title" style="flex:1;color:hsl(210 40% 60%)">Select an agent and click Logs</span>
-      <button id="btn-open-log-file" class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%);display:none" onclick="openCurrentLogFile()">Open ↗</button>
-    </div>
-    <div class="log-body" id="log-body"><pre id="log-pre" style="color:hsl(210 40% 88%)"></pre></div>
-  </div>
-
-  <!-- Speech tab -->
+  <!-- Speech pane -->
   <div class="log-tab-content" id="logtab-speech">
-    <div class="log-drawer-sub">speech sessions — MD or Txt to view content</div>
+    <div class="log-drawer-action-bar">
+      <span class="log-title" style="flex:1">Speech Sessions</span>
+      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 45%);padding:0 8px" onclick="closeLog()">✕</button>
+    </div>
     <div style="overflow-y:auto;flex:1" id="speech-log-list">
       <div class="empty" style="color:hsl(210 40% 55%)">Loading…</div>
     </div>
   </div>
 
-  <!-- Tasks tab -->
+  <!-- Task timeline pane -->
   <div class="log-tab-content" id="logtab-tasks">
-    <div style="display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:11px;font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;color:hsl(210 40% 50%);background:hsl(222.2 47.4% 8%);border-bottom:1px solid hsl(222.2 30% 15%);flex-shrink:0">
-      <span id="task-title" style="flex:1">Select a task from Task History</span>
-      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 60%);height:24px;padding:0 8px;font-size:11px" onclick="loadTaskRaw()">Raw JSON</button>
+    <div class="log-drawer-action-bar">
+      <span id="task-title" class="log-title" style="flex:1">Task Timeline</span>
+      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%);padding:0 8px;font-size:11px" onclick="loadTaskRaw()">Raw JSON</button>
+      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 45%);padding:0 8px" onclick="closeLog()">✕</button>
     </div>
     <div class="log-body" id="task-body">
       <div style="padding:16px;color:hsl(210 40% 50%);font-size:12px">Click any task in Task History to view its timeline here.</div>
@@ -1234,6 +1331,9 @@ let CONFIG_DIR = '';
 let HOME_DIR = '';
 let activeLog = null;
 let logTimer = null;
+let _rawLogText = '';
+let _logViewMode = 'rendered'; // 'rendered' | 'raw'
+let _txCounter = 0;
 
 /* ── Sidebar / filter / pagination state ── */
 let activeSection = 'agents';
@@ -1249,6 +1349,10 @@ const TASKS_PER_PAGE = 20;
 let collapsedGroups = new Set();
 let lastAgents = [];
 let lastSessions = [];
+let lastRegSessions = [];
+let lastAgentsByIdx = [];
+let agentLogTimers = {};
+let lastRefreshAt = 0;
 
 async function loadDashboard() {
   try {
@@ -1267,6 +1371,7 @@ async function loadDashboard() {
     loadSpeechSessions();
     updateNavCounts(lastAgents, lastSessions);
     updateStatusBar(lastAgents, lastSessions, allTasks.length);
+    updateMetrics(lastAgents, lastSessions, allTasks.length);
   } catch(e) { console.error(e); }
 }
 
@@ -1291,6 +1396,24 @@ function updateNavCounts(agents, sessions) {
   setCount('nav-count-sessions', sesCount || '');
 }
 
+function updateMetrics(agents, sessions, tasksCount) {
+  lastRefreshAt = Date.now();
+  const running = (agents||[]).filter(a => a.mode === 'running').length;
+  const waiting = (agents||[]).filter(a => a.mode === 'waiting_input').length;
+  const regSes  = (sessions||[]).filter(s => !s.is_supervisor);
+  const orphans = regSes.filter(s => s.orphan).length;
+  const linked  = regSes.filter(s => !s.orphan).length;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const cls = (id, add, c) => { const el = document.getElementById(id); if (el) el.classList.toggle(c, add); };
+  set('mv-agents', (agents||[]).length);
+  set('ms-agents', running + ' running' + (waiting ? ', ' + waiting + ' waiting' : '') + ', ' + ((agents||[]).filter(a => a.mode==='idle').length) + ' idle');
+  set('mv-sessions', regSes.length);
+  set('ms-sessions', orphans > 0 ? orphans + ' orphaned ⚠' : linked + ' linked');
+  cls('mc-sessions', orphans > 0, 'alert');
+  set('mv-tasks', tasksCount || '—');
+  set('ms-refresh', new Date(lastRefreshAt).toLocaleTimeString(undefined, {hour:'2-digit',minute:'2-digit',second:'2-digit'}));
+}
+
 function navTo(section) {
   closeLog();
   activeSection = section;
@@ -1300,6 +1423,7 @@ function navTo(section) {
     el.classList.toggle('active', el.id === 'section-' + section));
   if (section === 'daemon-logs') showDaemonLogInline();
   if (section === 'tools') loadToolsSection();
+  if (section === 'tasks') loadTasks();
 }
 
 function ago(ms) {
@@ -1315,6 +1439,8 @@ function modeLabel(mode) { return {running:'running', waiting_input:'waiting', i
 
 function renderAgents(agents) {
   lastAgents = agents;
+  Object.keys(agentLogTimers).forEach(k => { clearInterval(agentLogTimers[k]); delete agentLogTimers[k]; });
+  lastAgentsByIdx = [];
   const el = document.getElementById('agents-list');
   if (!agents.length) { el.innerHTML = '<div class="empty">No agents configured</div>'; return; }
 
@@ -1339,9 +1465,14 @@ function renderAgents(agents) {
     html += '<div class="group-body" id="grp-' + encodeURIComponent(dir) + '"' + (collapsed ? ' style="display:none"' : '') + '>';
     for (const a of groups[dir]) {
       const i = idx++;
+      lastAgentsByIdx[i] = a;
       const logBtn = a.task_id ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ',' + q(a.log_path||'') + ')">Logs</button>' : '';
       const pendingBadge = (a.pending_steps && a.pending_steps.length) ? '<span class="badge badge-waiting" style="font-size:10px">' + a.pending_steps.length + ' pending</span>' : '';
-      const subTxt = a.task_id ? 'task ' + a.task_id.slice(0,10) + '… · pull ' + a.pull_ago : 'pull ' + a.pull_ago;
+      const taskEntry = a.task_id ? allTasks.find(t => t.task_id === a.task_id) : null;
+      const taskLabel = taskEntry?.subject
+        ? taskEntry.subject.slice(0, 42) + (taskEntry.subject.length > 42 ? '…' : '')
+        : (a.task_id ? 'task ' + a.task_id.slice(0,10) + '…' : '');
+      const subTxt = taskLabel ? taskLabel + ' · pull ' + a.pull_ago : 'pull ' + a.pull_ago;
       html += '<div class="row expandable" onclick="toggleAgentDetail(' + i + ')">'
         + '<span class="expand-icon" id="ei-' + i + '">▶</span>'
         + '<div class="status-dot ' + dotClass(a.mode) + '"></div>'
@@ -1351,9 +1482,25 @@ function renderAgents(agents) {
         + '<div class="agent-detail" id="ad-' + i + '">'
         + (a.command  ? '<div class="detail-row"><span class="detail-key">Command</span><span class="detail-val">' + x(a.command)  + '</span></div>' : '')
         + (a.provider ? '<div class="detail-row"><span class="detail-key">Provider</span><span class="detail-val">' + x(a.provider) + '</span></div>' : '')
-        + (a.id       ? '<div class="detail-row"><span class="detail-key">Agent ID</span><span class="detail-val">' + x(a.id)       + '</span></div>' : '')
-        + (a.log_path ? '<div class="detail-row"><span class="detail-key">Log</span><span class="detail-val" style="flex:1;overflow:hidden;text-overflow:ellipsis">' + x(a.log_path) + '</span><button class="link-btn" onclick="event.stopPropagation();openFolder(' + q(a.log_path) + ')">Open</button></div>' : '')
-        + (a.work_dir ? '<div class="detail-row"><span class="detail-key">Work Dir</span><span class="detail-val" style="flex:1;overflow:hidden;text-overflow:ellipsis">' + x(shortPath(a.work_dir)) + '</span><button class="link-btn" onclick="event.stopPropagation();openFolder(' + q(a.work_dir) + ')">Open</button></div>' : '')
+        + (a.task_id  ? '<div class="detail-row"><span class="detail-key">Task ID</span><span class="detail-val" style="flex:1;font-size:10.5px">' + x(a.task_id) + '</span>'
+            + '<button class="link-btn" onclick="event.stopPropagation();copyToClipboard(' + q(a.task_id) + ')">Copy</button>'
+            + '<button class="link-btn" onclick="event.stopPropagation();showTask(' + q(a.task_id) + ',' + q(a.name) + ')">Timeline →</button></div>' : '')
+        + (a.id       ? '<div class="detail-row"><span class="detail-key">Agent ID</span><span class="detail-val" style="flex:1">' + x(a.id) + '</span>'
+            + '<button class="link-btn" onclick="event.stopPropagation();copyToClipboard(' + q(a.id) + ')">Copy</button></div>' : '')
+        + (a.pending_steps && a.pending_steps.length
+            ? '<div class="detail-row"><span class="detail-key">Pending</span><div style="flex:1">'
+              + a.pending_steps.map(s => '<div class="detail-val" style="padding:1px 0">▸ ' + x(String(s)) + '</div>').join('')
+              + '</div></div>' : '')
+        + (a.log_path ? '<div class="detail-row"><span class="detail-key">Log</span><span class="detail-val" style="flex:1;overflow:hidden;text-overflow:ellipsis;font-size:10px">' + x(a.log_path) + '</span>'
+            + (a.task_id ? '<button class="link-btn" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ',' + q(a.log_path) + ')">View</button>' : '')
+            + '<button class="link-btn" onclick="event.stopPropagation();openFolder(' + q(a.log_path) + ')">Open ↗</button></div>' : '')
+        + (a.work_dir ? '<div class="detail-row"><span class="detail-key">Work Dir</span><span class="detail-val" style="flex:1;overflow:hidden;text-overflow:ellipsis">' + x(shortPath(a.work_dir)) + '</span>'
+            + '<button class="link-btn" onclick="event.stopPropagation();openFolder(' + q(a.work_dir) + ')">Open ↗</button></div>' : '')
+        + (a.task_id && a.log_path
+            ? '<div class="mini-log" id="aml-' + i + '">'
+              + '<div class="mini-log-header"><span class="mini-log-label">log tail · last 25 lines</span>'
+              + '<button class="link-btn" style="font-size:10px" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ',' + q(a.log_path) + ')">Full log →</button></div>'
+              + '<pre>loading…</pre></div>' : '')
         + '</div>';
     }
     html += '</div>';
@@ -1410,8 +1557,35 @@ function toggleAgentDetail(i) {
   const det = document.getElementById('ad-' + i);
   const icon = document.getElementById('ei-' + i);
   if (!det) return;
+  const opening = !det.classList.contains('open');
   det.classList.toggle('open');
   if (icon) icon.classList.toggle('open');
+  if (opening) loadAgentLogMini(i);
+  else clearAgentLogMini(i);
+}
+
+function loadAgentLogMini(i) {
+  const a = lastAgentsByIdx[i];
+  const el = document.getElementById('aml-' + i);
+  if (!a || !a.task_id || !el) return;
+  const pre = el.querySelector('pre');
+  const url = '/api/logs?agent=' + encodeURIComponent(a.name) + '&task=' + encodeURIComponent(a.task_id);
+  const refresh = () => fetch(url)
+    .then(r => r.ok ? r.text() : Promise.reject())
+    .then(txt => {
+      if (!pre) return;
+      pre.textContent = txt.split('\n').slice(-25).join('\n');
+      pre.scrollTop = pre.scrollHeight;
+    })
+    .catch(() => {});
+  refresh();
+  if (a.mode === 'running' || a.mode === 'waiting_input') {
+    agentLogTimers[i] = setInterval(refresh, 2000);
+  }
+}
+
+function clearAgentLogMini(i) {
+  if (agentLogTimers[i]) { clearInterval(agentLogTimers[i]); delete agentLogTimers[i]; }
 }
 
 function renderSupervisorSessions(sessions) {
@@ -1446,12 +1620,22 @@ function toggleSupDetail(i) {
   if (icon) icon.classList.toggle('open');
 }
 
+function toggleSessionDetail(i) {
+  const det = document.getElementById('srd-' + i);
+  const icon = document.getElementById('srei-' + i);
+  if (!det) return;
+  det.classList.toggle('open');
+  if (icon) icon.classList.toggle('open');
+}
+
 function renderSessions(sessions) {
   const el = document.getElementById('sessions-list');
   const regSessions = (sessions || []).filter(s => !s.is_supervisor);
+  lastRegSessions = regSessions;
   if (!regSessions.length) { el.innerHTML = '<div class="empty">No active sessions</div>'; }
   else {
-    el.innerHTML = regSessions.map(s => {
+    let html = '';
+    regSessions.forEach((s, i) => {
       let dotCls, badgeCls, badgeTxt, sub, logBtn;
       if (s.orphan) {
         dotCls = 'dot-orphan'; badgeCls = 'badge-orphan'; badgeTxt = 'orphan';
@@ -1459,13 +1643,28 @@ function renderSessions(sessions) {
       } else {
         dotCls = 'dot-running'; badgeCls = 'badge-linked'; badgeTxt = 'linked';
         sub = 'agent: ' + x(s.agent_name);
-        logBtn = s.task_id ? '<button class="btn btn-secondary btn-sm" onclick="showSessionLog(event,' + x(JSON.stringify(s)) + ')">Logs</button>' : '';
+        logBtn = s.task_id
+          ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showSessionLog(event,lastRegSessions[' + i + '])">Logs</button>'
+          : '';
       }
-      const killBtn = '<button class="btn btn-destructive btn-sm" onclick="killSession(event,' + q(s.name) + ')">Kill</button>';
-      return '<div class="row"><div class="status-dot ' + dotCls + '"></div>'
+      const killBtn = '<button class="btn btn-destructive btn-sm" onclick="event.stopPropagation();killSession(event,' + q(s.name) + ')">Kill</button>';
+      html += '<div class="row expandable" onclick="toggleSessionDetail(' + i + ')">'
+        + '<span class="expand-icon" id="srei-' + i + '">▶</span>'
+        + '<div class="status-dot ' + dotCls + '"></div>'
         + '<div class="row-info"><div class="row-name">' + x(s.name) + '</div><div class="row-sub">' + sub + '</div></div>'
-        + '<div class="row-actions"><span class="badge ' + badgeCls + '">' + badgeTxt + '</span>' + logBtn + killBtn + '</div></div>';
-    }).join('');
+        + '<div class="row-actions"><span class="badge ' + badgeCls + '">' + badgeTxt + '</span>' + logBtn + killBtn + '</div>'
+        + '</div>'
+        + '<div class="agent-detail" id="srd-' + i + '">'
+        + '<div class="detail-row"><span class="detail-key">Session</span><span class="detail-val" style="flex:1">' + x(s.name) + '</span>'
+        + '<button class="link-btn" onclick="event.stopPropagation();copyToClipboard(' + q(s.name) + ')">Copy</button></div>'
+        + (s.agent_name ? '<div class="detail-row"><span class="detail-key">Agent</span><span class="detail-val">' + x(s.agent_name) + '</span></div>' : '')
+        + (s.task_id ? '<div class="detail-row"><span class="detail-key">Task ID</span><span class="detail-val" style="flex:1;font-size:10.5px">' + x(s.task_id) + '</span>'
+            + '<button class="link-btn" onclick="event.stopPropagation();copyToClipboard(' + q(s.task_id) + ')">Copy</button>'
+            + '<button class="link-btn" onclick="event.stopPropagation();showTask(' + q(s.task_id) + ',' + q('session · ' + (s.agent_name||'')) + ')">Timeline →</button></div>' : '')
+        + (s.orphan ? '<div class="detail-row"><span class="detail-key">Note</span><span class="detail-val" style="color:var(--destructive)">orphan — no linked agent</span></div>' : '')
+        + '</div>';
+    });
+    el.innerHTML = html;
   }
   const orphanCount = regSessions.filter(s => s.orphan).length;
   const killAllBtn = document.getElementById('btn-kill-all-orphans');
@@ -1487,6 +1686,10 @@ function applySessionFilter() {
                  (sessionFilter === 'orphan' && isOrphan) ||
                  (sessionFilter === 'linked' && !isOrphan);
     row.style.display = show ? '' : 'none';
+    const detail = row.nextElementSibling;
+    if (detail?.classList.contains('agent-detail')) {
+      detail.style.display = (show && detail.classList.contains('open')) ? 'block' : (show ? '' : 'none');
+    }
   });
 }
 
@@ -1542,6 +1745,14 @@ async function killSession(e, name) {
 
 function openPortal() { if (PORTAL_URL) window.open(PORTAL_URL, '_blank'); }
 function openConfigFolder() { if (CONFIG_DIR) openFolder(CONFIG_DIR); }
+
+async function doLogout() {
+  if (!confirm('Log out? The daemon will clear your credentials and stop.')) return;
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+  } catch(_) {}
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:hsl(210 20% 55%)">Logged out. You can close this window.</div>';
+}
 
 async function openFolder(path) {
   try { await fetch('/api/open', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path}) }); } catch(e) { console.error('openFolder:', e); }
@@ -1613,13 +1824,18 @@ function openSpeechLogInDrawer(id, label, kind) {
 
 function openLog(title, url, poll = false, filePath = '') {
   activeLog = url ? {url, filePath} : null;
+  resetLogViewMode();
   if (logTimer) { clearInterval(logTimer); logTimer = null; }
   const titleEl = document.getElementById('log-title');
   if (titleEl) titleEl.textContent = title;
   const pre = document.getElementById('log-pre');
-  if (pre) pre.textContent = 'Loading…';
+  if (pre) { pre.style.display = ''; pre.textContent = 'Loading…'; }
+  const txView = document.getElementById('transcript-view');
+  if (txView) { txView.style.display = 'none'; txView.innerHTML = ''; }
   const openBtn = document.getElementById('btn-open-log-file');
   if (openBtn) openBtn.style.display = filePath ? '' : 'none';
+  const toggleBtn = document.getElementById('btn-toggle-raw');
+  if (toggleBtn) toggleBtn.style.display = 'none';
   switchLogTab('agents');
   document.getElementById('log-drawer').classList.add('open');
   document.getElementById('drawer-backdrop').style.display = '';
@@ -1637,48 +1853,332 @@ function openFileInDrawer(path, title) {
   openLog(name, url, false, path);
 }
 
-async function toggleSpeechPreview(id, kind) {
-  const el = document.getElementById('vsp-' + id);
-  if (!el) return;
-  if (el.dataset.kind === kind && el.style.display !== 'none') {
-    el.style.display = 'none';
-    el.dataset.kind = '';
-    return;
-  }
-  el.innerHTML = '<div style="padding:12px 16px;color:var(--muted-fg);font-size:12px"><span class="spinner"></span> Loading…</div>';
-  el.style.display = 'block';
-  el.dataset.kind = kind;
-  try {
-    const r = await fetch('/api/speech-to-md/session/content?id=' + encodeURIComponent(id) + '&kind=' + kind);
-    if (!r.ok) throw new Error('Not found');
-    const txt = await r.text();
-    if (kind === 'md') {
-      const wrap = document.createElement('div');
-      wrap.style.cssText = 'padding:14px 16px;max-height:360px;overflow-y:auto';
-      const inner = document.createElement('div');
-      inner.style.cssText = 'font-size:13px;line-height:1.65;color:var(--fg)';
-      el.innerHTML = '';
-      el.appendChild(wrap);
-      wrap.appendChild(inner);
-      renderMdPreview(txt, inner);
-    } else {
-      el.innerHTML = '<pre style="padding:12px 16px;font-size:11.5px;max-height:260px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;color:var(--muted-fg);margin:0">' + x(txt) + '</pre>';
-    }
-  } catch(err) {
-    el.innerHTML = '<div style="padding:10px 16px;color:var(--destructive);font-size:12px">' + x(String(err)) + '</div>';
-  }
-}
 
 async function fetchLog(url) {
-  try { const r = await fetch(url); setLog(r.ok ? await r.text() : 'Log not found.'); } catch(e) { setLog('Error: ' + e.message); }
+  try {
+    const r = await fetch(url);
+    if (!r.ok) { setLog('Log not found.'); return; }
+    const text = await r.text();
+    // If this looks like JSONL and we have a filePath, upgrade to full file fetch
+    if (activeLog && activeLog.filePath && detectFormat(text.trim()) !== 'text' && !url.startsWith('/api/file')) {
+      const fileUrl = '/api/file?path=' + encodeURIComponent(activeLog.filePath);
+      activeLog = { url: fileUrl, filePath: activeLog.filePath };
+      try {
+        const r2 = await fetch(fileUrl);
+        if (r2.ok) { setLog(await r2.text()); return; }
+      } catch(_) {}
+    }
+    setLog(text);
+  } catch(e) { setLog('Error: ' + e.message); }
+}
+
+function detectFormat(text) {
+  if (!text) return 'text';
+  // Gemini: single JSON object with kind=main
+  try {
+    const obj = JSON.parse(text);
+    if (obj && obj.kind === 'main' && Array.isArray(obj.messages)) return 'gemini';
+  } catch(_) {}
+  // Claude: NDJSON where first line has a 'type' field
+  const firstLine = text.split('\n')[0].trim();
+  try {
+    const obj = JSON.parse(firstLine);
+    if (obj && typeof obj.type === 'string') return 'claude';
+  } catch(_) {}
+  return 'text';
 }
 
 function setLog(text) {
+  _rawLogText = text;
+  const fmt = detectFormat(text.trim());
+  const hasTranscript = fmt !== 'text';
+  const toggleBtn = document.getElementById('btn-toggle-raw');
+  if (toggleBtn) toggleBtn.style.display = hasTranscript ? '' : 'none';
+  if (hasTranscript && _logViewMode === 'rendered') {
+    showTranscriptView(text, fmt);
+  } else {
+    showRawView(text);
+  }
+}
+
+function showRawView(text) {
   const pre = document.getElementById('log-pre');
+  const txView = document.getElementById('transcript-view');
   const body = document.getElementById('log-body');
+  if (txView) txView.style.display = 'none';
+  if (pre) { pre.style.display = ''; pre.textContent = text; }
   const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
-  pre.textContent = text;
   if (atBottom) body.scrollTop = body.scrollHeight;
+}
+
+function showTranscriptView(text, fmt) {
+  const pre = document.getElementById('log-pre');
+  const txView = document.getElementById('transcript-view');
+  const body = document.getElementById('log-body');
+  if (pre) pre.style.display = 'none';
+  if (!txView) return;
+  txView.style.display = '';
+  txView.innerHTML = buildTranscriptHtml(text, fmt);
+  body.scrollTop = body.scrollHeight;
+}
+
+function toggleRawLog() {
+  const btn = document.getElementById('btn-toggle-raw');
+  if (_logViewMode === 'rendered') {
+    _logViewMode = 'raw';
+    if (btn) btn.textContent = 'Rendered';
+    showRawView(_rawLogText);
+  } else {
+    _logViewMode = 'rendered';
+    if (btn) btn.textContent = 'Raw';
+    const fmt = detectFormat(_rawLogText.trim());
+    if (fmt !== 'text') showTranscriptView(_rawLogText, fmt);
+    else showRawView(_rawLogText);
+  }
+}
+
+// Called when a new log is opened (reset view mode)
+function resetLogViewMode() {
+  _logViewMode = 'rendered';
+  const btn = document.getElementById('btn-toggle-raw');
+  if (btn) btn.textContent = 'Raw';
+}
+
+/* ── Transcript HTML builders ──────────────────────────────────────── */
+
+function txEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function txId() { return 'tx' + (++_txCounter); }
+
+function txToggle(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('open');
+}
+
+function buildTranscriptHtml(text, fmt) {
+  if (fmt === 'claude') return buildClaudeTranscript(text);
+  if (fmt === 'gemini') return buildGeminiTranscript(text);
+  return '<pre class="tx-text">' + txEsc(text) + '</pre>';
+}
+
+/* ── Claude NDJSON renderer ────────────────────────────────────────── */
+
+function buildClaudeTranscript(text) {
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  const entries = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+
+  // Pre-pass: build tool_result map (tool_use_id -> {content, is_error})
+  const toolResults = {};
+  for (const e of entries) {
+    if (e.type !== 'user') continue;
+    const raw = e.message?.content;
+    if (!Array.isArray(raw)) continue;
+    for (const c of raw) {
+      if (c.type === 'tool_result' && c.tool_use_id) {
+        const out = Array.isArray(c.content) ? c.content.map(x => x.text || '').join('\n') : (c.content || '');
+        toolResults[c.tool_use_id] = { content: out, is_error: c.is_error };
+      }
+    }
+  }
+
+  let html = '';
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    const rendered = renderClaudeEntry(e, toolResults);
+    if (rendered) html += rendered;
+  }
+  return html || '<div style="color:hsl(210 20% 50%);padding:12px;font-size:12px">No renderable entries</div>';
+}
+
+function renderClaudeEntry(e, toolResults) {
+  if (e.type === 'user') {
+    const raw = e.message?.content;
+    let text = '';
+    if (typeof raw === 'string') { text = raw; }
+    else if (Array.isArray(raw)) {
+      const textBlock = raw.find(c => c.type === 'text');
+      text = textBlock?.text || '';
+      const toolRes = raw.filter(c => c.type === 'tool_result');
+      // Pure tool-result user entries are shown inline in assistant bubble; skip standalone
+      if (!text && toolRes.length > 0) return '';
+    }
+    if (!text) return '';
+    return '<div class="tx-entry">'
+      + '<div class="tx-role tx-user">Human</div>'
+      + '<div class="tx-body tx-user"><div class="tx-text">' + txEsc(text) + '</div></div>'
+      + '</div>';
+  }
+
+  if (e.type === 'assistant') {
+    const content = e.message?.content;
+    if (!content) return '';
+    let parts = '';
+    if (Array.isArray(content)) {
+      for (const c of content) {
+        if (c.type === 'text' && c.text) {
+          parts += '<div class="tx-text">' + txEsc(c.text) + '</div>';
+        } else if (c.type === 'thinking' && c.thinking) {
+          parts += txThinkingBlock(c.thinking);
+        } else if (c.type === 'tool_use') {
+          const toolId = c.id || c.tool_use_id || c.name;
+          const res = toolResults[toolId];
+          const inputStr = c.input ? JSON.stringify(c.input, null, 2) : '';
+          parts += txToolBlock(c.name, inputStr, res?.content || '', res?.is_error);
+        }
+      }
+    } else if (typeof content === 'string' && content) {
+      parts += '<div class="tx-text">' + txEsc(content) + '</div>';
+    }
+    if (!parts) return '';
+    return '<div class="tx-entry">'
+      + '<div class="tx-role tx-claude">Claude</div>'
+      + '<div class="tx-body tx-claude">' + parts + '</div>'
+      + '</div>';
+  }
+
+  if (e.type === 'system') {
+    if (e.subtype === 'turn_duration') {
+      const dur = e.durationMs ? (e.durationMs / 1000).toFixed(1) + 's' : '—';
+      return '<div class="tx-system-line">Turn duration: ' + txEsc(dur) + '</div>';
+    }
+    if (e.subtype === 'stop_hook_summary') {
+      return '<div class="tx-system-line">Hooks executed: ' + txEsc(e.hookCount) + '</div>';
+    }
+    return '';
+  }
+
+  // skip attachment / permission-mode / file-history-snapshot etc
+  return '';
+}
+
+function txToolBlock(name, inputStr, outputStr, isError) {
+  const bid = txId();
+  const bodyId = bid + 'b';
+  const statusCls = isError ? 'err' : (outputStr ? 'ok' : '');
+  const statusTxt = isError ? '✕ error' : (outputStr ? '✓ done' : '');
+  let bodyHtml = '';
+  if (inputStr) {
+    bodyHtml += '<div class="tx-code-lbl">Input</div><pre class="tx-code in">' + txEsc(inputStr) + '</pre>';
+  }
+  if (outputStr) {
+    bodyHtml += '<div class="tx-code-lbl">Output</div><pre class="tx-code ' + (isError ? 'err' : 'out') + '">' + txEsc(outputStr) + '</pre>';
+  }
+  return '<div class="tx-tool">'
+    + '<div class="tx-tool-hdr" onclick="txToggle(\'' + bodyId + '\')">'
+    + '<span style="font-size:12px">⚙</span>'
+    + '<span class="tx-tool-nm">' + txEsc(name) + '</span>'
+    + (statusTxt ? '<span class="tx-tool-status ' + statusCls + '">' + statusTxt + '</span>' : '')
+    + '</div>'
+    + '<div class="tx-tool-body" id="' + bodyId + '">' + bodyHtml + '</div>'
+    + '</div>';
+}
+
+function txThinkingBlock(thinking) {
+  const bid = txId();
+  const bodyId = bid + 'b';
+  return '<div class="tx-thoughts">'
+    + '<div class="tx-thoughts-hdr" onclick="txToggle(\'' + bodyId + '\')">'
+    + '<span style="font-size:13px">🧠</span><span>reasoning</span>'
+    + '</div>'
+    + '<div class="tx-thoughts-body" id="' + bodyId + '">'
+    + '<div class="tx-thought-item"><div class="tx-thought-desc">' + txEsc(thinking) + '</div></div>'
+    + '</div></div>';
+}
+
+/* ── Gemini JSON renderer ──────────────────────────────────────────── */
+
+function buildGeminiTranscript(text) {
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { return '<pre class="tx-text">' + txEsc(text) + '</pre>'; }
+  const messages = parsed.messages || [];
+  let html = '';
+  for (const msg of messages) {
+    const rendered = renderGeminiMessage(msg);
+    if (rendered) html += rendered;
+  }
+  return html || '<div style="color:hsl(210 20% 50%);padding:12px;font-size:12px">No renderable messages</div>';
+}
+
+function renderGeminiMessage(msg) {
+  const type = msg.type === 'user' ? 'user' : 'gemini';
+
+  if (type === 'user') {
+    let text = '';
+    if (typeof msg.content === 'string') { text = msg.content; }
+    else if (Array.isArray(msg.content)) { text = msg.content.map(c => c.text || '').join('\n'); }
+    if (!text) return '';
+    return '<div class="tx-entry">'
+      + '<div class="tx-role tx-user">Human</div>'
+      + '<div class="tx-body tx-user"><div class="tx-text">' + txEsc(text) + '</div></div>'
+      + '</div>';
+  }
+
+  // Gemini assistant
+  let parts = '';
+
+  // Thoughts
+  if (msg.thoughts && msg.thoughts.length) {
+    const bid = txId();
+    const bodyId = bid + 'b';
+    let thoughtItems = '';
+    for (const t of msg.thoughts) {
+      thoughtItems += '<div class="tx-thought-item">'
+        + (t.subject ? '<div class="tx-thought-subj">' + txEsc(t.subject) + '</div>' : '')
+        + '<div class="tx-thought-desc">' + txEsc(t.description || '') + '</div>'
+        + '</div>';
+    }
+    parts += '<div class="tx-thoughts">'
+      + '<div class="tx-thoughts-hdr" onclick="txToggle(\'' + bodyId + '\')">'
+      + '<span style="font-size:13px">🧠</span><span>reasoning</span>'
+      + '</div>'
+      + '<div class="tx-thoughts-body" id="' + bodyId + '">' + thoughtItems + '</div>'
+      + '</div>';
+  }
+
+  // Text content
+  if (typeof msg.content === 'string' && msg.content) {
+    parts += '<div class="tx-text">' + txEsc(msg.content) + '</div>';
+  } else if (Array.isArray(msg.content)) {
+    const text = msg.content.map(c => c.text || '').join('\n');
+    if (text) parts += '<div class="tx-text">' + txEsc(text) + '</div>';
+  }
+
+  // Tool calls
+  if (msg.toolCalls && msg.toolCalls.length) {
+    for (const tc of msg.toolCalls) {
+      let output = '';
+      if (tc.result) {
+        if (Array.isArray(tc.result)) {
+          output = tc.result.map(r => r.functionResponse?.response?.output || JSON.stringify(r, null, 2)).join('\n');
+        } else {
+          output = JSON.stringify(tc.result, null, 2);
+        }
+      }
+      const inputStr = tc.args ? JSON.stringify(tc.args, null, 2) : '';
+      parts += txToolBlock(tc.displayName || tc.name || 'tool', inputStr, output, tc.status === 'error');
+    }
+  }
+
+  // Token footer
+  if (msg.tokens) {
+    const tk = msg.tokens;
+    parts += '<div class="tx-tokens">'
+      + '<span><b>In:</b> ' + txEsc(tk.input) + '</span>'
+      + '<span><b>Out:</b> ' + txEsc(tk.output) + '</span>'
+      + (tk.cached ? '<span><b>Cached:</b> ' + txEsc(tk.cached) + '</span>' : '')
+      + '<span style="margin-left:auto;color:hsl(210 20% 40%)">Total: ' + txEsc(tk.total) + '</span>'
+      + '</div>';
+  }
+
+  if (!parts) return '';
+
+  return '<div class="tx-entry">'
+    + '<div class="tx-role tx-gemini">Gemini' + (msg.model ? ' <span style="font-size:9px;font-weight:400;opacity:.6">' + txEsc(msg.model) + '</span>' : '') + '</div>'
+    + '<div class="tx-body tx-gemini">' + parts + '</div>'
+    + '</div>';
 }
 
 function startLogPolling() {
@@ -1755,19 +2255,16 @@ async function loadSpeechSessions() {
       const isActive = activeMd && s.md_path === activeMd;
       const badge = isActive ? '<span class="badge badge-running" style="font-size:10px;padding:2px 6px">live</span>' : '';
       const sessionDir = HOME_DIR ? HOME_DIR + '/.tasksquad/speech-to-markdown/' + s.id : '';
-      return '<div style="border-bottom:1px solid var(--border)">'
-        + '<div style="display:flex;align-items:center;gap:8px;padding:8px 16px">'
+      return '<div class="row" style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border)">'
         + '<div style="flex:1;min-width:0">'
         + '<div style="font-size:13px;font-weight:500">' + x(d) + ' ' + badge + '</div>'
         + '</div>'
         + '<div style="display:flex;gap:6px">'
-        + '<button class="btn btn-ghost btn-sm" onclick="toggleSpeechPreview(' + q(s.id) + ',\'md\')">MD</button>'
-        + '<button class="btn btn-ghost btn-sm" onclick="toggleSpeechPreview(' + q(s.id) + ',\'txt\')">Txt</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="openSpeechLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'md\')">MD</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="openSpeechLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'txt\')">Txt</button>'
         + (sessionDir ? '<button class="btn btn-ghost btn-sm" onclick="openFolder(' + q(sessionDir) + ')" title="Open session folder">↗</button>' : '')
         + '<button class="btn btn-destructive btn-sm" onclick="deleteSpeechSession(' + q(s.id) + ')" title="Delete session">✕</button>'
         + '</div>'
-        + '</div>'
-        + '<div id="vsp-' + s.id + '" style="display:none;background:var(--muted);border-top:1px solid var(--border)"></div>'
         + '</div>';
     }).join('');
   } catch(e) {
@@ -1872,6 +2369,7 @@ async function loadTasks() {
     taskPage = 0;
     applyTaskFilter();
     updateStatusBar(lastAgents, lastSessions, allTasks.length);
+    updateMetrics(lastAgents, lastSessions, allTasks.length);
   } catch(e) { document.getElementById('tasks-list').innerHTML = '<div class="empty">Error loading tasks</div>'; }
 }
 
@@ -1897,7 +2395,10 @@ function renderTasksPage() {
   document.getElementById('tasks-list').innerHTML = slice.map(t => {
     const sub = x(t.subject || '(no subject)');
     const agentBadge = t.agent ? '<span class="badge badge-idle" style="font-size:10px;margin-left:6px">' + x(t.agent) + '</span>' : '';
-    const taskIdPart = t.task_id ? '<span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">' + t.task_id.slice(0,12) + '…</span>' : '';
+    const taskIdPart = t.task_id
+      ? '<span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">' + t.task_id.slice(0,12) + '…</span>'
+        + '<button class="link-btn" style="font-size:10px;padding:0 3px" onclick="event.stopPropagation();copyToClipboard(' + q(t.task_id) + ')" title="Copy Task ID">⎘</button>'
+      : '';
     const tsRel = t.ts ? ago(new Date(t.ts).getTime()) : '';
     return '<div class="row" style="cursor:pointer" onclick="showTask(' + q(t.task_id) + ',' + q(t.subject||'') + ')">'
       + '<div class="status-dot dot-start"></div>'
@@ -1971,7 +2472,9 @@ function renderTaskTimeline(jsonl) {
     }
     return '<div class="tl-event"><div class="tl-dot ' + dotCls + '"></div><div class="tl-body"><div class="tl-label">' + x(label) + '</div>' + (bodyTxt ? '<div class="tl-text">' + x(bodyTxt) + '</div>' : '') + extraHtml + '<div class="tl-ts">' + x(new Date(ts).toLocaleString()) + '</div></div></div>';
   }).join('');
-  document.getElementById('task-body').innerHTML = '<div class="task-timeline">' + html + '</div>';
+  const taskBody = document.getElementById('task-body');
+  taskBody.innerHTML = '<div class="task-timeline">' + html + '</div>';
+  taskBody.scrollTop = taskBody.scrollHeight;
 }
 
 function closeTaskPanel() { closeLog(); }
@@ -1982,6 +2485,18 @@ function shortPath(dir) {
   const home = dir.replace(/^\/Users\/[^/]+/, '~');
   const parts = home.split('/').filter(Boolean);
   return parts.length > 2 ? '…/' + parts.slice(-2).join('/') : home;
+}
+
+function showToast(msg) {
+  const el = document.getElementById('vm-toast');
+  if (!el) return;
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+async function copyToClipboard(text) {
+  try { await navigator.clipboard.writeText(text); showToast('Copied!'); }
+  catch(_) { showToast('Copy failed'); }
 }
 
 /* ========== SPEECH TO MD ========== */
@@ -2603,7 +3118,9 @@ async function restoreSpeechState() {
 /* ========== INIT ========== */
 loadDashboard();
 loadTasks();
-setInterval(loadDashboard, 5000);
+function periodicRefresh() { loadDashboard(); loadTasks(); }
+setInterval(periodicRefresh, 5000);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLog(); });
 </script>
 
 <!-- Prompt creation modal -->

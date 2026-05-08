@@ -99,7 +99,7 @@ type dashSession struct {
 
 // StartDashboard starts a local HTTP control panel server and returns the URL.
 // The server provides status, log reading, and session kill endpoints.
-func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, port int) string {
+func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, authCtrl AuthController, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, port int) string {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -862,6 +862,20 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, ski
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(result) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/logout", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := authCtrl.Logout(); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]any{"error": err.Error()}) //nolint:errcheck
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"ok": true}) //nolint:errcheck
 	})
 
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))

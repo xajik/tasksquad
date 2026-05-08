@@ -14,15 +14,17 @@
 //
 //	tsq                               ← menu bar title
 //	├── ● TaskSquad v0.1.0            ← header, disabled
+//	├── 👤 email                      ← auth status, disabled
 //	├── N running · N idle · N waiting ← live stats, refreshed every 5s
 //	├── ─────────────────────────
+//	├── Logout
+//	├── ─────────────────────────
 //	├── ⏸ Pause Pulling               ← toggle; label flips to ▶ Resume Pulling
-//	├── Open Dashboard                ← opens browser to dashboardURL
 //	├── ─────────────────────────
-//	├── ── Agents ──                  ← section label, disabled
-//	├── 📁 ~/Projects/myapp           ← folder group header, disabled
-//	├──   ● agent-name: running       ← one per agent, refreshed every 5s
+//	├── Control Panel
+//	├── ✓ Run on OS Boot
 //	├── ─────────────────────────
+//	├── Open Config
 //	└── Quit
 //
 // Icon: green circle = pulling active, red circle = paused.
@@ -33,7 +35,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"time"
 
@@ -98,46 +99,11 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 
 	systray.AddSeparator()
 
-	// ── Per-agent rows grouped by workDir ─────────────────────────────────
-	mAgentsLabel := systray.AddMenuItem("── Agents ──", "")
-	mAgentsLabel.Disable()
-
-	// Build ordered groups: map workDir → agent indices (preserving insertion order)
-	type agentGroup struct {
-		dir     string
-		indices []int
-	}
-	var groups []agentGroup
-	dirIdx := map[string]int{}
-	for i, a := range agents {
-		dir := a.WorkDir()
-		if dir == "" {
-			dir = "(unknown)"
-		}
-		if gi, ok := dirIdx[dir]; ok {
-			groups[gi].indices = append(groups[gi].indices, i)
-		} else {
-			dirIdx[dir] = len(groups)
-			groups = append(groups, agentGroup{dir: dir, indices: []int{i}})
-		}
-	}
-
-	agentItems := make([]*systray.MenuItem, len(agents))
-	for _, g := range groups {
-		hdr := systray.AddMenuItem(folderLabel(g.dir), g.dir)
-		hdr.Disable()
-		for _, i := range g.indices {
-			agentItems[i] = systray.AddMenuItem(agentLabel(agents[i]), agents[i].LastLogPath())
-		}
-	}
-
-	systray.AddSeparator()
-
 	mConfig := systray.AddMenuItem("Open Config", "Edit config.toml")
 	mQuit := systray.AddMenuItem("Quit", "Stop the tsq daemon")
 
 	// Start local control panel server with sync capabilities
-	cpURL := StartDashboard(agents, authCtrl.Email(), dashboardURL, configPath, skillsSyncer, conveyorSyncer, uiPort)
+	cpURL := StartDashboard(agents, authCtrl.Email(), dashboardURL, configPath, authCtrl, skillsSyncer, conveyorSyncer, uiPort)
 	if cpURL != "" {
 		mSessions.SetTooltip(cpURL)
 	} else {
@@ -220,20 +186,6 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 		}
 	}()
 
-	// ── Per-agent click handlers ───────────────────────────────────────────
-	for i, a := range agents {
-		i, a := i, a
-		go func() {
-			for range agentItems[i].ClickedCh {
-				if sess := a.TmuxSession(); sess != "" {
-					attachTmux(sess)
-				} else if logPath := a.LastLogPath(); logPath != "" {
-					openBrowser(logPath)
-				}
-			}
-		}()
-	}
-
 	// ── Live refresh every 5s ──────────────────────────────────────────────
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
@@ -242,9 +194,6 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 			label := statsLabel(agents)
 			mStats.SetTitle(label)
 			systray.SetTooltip(fmt.Sprintf("TaskSquad — %s", label))
-			for i, a := range agents {
-				agentItems[i].SetTitle(agentLabel(a))
-			}
 		}
 	}()
 
@@ -296,45 +245,6 @@ func relTime(t time.Time) string {
 		return fmt.Sprintf("%ds ago", int(d.Seconds()))
 	}
 	return fmt.Sprintf("%dm ago", int(d.Minutes()))
-}
-
-// attachTmux opens a terminal window and attaches to the given tmux session.
-func attachTmux(session string) {
-	switch runtime.GOOS {
-	case "darwin":
-		script := fmt.Sprintf(`tell application "Terminal" to do script "tmux attach-session -t %s"`, session)
-		exec.Command("osascript", "-e", script).Start() //nolint:errcheck
-	case "linux":
-		exec.Command("x-terminal-emulator", "-e", "tmux", "attach-session", "-t", session).Start() //nolint:errcheck
-	default:
-		logger.Warn("[ui] attachTmux: unsupported OS")
-	}
-}
-
-// agentLabel formats a single agent row with a unicode status dot.
-//
-//	● running   ◐ waiting_input   ○ idle
-func agentLabel(a AgentStatus) string {
-	dot := map[string]string{
-		string(agentmode.ModeRunning):      "●",
-		string(agentmode.ModeWaitingInput): "◐",
-		string(agentmode.ModeIdle):         "○",
-	}[a.GetMode()]
-	if dot == "" {
-		dot = "○"
-	}
-	return fmt.Sprintf("  %s %s: %s", dot, a.Name(), a.GetMode())
-}
-
-// folderLabel formats a workDir path for display as a group header.
-// Replaces the home directory with ~, e.g. "/Users/alice/Projects/app" → "📁 ~/Projects/app".
-func folderLabel(dir string) string {
-	if home, err := os.UserHomeDir(); err == nil {
-		if rel, err := filepath.Rel(home, dir); err == nil && !filepath.IsAbs(rel) {
-			dir = "~/" + rel
-		}
-	}
-	return "📁 " + dir
 }
 
 // openBrowser opens url in the default system browser.
