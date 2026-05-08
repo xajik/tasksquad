@@ -58,14 +58,17 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	// Speech-to-md turn completion — dispatch to speech handler and return early.
 	if r.URL.Query().Get("speech") == "true" {
 		if s.speechHandler != nil {
-			// Always read full content from the transcript file.
-			// Payload fields (last_assistant_message, prompt_response) are truncated
-			// summaries; the file contains the complete assistant response.
+			// Try transcript file first (Gemini, Claude Code), then fall back to
+			// HookMessage (OpenCode plugin delivers message directly in body).
 			var message string
 			if ev.TranscriptPath != "" {
 				message = adpt.ExtractTranscript(ev.TranscriptPath)
 			}
-			logger.Info(fmt.Sprintf("[hooks] speech stop: transcript_path=%q message_len=%d", ev.TranscriptPath, len(message)))
+			if message == "" {
+				message = ev.HookMessage
+			}
+			logger.Info(fmt.Sprintf("[hooks] speech stop: transcript_path=%q hook_message_len=%d final_message_len=%d",
+				ev.TranscriptPath, len(ev.HookMessage), len(message)))
 			s.speechHandler.HandleNotification(message)
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

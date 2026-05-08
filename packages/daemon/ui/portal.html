@@ -55,8 +55,7 @@ header {
 .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-blue); flex-shrink: 0; }
 .brand-name { font-size: 15px; font-weight: 600; letter-spacing: -0.2px; }
 .header-right { display: flex; align-items: center; gap: 12px; }
-.email-label { font-size: 13px; color: var(--muted-fg); }
-.refresh-label { font-size: 12px; color: var(--muted-fg); }
+
 
 /* Tabs */
 .tabs {
@@ -879,10 +878,6 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <span class="brand-name">TaskSquad</span>
   </div>
   <div class="header-right">
-    <span class="email-label" id="email-label"></span>
-    <span class="refresh-label" id="refresh-label"></span>
-    <button class="btn btn-secondary" onclick="openPortal()">Open Web Portal</button>
-  </div>
 </header>
 
 <div class="tabs">
@@ -1266,8 +1261,6 @@ async function loadDashboard() {
     HOME_DIR = CONFIG_DIR ? CONFIG_DIR.replace(/\/\.tasksquad.*$/, '') : '';
     lastAgents = d.agents || [];
     lastSessions = d.sessions || [];
-    document.getElementById('email-label').textContent = d.email || '';
-    document.getElementById('refresh-label').textContent = 'updated ' + ago(d.updated_at);
     renderAgents(lastAgents);
     renderSupervisorSessions(lastSessions);
     renderSessions(lastSessions);
@@ -2492,7 +2485,7 @@ async function sendAudioChunk(blob) {
   } catch(e) { console.warn('Chunk upload failed:', e); }
 }
 
-btnStop.addEventListener('click', async () => { stopMedia(); await new Promise(r => setTimeout(r, 400)); await fetch('/api/speech-to-md/session/stop', {method:'POST'}); });
+btnStop.addEventListener('click', async () => { stopMedia(); await new Promise(r => setTimeout(r, 400)); await fetch('/api/speech-to-md/session/stop', {method:'POST'}); mdEditor.value = ''; transcriptBody.innerHTML = ''; });
 window.addEventListener('beforeunload', () => { if (sessionState !== 'idle' && sessionState !== 'stopped') { stopMedia(); navigator.sendBeacon('/api/speech-to-md/session/stop'); } });
 if (btnClearTx) btnClearTx.addEventListener('click', () => { transcriptBody.innerHTML = ''; });
 
@@ -2628,7 +2621,6 @@ setInterval(loadDashboard, 5000);
       <label class="vm-label" for="prompt-content-input">Content</label>
       <textarea id="prompt-content-input" class="vm-textarea" rows="14" placeholder="Prompt text…"></textarea>
     </div>
-    <p class="vm-hint" style="margin:0">Use <code>PORT</code> and <code>NOTES_PATH</code> as placeholders — the daemon substitutes them at session start.</p>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
       <button class="vm-btn vm-btn-outline" id="btn-prompt-cancel">Cancel</button>
       <button class="vm-btn vm-btn-primary" id="btn-save-prompt">Save prompt</button>
