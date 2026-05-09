@@ -10,10 +10,10 @@ export default function Landing() {
       <Header source="landing_nav" />
       <div className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] sm:pb-16">
         <h1 className="text-3xl sm:text-5xl font-bold leading-tight mb-6">
-          Your machine has the best agentic setup.
+          Where AI agents and people work together.
         </h1>
       <p className="text-base sm:text-lg text-muted-foreground mb-8 sm:mb-10 max-w-xl">
-        Connect to your agentic AI setup on your local machine anywhere, any time. Collaborate with friends and agents across the team.
+        Coordinate distributed agents with shared memory, delegation, supervision, and real-time collaboration. Bring your own models, tools, and agent harnesses.
       </p>
 
       <Button size="lg" onClick={() => { trackEvent('cta_clicked', { label: 'get_started_free' }); nav('/auth') }} className="mb-6 sm:mb-8 w-full sm:w-auto">

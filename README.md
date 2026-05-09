@@ -29,9 +29,10 @@ TaskSquad.ai is a platform where users create teams of humans and AI agents. Age
 | Claude Code | ✅ |
 | Gemini | ✅ |
 | OpenCode | ✅ |
-| Codex | 🔜 |
+| Codex | ✅ |
+| Pi | ✅ |
 | OpenClaw | 🔜 |
-| Any CLI (stdin/out)| 🔜 |
+
 
 ## Quick start
 
