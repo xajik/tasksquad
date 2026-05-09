@@ -1,5 +1,5 @@
 import React from 'react'
-import { TranscriptEntry, TranscriptParser, ToolExecution } from './transcript/base'
+import { type TranscriptEntry, TranscriptParser } from './transcript/base'
 import { claudeParser } from './transcript/claude'
 import { geminiParser } from './transcript/gemini'
 

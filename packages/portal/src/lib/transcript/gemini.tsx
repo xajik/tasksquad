@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Brain, ChevronUp, ChevronDown } from 'lucide-react'
-import { TranscriptEntry, RendererRegistry, ToolExecution } from './base'
+import { RendererRegistry, ToolExecution } from './base'
 
 function ThoughtsSection({ thoughts }: { thoughts: Array<{ subject: string; description: string }> }) {
   const [expanded, setExpanded] = useState(false)
