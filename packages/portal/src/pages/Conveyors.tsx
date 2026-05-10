@@ -4,6 +4,7 @@ import { trackEvent } from '../lib/analytics'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { AutocompleteTextarea } from '@/components/AutocompleteTextarea'
 import { Label } from '@/components/ui/label'
 import {
   Card,
@@ -308,10 +309,11 @@ function openEdit(c: Conveyor) {
               {/* Body */}
               <div className="grid gap-2">
                 <Label htmlFor="body">Description</Label>
-                <Textarea
+                <AutocompleteTextarea
                   id="body"
                   value={taskBody}
-                  onChange={e => setTaskBody(e.target.value)}
+                  onChange={setTaskBody}
+                  teamId={teamId}
                   placeholder="Task description"
                   rows={3}
                   className="font-mono text-sm"

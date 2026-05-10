@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -52,6 +53,9 @@ import {
   BrainCircuit, Bot,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import Fuse from 'fuse.js'
+import { AutocompleteDropdown } from '@/components/AutocompleteDropdown'
+import { useAutocompleteData, type AutocompleteItem } from '@/hooks/useAutocompleteData'
 
 function useDebounceValue<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value)
@@ -153,7 +157,81 @@ function EditorToolbar({ editor }: { editor: Editor }) {
 
 // ─── Rich Text Editor ─────────────────────────────────────────────────────────
 
-function RichTextEditor({ content, onChange }: { content: string; onChange: (md: string) => void }) {
+function RichTextEditor({
+  content,
+  onChange,
+  acItems,
+  onTrigger,
+}: {
+  content: string
+  onChange: (md: string) => void
+  acItems: AutocompleteItem[]
+  onTrigger: () => void
+}) {
+  const [acOpen, setAcOpen] = useState(false)
+  const [acFiltered, setAcFiltered] = useState<AutocompleteItem[]>([])
+  const [acActiveIndex, setAcActiveIndex] = useState(0)
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 })
+
+  const acItemsRef = useRef(acItems)
+  const onTriggerRef = useRef(onTrigger)
+  const acOpenRef = useRef(false)
+  const acFilteredRef = useRef<AutocompleteItem[]>([])
+  const acActiveIndexRef = useRef(0)
+  const acTriggerInfoRef = useRef<{ trigger: '@' | '/'; triggerFrom: number } | null>(null)
+
+  acItemsRef.current = acItems
+  onTriggerRef.current = onTrigger
+  acOpenRef.current = acOpen
+  acFilteredRef.current = acFiltered
+  acActiveIndexRef.current = acActiveIndex
+
+  const checkTrigger = useCallback((ed: Editor) => {
+    const { from } = ed.state.selection
+    const $from = ed.state.doc.resolve(from)
+    const parentOffset = $from.parentOffset
+    const blockText = $from.parent.textContent.slice(0, parentOffset)
+
+    let trigger: '@' | '/' | null = null
+    let triggerIdx = -1
+    for (let i = blockText.length - 1; i >= 0; i--) {
+      const ch = blockText[i]
+      if (ch === ' ' || ch === '\n') break
+      if (ch === '@' || ch === '/') {
+        if (i === 0 || blockText[i - 1] === ' ' || blockText[i - 1] === '\n') {
+          trigger = ch as '@' | '/'
+          triggerIdx = i
+        }
+        break
+      }
+    }
+
+    if (trigger !== null && triggerIdx >= 0) {
+      onTriggerRef.current()
+      const query = blockText.slice(triggerIdx + 1)
+      const pool = acItemsRef.current.filter(i => i.trigger === trigger)
+      const filtered = query
+        ? new Fuse(pool, { keys: ['name', 'description'], threshold: 0.4 })
+            .search(query).map(r => r.item).slice(0, 10)
+        : pool.slice(0, 10)
+
+      acTriggerInfoRef.current = { trigger, triggerFrom: from - (blockText.length - triggerIdx) }
+      setAcFiltered(filtered)
+      setAcActiveIndex(0)
+
+      if (filtered.length > 0) {
+        const coords = ed.view.coordsAtPos(from)
+        setDropdownPos({ top: coords.bottom + 4, left: coords.left })
+        setAcOpen(true)
+      } else {
+        setAcOpen(false)
+      }
+    } else {
+      setAcOpen(false)
+      acTriggerInfoRef.current = null
+    }
+  }, [])
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -173,8 +251,46 @@ function RichTextEditor({ content, onChange }: { content: string; onChange: (md:
     },
     onUpdate: ({ editor }) => {
       onChange((editor.storage as unknown as { markdown: { getMarkdown: () => string } }).markdown.getMarkdown())
+      checkTrigger(editor)
     },
   })
+
+  const insertItem = useCallback((item: AutocompleteItem) => {
+    if (!editor || !acTriggerInfoRef.current) return
+    const { from } = editor.state.selection
+    editor.chain()
+      .focus()
+      .deleteRange({ from: acTriggerInfoRef.current.triggerFrom, to: from })
+      .insertContent(`${item.trigger}${item.name} `)
+      .run()
+    setAcOpen(false)
+    acTriggerInfoRef.current = null
+  }, [editor])
+
+  useEffect(() => {
+    if (!editor) return
+    const dom = editor.view.dom as HTMLElement
+    const handler = (e: KeyboardEvent) => {
+      if (!acOpenRef.current) return
+      const filtered = acFilteredRef.current
+      const idx = acActiveIndexRef.current
+      if (e.key === 'ArrowDown') {
+        e.preventDefault(); e.stopPropagation()
+        setAcActiveIndex(i => Math.min(i + 1, filtered.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopPropagation()
+        setAcActiveIndex(i => Math.max(i - 1, 0))
+      } else if ((e.key === 'Enter' || e.key === 'Tab') && filtered[idx]) {
+        e.preventDefault(); e.stopPropagation()
+        insertItem(filtered[idx])
+      } else if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation()
+        setAcOpen(false)
+      }
+    }
+    dom.addEventListener('keydown', handler, true)
+    return () => dom.removeEventListener('keydown', handler, true)
+  }, [editor, insertItem])
 
   if (!editor) return null
 
@@ -187,6 +303,15 @@ function RichTextEditor({ content, onChange }: { content: string; onChange: (md:
       >
         <EditorContent editor={editor} />
       </div>
+      {acOpen && createPortal(
+        <AutocompleteDropdown
+          items={acFiltered}
+          activeIndex={acActiveIndex}
+          onSelect={insertItem}
+          style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left }}
+        />,
+        document.body,
+      )}
     </div>
   )
 }
@@ -244,9 +369,85 @@ function CommentToolbar({ editor }: { editor: Editor }) {
   )
 }
 
-function CommentEditor({ value, onChange, onSubmit, submitting }: {
-  value: string; onChange: (md: string) => void; onSubmit: () => void; submitting: boolean
+function CommentEditor({
+  value,
+  onChange,
+  onSubmit,
+  submitting,
+  acItems,
+  onTrigger,
+}: {
+  value: string
+  onChange: (md: string) => void
+  onSubmit: () => void
+  submitting: boolean
+  acItems: AutocompleteItem[]
+  onTrigger: () => void
 }) {
+  const [acOpen, setAcOpen] = useState(false)
+  const [acFiltered, setAcFiltered] = useState<AutocompleteItem[]>([])
+  const [acActiveIndex, setAcActiveIndex] = useState(0)
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 })
+
+  const acItemsRef = useRef(acItems)
+  const onTriggerRef = useRef(onTrigger)
+  const acOpenRef = useRef(false)
+  const acFilteredRef = useRef<AutocompleteItem[]>([])
+  const acActiveIndexRef = useRef(0)
+  const acTriggerInfoRef = useRef<{ trigger: '@' | '/'; triggerFrom: number } | null>(null)
+
+  acItemsRef.current = acItems
+  onTriggerRef.current = onTrigger
+  acOpenRef.current = acOpen
+  acFilteredRef.current = acFiltered
+  acActiveIndexRef.current = acActiveIndex
+
+  const checkTrigger = useCallback((ed: Editor) => {
+    const { from } = ed.state.selection
+    const $from = ed.state.doc.resolve(from)
+    const parentOffset = $from.parentOffset
+    const blockText = $from.parent.textContent.slice(0, parentOffset)
+
+    let trigger: '@' | '/' | null = null
+    let triggerIdx = -1
+    for (let i = blockText.length - 1; i >= 0; i--) {
+      const ch = blockText[i]
+      if (ch === ' ' || ch === '\n') break
+      if (ch === '@' || ch === '/') {
+        if (i === 0 || blockText[i - 1] === ' ' || blockText[i - 1] === '\n') {
+          trigger = ch as '@' | '/'
+          triggerIdx = i
+        }
+        break
+      }
+    }
+
+    if (trigger !== null && triggerIdx >= 0) {
+      onTriggerRef.current()
+      const query = blockText.slice(triggerIdx + 1)
+      const pool = acItemsRef.current.filter(i => i.trigger === trigger)
+      const filtered = query
+        ? new Fuse(pool, { keys: ['name', 'description'], threshold: 0.4 })
+            .search(query).map(r => r.item).slice(0, 10)
+        : pool.slice(0, 10)
+
+      acTriggerInfoRef.current = { trigger, triggerFrom: from - (blockText.length - triggerIdx) }
+      setAcFiltered(filtered)
+      setAcActiveIndex(0)
+
+      if (filtered.length > 0) {
+        const coords = ed.view.coordsAtPos(from)
+        setDropdownPos({ top: coords.bottom + 4, left: coords.left })
+        setAcOpen(true)
+      } else {
+        setAcOpen(false)
+      }
+    } else {
+      setAcOpen(false)
+      acTriggerInfoRef.current = null
+    }
+  }, [])
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -264,8 +465,46 @@ function CommentEditor({ value, onChange, onSubmit, submitting }: {
     },
     onUpdate: ({ editor }) => {
       onChange((editor.storage as unknown as { markdown: { getMarkdown: () => string } }).markdown.getMarkdown())
+      checkTrigger(editor)
     },
   })
+
+  const insertItem = useCallback((item: AutocompleteItem) => {
+    if (!editor || !acTriggerInfoRef.current) return
+    const { from } = editor.state.selection
+    editor.chain()
+      .focus()
+      .deleteRange({ from: acTriggerInfoRef.current.triggerFrom, to: from })
+      .insertContent(`${item.trigger}${item.name} `)
+      .run()
+    setAcOpen(false)
+    acTriggerInfoRef.current = null
+  }, [editor])
+
+  useEffect(() => {
+    if (!editor) return
+    const dom = editor.view.dom as HTMLElement
+    const handler = (e: KeyboardEvent) => {
+      if (!acOpenRef.current) return
+      const filtered = acFilteredRef.current
+      const idx = acActiveIndexRef.current
+      if (e.key === 'ArrowDown') {
+        e.preventDefault(); e.stopPropagation()
+        setAcActiveIndex(i => Math.min(i + 1, filtered.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopPropagation()
+        setAcActiveIndex(i => Math.max(i - 1, 0))
+      } else if ((e.key === 'Enter' || e.key === 'Tab') && filtered[idx]) {
+        e.preventDefault(); e.stopPropagation()
+        insertItem(filtered[idx])
+      } else if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation()
+        setAcOpen(false)
+      }
+    }
+    dom.addEventListener('keydown', handler, true)
+    return () => dom.removeEventListener('keydown', handler, true)
+  }, [editor, insertItem])
 
   const handleSubmit = () => {
     if (value.trim()) onSubmit()
@@ -283,6 +522,15 @@ function CommentEditor({ value, onChange, onSubmit, submitting }: {
           Post
         </Button>
       </div>
+      {acOpen && createPortal(
+        <AutocompleteDropdown
+          items={acFiltered}
+          activeIndex={acActiveIndex}
+          onSelect={insertItem}
+          style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left }}
+        />,
+        document.body,
+      )}
     </div>
   )
 }
@@ -463,6 +711,8 @@ function CritiqueDialog({ noteId, teamId, isOpen, onOpenChange, onSuccess }: {
 export function NoteDetail({ teamId }: { teamId: string }) {
   const { noteId } = useParams<{ noteId: string }>()
   const nav = useNavigate()
+
+  const { items: acItems, load: acLoad } = useAutocompleteData(teamId)
 
   const [note, setNote] = useState<Note | null>(null)
   const [content, setContent] = useState('')
@@ -696,6 +946,8 @@ export function NoteDetail({ teamId }: { teamId: string }) {
           onChange={setNewComment}
           onSubmit={postComment}
           submitting={postingComment}
+          acItems={acItems}
+          onTrigger={acLoad}
         />
       </div>
     </>
@@ -886,7 +1138,7 @@ export function NoteDetail({ teamId }: { teamId: string }) {
           {/* Editor or Preview */}
           <div className="flex-1 overflow-hidden">
             <div className="h-full flex flex-col overflow-hidden">
-              <RichTextEditor content={content} onChange={setContent} />
+              <RichTextEditor content={content} onChange={setContent} acItems={acItems} onTrigger={acLoad} />
             </div>
           </div>
         </div>

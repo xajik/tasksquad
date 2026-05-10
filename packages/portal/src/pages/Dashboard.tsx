@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { AutocompleteTextarea } from '@/components/AutocompleteTextarea'
 import { Label } from '@/components/ui/label'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 import {
@@ -477,10 +478,11 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="body">Description</Label>
-                <Textarea
+                <AutocompleteTextarea
                   id="body"
                   value={taskBody}
-                  onChange={e => setTaskBody(e.target.value)}
+                  onChange={setTaskBody}
+                  teamId={teamId!}
                   placeholder="Task description (optional — give Claude full context here)"
                   rows={5}
                   className="font-mono text-sm"
