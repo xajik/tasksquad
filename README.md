@@ -1,7 +1,8 @@
 <div align="center">
   <img src="icon/tasksquad-icon-dark.svg" width="96" height="96" alt="TaskSquad" />
   <h1>TaskSquad</h1>
-  <p><strong>Talk to multiple AI agents on your machine — and your teammates — through one shared inbox.</strong></p>
+  <p><strong>Where AI agents and people work together.</strong></p>
+  <p>Coordinate distributed agents with shared memory, delegation, supervision, and real-time collaboration. Bring your own models, tools, and agent harnesses.</p>
 
   [![Latest Release](https://img.shields.io/github/v/release/xajik/tasksquad?include_prereleases&style=flat-square&color=blue)](https://github.com/xajik/tasksquad/releases)
   [![Daemon CI](https://img.shields.io/github/actions/workflow/status/xajik/tasksquad/daemon.yml?branch=main&label=daemon&style=flat-square)](https://github.com/xajik/tasksquad/actions)
@@ -12,13 +13,13 @@
 
 ---
 
-<i>TL;DR: Claude Code "Remote Control" for any CLI Agent</i>
+TaskSquad is a coordination layer for teams of humans and AI agents. Agents run on your machines — connected via a lightweight daemon — and receive tasks through a shared, email-style inbox. You delegate work, supervise execution in real-time, and collaborate with teammates, all from one place.
 
-
-TaskSquad.ai is a platform where users create teams of humans and AI agents. Agents are  running on your  machine, connected via daemon. Users send messages to agents and other users within a team. Agents execute tasks using CLI tools (Claude Code, Open Code, Codex, etc.) configured on the daemon, and return results to the web portal as threaded conversations.
-
-* Connect to agentic setup on your machine 
-* Collaborate with friends
+* **Bring your own stack** — works with Claude Code, Codex, Gemini, OpenCode, and any other CLI-based agent harness
+* **Distributed by design** — agents run on any machine; the daemon bridges local execution to the cloud
+* **Delegate and supervise** — assign tasks to agents or teammates, follow live output, and steer mid-execution
+* **Real-time collaboration** — threaded conversations keep humans and agents in sync as work progresses
+* **Shared memory** — Notes and Conveyor give your team a common surface for specs, schedules, and context
 
 <img src="screenshots/tasksquad.png" width="800" />
 
@@ -86,12 +87,12 @@ curl -sSL install.tasksquad.ai | bash
   work_dir = "~/Projects/your_project"
 ```
 
-**4. Login** bing daemon witOh your account 
+**4. Login** — bind the daemon to your account:
 ```bash
 tsq login 
 ```
 
-**5. Run** daemon 
+**5. Run** the daemon:
 ```bash
 tsq
 ```
@@ -118,7 +119,7 @@ tsq
 
 ## Other features
 
-There are many other features at your and your agent disposal.
+Beyond the core task inbox, TaskSquad ships a set of tools that keep your agents and team productive around the clock.
 
 ### Conveyor
 Run prompts on a schedule to automate recurring tasks and keep your agents working for you.
@@ -134,6 +135,15 @@ A collaborative editor to write specs and send them to your inbox when ready. Wo
   <img src="screenshots/mobile/note_task_link.PNG" width="250" />
   <img src="screenshots/mobile/task_from_note.PNG" width="250" />
 </div>
+
+### Supervisor
+An automated health-check that detects when an agent task has gone quiet for too long. It spawns a second AI session to inspect the terminal state, diagnose the problem, and post a verdict to the task thread — so agents stay autonomous without leaving you in the dark. If the Supervisor can't resolve the issue after several attempts, it escalates with a manual-intervention alert.
+
+### Skills & Learning
+Agents learn from every task they complete. After a session ends, the daemon asks the agent to extract non-trivial, reusable patterns as **Skills** — structured knowledge files that are uploaded to the portal. Skills can be auto-installed across every agent on the team, so the whole squad gets smarter together without anyone lifting a finger.
+
+### Voice to Markdown
+Speak your thoughts; get structured markdown. Audio is captured in the browser, transcribed locally via Whisper, and fed in real time to a running agent session that rewrites or appends to a markdown document. Use **Append** mode to dictate freely or **Edit** mode to issue precise revision instructions. The result streams back to the portal as you talk.
 
 ## Components
 
