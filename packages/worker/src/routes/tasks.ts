@@ -3,6 +3,16 @@ import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { bumpInboxVersion } from '../inbox_version.js'
 import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
+import { PlannerEngine } from '../planner/engine.js'
+import { TaskDispatcher } from '../planner/dispatcher.js'
+import { DefaultSupervisorStrategy } from '../planner/supervisor.js'
+import type { VerdictSource } from '../planner/types.js'
+
+const supervisorStrategy = new DefaultSupervisorStrategy()
+
+function makePlannerEngine(): PlannerEngine {
+  return new PlannerEngine(new TaskDispatcher(), supervisorStrategy)
+}
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -24,9 +34,11 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
 
   let query = `
     SELECT t.id, t.team_id, t.agent_id, t.sender_id, t.subject, t.status, t.created_at, t.started_at, t.completed_at,
+           pt.planner_id,
            m.role as first_message_role, m.type as first_message_type,
            MAX(all_m.scheduled_at) as scheduled_at
     FROM tasks t
+    LEFT JOIN planner_task pt ON pt.task_id = t.id
     LEFT JOIN messages m ON m.task_id = t.id AND m.id = (
       SELECT id FROM messages WHERE task_id = t.id ORDER BY created_at ASC, id ASC LIMIT 1
     )
@@ -78,6 +90,12 @@ export async function gradeTask(req: Request, env: Env, _ctx: unknown, auth: Aut
     .prepare('UPDATE tasks SET grade = ? WHERE id = ?')
     .bind(body.grade ?? null, taskId)
     .run()
+
+  // Planner hook — engine resolves link via planner_task; returns [] for non-linked tasks
+  if (body.grade != null) {
+    const source: VerdictSource = { kind: 'inbox_grade', grade: body.grade === 1 ? 1 : 0 }
+    await makePlannerEngine().onVerdict(env.DB, taskId, source)
+  }
 
   return json({ ok: true })
 }
@@ -187,9 +205,9 @@ export async function closeTask(req: Request, env: Env, _ctx: unknown, auth: Aut
   const taskId = url.pathname.split('/')[2]
 
   const task = await env.DB
-    .prepare('SELECT team_id, agent_id, close_steps FROM tasks WHERE id = ?')
+    .prepare('SELECT team_id, agent_id, close_steps, auto_close FROM tasks WHERE id = ?')
     .bind(taskId)
-    .first<{ team_id: string; agent_id: string; close_steps: string | null }>()
+    .first<{ team_id: string; agent_id: string; close_steps: string | null; auto_close: number }>()
   if (!task) return err('not_found', 404)
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('forbidden', 403)
 
@@ -220,6 +238,29 @@ export async function closeTask(req: Request, env: Env, _ctx: unknown, auth: Aut
   }
 
   await env.DB.batch(ops)
+
+  // Planner hook — look up role from the join table
+  const link = await env.DB
+    .prepare('SELECT role FROM planner_task WHERE task_id = ?')
+    .bind(taskId)
+    .first<{ role: string } | null>()
+
+  if (link) {
+    const engine = makePlannerEngine()
+
+    if (link.role === 'supervisor') {
+      const lastMsg = await env.DB
+        .prepare("SELECT body FROM messages WHERE task_id = ? AND role = 'agent' ORDER BY created_at DESC LIMIT 1")
+        .bind(taskId)
+        .first<{ body: string }>()
+      const verdict = supervisorStrategy.parseResponse(lastMsg?.body ?? '')
+      const source: VerdictSource = { kind: 'supervisor', verdict: verdict ?? 'no' }
+      await engine.onVerdict(env.DB, taskId, source)
+    } else if (task.auto_close) {
+      await engine.onVerdict(env.DB, taskId, { kind: 'auto_close' })
+    }
+  }
+
   return json({ ok: true })
 }
 

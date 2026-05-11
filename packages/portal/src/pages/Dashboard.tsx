@@ -88,12 +88,14 @@ import {
   BookMarked,
   ThumbsUp,
   ThumbsDown,
+  Layers,
 } from 'lucide-react'
 
 import { Notes } from './Notes'
 import { NoteDetail } from './NoteDetail'
 import { Conveyors } from './Conveyors'
 import { Skills } from './Skills'
+import { Planners } from './Planners'
 import { AgentWorkflow } from '../components/AgentWorkflow'
 import { MemberWorkflow } from '../components/MemberWorkflow'
 import { HowItWorks, HowItWorksToggle } from '../components/HowItWorks'
@@ -276,7 +278,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'queued' | 'running' | 'waiting_input' | 'done' | 'failed' | 'scheduled'>('all')
-  const [activeFilter, setActiveFilter] = useState<'all' | 'system' | 'mine' | 'from-note' | 'note-critique' | 'scheduled'>('all')
+  const [activeFilter, setActiveFilter] = useState<'all' | 'system' | 'mine' | 'from-note' | 'note-critique' | 'scheduled' | 'planner'>('all')
   const nav = useNavigate()
 
   const prevTaskStatusesRef = useRef<Record<string, string>>({})
@@ -382,6 +384,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
     if (activeFilter === 'from-note') return result.filter(t => t.first_message_type === MessageType.NoteToInbox)
     if (activeFilter === 'note-critique') return result.filter(t => t.first_message_type === MessageType.NoteCritique)
     if (activeFilter === 'scheduled') return result.filter(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
+    if (activeFilter === 'planner') return result.filter(t => !!t.planner_id)
     return result
   }, [tasks, statusFilter, activeFilter, internalUserId, agentMap])
 
@@ -393,6 +396,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
     const now = Date.now()
     return tasks.some(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
   }, [tasks])
+  const hasPlanner = useMemo(() => tasks.some(t => !!t.planner_id), [tasks])
 
   return (
     <div className="animate-fade-in">
@@ -439,6 +443,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
               {hasNotes && <SelectItem value="from-note">From Note</SelectItem>}
               {hasCritiques && <SelectItem value="note-critique">Critique</SelectItem>}
               {hasScheduled && <SelectItem value="scheduled">Scheduled</SelectItem>}
+              {hasPlanner && <SelectItem value="planner">Planner</SelectItem>}
             </SelectContent>
           </Select>
         </div>
@@ -2445,6 +2450,7 @@ export default function Dashboard() {
   const isSettings = location.pathname === '/dashboard/settings'
   const isNotes = location.pathname.startsWith('/dashboard/notes')
   const isSkills = location.pathname.startsWith('/dashboard/skills')
+  const isPlanner = location.pathname.startsWith('/dashboard/planner')
   if (isLoadingTeams) return (
     <div className="flex h-screen items-center justify-center">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -2528,7 +2534,7 @@ export default function Dashboard() {
         </div>
         <nav className="flex-1 px-2">
           <Button
-            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills ? 'secondary' : 'ghost'}
+            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills && !isPlanner ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
             onClick={() => handleNav('/dashboard')}
           >
@@ -2550,6 +2556,14 @@ export default function Dashboard() {
             >
             <Repeat className="mr-2 h-4 w-4" />
             Conveyor
+            </Button>
+            <Button
+            variant={isPlanner ? 'secondary' : 'ghost'}
+            className="w-full justify-start mb-1"
+            onClick={() => handleNav('/dashboard/planner')}
+            >
+            <Layers className="mr-2 h-4 w-4" />
+            Planner
             </Button>
             <Button
             variant={isSkills ? 'secondary' : 'ghost'}
@@ -2667,6 +2681,7 @@ export default function Dashboard() {
           <Route path="/notes" element={<Notes teamId={teamId} />} />
           <Route path="/notes/:noteId" element={<NoteDetail teamId={teamId} />} />
           <Route path="/conveyor" element={<Conveyors teamId={teamId} />} />
+          <Route path="/planner" element={<Planners teamId={teamId} />} />
           <Route path="/skills" element={<Skills teamId={teamId} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/settings" element={<SettingsView teamName={teamName} currentTeam={currentTeam} onDelete={handleDeleteProject} onLeave={handleLeaveProject} plan={plan} isOwner={isOwner} isMaintainer={isMaintainer} onRefresh={refreshTeams} />} />

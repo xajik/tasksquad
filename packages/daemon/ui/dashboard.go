@@ -64,6 +64,22 @@ func getPortalHTML() string {
 	return embeddedPortalHTML
 }
 
+func getProjectRoot() string {
+	cwd, _ := os.Getwd()
+	searchPaths := []string{
+		cwd,
+		filepath.Dir(os.Args[0]),
+		filepath.Join(filepath.Dir(os.Args[0]), "packages", "daemon"),
+		filepath.Join(os.Getenv("HOME"), "Projects", "tasksquad-doc"),
+	}
+	for _, path := range searchPaths {
+		if _, err := os.Stat(filepath.Join(path, "icon")); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
 type dashStatus struct {
 	Email     string        `json:"email"`
 	DashURL   string        `json:"dash_url"`
@@ -105,6 +121,32 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, aut
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(getPortalHTML())) //nolint:errcheck
+	})
+
+	// Serve icon files
+	mux.HandleFunc("/icon/", func(w http.ResponseWriter, r *http.Request) {
+		filename := strings.TrimPrefix(r.URL.Path, "/icon/")
+		iconPaths := []string{
+			filepath.Join(getProjectRoot(), "icon", filename),
+			filepath.Join(filepath.Dir(os.Args[0]), "icon", filename),
+		}
+		for _, p := range iconPaths {
+			if data, err := os.ReadFile(p); err == nil {
+				ext := strings.ToLower(filepath.Ext(filename))
+				contentType := map[string]string{
+					".svg": "image/svg+xml",
+					".png": "image/png",
+					".ico": "image/x-icon",
+				}[ext]
+				if contentType == "" {
+					contentType = "application/octet-stream"
+				}
+				w.Header().Set("Content-Type", contentType)
+				w.Write(data) //nolint:errcheck
+				return
+			}
+		}
+		http.NotFound(w, r)
 	})
 
 	mux.HandleFunc("/speech-to-md", func(w http.ResponseWriter, r *http.Request) {

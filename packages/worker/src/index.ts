@@ -12,6 +12,7 @@ import * as conveyors from './routes/conveyors.js'
 import * as skills     from './routes/skills.js'
 import * as subAgents  from './routes/sub-agents.js'
 import * as commands   from './routes/commands.js'
+import * as planners   from './routes/planners.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 
 
@@ -120,6 +121,12 @@ router.post  ('/teams/:teamId/commands',                 firebaseRoute(commands.
 router.get   ('/teams/:teamId/commands/:commandId',      firebaseRoute(commands.get))
 router.put   ('/teams/:teamId/commands/:commandId',      firebaseRoute(commands.update))
 router.delete('/teams/:teamId/commands/:commandId',      firebaseRoute(commands.remove))
+
+router.get   ('/teams/:teamId/planners',          firebaseRoute(planners.list))
+router.post  ('/teams/:teamId/planners',          firebaseRoute(planners.create))
+router.get   ('/teams/:teamId/planners/:id',      firebaseRoute(planners.get))
+router.patch ('/teams/:teamId/planners/:id',      firebaseRoute(planners.patch))
+router.delete('/teams/:teamId/planners/:id',      firebaseRoute(planners.del))
 
 router.get ('/tasks',                    firebaseRoute(tasks.list))
 router.post('/tasks',                    firebaseRoute(tasks.create))

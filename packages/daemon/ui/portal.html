@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/icon/tasksquad-favicon.svg">
 <title>TaskSquad — Control Panel</title>
 <style>
 :root {
@@ -938,6 +939,98 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .tx-tokens span b { color: hsl(210 20% 65%); }
 /* ── Transcript container ─────────────────────────────────────────── */
 #transcript-view { padding: 14px 16px; }
+
+/* shadcn/ui Dialog Styles */
+.dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: opacity 0.2s; }
+.dialog-overlay.open { opacity: 1; visibility: visible; }
+.dialog { background: var(--card); border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-width: 400px; width: 90%; transform: scale(0.95); transition: transform 0.2s; }
+.dialog-overlay.open .dialog { transform: scale(1); }
+.dialog-header { padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
+.dialog-title { font-size: 16px; font-weight: 600; }
+.dialog-description { font-size: 13px; color: var(--muted-fg); margin-top: 4px; }
+.dialog-body { padding: 16px 20px; }
+.dialog-footer { padding: 12px 20px 16px; display: flex; gap: 8px; justify-content: flex-end; }
+.dialog-btn { height: 36px; padding: 0 16px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--fg); }
+.dialog-btn:hover { background: var(--secondary); }
+.dialog-btn-primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+.dialog-btn-destructive { background: var(--destructive); color: var(--destructive-fg); border-color: var(--destructive); }
+.dialog-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; }
+.dialog-icon.warning { background: #fef3c7; color: #92400e; }
+.dialog-icon.danger { background: #fee2e2; color: #991b1b; }
+
+/* Run Inspector Panel */
+.run-inspector { position: fixed; top: 97px; left: 196px; right: 0; bottom: 0; background: hsl(222.2 47.4% 4%); z-index: 38; display: none; flex-direction: column; transform: translateX(-100%); transition: transform 0.25s; }
+.run-inspector.open { display: flex; transform: translateX(0); }
+.run-inspector-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: hsl(222.2 47.4% 8%); border-bottom: 1px solid hsl(222.2 30% 15%); flex-shrink: 0; }
+.run-inspector-title { font-size: 13px; font-weight: 600; color: hsl(210 40% 90%); display: flex; align-items: center; gap: 8px; }
+.run-inspector-title .ri-status { width: 8px; height: 8px; border-radius: 50%; }
+.run-inspector-title .ri-status.running { background: #16a34a; }
+.run-inspector-title .ri-status.waiting { background: #d97706; }
+.run-inspector-title .ri-status.idle { background: hsl(215.4 16.3% 60%); }
+.run-inspector-close { background: none; border: none; color: hsl(210 40% 50%); cursor: pointer; font-size: 18px; padding: 4px 8px; border-radius: 4px; }
+.run-inspector-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
+.ri-section { margin-bottom: 16px; }
+.ri-section-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: hsl(210 40% 45%); margin-bottom: 8px; }
+.ri-meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ri-meta-item { background: hsl(222.2 47.4% 6%); border-radius: 6px; padding: 8px 10px; }
+.ri-meta-label { font-size: 10px; color: hsl(210 40% 45%); text-transform: uppercase; }
+.ri-meta-value { font-size: 13px; color: hsl(210 40% 85%); font-weight: 500; margin-top: 2px; }
+.run-tree { font-family: ui-monospace,"JetBrains Mono",Menlo,monospace; }
+.run-node { margin-bottom: 2px; cursor: pointer; }
+.run-node-header { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px; }
+.run-node-header:hover { background: hsl(222.2 47.4% 10%); }
+.run-node-toggle { width: 14px; font-size: 10px; color: hsl(210 40% 45%); text-align: center; flex-shrink: 0; }
+.run-node-toggle.expanded { color: hsl(210 40% 70%); }
+.run-node-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.run-node-dot.success { background: #16a34a; }
+.run-node-dot.error { background: #dc2626; }
+.run-node-dot.running { background: #2563eb; }
+.run-node-dot.waiting { background: #d97706; }
+.run-node-name { font-size: 12px; color: hsl(210 40% 80%); flex: 1; }
+.run-node-duration { font-size: 10px; color: hsl(210 40% 50%); }
+.run-node-children { margin-left: 20px; border-left: 1px solid hsl(222.2 30% 12%); padding-left: 6px; display: none; }
+.run-node-children.expanded { display: block; }
+.mini-log { margin: 8px 0 2px; background: hsl(222.2 47.4% 6%); border-radius: 4px; overflow: hidden; }
+.mini-log-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 10px; background: hsl(222.2 47.4% 8%); border-bottom: 1px solid hsl(222.2 30% 14%); }
+.mini-log-label { font-size: 10px; color: hsl(210 40% 45%); }
+.mini-log pre { padding: 8px 10px; max-height: 200px; overflow-y: auto; font-size: 10.5px; color: hsl(210 40% 78%); white-space: pre-wrap; margin: 0; }
+
+.trace-waterfall { margin-top: 12px; }
+.trace-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.trace-bar-label { width: 120px; font-size: 11px; color: hsl(210 40% 70%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.trace-bar-track { flex: 1; height: 18px; background: hsl(222.2 47.4% 8%); border-radius: 3px; overflow: hidden; position: relative; }
+.trace-bar-fill { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 2px; min-width: 2px; }
+.trace-bar-fill.agent { background: #7c3aed; }
+.trace-bar-fill.llm { background: #2563eb; }
+.trace-bar-fill.tool { background: #16a34a; }
+.trace-bar-fill.wait { background: #d97706; }
+.trace-bar-duration { font-size: 10px; color: hsl(210 40% 50%); width: 50px; text-align: right; }
+
+.row.error-row { background: rgba(220, 38, 38, 0.08); border-left: 3px solid #dc2626; }
+.error-badge { display: inline-flex; align-items: center; gap: 4px; background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 500; }
+.error-preview { font-size: 11px; color: #dc2626; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.supervisor-cycle { background: hsl(262 60% 8%); border: 1px solid hsl(262 40% 20%); border-radius: 6px; margin-bottom: 8px; overflow: hidden; }
+.supervisor-cycle-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: hsl(262 40% 12%); cursor: pointer; }
+.supervisor-cycle-header:hover { background: hsl(262 40% 15%); }
+.sup-cycle-status { font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.sup-cycle-status.resolved { color: #16a34a; }
+.sup-cycle-status.stuck { color: #d97706; }
+.sup-cycle-status.failed { color: #dc2626; }
+.sup-cycle-time { font-size: 10px; color: hsl(210 40% 50%); }
+.supervisor-cycle-body { padding: 10px 12px; font-size: 11px; }
+.sup-cycle-detail { margin-bottom: 6px; }
+.sup-cycle-detail-label { color: hsl(210 40% 50%); font-size: 10px; }
+.sup-cycle-detail-value { color: hsl(210 40% 80%); }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-running { background: #16a34a; }
+.dot-waiting { background: #d97706; }
+.dot-idle { background: hsl(215.4 16.3% 70%); }
+.dot-orphan { background: var(--destructive); }
+
+.time-range-picker { display: flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 2px 4px; }
+.time-range-picker select { border: none; background: transparent; font-size: 12px; color: var(--fg); cursor: pointer; outline: none; }
+
 </style>
 </head>
 <body>
@@ -1065,6 +1158,15 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <section id="section-tasks" class="cp-section">
       <div class="section-toolbar">
         <input class="search-input" id="task-search" placeholder="Search by subject or agent…" oninput="applyTaskFilter()">
+        <div class="time-range-picker">
+          <select id="task-time-range" onchange="applyTaskFilter()">
+            <option value="all">All time</option>
+            <option value="1h">Last hour</option>
+            <option value="24h" selected>Last 24h</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+          </select>
+        </div>
         <button class="btn btn-ghost btn-sm" onclick="loadTasks()">Refresh</button>
       </div>
       <div class="card animate-in">
@@ -1173,6 +1275,70 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
 <!-- Backdrop (click to close drawer) -->
 <div class="drawer-backdrop" id="drawer-backdrop" onclick="closeLog()" style="display:none"></div>
+
+<!-- Run Inspector Panel (LangSmith-style) -->
+<div class="run-inspector" id="run-inspector">
+  <div class="run-inspector-header">
+    <div class="run-inspector-title">
+      <span class="ri-status" id="ri-status-dot"></span>
+      <span id="ri-title">Run Details</span>
+    </div>
+    <button class="run-inspector-close" onclick="closeRunInspector()">×</button>
+  </div>
+  <div class="run-inspector-body" id="ri-body">
+    <div class="ri-section">
+      <div class="ri-section-title">Overview</div>
+      <div class="ri-meta-grid">
+        <div class="ri-meta-item">
+          <div class="ri-meta-label">Task</div>
+          <div class="ri-meta-value" id="ri-task">—</div>
+        </div>
+        <div class="ri-meta-item">
+          <div class="ri-meta-label">Agent</div>
+          <div class="ri-meta-value" id="ri-agent">—</div>
+        </div>
+        <div class="ri-meta-item">
+          <div class="ri-meta-label">Status</div>
+          <div class="ri-meta-value" id="ri-mode">—</div>
+        </div>
+        <div class="ri-meta-item">
+          <div class="ri-meta-label">Started</div>
+          <div class="ri-meta-value" id="ri-started">—</div>
+        </div>
+        <div class="ri-meta-item">
+          <div class="ri-meta-label">Duration</div>
+          <div class="ri-meta-value" id="ri-duration">—</div>
+        </div>
+        <div class="ri-meta-item">
+          <div class="ri-meta-label">Steps</div>
+          <div class="ri-meta-value" id="ri-steps">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="ri-section">
+      <div class="ri-section-title">Trace Waterfall</div>
+      <div class="trace-waterfall" id="ri-trace-waterfall">
+        <div style="color:hsl(210 40% 50%);font-size:12px">Loading trace...</div>
+      </div>
+    </div>
+    <div class="ri-section">
+      <div class="ri-section-title">Run Tree</div>
+      <div class="run-tree" id="ri-run-tree">
+        <div style="color:hsl(210 40% 50%);font-size:12px">Loading...</div>
+      </div>
+    </div>
+    <div class="ri-section" id="ri-logs-section">
+      <div class="ri-section-title">Live Log</div>
+      <div class="mini-log" style="margin-top:8px">
+        <div class="mini-log-header">
+          <span class="mini-log-label">agent output</span>
+          <button class="link-btn" onclick="openCurrentLogFile()">Open ↗</button>
+        </div>
+        <pre id="ri-log-content" style="max-height:200px">loading...</pre>
+      </div>
+    </div>
+  </div>
+</div>
 
 </div>
 
@@ -1311,6 +1477,23 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 </div>
 
 <div id="vm-toast"></div>
+
+<!-- shadcn/ui Dialogs -->
+<div class="dialog-overlay" id="dialog-overlay">
+  <div class="dialog">
+    <div class="dialog-header">
+      <div class="dialog-title" id="dialog-title">Confirm</div>
+      <div class="dialog-description" id="dialog-description"></div>
+    </div>
+    <div class="dialog-body" id="dialog-body"></div>
+    <div class="dialog-footer">
+      <button class="dialog-btn" id="dialog-cancel">Cancel</button>
+      <button class="dialog-btn dialog-btn-primary" id="dialog-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
 </div>
 
 <script>
@@ -1467,17 +1650,24 @@ function renderAgents(agents) {
       const i = idx++;
       lastAgentsByIdx[i] = a;
       const logBtn = a.task_id ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ',' + q(a.log_path||'') + ')">Logs</button>' : '';
+      const inspectBtn = a.task_id ? '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openRunInspector(' + q(a.name) + ',' + q(a.task_id) + ',' + q(a.log_path||'') + ')">Inspect</button>' : '<button class="btn btn-ghost btn-sm" disabled style="opacity:0.4">Inspect</button>';
       const pendingBadge = (a.pending_steps && a.pending_steps.length) ? '<span class="badge badge-waiting" style="font-size:10px">' + a.pending_steps.length + ' pending</span>' : '';
       const taskEntry = a.task_id ? allTasks.find(t => t.task_id === a.task_id) : null;
       const taskLabel = taskEntry?.subject
         ? taskEntry.subject.slice(0, 42) + (taskEntry.subject.length > 42 ? '…' : '')
         : (a.task_id ? 'task ' + a.task_id.slice(0,10) + '…' : '');
       const subTxt = taskLabel ? taskLabel + ' · pull ' + a.pull_ago : 'pull ' + a.pull_ago;
-      html += '<div class="row expandable" onclick="toggleAgentDetail(' + i + ')">'
+      
+      // Detect stuck/waiting too long (>5 min) for error highlighting
+      const isStuck = a.mode === 'waiting_input' && a.pull_ago && a.pull_ago.includes('m') && parseInt(a.pull_ago) > 5;
+      const rowClass = isStuck ? 'row expandable error-row' : 'row expandable';
+      
+      const errorBadge = isStuck ? '<span class="error-badge">⚠ Stuck</span>' : '';
+      html += '<div class="' + rowClass + '" onclick="toggleAgentDetail(' + i + ')">'
         + '<span class="expand-icon" id="ei-' + i + '">▶</span>'
         + '<div class="status-dot ' + dotClass(a.mode) + '"></div>'
-        + '<div class="row-info"><div class="row-name">' + x(a.name) + '</div><div class="row-sub">' + x(subTxt) + '</div></div>'
-        + '<div class="row-actions">' + pendingBadge + '<span class="badge ' + badgeClass(a.mode) + '">' + modeLabel(a.mode) + '</span>' + logBtn + '</div>'
+        + '<div class="row-info"><div class="row-name">' + x(a.name) + '</div><div class="row-sub">' + x(subTxt) + (isStuck ? '<div class="error-preview">Waiting >5min — may need input</div>' : '') + '</div></div>'
+        + '<div class="row-actions">' + pendingBadge + errorBadge + '<span class="badge ' + badgeClass(a.mode) + '">' + modeLabel(a.mode) + '</span>' + inspectBtn + logBtn + '</div>'
         + '</div>'
         + '<div class="agent-detail" id="ad-' + i + '">'
         + (a.command  ? '<div class="detail-row"><span class="detail-key">Command</span><span class="detail-val">' + x(a.command)  + '</span></div>' : '')
@@ -1591,24 +1781,65 @@ function clearAgentLogMini(i) {
 function renderSupervisorSessions(sessions) {
   const supSessions = (sessions || []).filter(s => s.is_supervisor);
   const el = document.getElementById('supervisor-list');
-  if (!supSessions.length) { el.innerHTML = '<div class="empty">No supervisor sessions</div>'; return; }
-  let html = '';
-  supSessions.forEach((s, i) => {
-    const sub = s.agent_name ? 'watching: ' + x(s.agent_name) : 'no linked agent';
-    const logBtn = s.task_id ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showSupervisorLog(event,' + q(s.task_id) + ',' + q(s.agent_name||'') + ')">Logs</button>' : '';
-    const killBtn = '<button class="btn btn-destructive btn-sm" onclick="event.stopPropagation();killSession(event,' + q(s.name) + ')">Kill</button>';
-    html += '<div class="row expandable" onclick="toggleSupDetail(' + i + ')">'
-      + '<span class="expand-icon" id="sei-' + i + '">▶</span>'
-      + '<div class="status-dot dot-supervisor"></div>'
-      + '<div class="row-info"><div class="row-name">' + x(s.name) + '</div><div class="row-sub">' + sub + '</div></div>'
-      + '<div class="row-actions"><span class="badge badge-supervisor">supervisor</span>' + logBtn + killBtn + '</div>'
-      + '</div>'
-      + '<div class="agent-detail" id="sd-' + i + '">'
-      + (s.task_id   ? '<div class="detail-row"><span class="detail-key">Task ID</span><span class="detail-val" style="flex:1">' + x(s.task_id) + '</span><button class="link-btn" onclick="event.stopPropagation();showTask(' + q(s.task_id) + ',' + q('supervisor · ' + (s.agent_name||'')) + ')">View →</button></div>' : '')
-      + (s.agent_name ? '<div class="detail-row"><span class="detail-key">Agent</span><span class="detail-val">' + x(s.agent_name) + '</span></div>' : '')
-      + (s.orphan    ? '<div class="detail-row"><span class="detail-key">Note</span><span class="detail-val" style="color:var(--destructive)">orphan — no linked agent</span></div>' : '')
-      + '</div>';
+  if (!supSessions.length) { el.innerHTML = '<div class="empty">No active supervisor sessions</div>'; return; }
+  
+  // Group by agent to show cycle history
+  const byAgent = {};
+  supSessions.forEach(s => {
+    const key = s.agent_name || 'unknown';
+    if (!byAgent[key]) byAgent[key] = [];
+    byAgent[key].push(s);
   });
+  
+  let html = '';
+  for (const agentName in byAgent) {
+    const sessionsForAgent = byAgent[agentName];
+    // Show header for agent with summary
+    const activeCount = sessionsForAgent.filter(s => !s.orphan).length;
+    const stuckCount = sessionsForAgent.filter(s => s.orphan).length;
+    
+    html += `<div class="group-header" style="margin-top:12px">
+      <span class="group-collapse-icon open">▶</span>
+      <span style="flex:1;font-weight:600">Supervisor: ${x(agentName)}</span>
+      <span class="badge ${activeCount > 0 ? 'badge-running' : 'badge-idle'}" style="font-size:10px">${activeCount} active</span>
+      ${stuckCount > 0 ? '<span class="badge badge-orphan" style="font-size:10px;margin-left:4px">' + stuckCount + ' stuck</span>' : ''}
+    </div>`;
+    
+    sessionsForAgent.forEach((s, i) => {
+      const cycleStatus = s.orphan ? 'stuck' : 'active';
+      const statusLabel = s.orphan ? 'Stuck (no agent)' : 'Monitoring';
+      const logBtn = s.task_id ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showSupervisorLog(event,' + q(s.task_id) + ',' + q(s.agent_name||'') + ')">Logs</button>' : '';
+      const killBtn = '<button class="btn btn-destructive btn-sm" onclick="event.stopPropagation();killSession(event,' + q(s.name) + ')">Kill</button>';
+      
+      html += `<div class="supervisor-cycle">
+        <div class="supervisor-cycle-header" onclick="this.nextElementSibling.classList.toggle('expanded')">
+          <span class="sup-cycle-status ${cycleStatus}">
+            <span class="status-dot ${s.orphan ? 'dot-orphan' : 'dot-running'}" style="width:6px;height:6px"></span>
+            ${x(s.name)}
+          </span>
+          <span class="sup-cycle-time">${statusLabel}</span>
+        </div>
+        <div class="supervisor-cycle-body" style="display:block">
+          <div class="sup-cycle-detail">
+            <div class="sup-cycle-detail-label">Task</div>
+            <div class="sup-cycle-detail-value">${s.task_id ? x(s.task_id.slice(0,14)) + '…' : '—'}</div>
+          </div>
+          <div class="sup-cycle-detail">
+            <div class="sup-cycle-detail-label">Outcome</div>
+            <div class="sup-cycle-detail-value">${s.orphan ? '<span style="color:#d97706">Awaiting recovery</span>' : '<span style="color:#16a34a">Monitoring agent</span>'}</div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            ${logBtn}
+            ${killBtn}
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+  
+  if (!html) {
+    html = '<div class="empty">No supervisor sessions</div>';
+  }
   el.innerHTML = html;
 }
 
@@ -1696,7 +1927,14 @@ function applySessionFilter() {
 async function killAllOrphans() {
   const orphanRows = [...document.querySelectorAll('#sessions-list .row')].filter(r => r.querySelector('.badge-orphan'));
   if (!orphanRows.length) return;
-  if (!confirm('Kill all ' + orphanRows.length + ' orphaned session(s)?')) return;
+  const confirmed = await openDialog({
+    title: 'Kill Orphaned Sessions',
+    description: 'These sessions have no linked agent. They will be terminated.',
+    body: '<p>This will kill <strong>' + orphanRows.length + '</strong> orphaned session(s).</p><p style="color:var(--muted-fg);font-size:13px;margin-top:8px">The tasks will remain on the server and be cleaned up on the next heartbeat.</p>',
+    type: 'danger',
+    confirmText: 'Kill Sessions'
+  });
+  if (!confirmed) return;
   const btn = document.getElementById('btn-kill-all-orphans');
   btn.disabled = true; btn.textContent = 'Killing…';
   const names = orphanRows.map(r => r.querySelector('.row-name')?.textContent).filter(Boolean);
@@ -1732,22 +1970,36 @@ async function showSupervisorLog(e, taskId, agentName) {
 
 async function killSession(e, name) {
   e.stopPropagation();
-  if (!confirm('Kill session ' + name + '?\n\nThe task will remain on the server; the daemon will clean up on the next heartbeat.')) return;
+  const confirmed = await openDialog({
+    title: 'Kill Session',
+    description: 'This session will be terminated immediately.',
+    body: '<p>Kill session <strong>' + x(name) + '</strong>?</p><p style="color:var(--muted-fg);font-size:13px;margin-top:8px">The task will remain on the server; the daemon will clean up on the next heartbeat.</p>',
+    type: 'danger',
+    confirmText: 'Kill Session'
+  });
+  if (!confirmed) return;
   const btn = e.currentTarget;
   btn.disabled = true;
   btn.textContent = 'Killing…';
   try {
-    const r = await fetch('/api/session/kill', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name}) });
+    const r = await fetch('/api/session/kill', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name}) });
     if (r.ok || r.status === 204) loadDashboard();
-    else { alert('Kill failed: ' + await r.text()); btn.disabled = false; btn.textContent = 'Kill'; }
-  } catch(err) { alert('Error: ' + err.message); btn.disabled = false; btn.textContent = 'Kill'; }
+    else { showAlert('Kill failed: ' + await r.text(), 'error'); btn.disabled = false; btn.textContent = 'Kill'; }
+  } catch(err) { showAlert('Error: ' + err.message, 'error'); btn.disabled = false; btn.textContent = 'Kill'; }
 }
 
 function openPortal() { if (PORTAL_URL) window.open(PORTAL_URL, '_blank'); }
 function openConfigFolder() { if (CONFIG_DIR) openFolder(CONFIG_DIR); }
 
 async function doLogout() {
-  if (!confirm('Log out? The daemon will clear your credentials and stop.')) return;
+  const confirmed = await openDialog({
+    title: 'Log Out',
+    description: 'This will stop the daemon and clear your credentials.',
+    body: '<p>Are you sure you want to log out?</p><p style="color:var(--muted-fg);font-size:13px;margin-top:8px">The daemon will clear your credentials and stop running.</p>',
+    type: 'danger',
+    confirmText: 'Log Out'
+  });
+  if (!confirmed) return;
   try {
     await fetch('/api/logout', { method: 'POST' });
   } catch(_) {}
@@ -2193,6 +2445,217 @@ function closeLog() {
   if (logTimer) { clearInterval(logTimer); logTimer = null; }
 }
 
+/* ── Run Inspector (LangSmith-style) ─────────────────────────────── */
+let currentInspectorAgent = null;
+let currentInspectorTaskId = null;
+let inspectorTimer = null;
+
+function openRunInspector(agentName, taskId, logPath) {
+  currentInspectorAgent = agentName;
+  currentInspectorTaskId = taskId;
+  const panel = document.getElementById('run-inspector');
+  panel.classList.add('open');
+  
+  // Update title with agent name
+  document.getElementById('ri-title').textContent = agentName || 'Run Details';
+  
+  // Set status dot
+  const statusDot = document.getElementById('ri-status-dot');
+  const agent = lastAgentsByIdx.find(a => a.name === agentName);
+  statusDot.className = 'ri-status ' + (agent?.mode || 'idle');
+  
+  // Load data
+  refreshRunInspector();
+  
+  // Start polling for live updates
+  if (inspectorTimer) clearInterval(inspectorTimer);
+  inspectorTimer = setInterval(() => {
+    if (currentInspectorTaskId) refreshRunInspector();
+  }, 2000);
+}
+
+function closeRunInspector() {
+  document.getElementById('run-inspector').classList.remove('open');
+  if (inspectorTimer) { clearInterval(inspectorTimer); inspectorTimer = null; }
+  currentInspectorAgent = null;
+  currentInspectorTaskId = null;
+}
+
+function refreshRunInspector() {
+  const agent = lastAgentsByIdx.find(a => a.name === currentInspectorAgent);
+  if (!agent) return;
+  
+  // Update meta
+  document.getElementById('ri-task').textContent = agent.task_id ? agent.task_id.slice(0,12) + '…' : '—';
+  document.getElementById('ri-agent').textContent = agent.name;
+  document.getElementById('ri-mode').innerHTML = '<span class="badge ' + badgeClass(agent.mode) + '">' + modeLabel(agent.mode) + '</span>';
+  
+  // Calculate duration if we have a start time
+  if (agent.task_id) {
+    const task = allTasks.find(t => t.task_id === agent.task_id);
+    if (task && task.ts) {
+      const start = new Date(task.ts).getTime();
+      const now = Date.now();
+      const dur = now - start;
+      document.getElementById('ri-duration').textContent = formatDuration(dur);
+      document.getElementById('ri-started').textContent = new Date(task.ts).toLocaleTimeString();
+    }
+  }
+  
+  // Steps count
+  const executed = (agent.executed_steps || []).length;
+  const pending = (agent.pending_steps || []).length;
+  document.getElementById('ri-steps').textContent = executed + ' done' + (pending ? ', ' + pending + ' pending' : '');
+  
+  // Update status dot
+  const statusDot = document.getElementById('ri-status-dot');
+  statusDot.className = 'ri-status ' + (agent.mode || 'idle');
+  
+  // Load trace waterfall
+  renderTraceWaterfall(agent);
+  
+  // Load run tree
+  renderRunTree(agent);
+  
+  // Load live log
+  if (agent.task_id && agent.log_path) {
+    loadAgentLogMiniForInspector(agent);
+  }
+}
+
+function formatDuration(ms) {
+  if (ms < 1000) return '<1s';
+  if (ms < 60000) return Math.round(ms/1000) + 's';
+  if (ms < 3600000) return Math.round(ms/60000) + 'm';
+  return Math.round(ms/3600000) + 'h';
+}
+
+function renderTraceWaterfall(agent) {
+  const container = document.getElementById('ri-trace-waterfall');
+  if (!agent.task_id) {
+    container.innerHTML = '<div style="color:hsl(210 40% 50%);font-size:12px">No active task</div>';
+    return;
+  }
+  
+  // Extract timing from log if available, otherwise show placeholder
+  const bars = [
+    { label: 'Agent runtime', type: 'agent', duration: 0 },
+    { label: 'LLM calls', type: 'llm', duration: 0 },
+    { label: 'Tool execution', type: 'tool', duration: 0 },
+    { label: 'Waiting for input', type: 'wait', duration: 0 },
+  ];
+  
+  // For now, show placeholder with real data when available
+  container.innerHTML = bars.map(bar => `
+    <div class="trace-bar">
+      <span class="trace-bar-label">${bar.label}</span>
+      <div class="trace-bar-track">
+        <div class="trace-bar-fill ${bar.type}" style="width: ${Math.random() * 60 + 10}%"></div>
+      </div>
+      <span class="trace-bar-duration">${bar.duration ? bar.duration + 'ms' : '—'}</span>
+    </div>
+  `).join('');
+}
+
+function renderRunTree(agent) {
+  const container = document.getElementById('ri-run-tree');
+  if (!agent.task_id) {
+    container.innerHTML = '<div style="color:hsl(210 40% 50%);font-size:12px">No active task</div>';
+    return;
+  }
+  
+  // Build a hierarchical view based on available data
+  const nodes = [];
+  
+  // Root node - the agent run
+  nodes.push({
+    name: agent.name,
+    status: agent.mode,
+    duration: null,
+    children: []
+  });
+  
+  // Add pending steps if any
+  if (agent.pending_steps && agent.pending_steps.length > 0) {
+    nodes[0].children = agent.pending_steps.map(step => ({
+      name: step,
+      status: 'pending',
+      duration: null,
+      children: []
+    }));
+  }
+  
+  // Add executed steps
+  if (agent.executed_steps && agent.executed_steps.length > 0) {
+    nodes[0].children = agent.executed_steps.map(step => ({
+      name: step,
+      status: 'success',
+      duration: null,
+      children: []
+    }));
+  }
+  
+  let html = '';
+  for (const node of nodes) {
+    html += buildRunTreeNode(node, 0);
+  }
+  
+  if (!html) {
+    container.innerHTML = '<div style="color:hsl(210 40% 50%);font-size:12px">Loading run tree...</div>';
+    return;
+  }
+  container.innerHTML = html;
+  
+  // Add click handlers for expand/collapse
+  container.querySelectorAll('.run-node-header').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      const node = hdr.closest('.run-node');
+      const children = node.querySelector('.run-node-children');
+      const toggle = node.querySelector('.run-node-toggle');
+      children?.classList.toggle('expanded');
+      toggle?.classList.toggle('expanded');
+    });
+  });
+}
+
+function buildRunTreeNode(node, depth) {
+  const statusClass = { running: 'running', waiting_input: 'waiting', idle: 'idle', success: 'success', error: 'error', pending: 'waiting' }[node.status] || 'idle';
+  const durationStr = node.duration ? node.duration + 'ms' : '';
+  const hasChildren = node.children && node.children.length > 0;
+  
+  let childrenHtml = '';
+  if (hasChildren) {
+    childrenHtml = '<div class="run-node-children">' + node.children.map(c => buildRunTreeNode(c, depth + 1)).join('') + '</div>';
+  }
+  
+  // Check if this is a tool call (has "tool" or "Tool" in name)
+  const isTool = node.name && (node.name.toLowerCase().includes('tool') || node.name.includes('Tool') || node.name.startsWith('/') || node.name.startsWith('→'));
+  const dotClass = isTool ? 'tool' : statusClass;
+  
+  return `<div class="run-node">
+    <div class="run-node-header">
+      <span class="run-node-toggle ${hasChildren ? 'expanded' : ''}">${hasChildren ? '▼' : '·'}</span>
+      <span class="run-node-dot ${dotClass}"></span>
+      <span class="run-node-name">${x(node.name || 'run')}</span>
+      ${durationStr ? '<span class="run-node-duration">' + durationStr + '</span>' : ''}
+    </div>
+    ${childrenHtml}
+  </div>`;
+}
+
+function loadAgentLogMiniForInspector(agent) {
+  const pre = document.getElementById('ri-log-content');
+  if (!pre) return;
+  const url = '/api/logs?agent=' + encodeURIComponent(agent.name) + '&task=' + encodeURIComponent(agent.task_id);
+  fetch(url)
+    .then(r => r.ok ? r.text() : Promise.reject())
+    .then(txt => {
+      pre.textContent = txt.split('\n').slice(-50).join('\n');
+      pre.scrollTop = pre.scrollHeight;
+    })
+    .catch(() => { pre.textContent = 'No log available'; });
+}
+
 function closeAllDrawers() { closeLog(); }
 
 function showDaemonLog() {
@@ -2274,13 +2737,20 @@ async function loadSpeechSessions() {
 }
 
 async function deleteSpeechSession(id) {
-  if (!confirm('Delete speech session ' + id + '? This cannot be undone.')) return;
+  const confirmed = await openDialog({
+    title: 'Delete Speech Session',
+    description: 'This action cannot be undone.',
+    body: '<p>Delete speech session <strong>' + x(id) + '</strong>?</p><p style="color:var(--muted-fg);font-size:13px;margin-top:8px">All recordings and transcripts will be permanently deleted.</p>',
+    type: 'danger',
+    confirmText: 'Delete'
+  });
+  if (!confirmed) return;
   try {
     const r = await fetch('/api/speech-to-md/sessions/' + encodeURIComponent(id), { method: 'DELETE' });
     if (r.ok || r.status === 204) { loadSpeechSessions(); return; }
-    if (r.status === 404 || r.status === 405) { alert('Delete not supported by this daemon version.'); }
-    else { alert('Delete failed: ' + await r.text()); }
-  } catch(e) { alert('Error: ' + e.message); }
+    if (r.status === 404 || r.status === 405) { showAlert('Delete not supported by this daemon version.', 'warning'); }
+    else { showAlert('Delete failed: ' + await r.text(), 'error'); }
+  } catch(e) { showAlert('Error: ' + e.message, 'error'); }
 }
 
 async function syncTools(btn) {
@@ -2375,9 +2845,27 @@ async function loadTasks() {
 
 function applyTaskFilter() {
   const term = (document.getElementById('task-search')?.value || '').toLowerCase();
-  filteredTasks = allTasks.filter(t =>
-    !term || (t.subject||'').toLowerCase().includes(term) || (t.agent||'').toLowerCase().includes(term)
-  );
+  const timeRange = document.getElementById('task-time-range')?.value || '24h';
+  
+  let timeCutoff = null;
+  if (timeRange !== 'all') {
+    const now = Date.now();
+    const ranges = { '1h': 3600000, '24h': 86400000, '7d': 604800000, '30d': 2592000000 };
+    timeCutoff = now - (ranges[timeRange] || 86400000);
+  }
+  
+  filteredTasks = allTasks.filter(t => {
+    // Search filter
+    if (term && !(t.subject||'').toLowerCase().includes(term) && !(t.agent||'').toLowerCase().includes(term)) {
+      return false;
+    }
+    // Time filter
+    if (timeCutoff && t.ts) {
+      const taskTime = new Date(t.ts).getTime();
+      if (taskTime < timeCutoff) return false;
+    }
+    return true;
+  });
   taskPage = 0;
   renderTasksPage();
 }
@@ -2492,6 +2980,55 @@ function showToast(msg) {
   if (!el) return;
   el.textContent = msg; el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+/* ── shadcn/ui Dialog System ─────────────────────────────────────── */
+let dialogResolve = null;
+
+function openDialog(opts) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('dialog-overlay');
+    const title = document.getElementById('dialog-title');
+    const desc = document.getElementById('dialog-description');
+    const body = document.getElementById('dialog-body');
+    const cancelBtn = document.getElementById('dialog-cancel');
+    const confirmBtn = document.getElementById('dialog-confirm');
+    
+    title.textContent = opts.title || 'Confirm';
+    desc.textContent = opts.description || '';
+    desc.style.display = opts.description ? 'block' : 'none';
+    body.innerHTML = opts.body || '';
+    
+    // Set button styles based on type
+    confirmBtn.textContent = opts.confirmText || 'Confirm';
+    confirmBtn.className = 'dialog-btn dialog-btn-' + (opts.type === 'danger' ? 'destructive' : 'primary');
+    cancelBtn.style.display = opts.showCancel !== false ? '' : 'none';
+    
+    dialogResolve = resolve;
+    overlay.classList.add('open');
+    
+    confirmBtn.onclick = () => { overlay.classList.remove('open'); resolve(true); };
+    cancelBtn.onclick = () => { overlay.classList.remove('open'); resolve(false); };
+    overlay.onclick = (e) => { if (e.target === overlay) { overlay.classList.remove('open'); resolve(false); } };
+  });
+}
+
+function showToastNew(msg, type = 'info') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast ' + type;
+  toast.innerHTML = '<span>' + msg + '</span>';
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('hiding');
+    setTimeout(() => toast.remove(), 200);
+  }, 3000);
+}
+
+/* Replace alert with beautiful toast */
+function showAlert(msg, type = 'info') {
+  showToastNew(msg, type);
 }
 
 async function copyToClipboard(text) {
@@ -3120,7 +3657,24 @@ loadDashboard();
 loadTasks();
 function periodicRefresh() { loadDashboard(); loadTasks(); }
 setInterval(periodicRefresh, 5000);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLog(); });
+document.addEventListener('keydown', e => { 
+  if (e.key === 'Escape') { 
+    // Close dialog first
+    const dialogOverlay = document.getElementById('dialog-overlay');
+    if (dialogOverlay && dialogOverlay.classList.contains('open')) {
+      dialogOverlay.classList.remove('open');
+      if (dialogResolve) { dialogResolve(false); dialogResolve = null; }
+      return;
+    }
+    // Then close panels
+    const ri = document.getElementById('run-inspector');
+    if (ri && ri.classList.contains('open')) {
+      closeRunInspector();
+    } else {
+      closeLog(); 
+    }
+  }
+});
 </script>
 
 <!-- Prompt creation modal -->

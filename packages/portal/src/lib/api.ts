@@ -237,6 +237,34 @@ export const api = {
       request<{ ok: boolean }>(`/teams/${teamId}/commands/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     delete: (teamId: string, id: string) => del(`/teams/${teamId}/commands/${id}`),
   },
+  planners: {
+    list: (teamId: string) =>
+      request<{ planners: Planner[] }>(`/teams/${teamId}/planners`),
+    get: (teamId: string, id: string) =>
+      request<Planner>(`/teams/${teamId}/planners/${id}`),
+    create: (teamId: string, body: {
+      name: string
+      description?: string
+      max_retries?: number
+      auto_close?: boolean
+      default_sub_agent_id?: string
+      default_harness_agent_id?: string
+      phases: Array<{
+        name: string
+        sub_agent_id?: string
+        harness_agent_id?: string
+        max_retries?: number
+        auto_close?: boolean
+      }>
+    }) =>
+      request<{ id: string; status: PlannerStatus; first_task_id: string | null }>(
+        `/teams/${teamId}/planners`, { method: 'POST', body: JSON.stringify(body) },
+      ),
+    update: (teamId: string, id: string, body: { paused?: boolean; planner_verdict?: 0 | 1 | null }) =>
+      request<{ ok: boolean }>(`/teams/${teamId}/planners/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    delete: (teamId: string, id: string) =>
+      del(`/teams/${teamId}/planners/${id}`),
+  },
 }
 
 export interface UserProfile {
@@ -356,6 +384,7 @@ export interface Task {
   close_steps?: string[] | null
   close_steps_active_idx?: number
   grade?: number | null
+  planner_id?: string | null
 }
 
 export interface Message {
@@ -413,4 +442,43 @@ export interface TaskLog {
   level: string
   body: string
   created_at: number
+}
+
+export type PhaseStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'reverted'
+export type PlannerStatus = 'pending' | 'running' | 'completed' | 'failed'
+export type PhaseVerdict = 'approved' | 'rejected'
+
+export type SupervisorStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+export interface Phase {
+  phase_id: string
+  name: string
+  sub_agent_id?: string
+  harness_agent_id?: string
+  status: PhaseStatus
+  task_id?: string
+  retry_count: number
+  max_retries: number
+  auto_close: boolean
+  user_verdict?: PhaseVerdict
+  last_response?: string
+  supervisor_task_id?: string
+  supervisor_status?: SupervisorStatus
+  supervisor_verdict?: 'yes' | 'no'
+}
+
+export interface Planner {
+  planner_id: string
+  name: string
+  description?: string
+  created_at: string
+  status: PlannerStatus
+  current_phase_index: number
+  max_retries: number
+  auto_close: boolean
+  paused: boolean
+  default_sub_agent_id?: string
+  default_harness_agent_id?: string
+  planner_verdict?: 0 | 1 | null   // 1 = approved (👍), 0 = rejected (👎)
+  phases: Phase[]
 }
