@@ -66,9 +66,10 @@ export default function(pi) {
         if (text) { lastAssistantMessage = text; break }
       }
     }
+    const transcriptPath = ctx.sessionManager?.getSessionFile?.() ?? ""
     await post(
       "/hooks/stop?agent=%s&task_id=%s&provider=pi",
-      { stop_reason: "idle", message: lastAssistantMessage },
+      { stop_reason: "idle", message: lastAssistantMessage, transcript_path: transcriptPath },
       ctx.signal
     )
   })

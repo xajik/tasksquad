@@ -2,6 +2,7 @@ import React from 'react'
 import { type TranscriptEntry, TranscriptParser } from './transcript/base'
 import { claudeParser } from './transcript/claude'
 import { geminiParser } from './transcript/gemini'
+import { piParser } from './transcript/pi'
 
 function dispatchRender(entries: TranscriptEntry[], registry: any, rawContent?: string): React.ReactNode[] {
   const results: React.ReactNode[] = []
@@ -16,6 +17,7 @@ function dispatchRender(entries: TranscriptEntry[], registry: any, rawContent?: 
 }
 
 export const parsers: TranscriptParser[] = [
+  piParser,
   claudeParser,
   geminiParser,
   {

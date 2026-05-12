@@ -84,6 +84,14 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 			if ev.IsFailure {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(crashed) to agent %s", a.Name()))
 				go a.Complete(s.cfg, string(agentmode.StatusCrashed), ev.TranscriptPath)
+			} else if provider == "pi" {
+				// PI's process exits immediately after agent_end fires. If we use
+				// StopAndPause the pipe-exit path calls complete() a second time
+				// before completing is set, resulting in two responses. Use Complete
+				// instead: it sets completing=true so the exit path is a no-op.
+				logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(pi) to agent %s", a.Name()))
+				a.SetHookMessage(ev.HookMessage)
+				go a.Complete(s.cfg, string(agentmode.StatusClosed), ev.TranscriptPath)
 			} else {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching StopAndPause to agent %s", a.Name()))
 				go a.StopAndPause(s.cfg, ev.HookMessage, ev.TranscriptPath)
