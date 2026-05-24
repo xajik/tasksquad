@@ -276,6 +276,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
   const [saveTokens, setSaveTokens] = useState(false)
   const [saveTokensLevel, setSaveTokensLevel] = useState<'lite' | 'full' | 'ultra'>('full')
   const [closeStepsInput, setCloseStepsInput] = useState('')
+  const [closeStepsEnabled, setCloseStepsEnabled] = useState(true)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'queued' | 'running' | 'waiting_input' | 'done' | 'failed' | 'scheduled'>('all')
@@ -324,8 +325,8 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
       if (scheduledDate && scheduledDate.getTime() > Date.now()) {
         scheduledAt = scheduledDate.getTime()
       }
-      const parsedCloseSteps = closeStepsInput.trim()
-        ? closeStepsInput.split('\n').map(s => s.trim()).filter(Boolean)
+      const parsedCloseSteps = closeStepsEnabled && closeStepsInput.trim()
+        ? closeStepsInput.split(/[\n,]/).map(s => s.trim()).filter(Boolean)
         : undefined
       await api.tasks.create({
         agent_id: agentId,
@@ -348,6 +349,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
       setSaveTokens(false)
       setSaveTokensLevel('full')
       setCloseStepsInput('')
+      setCloseStepsEnabled(true)
       load()
     } finally { setCreating(false) }
   }
@@ -536,18 +538,30 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
                 </Select>
               )}
 
-              <div className="space-y-1">
-                <Label htmlFor="close-steps" className="text-xs text-muted-foreground">
-                  Session close steps (one per line, e.g. <code className="font-mono">/tsq-end-session-learning</code>)
-                </Label>
-                <Textarea
-                  id="close-steps"
-                  value={closeStepsInput}
-                  onChange={e => setCloseStepsInput(e.target.value)}
-                  placeholder={"/tsq-end-session-learning\n/tsq-memory"}
-                  rows={2}
-                  className="font-mono text-xs"
-                />
+              <div className="space-y-1.5">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="close-steps-enabled"
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    checked={closeStepsEnabled}
+                    onChange={e => setCloseStepsEnabled(e.target.checked)}
+                  />
+                  <Label htmlFor="close-steps-enabled" className="font-normal cursor-pointer">
+                    Session close steps
+                  </Label>
+                </div>
+                {closeStepsEnabled && (
+                  <AutocompleteTextarea
+                    id="close-steps"
+                    value={closeStepsInput}
+                    onChange={setCloseStepsInput}
+                    teamId={teamId!}
+                    placeholder={"/tsq-end-session-learning\n/tsq-memory"}
+                    rows={2}
+                    className="font-mono text-xs"
+                  />
+                )}
               </div>
 
               {/* Schedule picker */}
@@ -574,6 +588,8 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
                 setSaveTokens(false)
                 setSaveTokensLevel('full')
                 setScheduledDate(undefined)
+                setCloseStepsInput('')
+                setCloseStepsEnabled(true)
               }}>
                 Cancel
               </Button>
