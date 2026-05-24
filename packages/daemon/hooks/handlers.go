@@ -293,6 +293,34 @@ func (s *hookServer) handleSkill(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp) //nolint:errcheck
 }
 
+// handleTriggerSupervisor handles POST /hooks/trigger-supervisor.
+// Called from the portal to manually launch a supervisor session for a task.
+func (s *hookServer) handleTriggerSupervisor(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.reporter == nil {
+		http.Error(w, "supervisor not configured", http.StatusServiceUnavailable)
+		return
+	}
+	body, _ := io.ReadAll(r.Body)
+	var payload struct {
+		TaskID string `json:"task_id"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil || payload.TaskID == "" {
+		http.Error(w, "invalid payload: task_id required", http.StatusBadRequest)
+		return
+	}
+	if err := s.reporter.TriggerForTask(payload.TaskID); err != nil {
+		logger.Warn(fmt.Sprintf("[hooks/trigger-supervisor] %v", err))
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	logger.Info(fmt.Sprintf("[hooks/trigger-supervisor] Manual trigger accepted for task %s", payload.TaskID))
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // handleSupervisor handles POST /hooks/supervisor.
 // Called via curl from the supervisor tmux session to deliver a verdict.
 func (s *hookServer) handleSupervisor(w http.ResponseWriter, r *http.Request) {

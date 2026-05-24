@@ -98,6 +98,40 @@ func appendToLog(path, text string) {
 	fmt.Fprint(f, text) //nolint:errcheck
 }
 
+// maxRawOutputLines is the cap on lines posted when no tsq report was called.
+const maxRawOutputLines = 50
+
+// readSupervisorOutput extracts the CLI output section from a supervisor log
+// (everything after "--- OUTPUT ---", stripped of trailing markers) and returns
+// the last maxRawOutputLines lines. Returns "" if there is no output.
+func readSupervisorOutput(logPath string) string {
+	data, err := os.ReadFile(logPath)
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	content := string(data)
+	const marker = "--- OUTPUT ---\n"
+	idx := strings.LastIndex(content, marker)
+	if idx < 0 {
+		return ""
+	}
+	output := content[idx+len(marker):]
+	// Strip any trailing daemon-added markers (TIMEOUT/EXIT, SUPERVISOR COMPLETE).
+	if end := strings.Index(output, "\n--- SUPERVISOR"); end >= 0 {
+		output = output[:end]
+	}
+	output = strings.TrimSpace(output)
+	if len(output) < 10 {
+		return ""
+	}
+	lines := strings.Split(output, "\n")
+	if len(lines) > maxRawOutputLines {
+		lines = lines[len(lines)-maxRawOutputLines:]
+		output = "…\n" + strings.Join(lines, "\n")
+	}
+	return output
+}
+
 // readLastLines reads the last max lines of a file. Returns "" if the file is
 // missing or empty.
 func readLastLines(path string, max int) string {

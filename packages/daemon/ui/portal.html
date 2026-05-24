@@ -1134,8 +1134,39 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
     <!-- Supervisor section -->
     <section id="section-supervisor" class="cp-section">
-      <div class="card animate-in">
+      <!-- Run manually -->
+      <div id="supervisor-run-panel" style="display:none;margin-bottom:12px">
+        <div class="card animate-in">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Run manually</div>
+              <div class="card-subtitle">Trigger the supervisor now for a running agent</div>
+            </div>
+          </div>
+          <div id="supervisor-run-list"></div>
+        </div>
+      </div>
+      <!-- Active supervisor sessions -->
+      <div class="card animate-in" style="margin-bottom:12px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Active sessions</div>
+            <div class="card-subtitle">Supervisor tmux sessions currently running</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="refresh()">Refresh</button>
+        </div>
         <div id="supervisor-list"><div class="empty"><span class="spinner"></span></div></div>
+      </div>
+      <!-- Session history from log files -->
+      <div class="card animate-in">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Session history</div>
+            <div class="card-subtitle">Past supervisor runs from <code>~/.tasksquad/logs/supervisor/</code></div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="loadSupervisorHistory()">Refresh</button>
+        </div>
+        <div id="supervisor-history-list"><div class="empty"><span class="spinner"></span></div></div>
       </div>
     </section>
 
@@ -1607,6 +1638,7 @@ function navTo(section) {
   if (section === 'daemon-logs') showDaemonLogInline();
   if (section === 'tools') loadToolsSection();
   if (section === 'tasks') loadTasks();
+  if (section === 'supervisor') loadSupervisorHistory();
 }
 
 function ago(ms) {
@@ -1781,36 +1813,56 @@ function clearAgentLogMini(i) {
 function renderSupervisorSessions(sessions) {
   const supSessions = (sessions || []).filter(s => s.is_supervisor);
   const el = document.getElementById('supervisor-list');
+
+  // --- Run manually panel ---
+  const runPanel = document.getElementById('supervisor-run-panel');
+  const runList  = document.getElementById('supervisor-run-list');
+  const activeAgents = (lastAgents || []).filter(a => a.mode === 'running' || a.mode === 'waiting_input' || a.mode === 'wrapping_up');
+  if (runPanel && runList) {
+    if (activeAgents.length) {
+      runPanel.style.display = '';
+      runList.innerHTML = activeAgents.map(a => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--border)">
+          <span class="status-dot ${dotClass(a.mode)}" style="width:7px;height:7px;flex-shrink:0"></span>
+          <span style="flex:1;font-size:13px;font-weight:500">${x(a.name)}</span>
+          <span style="font-size:11px;color:var(--muted-fg);margin-right:4px">${x(a.task_id ? a.task_id.slice(0,12)+'…' : '—')}</span>
+          <span class="badge ${badgeClass(a.mode)}" style="font-size:10px;margin-right:6px">${modeLabel(a.mode)}</span>
+          <button class="btn btn-secondary btn-sm" onclick="triggerSupervisor(${q(a.task_id||'')},this)" ${!a.task_id ? 'disabled' : ''}>▶ Run</button>
+        </div>`).join('');
+    } else {
+      runPanel.style.display = 'none';
+    }
+  }
+
+  // --- Active sessions ---
   if (!supSessions.length) { el.innerHTML = '<div class="empty">No active supervisor sessions</div>'; return; }
-  
-  // Group by agent to show cycle history
+
   const byAgent = {};
   supSessions.forEach(s => {
     const key = s.agent_name || 'unknown';
     if (!byAgent[key]) byAgent[key] = [];
     byAgent[key].push(s);
   });
-  
+
   let html = '';
   for (const agentName in byAgent) {
     const sessionsForAgent = byAgent[agentName];
-    // Show header for agent with summary
     const activeCount = sessionsForAgent.filter(s => !s.orphan).length;
-    const stuckCount = sessionsForAgent.filter(s => s.orphan).length;
-    
+    const stuckCount  = sessionsForAgent.filter(s =>  s.orphan).length;
+
     html += `<div class="group-header" style="margin-top:12px">
       <span class="group-collapse-icon open">▶</span>
       <span style="flex:1;font-weight:600">Supervisor: ${x(agentName)}</span>
       <span class="badge ${activeCount > 0 ? 'badge-running' : 'badge-idle'}" style="font-size:10px">${activeCount} active</span>
       ${stuckCount > 0 ? '<span class="badge badge-orphan" style="font-size:10px;margin-left:4px">' + stuckCount + ' stuck</span>' : ''}
     </div>`;
-    
-    sessionsForAgent.forEach((s, i) => {
+
+    sessionsForAgent.forEach(s => {
       const cycleStatus = s.orphan ? 'stuck' : 'active';
       const statusLabel = s.orphan ? 'Stuck (no agent)' : 'Monitoring';
-      const logBtn = s.task_id ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showSupervisorLog(event,' + q(s.task_id) + ',' + q(s.agent_name||'') + ')">Logs</button>' : '';
-      const killBtn = '<button class="btn btn-destructive btn-sm" onclick="event.stopPropagation();killSession(event,' + q(s.name) + ')">Kill</button>';
-      
+      const logBtn  = s.task_id ? `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showSupervisorLog(event,${q(s.task_id)},${q(s.agent_name||'')})">Logs</button>` : '';
+      const killBtn = `<button class="btn btn-destructive btn-sm" onclick="event.stopPropagation();killSession(event,${q(s.name)})">Kill</button>`;
+
       html += `<div class="supervisor-cycle">
         <div class="supervisor-cycle-header" onclick="this.nextElementSibling.classList.toggle('expanded')">
           <span class="sup-cycle-status ${cycleStatus}">
@@ -1828,19 +1880,76 @@ function renderSupervisorSessions(sessions) {
             <div class="sup-cycle-detail-label">Outcome</div>
             <div class="sup-cycle-detail-value">${s.orphan ? '<span style="color:#d97706">Awaiting recovery</span>' : '<span style="color:#16a34a">Monitoring agent</span>'}</div>
           </div>
-          <div style="display:flex;gap:6px;margin-top:8px">
-            ${logBtn}
-            ${killBtn}
-          </div>
+          <div style="display:flex;gap:6px;margin-top:8px">${logBtn}${killBtn}</div>
         </div>
       </div>`;
     });
   }
-  
-  if (!html) {
-    html = '<div class="empty">No supervisor sessions</div>';
-  }
+
+  if (!html) html = '<div class="empty">No supervisor sessions</div>';
   el.innerHTML = html;
+}
+
+async function triggerSupervisor(taskID, btn) {
+  if (!taskID) return;
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Starting…';
+  try {
+    const res = await fetch('http://localhost:7374/hooks/trigger-supervisor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_id: taskID }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      btn.textContent = '✓ Started';
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000);
+    } else {
+      btn.textContent = data.error || ('Error ' + res.status);
+      btn.style.color = '#dc2626';
+      setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.disabled = false; }, 4000);
+    }
+  } catch (e) {
+    btn.textContent = 'Daemon unreachable';
+    btn.style.color = '#dc2626';
+    setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.disabled = false; }, 4000);
+  }
+}
+
+async function loadSupervisorHistory() {
+  const el = document.getElementById('supervisor-history-list');
+  if (!el) return;
+  el.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  try {
+    const data = await fetch('/api/supervisor/history').then(r => r.json());
+    if (!data || !data.length) {
+      el.innerHTML = '<div class="empty">No past supervisor sessions found</div>';
+      return;
+    }
+    const fmt = ms => new Date(ms).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    const kb  = b  => b < 1024 ? b + ' B' : Math.round(b/1024) + ' KB';
+    let html = '';
+    data.forEach((entry, i) => {
+      const logId = 'sup-hist-log-' + i;
+      html += `<div style="border-top:1px solid var(--border);padding:10px 14px">
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="(function(el){el.style.display=el.style.display==='none'?'block':'none'})(document.getElementById(${q(logId)}))">
+          <span style="font-size:11px;font-family:monospace;color:var(--muted-fg);flex:1">${x(entry.task_id)}</span>
+          <span style="font-size:11px;color:var(--muted-fg)">${kb(entry.size_bytes)}</span>
+          <span style="font-size:11px;color:var(--muted-fg);margin-left:6px">${fmt(entry.modified_at)}</span>
+          <button class="btn btn-secondary btn-sm" style="margin-left:6px" onclick="event.stopPropagation();loadFullSupLog(${q(entry.task_id)})">Full log</button>
+        </div>
+        <div id="${logId}" class="inline-log-body" style="display:none;max-height:240px;overflow-y:auto;margin-top:8px;font-size:11px;white-space:pre-wrap">${x(entry.tail)}</div>
+      </div>`;
+    });
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div class="empty">Failed to load history: ' + x(String(e)) + '</div>';
+  }
+}
+
+function loadFullSupLog(taskID) {
+  openLog('Supervisor: ' + taskID, '/api/logs/supervisor?task=' + encodeURIComponent(taskID));
 }
 
 function toggleSupDetail(i) {

@@ -98,7 +98,7 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	}
 	tmpF.Close()
 
-	shellCmd := printModeCmd(s.cli, s.fullCmd, promptFile, supLog, s.daemonBinDir, taskID, s.cfg.Hooks.Port)
+	shellCmd := printModeCmd(s.cli, s.fullCmd, promptFile, supLog, s.daemonBinDir)
 	err = exec.Command("tmux", "new-session", "-d", "-s", sessionName,
 		"-c", workDir, "sh", "-c", shellCmd).Run()
 	if err != nil {
@@ -119,6 +119,11 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 		count := s.failCount[taskID]
 		s.mu.Unlock()
 		logger.Warn(fmt.Sprintf("[supervisor] Session %s ended without verdict (attempt %d/%d)", sessionName, count, maxSupervisorFailures))
+		// Fall back to posting the raw CLI output so the task thread reflects what
+		// the supervisor actually did, even when tsq report was not called.
+		if output := readSupervisorOutput(supLog); output != "" {
+			go s.reportToWorker(taskID, agentID, output)
+		}
 		if count >= maxSupervisorFailures {
 			s.mu.Lock()
 			s.failCount[taskID] = 0
@@ -191,8 +196,23 @@ Known blocking patterns (check these first):
   followed by "● 1. Keep trying   2. Stop" → send "2" to stop gracefully.
 - Claude "❯ Result?" prompt → send "done" to complete the current turn.
 
-Load /tsq-supervisor and follow its instructions to perform the health check.`,
-		agentName, taskID, sessionID, logSection, troubleshootingPath, snapshotSection,
+Load /tsq-supervisor and follow its instructions to perform the health check.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MANDATORY FINAL STEP — do not skip this
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You MUST call tsq report as the very last action, regardless of outcome:
+
+  tsq report --task %s --status <status> --summary "<one line>"
+
+  status values: resolved | working_fine | cannot_help
+  - resolved     → you took action and unblocked the agent
+  - working_fine → agent is healthy, nothing to do
+  - cannot_help  → you inspected but could not unblock
+
+The daemon uses this call to know you are finished. If you exit without
+calling tsq report, the session is counted as a failure.`,
+		agentName, taskID, sessionID, logSection, troubleshootingPath, snapshotSection, taskID,
 	)
 }
 
@@ -216,7 +236,10 @@ func troubleshootingFile(workDir string) string {
 
 // printModeCmd builds a shell command that runs the CLI in print mode,
 // piping the prompt from promptFile and appending output to logFile.
-func printModeCmd(cli, fullCmd, promptFile, logFile, daemonBinDir, taskID string, hooksPort int) string {
+// No fallback curl is used — the supervisor skill is responsible for always
+// calling `tsq report`. If the CLI exits without a report, spawn() treats it
+// as a no-verdict attempt and increments the failure counter silently.
+func printModeCmd(cli, fullCmd, promptFile, logFile, daemonBinDir string) string {
 	base := filepath.Base(cli)
 	pathPrefix := ""
 	if daemonBinDir != "" {
@@ -226,8 +249,5 @@ func printModeCmd(cli, fullCmd, promptFile, logFile, daemonBinDir, taskID string
 		return fmt.Sprintf(`%scat %s | %s -p --dangerously-skip-permissions >> %s 2>&1`,
 			pathPrefix, promptFile, cli, logFile)
 	}
-	fallbackCurl := fmt.Sprintf(
-		`curl -sf -X POST http://localhost:%d/hooks/supervisor -H 'Content-Type: application/json' -d '{"task_id":"%s","status":"cannot_help","summary":"Supervisor CLI exited without posting verdict"}' > /dev/null 2>&1 || true`,
-		hooksPort, taskID)
-	return fmt.Sprintf(`%scat %s | %s >> %s 2>&1; %s`, pathPrefix, promptFile, fullCmd, logFile, fallbackCurl)
+	return fmt.Sprintf(`%scat %s | %s >> %s 2>&1`, pathPrefix, promptFile, fullCmd, logFile)
 }

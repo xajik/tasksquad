@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { api, type Agent, type Conveyor } from '../lib/api'
+import { useNavigate } from 'react-router-dom'
+import { api, type Agent, type Conveyor, type Task } from '../lib/api'
 import { trackEvent } from '../lib/analytics'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -48,11 +49,15 @@ import {
   Loader2,
   Pause,
   Play,
+  ListTodo,
+  ExternalLink,
+  Zap,
 } from 'lucide-react'
 import { ConveyorWorkflow } from '../components/ConveyorWorkflow'
 import { HowItWorks, HowItWorksToggle } from '../components/HowItWorks'
 
 export function Conveyors({ teamId }: { teamId: string }) {
+  const nav = useNavigate()
   const [conveyors, setConveyors] = useState<Conveyor[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [showCompose, setShowCompose] = useState(false)
@@ -87,6 +92,45 @@ export function Conveyors({ teamId }: { teamId: string }) {
   const [editAutoClose, setEditAutoClose] = useState(false)
   const [editAgentError, setEditAgentError] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  const [runningId, setRunningId] = useState<string | null>(null)
+
+  async function handleRunNow(c: Conveyor) {
+    setRunningId(c.id)
+    try {
+      await api.tasks.create({
+        agent_id: c.agent_id,
+        subject: c.subject,
+        team_id: teamId,
+        body: c.body || undefined,
+        auto_close: c.auto_close || undefined,
+      })
+      trackEvent('conveyor_run_now', { conveyor_id: c.id, team_id: teamId })
+    } catch (e) {
+      console.error('Failed to dispatch conveyor task:', e)
+    } finally {
+      setRunningId(null)
+    }
+  }
+
+  // Tasks dialog state
+  const [tasksConveyor, setTasksConveyor] = useState<Conveyor | null>(null)
+  const [conveyorTasks, setConveyorTasks] = useState<Task[]>([])
+  const [tasksLoading, setTasksLoading] = useState(false)
+
+  async function openTasks(c: Conveyor) {
+    setTasksConveyor(c)
+    setConveyorTasks([])
+    setTasksLoading(true)
+    try {
+      const res = await api.conveyors.tasks(teamId, c.id)
+      setConveyorTasks(res.tasks ?? [])
+    } catch (e) {
+      console.error('Failed to load conveyor tasks:', e)
+    } finally {
+      setTasksLoading(false)
+    }
+  }
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -606,6 +650,52 @@ function openEdit(c: Conveyor) {
         </DialogContent>
       </Dialog>
 
+      {/* Tasks Dialog */}
+      <Dialog open={!!tasksConveyor} onOpenChange={(open) => { if (!open) setTasksConveyor(null) }}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ListTodo className="h-4 w-4" />
+              Tasks — {tasksConveyor?.subject}
+            </DialogTitle>
+            <DialogDescription>Tasks created by this conveyor.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2 max-h-[400px] overflow-y-auto">
+            {tasksLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : conveyorTasks.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No tasks yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {conveyorTasks.map(t => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-3 p-3 rounded-md border hover:bg-muted/50 cursor-pointer group"
+                    onClick={() => { setTasksConveyor(null); nav(`/dashboard/tasks/${t.id}`) }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{t.subject}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {new Date(t.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      t.status === 'done' ? 'bg-green-100 text-green-700' :
+                      t.status === 'failed' ? 'bg-red-100 text-red-700' :
+                      t.status === 'running' ? 'bg-blue-100 text-blue-700' :
+                      'bg-muted text-muted-foreground'
+                    }`}>{t.status}</span>
+                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex flex-col gap-2">
         {isLoading ? (
           <div className="space-y-2">
@@ -660,6 +750,38 @@ function openEdit(c: Conveyor) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="icon" title="Run now" disabled={runningId === c.id}>
+                        {runningId === c.id
+                          ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          : <Zap className="h-4 w-4 text-muted-foreground" />
+                        }
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Run now</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will immediately dispatch a task to <strong>{agentMap[c.agent_id]?.name ?? c.agent_id}</strong> with subject "<strong>{c.subject}</strong>". The scheduled conveyor will continue running normally.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleRunNow(c)}>
+                          Dispatch
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => openTasks(c)}
+                    title="View tasks"
+                  >
+                    <ListTodo className="h-4 w-4 text-muted-foreground" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

@@ -50,6 +50,26 @@ type SupervisorReporter interface {
 	// CancelForTask kills any active supervisor session for the task.
 	// Called when the monitored agent's Stop hook fires.
 	CancelForTask(taskID string)
+	// TriggerForTask immediately spawns a supervisor session for the given task.
+	// Returns an error if the supervisor is disabled, already active, or no
+	// agent is running that task.
+	TriggerForTask(taskID string) error
+}
+
+// corsMiddleware adds CORS headers so the local portal (localhost:5173) can
+// call the hooks server directly from the browser. The daemon only listens on
+// 127.0.0.1, so allowing all origins is safe — external hosts cannot reach it.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // StartHookServer starts a local HTTP server that receives lifecycle events from
@@ -57,13 +77,14 @@ type SupervisorReporter interface {
 //
 // Registered endpoints:
 //
-//	POST /hooks/stop          — provider Stop hook; speech=true param routes to speech handler
-//	POST /hooks/notification  — provider Notification hook (waiting for input)
-//	POST /hooks/after_agent   — Gemini per-turn response
-//	POST /hooks/opencode      — OpenCode lifecycle events
-//	POST /hooks/codex         — Codex turn completion
-//	POST /hooks/skill         — agent pushes a learned skill
-//	POST /hooks/supervisor    — supervisor verdict
+//	POST /hooks/stop               — provider Stop hook; speech=true param routes to speech handler
+//	POST /hooks/notification       — provider Notification hook (waiting for input)
+//	POST /hooks/after_agent        — Gemini per-turn response
+//	POST /hooks/opencode           — OpenCode lifecycle events
+//	POST /hooks/codex              — Codex turn completion
+//	POST /hooks/skill              — agent pushes a learned skill
+//	POST /hooks/supervisor         — supervisor verdict
+//	POST /hooks/trigger-supervisor — manual supervisor trigger from portal
 func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorReporter, speechHandler SpeechToMDHandler) {
 	srv := &hookServer{cfg: cfg, agents: agents, reporter: reporter, speechHandler: speechHandler}
 	mux := http.NewServeMux()
@@ -75,11 +96,12 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 	mux.HandleFunc("/hooks/codex", srv.handleCodex)
 	mux.HandleFunc("/hooks/skill", srv.handleSkill)
 	mux.HandleFunc("/hooks/supervisor", srv.handleSupervisor)
+	mux.HandleFunc("/hooks/trigger-supervisor", srv.handleTriggerSupervisor)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
 	logger.Info(fmt.Sprintf("[hooks] Server listening on http://localhost:%d", cfg.Hooks.Port))
-	logger.Info("[hooks] Registered endpoints: /hooks/stop (speech=true for voice), /hooks/notification, /hooks/after_agent, /hooks/opencode, /hooks/skill, /hooks/supervisor")
-	go http.ListenAndServe(addr, mux) //nolint:errcheck
+	logger.Info("[hooks] Registered endpoints: /hooks/stop (speech=true for voice), /hooks/notification, /hooks/after_agent, /hooks/opencode, /hooks/skill, /hooks/supervisor, /hooks/trigger-supervisor")
+	go http.ListenAndServe(addr, corsMiddleware(mux)) //nolint:errcheck
 }
 
 // findAndDispatch iterates agents, applies agentID/taskID filters, and calls fn

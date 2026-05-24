@@ -617,6 +617,60 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, aut
 		w.Write([]byte(strings.Join(lines, "\n"))) //nolint:errcheck
 	})
 
+	// /api/supervisor/history returns metadata for all past supervisor log files,
+	// sorted newest-first. Each entry includes task_id, modified_at (unix ms),
+	// size_bytes, and the last 20 lines of the log as "tail".
+	mux.HandleFunc("/api/supervisor/history", func(w http.ResponseWriter, r *http.Request) {
+		home, _ := os.UserHomeDir()
+		dir := filepath.Join(home, ".tasksquad", "logs", "supervisor")
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte("[]")) //nolint:errcheck
+			return
+		}
+		type supEntry struct {
+			TaskID     string `json:"task_id"`
+			ModifiedAt int64  `json:"modified_at"`
+			SizeBytes  int64  `json:"size_bytes"`
+			Tail       string `json:"tail"`
+		}
+		var result []supEntry
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".log") {
+				continue
+			}
+			taskID := strings.TrimSuffix(e.Name(), ".log")
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			path := filepath.Join(dir, e.Name())
+			content, _ := os.ReadFile(path)
+			lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+			const tailLines = 20
+			if len(lines) > tailLines {
+				lines = lines[len(lines)-tailLines:]
+			}
+			result = append(result, supEntry{
+				TaskID:     taskID,
+				ModifiedAt: info.ModTime().UnixMilli(),
+				SizeBytes:  info.Size(),
+				Tail:       strings.Join(lines, "\n"),
+			})
+		}
+		// Sort newest-first
+		for i := 0; i < len(result)-1; i++ {
+			for j := i + 1; j < len(result); j++ {
+				if result[j].ModifiedAt > result[i].ModifiedAt {
+					result[i], result[j] = result[j], result[i]
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result) //nolint:errcheck
+	})
+
 	mux.HandleFunc("/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
 		taskID := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
 		taskID = dashSanitize(taskID)

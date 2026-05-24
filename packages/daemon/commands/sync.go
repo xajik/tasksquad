@@ -73,6 +73,7 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 	raw, _ := resp["commands"].([]any)
 	lock := loadLock(workDir)
 	serverNames := map[string]bool{}
+	installed, removed := 0, 0
 
 	if len(raw) > 0 {
 		logger.Debug(fmt.Sprintf("[commands] Sync found %d potential commands for agent %s", len(raw), agentID))
@@ -129,6 +130,7 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 		}
 		lock[cmd.Name] = cmd.Etag
 		logger.Info(fmt.Sprintf("[commands] Installed %q v%d → %s", cmd.Name, cmd.Version, workDir))
+		installed++
 	}
 
 	for name := range lock {
@@ -136,8 +138,15 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 			removeCommand(workDir, name)
 			delete(lock, name)
 			logger.Info(fmt.Sprintf("[commands] Removed %q from %s (deleted on server)", name, workDir))
+			removed++
 		}
 	}
 
 	saveLock(workDir, lock)
+
+	if installed+removed > 0 {
+		logger.Info(fmt.Sprintf("[commands] Sync complete for agent %s: %d installed, %d removed", agentID, installed, removed))
+	} else {
+		logger.Debug(fmt.Sprintf("[commands] Sync complete for agent %s: all up to date", agentID))
+	}
 }

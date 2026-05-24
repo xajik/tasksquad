@@ -74,6 +74,7 @@ type Supervisor struct {
 	fullCmd       string                           // full command string with flags from [supervisor] config
 	daemonBinDir  string                           // directory containing the tsq binary; prepended to PATH in supervisor sessions
 	cfg           *config.Config
+	agents        []MonitoredAgent // populated by Monitor; used by TriggerForTask
 }
 
 // New creates a Supervisor. If the [supervisor] section is absent from config
@@ -142,9 +143,44 @@ func (s *Supervisor) CancelForTask(taskID string) {
 	s.mu.Unlock()
 }
 
+// TriggerForTask immediately spawns a supervisor session for the given task,
+// regardless of inactivity timeout. Returns an error if the supervisor is
+// disabled, already active for the task, or no agent is running that task.
+func (s *Supervisor) TriggerForTask(taskID string) error {
+	if s.cli == "" {
+		return fmt.Errorf("supervisor disabled — no CLI configured")
+	}
+	s.mu.Lock()
+	if s.activeForTask[taskID] {
+		s.mu.Unlock()
+		return fmt.Errorf("supervisor already active for task %s", taskID)
+	}
+	var target MonitoredAgent
+	for _, a := range s.agents {
+		if a.GetTaskID() == taskID {
+			target = a
+			break
+		}
+	}
+	if target == nil {
+		s.mu.Unlock()
+		return fmt.Errorf("no agent currently running task %s", taskID)
+	}
+	s.activeForTask[taskID] = true
+	s.lastAttempt[taskID] = time.Now()
+	s.mu.Unlock()
+	logger.Info(fmt.Sprintf("[supervisor] Manual trigger for task %s (agent=%s)", taskID, target.Name()))
+	go s.spawn(target, taskID)
+	return nil
+}
+
 // Monitor watches agents in a loop and spawns supervisor sessions for inactive tasks.
 // Blocks forever; run in a goroutine.
 func (s *Supervisor) Monitor(agents []MonitoredAgent) {
+	s.mu.Lock()
+	s.agents = agents
+	s.mu.Unlock()
+
 	if s.cli == "" {
 		logger.Warn("[supervisor] No CLI available — monitor not started")
 		return
@@ -163,7 +199,8 @@ func (s *Supervisor) Monitor(agents []MonitoredAgent) {
 		select {
 		case <-ticker.C:
 			for _, a := range agents {
-				if a.GetMode() != "running" {
+				mode := a.GetMode()
+				if mode != "running" && mode != "wrapping_up" {
 					continue
 				}
 				taskID := a.GetTaskID()

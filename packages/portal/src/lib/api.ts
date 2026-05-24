@@ -146,6 +146,8 @@ export const api = {
         `/teams/${teamId}/conveyors/${conveyorId}`,
         { method: 'PUT', body: JSON.stringify({ paused }) }
       ),
+    tasks: (teamId: string, conveyorId: string) =>
+      request<{ tasks: Task[] }>(`/teams/${teamId}/conveyors/${conveyorId}/tasks`),
   },
   messages: {
     list: (taskId: string) => request<{ messages: Message[] }>(`/tasks/${taskId}/messages`),
@@ -385,6 +387,7 @@ export interface Task {
   close_steps_active_idx?: number
   grade?: number | null
   planner_id?: string | null
+  conveyor_id?: string | null
 }
 
 export interface Message {

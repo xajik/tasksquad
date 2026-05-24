@@ -95,6 +95,7 @@ import { Notes } from './Notes'
 import { NoteDetail } from './NoteDetail'
 import { Conveyors } from './Conveyors'
 import { Skills } from './Skills'
+import { Supervisor } from './Supervisor'
 import { Planners } from './Planners'
 import { AgentWorkflow } from '../components/AgentWorkflow'
 import { MemberWorkflow } from '../components/MemberWorkflow'
@@ -278,7 +279,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'queued' | 'running' | 'waiting_input' | 'done' | 'failed' | 'scheduled'>('all')
-  const [activeFilter, setActiveFilter] = useState<'all' | 'system' | 'mine' | 'from-note' | 'note-critique' | 'scheduled' | 'planner'>('all')
+  const [activeFilter, setActiveFilter] = useState<'all' | 'system' | 'mine' | 'from-note' | 'note-critique' | 'scheduled' | 'planner' | 'conveyor'>('all')
   const nav = useNavigate()
 
   const prevTaskStatusesRef = useRef<Record<string, string>>({})
@@ -385,6 +386,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
     if (activeFilter === 'note-critique') return result.filter(t => t.first_message_type === MessageType.NoteCritique)
     if (activeFilter === 'scheduled') return result.filter(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
     if (activeFilter === 'planner') return result.filter(t => !!t.planner_id)
+    if (activeFilter === 'conveyor') return result.filter(t => !!t.conveyor_id)
     return result
   }, [tasks, statusFilter, activeFilter, internalUserId, agentMap])
 
@@ -397,6 +399,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
     return tasks.some(t => t.status === 'scheduled' || (t.scheduled_at && t.scheduled_at > now))
   }, [tasks])
   const hasPlanner = useMemo(() => tasks.some(t => !!t.planner_id), [tasks])
+  const hasConveyor = useMemo(() => tasks.some(t => !!t.conveyor_id), [tasks])
 
   return (
     <div className="animate-fade-in">
@@ -444,6 +447,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
               {hasCritiques && <SelectItem value="note-critique">Critique</SelectItem>}
               {hasScheduled && <SelectItem value="scheduled">Scheduled</SelectItem>}
               {hasPlanner && <SelectItem value="planner">Planner</SelectItem>}
+              {hasConveyor && <SelectItem value="conveyor">Conveyor</SelectItem>}
             </SelectContent>
           </Select>
         </div>
@@ -2451,6 +2455,7 @@ export default function Dashboard() {
   const isNotes = location.pathname.startsWith('/dashboard/notes')
   const isSkills = location.pathname.startsWith('/dashboard/skills')
   const isPlanner = location.pathname.startsWith('/dashboard/planner')
+  const isSupervisor = location.pathname.startsWith('/dashboard/supervisor')
   if (isLoadingTeams) return (
     <div className="flex h-screen items-center justify-center">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -2534,7 +2539,7 @@ export default function Dashboard() {
         </div>
         <nav className="flex-1 px-2">
           <Button
-            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills && !isPlanner ? 'secondary' : 'ghost'}
+            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills && !isPlanner && !isSupervisor ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
             onClick={() => handleNav('/dashboard')}
           >
@@ -2564,6 +2569,14 @@ export default function Dashboard() {
             >
             <Layers className="mr-2 h-4 w-4" />
             Planner
+            </Button>
+            <Button
+            variant={isSupervisor ? 'secondary' : 'ghost'}
+            className="w-full justify-start mb-1"
+            onClick={() => handleNav('/dashboard/supervisor')}
+            >
+            <ShieldAlert className="mr-2 h-4 w-4" />
+            Supervisor
             </Button>
             <Button
             variant={isSkills ? 'secondary' : 'ghost'}
@@ -2682,6 +2695,7 @@ export default function Dashboard() {
           <Route path="/notes/:noteId" element={<NoteDetail teamId={teamId} />} />
           <Route path="/conveyor" element={<Conveyors teamId={teamId} />} />
           <Route path="/planner" element={<Planners teamId={teamId} />} />
+          <Route path="/supervisor" element={<Supervisor teamId={teamId} />} />
           <Route path="/skills" element={<Skills teamId={teamId} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/settings" element={<SettingsView teamName={teamName} currentTeam={currentTeam} onDelete={handleDeleteProject} onLeave={handleLeaveProject} plan={plan} isOwner={isOwner} isMaintainer={isMaintainer} onRefresh={refreshTeams} />} />

@@ -47,7 +47,7 @@ func TestResolveSupervisorCLI_CommandWithFlags(t *testing.T) {
 }
 
 func TestPrintModeCmd_ClaudeBranch(t *testing.T) {
-	cmd := printModeCmd("/usr/bin/claude", "claude", "/tmp/prompt", "/tmp/log", "/usr/local/bin", "task01", 7374)
+	cmd := printModeCmd("/usr/bin/claude", "claude", "/tmp/prompt", "/tmp/log", "/usr/local/bin")
 	if !strings.Contains(cmd, "-p --dangerously-skip-permissions") {
 		t.Errorf("claude branch should use print-mode flags, got: %s", cmd)
 	}
@@ -58,24 +58,24 @@ func TestPrintModeCmd_ClaudeBranch(t *testing.T) {
 
 func TestPrintModeCmd_NonClaudeBranch_UsesFullCmd(t *testing.T) {
 	fullCmd := "opencode -m ollama/gemma4:26b"
-	cmd := printModeCmd("/usr/bin/opencode", fullCmd, "/tmp/prompt", "/tmp/log", "", "task01", 7374)
+	cmd := printModeCmd("/usr/bin/opencode", fullCmd, "/tmp/prompt", "/tmp/log", "")
 	if !strings.Contains(cmd, fullCmd) {
 		t.Errorf("non-claude branch should use full command %q, got: %s", fullCmd, cmd)
 	}
-	if !strings.Contains(cmd, "curl") {
-		t.Errorf("non-claude branch should contain fallback curl, got: %s", cmd)
+	if strings.Contains(cmd, "curl") {
+		t.Errorf("non-claude branch should not contain fallback curl, got: %s", cmd)
 	}
 }
 
 func TestPrintModeCmd_PathPrefix(t *testing.T) {
-	cmd := printModeCmd("/usr/bin/opencode", "opencode", "/tmp/p", "/tmp/l", "/custom/bin", "task01", 7374)
+	cmd := printModeCmd("/usr/bin/opencode", "opencode", "/tmp/p", "/tmp/l", "/custom/bin")
 	if !strings.HasPrefix(cmd, "PATH=/custom/bin:$PATH ") {
 		t.Errorf("expected PATH prefix, got: %s", cmd)
 	}
 }
 
 func TestPrintModeCmd_NoPathPrefix(t *testing.T) {
-	cmd := printModeCmd("/usr/bin/opencode", "opencode", "/tmp/p", "/tmp/l", "", "task01", 7374)
+	cmd := printModeCmd("/usr/bin/opencode", "opencode", "/tmp/p", "/tmp/l", "")
 	if strings.HasPrefix(cmd, "PATH=") {
 		t.Errorf("expected no PATH prefix when daemonBinDir is empty, got: %s", cmd)
 	}

@@ -78,6 +78,7 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 	raw, _ := resp["sub_agents"].([]any)
 	lock := loadLock(workDir)
 	serverNames := map[string]bool{}
+	installed, removed := 0, 0
 
 	if len(raw) > 0 {
 		logger.Debug(fmt.Sprintf("[agents] Sync found %d potential sub-agents for agent %s", len(raw), agentID))
@@ -135,6 +136,7 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 		}
 		lock[agent.Name] = agent.Etag
 		logger.Info(fmt.Sprintf("[agents] Installed sub-agent %q v%d → %s", agent.Name, agent.Version, workDir))
+		installed++
 	}
 
 	// Remove sub-agents that were deleted on the server.
@@ -143,8 +145,15 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 			removeAgent(workDir, name)
 			delete(lock, name)
 			logger.Info(fmt.Sprintf("[agents] Removed sub-agent %q from %s (deleted on server)", name, workDir))
+			removed++
 		}
 	}
 
 	saveLock(workDir, lock)
+
+	if installed+removed > 0 {
+		logger.Info(fmt.Sprintf("[agents] Sync complete for agent %s: %d installed, %d removed", agentID, installed, removed))
+	} else {
+		logger.Debug(fmt.Sprintf("[agents] Sync complete for agent %s: all up to date", agentID))
+	}
 }
