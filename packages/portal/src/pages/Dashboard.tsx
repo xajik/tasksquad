@@ -538,7 +538,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
                 </Select>
               )}
 
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <div className="flex items-center space-x-2">
                   <input
                     type="checkbox"
@@ -547,20 +547,22 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
                     checked={closeStepsEnabled}
                     onChange={e => setCloseStepsEnabled(e.target.checked)}
                   />
-                  <Label htmlFor="close-steps-enabled" className="font-normal cursor-pointer">
-                    Session close steps
+                  <Label htmlFor="close-steps-enabled" className="text-xs text-muted-foreground cursor-pointer">
+                    Session close steps (one per line or comma-separated, e.g. <code className="font-mono">/tsq-end-session-learning</code>)
                   </Label>
                 </div>
                 {closeStepsEnabled && (
-                  <AutocompleteTextarea
-                    id="close-steps"
-                    value={closeStepsInput}
-                    onChange={setCloseStepsInput}
-                    teamId={teamId!}
-                    placeholder={"/tsq-end-session-learning\n/tsq-memory"}
-                    rows={2}
-                    className="font-mono text-xs"
-                  />
+                  <div className="pt-1">
+                    <AutocompleteTextarea
+                      id="close-steps"
+                      value={closeStepsInput}
+                      onChange={setCloseStepsInput}
+                      teamId={teamId!}
+                      placeholder={"/tsq-end-session-learning\n/tsq-memory"}
+                      rows={2}
+                      className="font-mono text-xs"
+                    />
+                  </div>
                 )}
               </div>
 
