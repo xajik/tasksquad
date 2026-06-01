@@ -112,6 +112,7 @@ type AgentState struct {
 	hookMessage string
 
 	// Timing
+	startedAt      time.Time // when the current task started
 	lastPollAt     time.Time // last successful heartbeat
 	lastActivityAt time.Time // last meaningful task event (start, hook fired)
 

@@ -10,6 +10,7 @@ import (
 
 	hookadapter "github.com/tasksquad/daemon/adapter"
 	"github.com/tasksquad/daemon/agentmode"
+	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
@@ -73,6 +74,18 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		return
+	}
+
+	if isFailure {
+		analytics.Track("task_stop_failure", map[string]interface{}{
+			"task_id":  taskIDParam,
+			"provider": provider,
+		})
+	} else {
+		analytics.Track("task_stop_received", map[string]interface{}{
+			"task_id":  taskIDParam,
+			"provider": provider,
+		})
 	}
 
 	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {

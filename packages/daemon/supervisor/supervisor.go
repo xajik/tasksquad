@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/tmux"
@@ -170,6 +171,11 @@ func (s *Supervisor) TriggerForTask(taskID string) error {
 	s.lastAttempt[taskID] = time.Now()
 	s.mu.Unlock()
 	logger.Info(fmt.Sprintf("[supervisor] Manual trigger for task %s (agent=%s)", taskID, target.Name()))
+	analytics.Track("supervisor_spawned", map[string]interface{}{
+		"task_id":    taskID,
+		"agent_name": target.Name(),
+		"manual":     true,
+	})
 	go s.spawn(target, taskID)
 	return nil
 }
@@ -233,6 +239,11 @@ func (s *Supervisor) Monitor(agents []MonitoredAgent) {
 				s.activeForTask[taskID] = true
 				s.lastAttempt[taskID] = time.Now()
 				s.mu.Unlock()
+				analytics.Track("supervisor_spawned", map[string]interface{}{
+					"task_id":         taskID,
+					"agent_name":      a.Name(),
+					"inactivity_mins": inactivityTimeout.Minutes(),
+				})
 				go s.spawn(a, taskID)
 			}
 		case <-orphanTicker.C:

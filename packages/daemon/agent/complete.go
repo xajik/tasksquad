@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tasksquad/daemon/agentmode"
+	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/tasklog"
@@ -142,6 +143,10 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		status = string(agentmode.StatusClosed)
 	}
 
+	a.st.mu.Lock()
+	startedAt := a.st.startedAt
+	a.st.mu.Unlock()
+
 	tmuxCapture, tmuxCapturePath := a.captureTerminalState(sess)
 
 	// Store tmux capture path in state for potential stale hook fallback
@@ -158,6 +163,33 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 	logger.Info(fmt.Sprintf("[%s] Completing task %s — status=%s", a.Config.Name, taskID, status))
 
 	a.emitLifecycleEvent(status, taskID, runLog, tmuxCapture)
+
+	durationSecs := 0.0
+	if !startedAt.IsZero() {
+		durationSecs = time.Since(startedAt).Seconds()
+	}
+	switch status {
+	case string(agentmode.StatusClosed):
+		analytics.Track("task_completed", map[string]interface{}{
+			"task_id":       taskID,
+			"agent_name":    a.Config.Name,
+			"provider":      a.Provider(),
+			"duration_secs": durationSecs,
+		})
+	case string(agentmode.StatusCrashed):
+		analytics.Track("task_failed", map[string]interface{}{
+			"task_id":       taskID,
+			"agent_name":    a.Config.Name,
+			"provider":      a.Provider(),
+			"duration_secs": durationSecs,
+		})
+	case string(agentmode.StatusCancelled):
+		analytics.Track("task_cancelled", map[string]interface{}{
+			"task_id":       taskID,
+			"agent_name":    a.Config.Name,
+			"duration_secs": durationSecs,
+		})
+	}
 
 	a.st.mu.Lock()
 	hookMsg := a.st.hookMessage

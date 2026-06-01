@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tasksquad/daemon/agentmode"
+	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/tasklog"
@@ -59,15 +60,17 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	if err := a.st.Transition(EventTaskStarted); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] startTask: unexpected transition error: %v", a.Config.Name, err))
 	}
+	now := time.Now()
 	a.st.mu.Lock()
 	a.st.taskID = taskID
+	a.st.startedAt = now
 	a.st.pendingSteps = nil
 	a.st.executedSteps = nil
 	a.st.outputLines = nil
 	a.st.completing = false
 	a.st.notifyPosted = false
 	a.st.hookMessage = ""
-	a.st.lastActivityAt = time.Now()
+	a.st.lastActivityAt = now
 	a.st.transcriptPath = ""
 	a.st.lastTmuxCapturePath = ""
 	a.st.mu.Unlock()
@@ -94,6 +97,11 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	})
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] Session open failed: %v", a.Config.Name, err))
+		analytics.Track("task_spawn_failed", map[string]interface{}{
+			"task_id":    taskID,
+			"agent_name": a.Config.Name,
+			"error":      "session_open_failed",
+		})
 		a.st.Transition(EventSpawnFailed) //nolint:errcheck
 		return
 	}
@@ -285,7 +293,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	agentID := a.st.agentID
 	a.st.mu.Unlock()
 
+	via := "pipe"
 	if usingTmux {
+		via = "tmux"
 		sessionSuffix := sessionID
 		if len(sessionSuffix) > 8 {
 			sessionSuffix = sessionSuffix[:8]
@@ -296,6 +306,12 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 		logger.Lifecycle(fmt.Sprintf("[%s] event=running task_id=%s via=pipe pid=%d", a.Config.Name, taskID, cmd.Process.Pid))
 		a.writeRunLog(fmt.Sprintf("[EVENT] event=running via=pipe pid=%d", cmd.Process.Pid))
 	}
+	analytics.Track("task_started", map[string]interface{}{
+		"task_id":    taskID,
+		"agent_name": a.Config.Name,
+		"provider":   a.Provider(),
+		"via":        via,
+	})
 
 	go func() {
 		a.streamOutput(cfg, agentID, outputReader)

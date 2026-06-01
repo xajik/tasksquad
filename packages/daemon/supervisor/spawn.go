@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/tmux"
@@ -119,6 +120,10 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 		count := s.failCount[taskID]
 		s.mu.Unlock()
 		logger.Warn(fmt.Sprintf("[supervisor] Session %s ended without verdict (attempt %d/%d)", sessionName, count, maxSupervisorFailures))
+		analytics.Track("supervisor_timeout", map[string]interface{}{
+			"task_id":       taskID,
+			"attempt_count": count,
+		})
 		// Fall back to posting the raw CLI output so the task thread reflects what
 		// the supervisor actually did, even when tsq report was not called.
 		if output := readSupervisorOutput(supLog); output != "" {
@@ -129,6 +134,10 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 			s.failCount[taskID] = 0
 			s.mu.Unlock()
 			logger.Error(fmt.Sprintf("[supervisor] Task %s: %d consecutive failures — escalating", taskID, count))
+			analytics.Track("supervisor_escalated", map[string]interface{}{
+				"task_id":  taskID,
+				"failures": count,
+			})
 			go s.escalate(taskID, agentID, count)
 		}
 		return
@@ -139,6 +148,10 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	s.failCount[taskID] = 0
 	s.mu.Unlock()
 	logger.Info(fmt.Sprintf("[supervisor] Session %s complete for task %s (status=%s)", sessionName, taskID, verdict.Status))
+	analytics.Track("supervisor_verdict", map[string]interface{}{
+		"task_id": taskID,
+		"verdict": string(verdict.Status),
+	})
 
 	report := fmt.Sprintf("[Supervisor] %s\nStatus: %s\nFound: %s\nAction: %s",
 		verdict.Summary, verdict.Status, verdict.Found, verdict.Action)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tasksquad/daemon/agentmode"
+	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/tasklog"
@@ -303,6 +304,10 @@ func (a *Agent) PushIntermediateResponse(cfg *config.Config, promptResponse, tra
 		return
 	}
 	logger.Info(fmt.Sprintf("[%s] Intermediate response posted (%d chars)", a.Config.Name, len(text)))
+	analytics.Track("task_intermediate_response", map[string]interface{}{
+		"task_id":    a.st.TaskID(),
+		"agent_name": a.Config.Name,
+	})
 
 	if autoClose, _ := resp["close"].(bool); autoClose {
 		a.autoCloseAndReset()
@@ -372,6 +377,10 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 	if err := a.st.Transition(EventHookNotification); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] SetWaitingInput: unexpected transition error: %v", a.Config.Name, err))
 	}
+	analytics.Track("task_waiting_for_input", map[string]interface{}{
+		"task_id":    a.st.TaskID(),
+		"agent_name": a.Config.Name,
+	})
 
 	a.st.mu.Lock()
 	tlog := a.st.taskLog
@@ -400,7 +409,14 @@ func (a *Agent) startCloseSequence(cfg *config.Config, steps []string) {
 	a.st.pendingSteps = append([]string{}, steps...)
 	a.st.executedSteps = nil
 	sess := a.st.tmuxSession
+	taskID := a.st.taskID
 	a.st.mu.Unlock()
+
+	analytics.Track("task_close_sequence_started", map[string]interface{}{
+		"task_id":    taskID,
+		"agent_name": a.Config.Name,
+		"step_count": len(steps),
+	})
 
 	if sess == "" || tmuxBin == "" {
 		logger.Warn(fmt.Sprintf("[%s] startCloseSequence: no tmux session — completing task directly", a.Config.Name))

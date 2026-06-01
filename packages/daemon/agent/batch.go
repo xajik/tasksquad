@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
@@ -82,6 +83,9 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 					}
 				}
 				logger.Warn(fmt.Sprintf("[batch] rate limited (429) — backing off %s", rateLimitBackoff))
+				analytics.Track("task_poll_rate_limited", map[string]interface{}{
+					"backoff_ms": rateLimitBackoff.Milliseconds(),
+				})
 				timer.Reset(rateLimitBackoff)
 				return
 			}
@@ -98,6 +102,7 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 				if err != nil {
 					logger.Error(fmt.Sprintf("[batch] heartbeat failed after token rotation: %v", err))
 					if isUnauthorized(err) {
+						analytics.Track("task_poll_auth_failed", nil)
 						logger.Error("[batch] run: tsq login to re-authenticate")
 					}
 					timer.Reset(nextInterval)

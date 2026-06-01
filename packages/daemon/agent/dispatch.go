@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/tasksquad/daemon/agentmode"
+	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/tasklog"
@@ -30,6 +31,13 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 	// Reset requested from portal — kill tmux and go idle regardless of current mode.
 	if reset, _ := resp["reset"].(bool); reset {
 		logger.Info(fmt.Sprintf("[%s] Reset requested by server — killing tmux sessions and going idle", a.Config.Name))
+		a.st.mu.Lock()
+		taskID := a.st.taskID
+		a.st.mu.Unlock()
+		analytics.Track("task_reset_requested", map[string]interface{}{
+			"task_id":    taskID,
+			"agent_name": a.Config.Name,
+		})
 		go a.handleReset()
 		return
 	}
@@ -75,6 +83,9 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 				tlog := a.st.taskLog
 				a.st.mu.Unlock()
 				logger.Info(fmt.Sprintf("[%s] User replied — resuming via tmux", a.Config.Name))
+				analytics.Track("user_reply_received", map[string]interface{}{
+					"task_id": a.st.TaskID(),
+				})
 				if tlog != nil {
 					tlog.Write(tasklog.EventUserReply{Type: "user_reply", Body: reply, Ts: tasklog.Now()}) //nolint:errcheck
 				}
@@ -89,6 +100,9 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 					tlog := a.st.taskLog
 					a.st.mu.Unlock()
 					logger.Info(fmt.Sprintf("[%s] User replied — resuming", a.Config.Name))
+					analytics.Track("user_reply_received", map[string]interface{}{
+						"task_id": a.st.TaskID(),
+					})
 					if tlog != nil {
 						tlog.Write(tasklog.EventUserReply{Type: "user_reply", Body: reply, Ts: tasklog.Now()}) //nolint:errcheck
 					}
@@ -99,7 +113,16 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 	}
 
 	if task, ok := resp["task"].(map[string]any); ok && currentMode == ModeIdle {
+		taskID, _ := task["id"].(string)
 		logger.Info(fmt.Sprintf("[%s] Task received: %s — \"%s\"", a.Config.Name, task["id"], task["subject"]))
+		a.st.mu.Lock()
+		agentID := a.st.agentID
+		a.st.mu.Unlock()
+		analytics.Track("task_received", map[string]interface{}{
+			"task_id":    taskID,
+			"agent_id":   agentID,
+			"agent_name": a.Config.Name,
+		})
 		go a.startTask(cfg, task)
 	} else {
 		logger.Debug(fmt.Sprintf("[%s] No pending tasks", a.Config.Name))
