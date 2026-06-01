@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/speechtomd"
 	"github.com/tasksquad/daemon/whisperer"
@@ -442,6 +443,15 @@ func StartDashboard(agents []AgentStatus, email, dashURL, configPath string, aut
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write(data) //nolint:errcheck
+	})
+
+	mux.HandleFunc("/api/config/analytics", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+			"api_key":    analytics.APIKey(),
+			"enabled":    analytics.Enabled(),
+			"user_email": email,
+		})
 	})
 
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {

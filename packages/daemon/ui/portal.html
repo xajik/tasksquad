@@ -4,29 +4,37 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="/icon/tasksquad-favicon.svg">
+<link rel="stylesheet" href="https://cdn.tasksquad.ai/fonts/nucleo/nucleo.css">
+<script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.3-min.js.gz"></script>
 <title>TaskSquad — Control Panel</title>
 <style>
 :root {
-  --bg:           hsl(0 0% 100%);
-  --fg:           hsl(222.2 84% 4.9%);
-  --card:         hsl(0 0% 100%);
-  --primary:      hsl(222.2 47.4% 11.2%);
-  --primary-fg:   hsl(210 40% 98%);
-  --secondary:    hsl(210 40% 96.1%);
-  --secondary-fg: hsl(222.2 47.4% 11.2%);
-  --muted:        hsl(210 40% 96.1%);
-  --muted-fg:     hsl(215.4 16.3% 46.9%);
-  --border:       hsl(214.3 31.8% 91.4%);
-  --destructive:  hsl(0 84.2% 60.2%);
-  --destructive-fg: hsl(210 40% 98%);
-  --accent-blue:  #2563eb;
-  --accent:       #7c3aed;
-  --radius:       0.5rem;
+  --bg:           #FFFFFF;
+  --fg:           #5D5D5D;
+  --strong:       #292929;
+  --subtle:       #7F7F7F;
+  --bg-selected:  #F5F5F5;
+  --border:       #E5E5E5;
+  --border-strong:#D1D1D1;
+  
+  --primary:      var(--strong);
+  --primary-fg:   #FFFFFF;
+  --secondary:    #EBEBEB;
+  --secondary-fg: var(--fg);
+  --muted:        #F8F8F8;
+  --muted-fg:     var(--subtle);
+  
+  --destructive:  #ff4d4f;
+  --destructive-fg: #ffffff;
+  
+  --accent-blue:  #007AFF;
+  --accent:       var(--accent-blue);
+  --radius:       6px;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 14px;
+  font-family: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
   line-height: 1.5;
   background: var(--muted);
   color: var(--fg);
@@ -44,7 +52,7 @@ body {
 
 header {
   background: var(--card);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   padding: 0 24px;
   height: 56px;
   display: flex;
@@ -54,7 +62,7 @@ header {
 }
 .header-brand { display: flex; align-items: center; gap: 10px; }
 .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-blue); flex-shrink: 0; }
-.brand-name { font-size: 15px; font-weight: 600; letter-spacing: -0.2px; }
+.brand-name { font-size: 18px; font-family: "SF Pro Display", sans-serif; font-weight: 500; color: var(--strong); letter-spacing: -0.2px; }
 .header-right { display: flex; align-items: center; gap: 12px; }
 
 
@@ -64,13 +72,13 @@ header {
   gap: 4px;
   padding: 0 24px;
   background: var(--card);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   flex-shrink: 0;
 }
 .tab {
   padding: 12px 16px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--muted-fg);
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -111,8 +119,8 @@ header {
 .btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
 .btn-default  { background: var(--primary); color: var(--primary-fg); }
 .btn-default:hover { opacity: 0.9; }
-.btn-secondary { background: var(--secondary); color: var(--secondary-fg); }
-.btn-secondary:hover { background: hsl(210 40% 92%); }
+.btn-secondary { background: var(--secondary); color: var(--secondary-fg); border: 1px solid var(--border); }
+.btn-secondary:hover { background: #E0E0E0; }
 .btn-ghost { background: transparent; color: var(--fg); }
 .btn-ghost:hover { background: var(--secondary); }
 .btn-destructive { background: var(--destructive); color: var(--destructive-fg); }
@@ -127,14 +135,14 @@ header {
   box-shadow: 0 1px 2px rgba(0,0,0,.04);
   overflow: hidden;
 }
-.card-header {
+.card-header { background: var(--bg-selected);
   padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
-.card-title { font-size: 13px; font-weight: 600; }
+.card-title { font-size: 14px; font-weight: 500; }
 .card-subtitle { font-size: 12px; color: var(--muted-fg); margin-top: 1px; }
 
 /* Rows */
@@ -143,19 +151,19 @@ header {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   transition: background 0.1s;
 }
 .row:last-child { border-bottom: none; }
-.row:hover { background: var(--muted); }
+.row:hover { background: var(--bg-selected); }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .dot-running  { background: #16a34a; }
 .dot-waiting  { background: #d97706; }
 .dot-idle     { background: hsl(215.4 16.3% 70%); }
 .dot-orphan   { background: var(--destructive); }
 .row-info { flex: 1; min-width: 0; }
-.row-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row-sub { font-size: 12px; color: var(--muted-fg); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-name { font-size: 13px; font-weight: 500; color: var(--strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-sub { font-size: 12px; color: var(--subtle); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
 
 /* Badges */
@@ -163,8 +171,8 @@ header {
   display: inline-flex;
   align-items: center;
   padding: 1px 8px;
-  border-radius: 9999px;
-  font-size: 11px;
+  border-radius: 4px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1.6;
 }
@@ -182,17 +190,17 @@ header {
 /* Agent detail */
 .group-header {
   padding: 7px 16px;
-  background: var(--muted);
-  border-bottom: 1px solid var(--border);
-  font-size: 11px;
-  font-weight: 600;
+  background: var(--bg-selected);
+  border-bottom: 1px solid var(--border-strong);
+  font-size: 12px;
+  font-weight: 500;
   color: var(--muted-fg);
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
 .row.expandable { cursor: pointer; }
 .expand-icon {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted-fg);
   transition: transform 0.15s;
   display: inline-block;
@@ -201,18 +209,18 @@ header {
   user-select: none;
 }
 .expand-icon.open { transform: rotate(90deg); }
-.agent-detail { display: none; background: var(--muted); border-bottom: 1px solid var(--border); padding: 8px 16px 8px 40px; }
+.agent-detail { display: none; background: var(--muted); border-bottom: 1px solid var(--border-strong); padding: 8px 16px 8px 40px; }
 .agent-detail.open { display: block; }
-.detail-row { display: flex; gap: 8px; font-size: 11.5px; line-height: 1.8; }
+.detail-row { display: flex; gap: 8px; font-size: 12px; line-height: 1.8; }
 .detail-key { font-weight: 500; min-width: 68px; flex-shrink: 0; }
-.detail-val { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 11px; color: var(--muted-fg); word-break: break-all; }
+.detail-val { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 12px; color: var(--muted-fg); word-break: break-all; }
 
 /* Log panels */
 .log-panel {
   display: none;
   margin-top: 16px;
-  background: hsl(222.2 47.4% 7%);
-  border: 1px solid hsl(222.2 30% 18%);
+  background: #0D0E11;
+  border: 1px solid #2A2C33;
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -222,22 +230,22 @@ header {
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  border-bottom: 1px solid hsl(222.2 30% 18%);
-  background: hsl(222.2 47.4% 9%);
+  border-bottom: 1px solid #2A2C33;
+  background: #14161B;
 }
-.log-title { font-size: 12px; font-weight: 500; color: hsl(210 40% 70%); font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; }
+.log-title { font-size: 12px; font-weight: 500; color: #A0AEC0; font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; }
 .log-body { max-height: 340px; overflow-y: auto; padding: 14px 16px; }
-pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-all; color: hsl(210 40% 88%); }
+pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; font-size: 12px; line-height: 1.65; white-space: pre-wrap; word-break: break-all; color: #E2E8F0; }
 
 /* Task timeline */
 .task-timeline { padding: 0; }
-.tl-event { display: flex; gap: 10px; padding: 9px 16px; border-bottom: 1px solid hsl(222.2 47.4% 13%); align-items: flex-start; }
+.tl-event { display: flex; gap: 10px; padding: 9px 16px; border-bottom: 1px solid #1E2026; align-items: flex-start; }
 .tl-event:last-child { border-bottom: none; }
 .tl-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
 .tl-body { flex: 1; min-width: 0; }
-.tl-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: hsl(210 40% 55%); }
-.tl-text { font-size: 12px; color: hsl(210 40% 88%); margin-top: 2px; white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow-y: auto; }
-.tl-ts { font-size: 10px; color: hsl(210 40% 45%); margin-top: 2px; }
+.tl-label { font-size: 12px; font-weight: 500; font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted-fg); }
+.tl-text { font-size: 13px; color: #E2E8F0; margin-top: 2px; white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow-y: auto; }
+.tl-ts { font-size: 12px; color: var(--muted-fg); margin-top: 2px; }
 .dot-user   { background: var(--accent-blue); }
 .dot-agent  { background: #16a34a; }
 .dot-end    { background: var(--muted-fg); }
@@ -261,20 +269,27 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
 /* SPEECH TO MD — Apple Siri Design */
 :root {
-  --vm-bg:     #F5F5F7;
-  --vm-card:   rgba(255,255,255,0.82);
-  --vm-ink:    #1D1D1F;
-  --vm-muted:  #6E6E73;
-  --vm-border: rgba(0,0,0,0.08);
-  --vm-blue:   #007AFF;
-  --vm-green:  #34C759;
-  --vm-red:    #FF3B30;
-  --vm-orange: #FF9F0A;
-  --siri-1:    #007AFF;
-  --siri-2:    #5E5CE6;
-  --siri-3:    #BF5AF2;
-  --siri-4:    #FF375F;
-  --siri-5:    #FF9F0A;
+  --bg:           #FFFFFF;
+  --fg:           #5D5D5D;
+  --strong:       #292929;
+  --subtle:       #7F7F7F;
+  --bg-selected:  #F5F5F5;
+  --border:       #E5E5E5;
+  --border-strong:#D1D1D1;
+  
+  --primary:      var(--strong);
+  --primary-fg:   #FFFFFF;
+  --secondary:    #EBEBEB;
+  --secondary-fg: var(--fg);
+  --muted:        #F8F8F8;
+  --muted-fg:     var(--subtle);
+  
+  --destructive:  #ff4d4f;
+  --destructive-fg: #ffffff;
+  
+  --accent-blue:  #007AFF;
+  --accent:       var(--accent-blue);
+  --radius:       6px;
 }
 #speech-view {
   background: var(--muted);
@@ -286,7 +301,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 #speech-header {
   height: 36px;
   background: var(--card);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -310,7 +325,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   height: 20px;
   padding: 0 9px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.1px;
 }
@@ -351,7 +366,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   height: 36px;
   padding: 0 16px;
   border-radius: 10px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 510;
   font-family: inherit;
   cursor: pointer;
@@ -386,7 +401,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   outline: none;
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236E6E73' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236E6E73' stroke-width="1" stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
   background-size: 13px;
@@ -442,7 +457,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   box-shadow: 0 8px 40px rgba(0,0,0,0.18);
 }
 .vm-modal-header { display: flex; align-items: center; justify-content: space-between; }
-.vm-modal-title { font-size: 16px; font-weight: 600; color: var(--ink); }
+.vm-modal-title { font-size: 16px; font-weight: 500; color: var(--ink); }
 .vm-modal-close {
   width: 28px; height: 28px; border-radius: 50%;
   border: none; background: rgba(0,0,0,0.06);
@@ -473,7 +488,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   gap: 14px;
   box-shadow: 0 1px 4px rgba(0,0,0,.06);
 }
-.vm-setup-card-title { font-size: 14px; font-weight: 600; color: var(--fg); letter-spacing: -0.2px; margin-bottom: 0; }
+.vm-setup-card-title { font-size: 13px; font-weight: 500; color: var(--fg); letter-spacing: -0.2px; margin-bottom: 0; }
 .vm-hint { font-size: 12px; color: var(--muted-fg); line-height: 1.5; }
 
 /* Prereq warning */
@@ -488,7 +503,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   flex-direction: column;
   gap: 4px;
 }
-.vm-prereq-warn strong { font-weight: 600; }
+.vm-prereq-warn strong { font-weight: 500; }
 .vm-prereq-warn code { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 12px; }
 
 /* Content panels */
@@ -507,17 +522,17 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   justify-content: space-between;
   height: 32px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   flex-shrink: 0;
 }
-.vm-panel-header-label { font-size: 12px; font-weight: 600; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.4px; }
+.vm-panel-header-label { font-size: 12px; font-weight: 500; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.4px; }
 .vm-panel-header-right { display: flex; align-items: center; gap: 8px; }
 
 /* Markdown view toggle */
 .vm-md-tabs { display: flex; gap: 2px; background: var(--muted); border-radius: 6px; padding: 2px; }
 .vm-md-tab {
   padding: 3px 10px; border: none; background: none; border-radius: 4px;
-  font-size: 11px; font-weight: 500; color: var(--muted-fg); cursor: pointer;
+  font-size: 12px; font-weight: 500; color: var(--muted-fg); cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 .vm-md-tab:hover { color: var(--fg); }
@@ -527,7 +542,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 #md-preview { display: none; flex: 1; min-height: 0; padding: 14px 16px; overflow-y: auto; }
 #md-preview.active { display: block; }
 #md-editor.hidden { display: none; }
-#md-preview h1, #md-preview h2, #md-preview h3, #md-preview h4 { margin: 1em 0 0.5em; font-weight: 600; line-height: 1.3; }
+#md-preview h1, #md-preview h2, #md-preview h3, #md-preview h4 { margin: 1em 0 0.5em; font-weight: 500; line-height: 1.3; }
 #md-preview h1 { font-size: 1.5em; }
 #md-preview h2 { font-size: 1.25em; }
 #md-preview h3 { font-size: 1.1em; }
@@ -535,7 +550,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 #md-preview ul, #md-preview ol { margin: 0.5em 0; padding-left: 1.5em; }
 #md-preview li { margin: 0.25em 0; }
 #md-preview code { background: var(--muted); padding: 2px 5px; border-radius: 3px; font-family: ui-monospace,"JetBrains Mono",Menlo,monospace; font-size: 0.9em; }
-#md-preview pre { background: hsl(222.2 47.4% 7%); padding: 12px; border-radius: 6px; overflow-x: auto; margin: 0.8em 0; }
+#md-preview pre { background: #0D0E11; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 0.8em 0; }
 #md-preview pre code { background: none; padding: 0; }
 #md-preview blockquote { border-left: 3px solid var(--accent-blue); padding-left: 12px; margin: 0.8em 0; color: var(--muted-fg); }
 #md-preview a { color: var(--accent-blue); }
@@ -569,7 +584,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 #transcript-body .chunk { margin-bottom: 2px; }
 #transcript-body .chunk.new { color: var(--fg); }
 #transcript-body .chunk.edit-mode { color: var(--accent); padding-left: 4px; border-left: 2px solid var(--accent); }
-.chunk-edit-badge { display:inline-block; font-size:9px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,transparent); border-radius:3px; padding:1px 4px; margin-right:5px; vertical-align:middle; }
+.chunk-edit-badge { display:inline-block; font-size: 12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,transparent); border-radius:3px; padding:1px 4px; margin-right:5px; vertical-align:middle; }
 
 /* Floating controls panel */
 #vm-controls-float {
@@ -591,7 +606,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 
 .vm-edit-toggle {
   display: flex; align-items: center; gap: 6px;
-  font-size: 11px; color: var(--muted-fg); cursor: pointer; user-select: none;
+  font-size: 12px; color: var(--muted-fg); cursor: pointer; user-select: none;
 }
 .vm-edit-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
 .vm-edit-toggle .toggle-track {
@@ -610,7 +625,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 /* Transcript expand/collapse */
 #transcript-panel { height: 88px; }
 #transcript-panel.expanded { height: 20vh; }
-#btn-toggle-transcript { font-size: 14px; line-height: 1; transition: transform 0.2s ease; }
+#btn-toggle-transcript { font-size: 13px; line-height: 1; transition: transform 0.2s ease; }
 #transcript-panel.expanded #btn-toggle-transcript { transform: rotate(180deg); }
 
 /* Siri orb button */
@@ -733,7 +748,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .cp-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .cp-sidebar {
   width: 180px; flex-shrink: 0;
-  background: var(--card); border-right: 1px solid var(--border);
+  background: var(--card); border-right: 1px solid var(--border-strong);
   display: flex; flex-direction: column; padding: 8px 0; overflow-y: auto;
   position: relative; z-index: 41;
 }
@@ -746,14 +761,14 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
 .cp-nav-item:hover { background: var(--muted); color: var(--fg); }
-.cp-nav-item.active { background: hsl(214 80% 96%); color: var(--accent-blue); border-left-color: var(--accent-blue); }
+.cp-nav-item.active { background: #E8F2FF; color: var(--accent-blue); border-left-color: var(--accent-blue); }
 .cp-nav-label { flex: 1; }
 .cp-nav-count {
-  font-size: 11px; font-weight: 600;
+  font-size: 12px; font-weight: 500;
   background: var(--secondary); color: var(--muted-fg);
   padding: 1px 6px; border-radius: 9999px; min-width: 20px; text-align: center;
 }
-.cp-nav-item.active .cp-nav-count { background: hsl(214 80% 88%); color: var(--accent-blue); }
+.cp-nav-item.active .cp-nav-count { background: #D1E4FF; color: var(--accent-blue); }
 .cp-sidebar-footer { margin-top: auto; padding: 10px; border-top: 1px solid var(--border); }
 .cp-main { flex: 1; overflow-y: auto; padding: 16px 20px; background: var(--muted); }
 .cp-section { display: none; }
@@ -762,7 +777,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 /* ── Status bar ──────────────────────────────────────────────────── */
 .status-bar {
   padding: 5px 20px 5px 196px;
-  background: var(--card); border-bottom: 1px solid var(--border);
+  background: var(--card); border-bottom: 1px solid var(--border-strong);
   font-size: 12px; color: var(--muted-fg); letter-spacing: -0.1px;
   flex-shrink: 0;
 }
@@ -793,7 +808,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 /* ── Collapsible group headers ───────────────────────────────────── */
 .group-header { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
 .group-header:hover { background: hsl(215 20% 92%); }
-.group-collapse-icon { font-size: 9px; color: var(--muted-fg); transition: transform 0.15s; flex-shrink: 0; }
+.group-collapse-icon { font-size: 12px; color: var(--muted-fg); transition: transform 0.15s; flex-shrink: 0; }
 .group-collapse-icon.open { transform: rotate(90deg); }
 
 /* ── Task pagination ─────────────────────────────────────────────── */
@@ -801,14 +816,14 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .page-info { font-size: 12px; color: var(--muted-fg); }
 
 /* ── Inline log (daemon logs section) ────────────────────────────── */
-.inline-log-body { max-height: calc(100vh - 200px); overflow-y: auto; background: hsl(222.2 47.4% 7%); padding: 14px 16px; }
-.inline-log-body pre { font-family: ui-monospace,"JetBrains Mono",Menlo,Monaco,monospace; font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-all; color: hsl(210 40% 88%); }
+.inline-log-body { max-height: calc(100vh - 200px); overflow-y: auto; background: #0D0E11; padding: 14px 16px; }
+.inline-log-body pre { font-family: ui-monospace,"JetBrains Mono",Menlo,Monaco,monospace; font-size: 12px; line-height: 1.65; white-space: pre-wrap; word-break: break-all; color: #E2E8F0; }
 
 /* ── Unified log drawer ──────────────────────────────────────────── */
 .log-drawer {
   position: fixed; top: 97px; right: 0;
   width: 480px; max-width: 92vw; height: calc(100vh - 97px);
-  background: hsl(222.2 47.4% 7%); border-left: 1px solid hsl(222.2 30% 18%);
+  background: #0D0E11; border-left: 1px solid hsl(222.2 30% 18%);
   display: flex; flex-direction: column; z-index: 40;
   transform: translateX(100%); transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
 }
@@ -816,23 +831,23 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .log-tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; min-height: 0; }
 .log-tab-content.active { display: flex; }
 .log-drawer-sub {
-  padding: 5px 14px; font-size: 11px;
+  padding: 5px 14px; font-size: 12px;
   font-family: ui-monospace,"JetBrains Mono",Menlo,monospace;
-  color: hsl(210 40% 50%); background: hsl(222.2 47.4% 8%);
-  border-bottom: 1px solid hsl(222.2 30% 15%);
+  color: hsl(210 40% 50%); background: #0A0B0E;
+  border-bottom: 1px solid #1E2026;
   flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .log-drawer-action-bar {
   display: flex; align-items: center; gap: 8px; padding: 6px 14px;
-  background: hsl(222.2 47.4% 9%); border-bottom: 1px solid hsl(222.2 30% 16%); flex-shrink: 0;
+  background: #14161B; border-bottom: 1px solid #23252C; flex-shrink: 0;
 }
 .log-drawer .log-body { flex: 1; max-height: none; overflow-y: auto; }
 .speech-log-item {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 14px; border-bottom: 1px solid hsl(222.2 30% 14%);
-  font-size: 12px; color: hsl(210 40% 70%);
+  padding: 8px 14px; border-bottom: 1px solid #1A1C21;
+  font-size: 12px; color: #A0AEC0;
 }
-.speech-log-item .vi-date { flex: 1; font-family: ui-monospace,"JetBrains Mono",Menlo,monospace; font-size: 11px; }
+.speech-log-item .vi-date { flex: 1; font-family: ui-monospace,"JetBrains Mono",Menlo,monospace; font-size: 12px; }
 .speech-log-item .vi-btns { display: flex; gap: 4px; }
 .drawer-backdrop { position: fixed; inset: 97px 0 0 0; background: rgba(0,0,0,.18); z-index: 39; }
 
@@ -847,7 +862,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 /* ── Clickable path links ─────────────────────────────────────────── */
 .link-btn {
   background: none; border: none; cursor: pointer;
-  color: var(--accent-blue); font-size: 11px; font-family: inherit;
+  color: var(--accent-blue); font-size: 12px; font-family: inherit;
   padding: 0 4px; border-radius: 3px;
   text-decoration: underline; text-decoration-color: transparent;
   transition: text-decoration-color 0.1s, background 0.1s;
@@ -863,28 +878,28 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 }
 .metric-card:hover { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(37,99,235,.08); }
 .metric-card.alert { border-color: var(--destructive); background: #fff5f5; }
-.metric-val { font-size: 22px; font-weight: 700; line-height: 1; color: var(--fg); letter-spacing: -0.5px; }
-.metric-label { font-size: 11px; color: var(--muted-fg); margin-top: 3px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
-.metric-sub { font-size: 11px; color: var(--muted-fg); margin-top: 2px; }
+.metric-val { font-size: 24px; font-family: "SF Pro Display", sans-serif; font-weight: 500; line-height: 1; color: var(--fg); letter-spacing: -0.5px; }
+.metric-label { font-size: 12px; color: var(--muted-fg); margin-top: 3px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+.metric-sub { font-size: 12px; color: var(--muted-fg); margin-top: 2px; }
 .metric-card.alert .metric-val { color: var(--destructive); }
 
 /* ── Inline mini-log (in agent detail) ───────────────────────────── */
 .mini-log { margin: 8px 0 2px; background: hsl(222.2 47.4% 6%); border-radius: 4px; overflow: hidden; }
 .mini-log-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 4px 10px; background: hsl(222.2 47.4% 8%);
-  border-bottom: 1px solid hsl(222.2 30% 14%);
+  padding: 4px 10px; background: #0A0B0E;
+  border-bottom: 1px solid #1A1C21;
 }
-.mini-log-label { font-size: 10px; color: hsl(210 40% 45%); font-family: ui-monospace,'JetBrains Mono',Menlo,monospace; }
+.mini-log-label { font-size: 12px; color: var(--muted-fg); font-family: ui-monospace,'JetBrains Mono',Menlo,monospace; }
 .mini-log pre {
   padding: 8px 10px; max-height: 130px; overflow-y: auto;
-  font-size: 10.5px; color: hsl(210 40% 78%);
+  font-size: 12px; color: hsl(210 40% 78%);
   white-space: pre-wrap; word-break: break-all; margin: 0;
 }
 
 /* ── Transcript renderer ──────────────────────────────────────────── */
 .tx-entry { margin-bottom: 18px; }
-.tx-role { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; margin-bottom: 4px; }
+.tx-role { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; font-weight: 500; margin-bottom: 4px; }
 .tx-role.tx-user { color: hsl(214 80% 62%); }
 .tx-role.tx-claude { color: hsl(152 60% 45%); }
 .tx-role.tx-gemini { color: hsl(247 70% 65%); }
@@ -894,27 +909,27 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .tx-body.tx-claude { border-color: hsl(152 60% 45% / .3); }
 .tx-body.tx-gemini { border-color: hsl(247 70% 60% / .3); }
 .tx-body.tx-system { border-color: hsl(210 20% 40% / .2); }
-.tx-text { font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: hsl(210 30% 88%); }
-.tx-system-line { font-size: 11px; color: hsl(210 20% 50%); font-style: italic; padding: 5px 0; border-top: 1px solid hsl(222 30% 15%); margin-top: 10px; }
+.tx-text { font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: hsl(210 30% 88%); }
+.tx-system-line { font-size: 12px; color: hsl(210 20% 50%); font-style: italic; padding: 5px 0; border-top: 1px solid hsl(222 30% 15%); margin-top: 10px; }
 /* ── Tool call block ──────────────────────────────────────────────── */
 .tx-tool { border: 1px solid hsl(222 30% 20%); border-radius: 5px; overflow: hidden; margin: 6px 0; }
 .tx-tool-hdr {
   display: flex; align-items: center; gap: 6px;
   padding: 5px 10px; background: hsl(222 47% 8%);
-  cursor: pointer; font-size: 11px;
+  cursor: pointer; font-size: 12px;
   font-family: ui-monospace,'JetBrains Mono',Menlo,monospace;
   border-bottom: 1px solid hsl(222 30% 12%);
 }
 .tx-tool-hdr:hover { background: hsl(222 47% 10%); }
-.tx-tool-nm { color: hsl(210 70% 75%); font-weight: 600; }
-.tx-tool-status { font-size: 10px; margin-left: auto; }
+.tx-tool-nm { color: hsl(210 70% 75%); font-weight: 500; }
+.tx-tool-status { font-size: 12px; margin-left: auto; }
 .tx-tool-status.ok { color: hsl(152 60% 45%); }
 .tx-tool-status.err { color: hsl(0 70% 60%); }
 .tx-tool-body { display: none; }
 .tx-tool-body.open { display: block; }
-.tx-code-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; padding: 3px 10px; color: hsl(210 30% 45%); background: hsl(222 30% 6%); border-bottom: 1px solid hsl(222 30% 12%); }
+.tx-code-lbl { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 500; padding: 3px 10px; color: hsl(210 30% 45%); background: hsl(222 30% 6%); border-bottom: 1px solid hsl(222 30% 12%); }
 .tx-code {
-  font-size: 10.5px; font-family: ui-monospace,'JetBrains Mono',Menlo,monospace;
+  font-size: 12px; font-family: ui-monospace,'JetBrains Mono',Menlo,monospace;
   padding: 8px 10px; margin: 0; white-space: pre-wrap; word-break: break-all;
   max-height: 180px; overflow-y: auto;
 }
@@ -925,17 +940,17 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .tx-thoughts { border: 1px solid hsl(247 50% 28% / .5); border-radius: 5px; overflow: hidden; margin: 6px 0; }
 .tx-thoughts-hdr {
   display: flex; align-items: center; gap: 6px; padding: 5px 10px;
-  background: hsl(247 40% 8%); cursor: pointer; font-size: 11px;
+  background: hsl(247 40% 8%); cursor: pointer; font-size: 12px;
   color: hsl(247 60% 65%); font-style: italic;
 }
 .tx-thoughts-hdr:hover { background: hsl(247 40% 10%); }
 .tx-thoughts-body { display: none; }
 .tx-thoughts-body.open { display: block; }
 .tx-thought-item { padding: 6px 12px; border-bottom: 1px solid hsl(247 30% 12%); }
-.tx-thought-subj { font-size: 10.5px; font-weight: 700; color: hsl(247 60% 65%); margin-bottom: 2px; }
-.tx-thought-desc { font-size: 11px; color: hsl(210 20% 65%); line-height: 1.5; white-space: pre-wrap; }
+.tx-thought-subj { font-size: 12px; font-weight: 500; color: hsl(247 60% 65%); margin-bottom: 2px; }
+.tx-thought-desc { font-size: 12px; color: hsl(210 20% 65%); line-height: 1.5; white-space: pre-wrap; }
 /* ── Token footer ─────────────────────────────────────────────────── */
-.tx-tokens { display: flex; gap: 14px; font-size: 10px; color: hsl(210 20% 50%); padding-top: 6px; border-top: 1px solid hsl(222 30% 12%); margin-top: 6px; flex-wrap: wrap; }
+.tx-tokens { display: flex; gap: 14px; font-size: 12px; color: hsl(210 20% 50%); padding-top: 6px; border-top: 1px solid hsl(222 30% 12%); margin-top: 6px; flex-wrap: wrap; }
 .tx-tokens span b { color: hsl(210 20% 65%); }
 /* ── Transcript container ─────────────────────────────────────────── */
 #transcript-view { padding: 14px 16px; }
@@ -945,12 +960,12 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .dialog-overlay.open { opacity: 1; visibility: visible; }
 .dialog { background: var(--card); border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-width: 400px; width: 90%; transform: scale(0.95); transition: transform 0.2s; }
 .dialog-overlay.open .dialog { transform: scale(1); }
-.dialog-header { padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
-.dialog-title { font-size: 16px; font-weight: 600; }
+.dialog-header { padding: 16px 20px 12px; border-bottom: 1px solid var(--border-strong); }
+.dialog-title { font-size: 16px; font-weight: 500; }
 .dialog-description { font-size: 13px; color: var(--muted-fg); margin-top: 4px; }
 .dialog-body { padding: 16px 20px; }
 .dialog-footer { padding: 12px 20px 16px; display: flex; gap: 8px; justify-content: flex-end; }
-.dialog-btn { height: 36px; padding: 0 16px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--fg); }
+.dialog-btn { height: 36px; padding: 0 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--fg); }
 .dialog-btn:hover { background: var(--secondary); }
 .dialog-btn-primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
 .dialog-btn-destructive { background: var(--destructive); color: var(--destructive-fg); border-color: var(--destructive); }
@@ -961,66 +976,66 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 /* Run Inspector Panel */
 .run-inspector { position: fixed; top: 97px; left: 196px; right: 0; bottom: 0; background: hsl(222.2 47.4% 4%); z-index: 38; display: none; flex-direction: column; transform: translateX(-100%); transition: transform 0.25s; }
 .run-inspector.open { display: flex; transform: translateX(0); }
-.run-inspector-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: hsl(222.2 47.4% 8%); border-bottom: 1px solid hsl(222.2 30% 15%); flex-shrink: 0; }
-.run-inspector-title { font-size: 13px; font-weight: 600; color: hsl(210 40% 90%); display: flex; align-items: center; gap: 8px; }
+.run-inspector-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #0A0B0E; border-bottom: 1px solid #1E2026; flex-shrink: 0; }
+.run-inspector-title { font-size: 13px; font-weight: 500; color: var(--bg-selected); display: flex; align-items: center; gap: 8px; }
 .run-inspector-title .ri-status { width: 8px; height: 8px; border-radius: 50%; }
 .run-inspector-title .ri-status.running { background: #16a34a; }
 .run-inspector-title .ri-status.waiting { background: #d97706; }
 .run-inspector-title .ri-status.idle { background: hsl(215.4 16.3% 60%); }
-.run-inspector-close { background: none; border: none; color: hsl(210 40% 50%); cursor: pointer; font-size: 18px; padding: 4px 8px; border-radius: 4px; }
+.run-inspector-close { background: none; border: none; color: hsl(210 40% 50%); cursor: pointer; font-size: 18px; font-family: "SF Pro Display", sans-serif; padding: 4px 8px; border-radius: 4px; }
 .run-inspector-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
 .ri-section { margin-bottom: 16px; }
-.ri-section-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: hsl(210 40% 45%); margin-bottom: 8px; }
+.ri-section-title { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: .06em; color: var(--muted-fg); margin-bottom: 8px; }
 .ri-meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .ri-meta-item { background: hsl(222.2 47.4% 6%); border-radius: 6px; padding: 8px 10px; }
-.ri-meta-label { font-size: 10px; color: hsl(210 40% 45%); text-transform: uppercase; }
-.ri-meta-value { font-size: 13px; color: hsl(210 40% 85%); font-weight: 500; margin-top: 2px; }
+.ri-meta-label { font-size: 12px; color: var(--muted-fg); text-transform: uppercase; }
+.ri-meta-value { font-size: 13px; color: var(--fg); font-weight: 500; margin-top: 2px; }
 .run-tree { font-family: ui-monospace,"JetBrains Mono",Menlo,monospace; }
 .run-node { margin-bottom: 2px; cursor: pointer; }
 .run-node-header { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px; }
 .run-node-header:hover { background: hsl(222.2 47.4% 10%); }
-.run-node-toggle { width: 14px; font-size: 10px; color: hsl(210 40% 45%); text-align: center; flex-shrink: 0; }
-.run-node-toggle.expanded { color: hsl(210 40% 70%); }
+.run-node-toggle { width: 14px; font-size: 12px; color: var(--muted-fg); text-align: center; flex-shrink: 0; }
+.run-node-toggle.expanded { color: #A0AEC0; }
 .run-node-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .run-node-dot.success { background: #16a34a; }
 .run-node-dot.error { background: #dc2626; }
 .run-node-dot.running { background: #2563eb; }
 .run-node-dot.waiting { background: #d97706; }
 .run-node-name { font-size: 12px; color: hsl(210 40% 80%); flex: 1; }
-.run-node-duration { font-size: 10px; color: hsl(210 40% 50%); }
+.run-node-duration { font-size: 12px; color: hsl(210 40% 50%); }
 .run-node-children { margin-left: 20px; border-left: 1px solid hsl(222.2 30% 12%); padding-left: 6px; display: none; }
 .run-node-children.expanded { display: block; }
 .mini-log { margin: 8px 0 2px; background: hsl(222.2 47.4% 6%); border-radius: 4px; overflow: hidden; }
-.mini-log-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 10px; background: hsl(222.2 47.4% 8%); border-bottom: 1px solid hsl(222.2 30% 14%); }
-.mini-log-label { font-size: 10px; color: hsl(210 40% 45%); }
-.mini-log pre { padding: 8px 10px; max-height: 200px; overflow-y: auto; font-size: 10.5px; color: hsl(210 40% 78%); white-space: pre-wrap; margin: 0; }
+.mini-log-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 10px; background: #0A0B0E; border-bottom: 1px solid #1A1C21; }
+.mini-log-label { font-size: 12px; color: var(--muted-fg); }
+.mini-log pre { padding: 8px 10px; max-height: 200px; overflow-y: auto; font-size: 12px; color: hsl(210 40% 78%); white-space: pre-wrap; margin: 0; }
 
 .trace-waterfall { margin-top: 12px; }
 .trace-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.trace-bar-label { width: 120px; font-size: 11px; color: hsl(210 40% 70%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
-.trace-bar-track { flex: 1; height: 18px; background: hsl(222.2 47.4% 8%); border-radius: 3px; overflow: hidden; position: relative; }
+.trace-bar-label { width: 120px; font-size: 12px; color: #A0AEC0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.trace-bar-track { flex: 1; height: 18px; background: #0A0B0E; border-radius: 3px; overflow: hidden; position: relative; }
 .trace-bar-fill { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 2px; min-width: 2px; }
 .trace-bar-fill.agent { background: #7c3aed; }
 .trace-bar-fill.llm { background: #2563eb; }
 .trace-bar-fill.tool { background: #16a34a; }
 .trace-bar-fill.wait { background: #d97706; }
-.trace-bar-duration { font-size: 10px; color: hsl(210 40% 50%); width: 50px; text-align: right; }
+.trace-bar-duration { font-size: 12px; color: hsl(210 40% 50%); width: 50px; text-align: right; }
 
 .row.error-row { background: rgba(220, 38, 38, 0.08); border-left: 3px solid #dc2626; }
-.error-badge { display: inline-flex; align-items: center; gap: 4px; background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 500; }
-.error-preview { font-size: 11px; color: #dc2626; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.error-badge { display: inline-flex; align-items: center; gap: 4px; background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+.error-preview { font-size: 12px; color: #dc2626; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .supervisor-cycle { background: hsl(262 60% 8%); border: 1px solid hsl(262 40% 20%); border-radius: 6px; margin-bottom: 8px; overflow: hidden; }
 .supervisor-cycle-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: hsl(262 40% 12%); cursor: pointer; }
 .supervisor-cycle-header:hover { background: hsl(262 40% 15%); }
-.sup-cycle-status { font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.sup-cycle-status { font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
 .sup-cycle-status.resolved { color: #16a34a; }
 .sup-cycle-status.stuck { color: #d97706; }
 .sup-cycle-status.failed { color: #dc2626; }
-.sup-cycle-time { font-size: 10px; color: hsl(210 40% 50%); }
-.supervisor-cycle-body { padding: 10px 12px; font-size: 11px; }
+.sup-cycle-time { font-size: 12px; color: hsl(210 40% 50%); }
+.supervisor-cycle-body { padding: 10px 12px; font-size: 12px; }
 .sup-cycle-detail { margin-bottom: 6px; }
-.sup-cycle-detail-label { color: hsl(210 40% 50%); font-size: 10px; }
+.sup-cycle-detail-label { color: hsl(210 40% 50%); font-size: 12px; }
 .sup-cycle-detail-value { color: hsl(210 40% 80%); }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .dot-running { background: #16a34a; }
@@ -1031,6 +1046,19 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 .time-range-picker { display: flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 2px 4px; }
 .time-range-picker select { border: none; background: transparent; font-size: 12px; color: var(--fg); cursor: pointer; outline: none; }
 
+
+[class^="nc-icon"], [class*=" nc-icon"] {
+  font-family: 'nucleo' !important;
+  speak: none;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  stroke-width: 1px;
+}
 </style>
 </head>
 <body>
@@ -1084,8 +1112,8 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
       <span class="cp-nav-count" id="nav-count-tools"></span>
     </button>
     <div class="cp-sidebar-footer">
-      <button class="btn btn-ghost btn-sm" style="width:100%;font-size:12px" onclick="openConfigFolder()">Edit Config</button>
-      <button class="btn btn-ghost btn-sm" style="width:100%;font-size:12px;color:hsl(0 60% 55%);margin-top:4px" onclick="doLogout()">Logout</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;font-size: 12px" onclick="openConfigFolder()">Edit Config</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;font-size: 12px;color:hsl(0 60% 55%);margin-top:4px" onclick="doLogout()">Logout</button>
     </div>
   </nav>
 
@@ -1110,7 +1138,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
         <div class="metric-sub" id="ms-tasks">total recorded</div>
       </div>
       <div class="metric-card" style="cursor:default" title="Last data refresh">
-        <div class="metric-val" id="mv-refresh" style="font-size:15px;font-weight:600;color:var(--accent-blue)">●</div>
+        <div class="metric-val" id="mv-refresh" style="font-size: 14px;font-weight:600;color:var(--accent-blue)">●</div>
         <div class="metric-label">Live</div>
         <div class="metric-sub" id="ms-refresh">—</div>
       </div>
@@ -1260,9 +1288,9 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   <div class="log-tab-content active" id="logtab-agents">
     <div class="log-drawer-action-bar">
       <span class="log-title" id="log-title" style="flex:1;color:hsl(210 40% 60%)">Select an agent and click Logs</span>
-      <button id="btn-toggle-raw" class="btn btn-ghost btn-sm" style="color:hsl(210 40% 60%);display:none;font-size:10px" onclick="toggleRawLog()">Raw</button>
+      <button id="btn-toggle-raw" class="btn btn-ghost btn-sm" style="color:hsl(210 40% 60%);display:none;font-size: 12px" onclick="toggleRawLog()">Raw</button>
       <button id="btn-open-log-file" class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%);display:none" onclick="openCurrentLogFile()">Open ↗</button>
-      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 45%);padding:0 8px" onclick="closeLog()">✕</button>
+      <button class="btn btn-ghost btn-sm" style="color:var(--muted-fg);padding:0 8px" onclick="closeLog()"><i class="nc-icon nc-simple-remove"></i></button>
     </div>
     <div class="log-body" id="log-body">
       <pre id="log-pre" style="color:hsl(210 40% 88%);padding:14px 16px;margin:0"></pre>
@@ -1275,7 +1303,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <div class="log-drawer-action-bar">
       <span class="log-title" style="flex:1">daemon · today</span>
       <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%)" onclick="loadDaemonTab()">Reload</button>
-      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 45%);padding:0 8px" onclick="closeLog()">✕</button>
+      <button class="btn btn-ghost btn-sm" style="color:var(--muted-fg);padding:0 8px" onclick="closeLog()"><i class="nc-icon nc-simple-remove"></i></button>
     </div>
     <div class="log-body"><pre id="log-pre-daemon" style="color:hsl(210 40% 88%);padding:14px 16px;margin:0">Click Reload to view</pre></div>
   </div>
@@ -1284,10 +1312,10 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   <div class="log-tab-content" id="logtab-speech">
     <div class="log-drawer-action-bar">
       <span class="log-title" style="flex:1">Speech Sessions</span>
-      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 45%);padding:0 8px" onclick="closeLog()">✕</button>
+      <button class="btn btn-ghost btn-sm" style="color:var(--muted-fg);padding:0 8px" onclick="closeLog()"><i class="nc-icon nc-simple-remove"></i></button>
     </div>
     <div style="overflow-y:auto;flex:1" id="speech-log-list">
-      <div class="empty" style="color:hsl(210 40% 55%)">Loading…</div>
+      <div class="empty" style="color:var(--muted-fg)">Loading…</div>
     </div>
   </div>
 
@@ -1295,11 +1323,11 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
   <div class="log-tab-content" id="logtab-tasks">
     <div class="log-drawer-action-bar">
       <span id="task-title" class="log-title" style="flex:1">Task Timeline</span>
-      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%);padding:0 8px;font-size:11px" onclick="loadTaskRaw()">Raw JSON</button>
-      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 45%);padding:0 8px" onclick="closeLog()">✕</button>
+      <button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 70%);padding:0 8px;font-size: 12px" onclick="loadTaskRaw()">Raw JSON</button>
+      <button class="btn btn-ghost btn-sm" style="color:var(--muted-fg);padding:0 8px" onclick="closeLog()"><i class="nc-icon nc-simple-remove"></i></button>
     </div>
     <div class="log-body" id="task-body">
-      <div style="padding:16px;color:hsl(210 40% 50%);font-size:12px">Click any task in Task History to view its timeline here.</div>
+      <div style="padding:16px;color:hsl(210 40% 50%);font-size: 12px">Click any task in Task History to view its timeline here.</div>
     </div>
   </div>
 </div>
@@ -1349,13 +1377,13 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <div class="ri-section">
       <div class="ri-section-title">Trace Waterfall</div>
       <div class="trace-waterfall" id="ri-trace-waterfall">
-        <div style="color:hsl(210 40% 50%);font-size:12px">Loading trace...</div>
+        <div style="color:hsl(210 40% 50%);font-size: 12px">Loading trace...</div>
       </div>
     </div>
     <div class="ri-section">
       <div class="ri-section-title">Run Tree</div>
       <div class="run-tree" id="ri-run-tree">
-        <div style="color:hsl(210 40% 50%);font-size:12px">Loading...</div>
+        <div style="color:hsl(210 40% 50%);font-size: 12px">Loading...</div>
       </div>
     </div>
     <div class="ri-section" id="ri-logs-section">
@@ -1391,7 +1419,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
     <div class="vm-form-group">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <label class="vm-label" style="margin:0" for="model-select">Whisper model</label>
-        <a id="btn-open-models-dir" href="#" style="font-size:11px;color:var(--accent);text-decoration:none">Open folder</a>
+        <a id="btn-open-models-dir" href="#" style="font-size: 12px;color:var(--accent);text-decoration:none">Open folder</a>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <select id="model-select" class="vm-select">
@@ -1445,7 +1473,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
       <div class="vm-panel-header">
         <span class="vm-panel-header-label">Markdown</span>
         <div class="vm-panel-header-right">
-          <span id="md-filename" style="font-size:11px;color:var(--muted-fg)"></span>
+          <span id="md-filename" style="font-size: 13px;color:var(--muted-fg)"></span>
           <div class="vm-md-tabs" id="md-tabs">
             <button class="vm-md-tab active" data-view="code" onclick="setMdView('code')">Code</button>
             <button class="vm-md-tab" data-view="preview" onclick="setMdView('preview')">Preview</button>
@@ -1488,7 +1516,7 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
       <div class="siri-orb-bg"></div>
       <div class="siri-orb-gradient"></div>
       <div class="siri-orb-center">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
           <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
           <line x1="12" y1="19" x2="12" y2="22"/>
@@ -1528,12 +1556,50 @@ pre { font-family: ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace; fon
 </div>
 
 <script>
+/* ========== ANALYTICS ========== */
+let _amplitudeReady = false;
+
+async function initAnalytics() {
+  if (typeof amplitude === 'undefined') return;
+  try {
+    const res = await fetch('/api/config/analytics');
+    if (!res.ok) return;
+    const { api_key, enabled, user_email } = await res.json();
+    if (!enabled || !api_key) return;
+    amplitude.init(api_key, undefined, {
+      autocapture: {
+        attribution: true,
+        pageViews: true,
+        sessions: true,
+        elementInteractions: true,
+        networkTracking: false,
+        webVitals: true,
+        frustrationInteractions: { thrashedCursor: true, errorClicks: true, deadClicks: true, rageClicks: true }
+      }
+    });
+    if (user_email) {
+      amplitude.setUserId(user_email);
+      const identify = new amplitude.Identify();
+      identify.set('email', user_email);
+      amplitude.identify(identify);
+    }
+    _amplitudeReady = true;
+    amplitude.track('portal_opened');
+  } catch(_) {}
+}
+
+function tsqTrack(name, props) {
+  if (!_amplitudeReady) return;
+  amplitude.track(name, props || {});
+}
+
 /* ========== TAB SWITCHING ========== */
 function switchTab(el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   el.classList.add('active');
   document.getElementById(el.dataset.view + '-view').classList.add('active');
+  tsqTrack('portal_tab_switched', { tab: el.dataset.view });
   if (el.dataset.view === 'speech') initSpeechPage();
   else loadDashboard();
 }
@@ -1635,6 +1701,7 @@ function navTo(section) {
     el.classList.toggle('active', el.dataset.section === section));
   document.querySelectorAll('.cp-section').forEach(el =>
     el.classList.toggle('active', el.id === 'section-' + section));
+  tsqTrack('portal_section_viewed', { section });
   if (section === 'daemon-logs') showDaemonLogInline();
   if (section === 'tools') loadToolsSection();
   if (section === 'tasks') loadTasks();
@@ -1672,9 +1739,9 @@ function renderAgents(agents) {
   for (const dir of groupOrder) {
     const collapsed = collapsedGroups.has(dir);
     const iconCls = 'group-collapse-icon' + (collapsed ? '' : ' open');
-    const openDirBtn = dir !== '(unknown)' ? '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:0 6px;height:20px;margin-left:4px" onclick="event.stopPropagation();openFolder(' + q(dir) + ')" title="Open in Finder">↗</button>' : '';
+    const openDirBtn = dir !== '(unknown)' ? '<button class="btn btn-ghost btn-sm" style="font-size: 12px;padding:0 6px;height:20px;margin-left:4px" onclick="event.stopPropagation();openFolder(' + q(dir) + ')" title="Open in Finder"><i class="nc-icon nc-tail-right"></i></button>' : '';
     html += '<div class="group-header" onclick="toggleGroupCollapse(' + q(dir) + ')">'
-          + '<span class="' + iconCls + '">▶</span>'
+          + '<span class="' + iconCls + '"><i class="nc-icon nc-minimal-right"></i></span>'
           + '<span style="flex:1">' + x(shortPath(dir)) + '</span>'
           + openDirBtn + '</div>';
     html += '<div class="group-body" id="grp-' + encodeURIComponent(dir) + '"' + (collapsed ? ' style="display:none"' : '') + '>';
@@ -1683,7 +1750,7 @@ function renderAgents(agents) {
       lastAgentsByIdx[i] = a;
       const logBtn = a.task_id ? '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ',' + q(a.log_path||'') + ')">Logs</button>' : '';
       const inspectBtn = a.task_id ? '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openRunInspector(' + q(a.name) + ',' + q(a.task_id) + ',' + q(a.log_path||'') + ')">Inspect</button>' : '<button class="btn btn-ghost btn-sm" disabled style="opacity:0.4">Inspect</button>';
-      const pendingBadge = (a.pending_steps && a.pending_steps.length) ? '<span class="badge badge-waiting" style="font-size:10px">' + a.pending_steps.length + ' pending</span>' : '';
+      const pendingBadge = (a.pending_steps && a.pending_steps.length) ? '<span class="badge badge-waiting" style="font-size: 12px">' + a.pending_steps.length + ' pending</span>' : '';
       const taskEntry = a.task_id ? allTasks.find(t => t.task_id === a.task_id) : null;
       const taskLabel = taskEntry?.subject
         ? taskEntry.subject.slice(0, 42) + (taskEntry.subject.length > 42 ? '…' : '')
@@ -1696,7 +1763,7 @@ function renderAgents(agents) {
       
       const errorBadge = isStuck ? '<span class="error-badge">⚠ Stuck</span>' : '';
       html += '<div class="' + rowClass + '" onclick="toggleAgentDetail(' + i + ')">'
-        + '<span class="expand-icon" id="ei-' + i + '">▶</span>'
+        + '<span class="expand-icon" id="ei-' + i + '"><i class="nc-icon nc-minimal-right"></i></span>'
         + '<div class="status-dot ' + dotClass(a.mode) + '"></div>'
         + '<div class="row-info"><div class="row-name">' + x(a.name) + '</div><div class="row-sub">' + x(subTxt) + (isStuck ? '<div class="error-preview">Waiting >5min — may need input</div>' : '') + '</div></div>'
         + '<div class="row-actions">' + pendingBadge + errorBadge + '<span class="badge ' + badgeClass(a.mode) + '">' + modeLabel(a.mode) + '</span>' + inspectBtn + logBtn + '</div>'
@@ -1704,7 +1771,7 @@ function renderAgents(agents) {
         + '<div class="agent-detail" id="ad-' + i + '">'
         + (a.command  ? '<div class="detail-row"><span class="detail-key">Command</span><span class="detail-val">' + x(a.command)  + '</span></div>' : '')
         + (a.provider ? '<div class="detail-row"><span class="detail-key">Provider</span><span class="detail-val">' + x(a.provider) + '</span></div>' : '')
-        + (a.task_id  ? '<div class="detail-row"><span class="detail-key">Task ID</span><span class="detail-val" style="flex:1;font-size:10.5px">' + x(a.task_id) + '</span>'
+        + (a.task_id  ? '<div class="detail-row"><span class="detail-key">Task ID</span><span class="detail-val" style="flex:1;font-size: 12px">' + x(a.task_id) + '</span>'
             + '<button class="link-btn" onclick="event.stopPropagation();copyToClipboard(' + q(a.task_id) + ')">Copy</button>'
             + '<button class="link-btn" onclick="event.stopPropagation();showTask(' + q(a.task_id) + ',' + q(a.name) + ')">Timeline →</button></div>' : '')
         + (a.id       ? '<div class="detail-row"><span class="detail-key">Agent ID</span><span class="detail-val" style="flex:1">' + x(a.id) + '</span>'
@@ -1713,7 +1780,7 @@ function renderAgents(agents) {
             ? '<div class="detail-row"><span class="detail-key">Pending</span><div style="flex:1">'
               + a.pending_steps.map(s => '<div class="detail-val" style="padding:1px 0">▸ ' + x(String(s)) + '</div>').join('')
               + '</div></div>' : '')
-        + (a.log_path ? '<div class="detail-row"><span class="detail-key">Log</span><span class="detail-val" style="flex:1;overflow:hidden;text-overflow:ellipsis;font-size:10px">' + x(a.log_path) + '</span>'
+        + (a.log_path ? '<div class="detail-row"><span class="detail-key">Log</span><span class="detail-val" style="flex:1;overflow:hidden;text-overflow:ellipsis;font-size: 12px">' + x(a.log_path) + '</span>'
             + (a.task_id ? '<button class="link-btn" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ',' + q(a.log_path) + ')">View</button>' : '')
             + '<button class="link-btn" onclick="event.stopPropagation();openFolder(' + q(a.log_path) + ')">Open ↗</button></div>' : '')
         + (a.work_dir ? '<div class="detail-row"><span class="detail-key">Work Dir</span><span class="detail-val" style="flex:1;overflow:hidden;text-overflow:ellipsis">' + x(shortPath(a.work_dir)) + '</span>'
@@ -1721,7 +1788,7 @@ function renderAgents(agents) {
         + (a.task_id && a.log_path
             ? '<div class="mini-log" id="aml-' + i + '">'
               + '<div class="mini-log-header"><span class="mini-log-label">log tail · last 25 lines</span>'
-              + '<button class="link-btn" style="font-size:10px" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ',' + q(a.log_path) + ')">Full log →</button></div>'
+              + '<button class="link-btn" style="font-size: 12px" onclick="event.stopPropagation();showAgentLog(event,' + q(a.name) + ',' + q(a.task_id) + ',' + q(a.log_path) + ')">Full log →</button></div>'
               + '<pre>loading…</pre></div>' : '')
         + '</div>';
     }
@@ -1748,6 +1815,7 @@ function setAgentFilter(chip) {
   document.querySelectorAll('#agent-filters .chip').forEach(c => c.classList.remove('active'));
   chip.classList.add('active');
   agentFilter = chip.dataset.filter;
+  tsqTrack('agent_filter_changed', { filter: chip.dataset.filter });
   applyAgentFilter();
 }
 
@@ -1824,9 +1892,9 @@ function renderSupervisorSessions(sessions) {
       runList.innerHTML = activeAgents.map(a => `
         <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--border)">
           <span class="status-dot ${dotClass(a.mode)}" style="width:7px;height:7px;flex-shrink:0"></span>
-          <span style="flex:1;font-size:13px;font-weight:500">${x(a.name)}</span>
-          <span style="font-size:11px;color:var(--muted-fg);margin-right:4px">${x(a.task_id ? a.task_id.slice(0,12)+'…' : '—')}</span>
-          <span class="badge ${badgeClass(a.mode)}" style="font-size:10px;margin-right:6px">${modeLabel(a.mode)}</span>
+          <span style="flex:1;font-size: 13px;font-weight:500">${x(a.name)}</span>
+          <span style="font-size: 13px;color:var(--muted-fg);margin-right:4px">${x(a.task_id ? a.task_id.slice(0,12)+'…' : '—')}</span>
+          <span class="badge ${badgeClass(a.mode)}" style="font-size: 12px;margin-right:6px">${modeLabel(a.mode)}</span>
           <button class="btn btn-secondary btn-sm" onclick="triggerSupervisor(${q(a.task_id||'')},this)" ${!a.task_id ? 'disabled' : ''}>▶ Run</button>
         </div>`).join('');
     } else {
@@ -1851,10 +1919,10 @@ function renderSupervisorSessions(sessions) {
     const stuckCount  = sessionsForAgent.filter(s =>  s.orphan).length;
 
     html += `<div class="group-header" style="margin-top:12px">
-      <span class="group-collapse-icon open">▶</span>
+      <span class="group-collapse-icon open"><i class="nc-icon nc-minimal-right"></i></span>
       <span style="flex:1;font-weight:600">Supervisor: ${x(agentName)}</span>
-      <span class="badge ${activeCount > 0 ? 'badge-running' : 'badge-idle'}" style="font-size:10px">${activeCount} active</span>
-      ${stuckCount > 0 ? '<span class="badge badge-orphan" style="font-size:10px;margin-left:4px">' + stuckCount + ' stuck</span>' : ''}
+      <span class="badge ${activeCount > 0 ? 'badge-running' : 'badge-idle'}" style="font-size: 12px">${activeCount} active</span>
+      ${stuckCount > 0 ? '<span class="badge badge-orphan" style="font-size: 12px;margin-left:4px">' + stuckCount + ' stuck</span>' : ''}
     </div>`;
 
     sessionsForAgent.forEach(s => {
@@ -1934,12 +2002,12 @@ async function loadSupervisorHistory() {
       const logId = 'sup-hist-log-' + i;
       html += `<div style="border-top:1px solid var(--border);padding:10px 14px">
         <div style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="(function(el){el.style.display=el.style.display==='none'?'block':'none'})(document.getElementById(${q(logId)}))">
-          <span style="font-size:11px;font-family:monospace;color:var(--muted-fg);flex:1">${x(entry.task_id)}</span>
-          <span style="font-size:11px;color:var(--muted-fg)">${kb(entry.size_bytes)}</span>
-          <span style="font-size:11px;color:var(--muted-fg);margin-left:6px">${fmt(entry.modified_at)}</span>
+          <span style="font-size: 13px;font-family:"SF Mono",ui-monospace,monospace;color:var(--muted-fg);flex:1">${x(entry.task_id)}</span>
+          <span style="font-size: 13px;color:var(--muted-fg)">${kb(entry.size_bytes)}</span>
+          <span style="font-size: 13px;color:var(--muted-fg);margin-left:6px">${fmt(entry.modified_at)}</span>
           <button class="btn btn-secondary btn-sm" style="margin-left:6px" onclick="event.stopPropagation();loadFullSupLog(${q(entry.task_id)})">Full log</button>
         </div>
-        <div id="${logId}" class="inline-log-body" style="display:none;max-height:240px;overflow-y:auto;margin-top:8px;font-size:11px;white-space:pre-wrap">${x(entry.tail)}</div>
+        <div id="${logId}" class="inline-log-body" style="display:none;max-height:240px;overflow-y:auto;margin-top:8px;font-size: 13px;white-space:pre-wrap">${x(entry.tail)}</div>
       </div>`;
     });
     el.innerHTML = html;
@@ -1989,7 +2057,7 @@ function renderSessions(sessions) {
       }
       const killBtn = '<button class="btn btn-destructive btn-sm" onclick="event.stopPropagation();killSession(event,' + q(s.name) + ')">Kill</button>';
       html += '<div class="row expandable" onclick="toggleSessionDetail(' + i + ')">'
-        + '<span class="expand-icon" id="srei-' + i + '">▶</span>'
+        + '<span class="expand-icon" id="srei-' + i + '"><i class="nc-icon nc-minimal-right"></i></span>'
         + '<div class="status-dot ' + dotCls + '"></div>'
         + '<div class="row-info"><div class="row-name">' + x(s.name) + '</div><div class="row-sub">' + sub + '</div></div>'
         + '<div class="row-actions"><span class="badge ' + badgeCls + '">' + badgeTxt + '</span>' + logBtn + killBtn + '</div>'
@@ -1998,7 +2066,7 @@ function renderSessions(sessions) {
         + '<div class="detail-row"><span class="detail-key">Session</span><span class="detail-val" style="flex:1">' + x(s.name) + '</span>'
         + '<button class="link-btn" onclick="event.stopPropagation();copyToClipboard(' + q(s.name) + ')">Copy</button></div>'
         + (s.agent_name ? '<div class="detail-row"><span class="detail-key">Agent</span><span class="detail-val">' + x(s.agent_name) + '</span></div>' : '')
-        + (s.task_id ? '<div class="detail-row"><span class="detail-key">Task ID</span><span class="detail-val" style="flex:1;font-size:10.5px">' + x(s.task_id) + '</span>'
+        + (s.task_id ? '<div class="detail-row"><span class="detail-key">Task ID</span><span class="detail-val" style="flex:1;font-size: 12px">' + x(s.task_id) + '</span>'
             + '<button class="link-btn" onclick="event.stopPropagation();copyToClipboard(' + q(s.task_id) + ')">Copy</button>'
             + '<button class="link-btn" onclick="event.stopPropagation();showTask(' + q(s.task_id) + ',' + q('session · ' + (s.agent_name||'')) + ')">Timeline →</button></div>' : '')
         + (s.orphan ? '<div class="detail-row"><span class="detail-key">Note</span><span class="detail-val" style="color:var(--destructive)">orphan — no linked agent</span></div>' : '')
@@ -2039,7 +2107,7 @@ async function killAllOrphans() {
   const confirmed = await openDialog({
     title: 'Kill Orphaned Sessions',
     description: 'These sessions have no linked agent. They will be terminated.',
-    body: '<p>This will kill <strong>' + orphanRows.length + '</strong> orphaned session(s).</p><p style="color:var(--muted-fg);font-size:13px;margin-top:8px">The tasks will remain on the server and be cleaned up on the next heartbeat.</p>',
+    body: '<p>This will kill <strong>' + orphanRows.length + '</strong> orphaned session(s).</p><p style="color:var(--muted-fg);font-size: 13px;margin-top:8px">The tasks will remain on the server and be cleaned up on the next heartbeat.</p>',
     type: 'danger',
     confirmText: 'Kill Sessions'
   });
@@ -2050,12 +2118,14 @@ async function killAllOrphans() {
   await Promise.all(names.map(name =>
     fetch('/api/session/kill', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) }).catch(() => {})
   ));
+  tsqTrack('sessions_orphans_killed', { count: names.length });
   loadDashboard();
 }
 
 async function showAgentLog(e, agentName, taskId, logPath) {
   e.stopPropagation();
   if (!taskId) return;
+  tsqTrack('agent_logs_viewed', { agent_name: agentName, task_id: taskId });
   const url = '/api/logs?agent=' + encodeURIComponent(agentName) + '&task=' + encodeURIComponent(taskId);
   openLog(agentName + ' · ' + taskId.slice(0, 14) + '…', url, true, logPath || '');
 }
@@ -2082,7 +2152,7 @@ async function killSession(e, name) {
   const confirmed = await openDialog({
     title: 'Kill Session',
     description: 'This session will be terminated immediately.',
-    body: '<p>Kill session <strong>' + x(name) + '</strong>?</p><p style="color:var(--muted-fg);font-size:13px;margin-top:8px">The task will remain on the server; the daemon will clean up on the next heartbeat.</p>',
+    body: '<p>Kill session <strong>' + x(name) + '</strong>?</p><p style="color:var(--muted-fg);font-size: 13px;margin-top:8px">The task will remain on the server; the daemon will clean up on the next heartbeat.</p>',
     type: 'danger',
     confirmText: 'Kill Session'
   });
@@ -2092,27 +2162,28 @@ async function killSession(e, name) {
   btn.textContent = 'Killing…';
   try {
     const r = await fetch('/api/session/kill', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name}) });
-    if (r.ok || r.status === 204) loadDashboard();
+    if (r.ok || r.status === 204) { tsqTrack('session_killed', { name }); loadDashboard(); }
     else { showAlert('Kill failed: ' + await r.text(), 'error'); btn.disabled = false; btn.textContent = 'Kill'; }
   } catch(err) { showAlert('Error: ' + err.message, 'error'); btn.disabled = false; btn.textContent = 'Kill'; }
 }
 
 function openPortal() { if (PORTAL_URL) window.open(PORTAL_URL, '_blank'); }
-function openConfigFolder() { if (CONFIG_DIR) openFolder(CONFIG_DIR); }
+function openConfigFolder() { if (CONFIG_DIR) { tsqTrack('portal_config_edit_clicked'); openFolder(CONFIG_DIR); } }
 
 async function doLogout() {
   const confirmed = await openDialog({
     title: 'Log Out',
     description: 'This will stop the daemon and clear your credentials.',
-    body: '<p>Are you sure you want to log out?</p><p style="color:var(--muted-fg);font-size:13px;margin-top:8px">The daemon will clear your credentials and stop running.</p>',
+    body: '<p>Are you sure you want to log out?</p><p style="color:var(--muted-fg);font-size: 13px;margin-top:8px">The daemon will clear your credentials and stop running.</p>',
     type: 'danger',
     confirmText: 'Log Out'
   });
   if (!confirmed) return;
+  tsqTrack('portal_logout_clicked');
   try {
     await fetch('/api/logout', { method: 'POST' });
   } catch(_) {}
-  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:hsl(210 20% 55%)">Logged out. You can close this window.</div>';
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:ui-monospace,Menlo,monospace;font-size: 13px;color:hsl(210 20% 55%)">Logged out. You can close this window.</div>';
 }
 
 async function openFolder(path) {
@@ -2144,7 +2215,7 @@ function loadDaemonTab() {
 async function loadSpeechLogTab() {
   const list = document.getElementById('speech-log-list');
   if (!list) return;
-  list.innerHTML = '<div class="empty" style="color:hsl(210 40% 55%)">Loading…</div>';
+  list.innerHTML = '<div class="empty" style="color:var(--muted-fg)">Loading…</div>';
   try {
     const [sessR, statusR] = await Promise.all([
       fetch('/api/speech-to-md/sessions'),
@@ -2154,30 +2225,31 @@ async function loadSpeechLogTab() {
     const status = statusR.ok ? await statusR.json() : {};
     const activeMd = status.md_path || '';
     if (!sessions || !sessions.length) {
-      list.innerHTML = '<div class="empty" style="color:hsl(210 40% 55%)">No speech sessions yet</div>';
+      list.innerHTML = '<div class="empty" style="color:var(--muted-fg)">No speech sessions yet</div>';
       return;
     }
     list.innerHTML = sessions.map(s => {
       const ts = parseInt(s.id, 10);
       const d = isNaN(ts) ? s.id : new Date(ts).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
       const isActive = activeMd && s.md_path === activeMd;
-      const badge = isActive ? '<span class="badge badge-running" style="font-size:10px;padding:1px 5px;margin-left:4px">live</span>' : '';
+      const badge = isActive ? '<span class="badge badge-running" style="font-size: 12px;padding:1px 5px;margin-left:4px">live</span>' : '';
       const speechDir = HOME_DIR ? HOME_DIR + '/.tasksquad/speech-to-markdown/' + s.id : '';
       return '<div class="speech-log-item">'
         + '<span class="vi-date">' + x(d) + badge + '</span>'
         + '<div class="vi-btns">'
         + '<button class="btn btn-ghost btn-sm" onclick="openSpeechLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'md\')">MD</button>'
         + '<button class="btn btn-ghost btn-sm" onclick="openSpeechLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'txt\')">Txt</button>'
-        + (speechDir ? '<button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 60%)" onclick="openFolder(' + q(speechDir) + ')" title="Open folder">↗</button>' : '')
+        + (speechDir ? '<button class="btn btn-ghost btn-sm" style="color:hsl(210 40% 60%)" onclick="openFolder(' + q(speechDir) + ')" title="Open folder"><i class="nc-icon nc-tail-right"></i></button>' : '')
         + '</div>'
         + '</div>';
     }).join('');
   } catch(e) {
-    list.innerHTML = '<div class="empty" style="color:hsl(210 40% 55%)">Failed to load</div>';
+    list.innerHTML = '<div class="empty" style="color:var(--muted-fg)">Failed to load</div>';
   }
 }
 
 function openSpeechLogInDrawer(id, label, kind) {
+  tsqTrack('speech_session_viewed', { kind });
   const title = (kind === 'md' ? 'speech · ' : 'transcript · ') + label;
   const url = '/api/speech-to-md/session/content?id=' + encodeURIComponent(id) + '&kind=' + kind;
   openLog(title, url);
@@ -2351,7 +2423,7 @@ function buildClaudeTranscript(text) {
     const rendered = renderClaudeEntry(e, toolResults);
     if (rendered) html += rendered;
   }
-  return html || '<div style="color:hsl(210 20% 50%);padding:12px;font-size:12px">No renderable entries</div>';
+  return html || '<div style="color:hsl(210 20% 50%);padding:12px;font-size: 12px">No renderable entries</div>';
 }
 
 function renderClaudeEntry(e, toolResults) {
@@ -2429,7 +2501,7 @@ function txToolBlock(name, inputStr, outputStr, isError) {
   }
   return '<div class="tx-tool">'
     + '<div class="tx-tool-hdr" onclick="txToggle(\'' + bodyId + '\')">'
-    + '<span style="font-size:12px">⚙</span>'
+    + '<span style="font-size: 12px"><i class="nc-icon nc-settings-gear-64"></i></span>'
     + '<span class="tx-tool-nm">' + txEsc(name) + '</span>'
     + (statusTxt ? '<span class="tx-tool-status ' + statusCls + '">' + statusTxt + '</span>' : '')
     + '</div>'
@@ -2442,7 +2514,7 @@ function txThinkingBlock(thinking) {
   const bodyId = bid + 'b';
   return '<div class="tx-thoughts">'
     + '<div class="tx-thoughts-hdr" onclick="txToggle(\'' + bodyId + '\')">'
-    + '<span style="font-size:13px">🧠</span><span>reasoning</span>'
+    + '<span style="font-size: 13px"><i class="nc-icon nc-brain-98"></i></span><span>reasoning</span>'
     + '</div>'
     + '<div class="tx-thoughts-body" id="' + bodyId + '">'
     + '<div class="tx-thought-item"><div class="tx-thought-desc">' + txEsc(thinking) + '</div></div>'
@@ -2460,7 +2532,7 @@ function buildGeminiTranscript(text) {
     const rendered = renderGeminiMessage(msg);
     if (rendered) html += rendered;
   }
-  return html || '<div style="color:hsl(210 20% 50%);padding:12px;font-size:12px">No renderable messages</div>';
+  return html || '<div style="color:hsl(210 20% 50%);padding:12px;font-size: 12px">No renderable messages</div>';
 }
 
 function renderGeminiMessage(msg) {
@@ -2493,7 +2565,7 @@ function renderGeminiMessage(msg) {
     }
     parts += '<div class="tx-thoughts">'
       + '<div class="tx-thoughts-hdr" onclick="txToggle(\'' + bodyId + '\')">'
-      + '<span style="font-size:13px">🧠</span><span>reasoning</span>'
+      + '<span style="font-size: 13px"><i class="nc-icon nc-brain-98"></i></span><span>reasoning</span>'
       + '</div>'
       + '<div class="tx-thoughts-body" id="' + bodyId + '">' + thoughtItems + '</div>'
       + '</div>';
@@ -2537,7 +2609,7 @@ function renderGeminiMessage(msg) {
   if (!parts) return '';
 
   return '<div class="tx-entry">'
-    + '<div class="tx-role tx-gemini">Gemini' + (msg.model ? ' <span style="font-size:9px;font-weight:400;opacity:.6">' + txEsc(msg.model) + '</span>' : '') + '</div>'
+    + '<div class="tx-role tx-gemini">Gemini' + (msg.model ? ' <span style="font-size: 12px;font-weight:400;opacity:.6">' + txEsc(msg.model) + '</span>' : '') + '</div>'
     + '<div class="tx-body tx-gemini">' + parts + '</div>'
     + '</div>';
 }
@@ -2560,6 +2632,7 @@ let currentInspectorTaskId = null;
 let inspectorTimer = null;
 
 function openRunInspector(agentName, taskId, logPath) {
+  tsqTrack('agent_inspector_opened', { agent_name: agentName, task_id: taskId });
   currentInspectorAgent = agentName;
   currentInspectorTaskId = taskId;
   const panel = document.getElementById('run-inspector');
@@ -2642,7 +2715,7 @@ function formatDuration(ms) {
 function renderTraceWaterfall(agent) {
   const container = document.getElementById('ri-trace-waterfall');
   if (!agent.task_id) {
-    container.innerHTML = '<div style="color:hsl(210 40% 50%);font-size:12px">No active task</div>';
+    container.innerHTML = '<div style="color:hsl(210 40% 50%);font-size: 12px">No active task</div>';
     return;
   }
   
@@ -2669,7 +2742,7 @@ function renderTraceWaterfall(agent) {
 function renderRunTree(agent) {
   const container = document.getElementById('ri-run-tree');
   if (!agent.task_id) {
-    container.innerHTML = '<div style="color:hsl(210 40% 50%);font-size:12px">No active task</div>';
+    container.innerHTML = '<div style="color:hsl(210 40% 50%);font-size: 12px">No active task</div>';
     return;
   }
   
@@ -2710,7 +2783,7 @@ function renderRunTree(agent) {
   }
   
   if (!html) {
-    container.innerHTML = '<div style="color:hsl(210 40% 50%);font-size:12px">Loading run tree...</div>';
+    container.innerHTML = '<div style="color:hsl(210 40% 50%);font-size: 12px">Loading run tree...</div>';
     return;
   }
   container.innerHTML = html;
@@ -2825,17 +2898,17 @@ async function loadSpeechSessions() {
       const ts = parseInt(s.id, 10);
       const d = isNaN(ts) ? s.id : new Date(ts).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
       const isActive = activeMd && s.md_path === activeMd;
-      const badge = isActive ? '<span class="badge badge-running" style="font-size:10px;padding:2px 6px">live</span>' : '';
+      const badge = isActive ? '<span class="badge badge-running" style="font-size: 12px;padding:2px 6px">live</span>' : '';
       const sessionDir = HOME_DIR ? HOME_DIR + '/.tasksquad/speech-to-markdown/' + s.id : '';
       return '<div class="row" style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border)">'
         + '<div style="flex:1;min-width:0">'
-        + '<div style="font-size:13px;font-weight:500">' + x(d) + ' ' + badge + '</div>'
+        + '<div style="font-size: 13px;font-weight:500">' + x(d) + ' ' + badge + '</div>'
         + '</div>'
         + '<div style="display:flex;gap:6px">'
         + '<button class="btn btn-ghost btn-sm" onclick="openSpeechLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'md\')">MD</button>'
         + '<button class="btn btn-ghost btn-sm" onclick="openSpeechLogInDrawer(' + q(s.id) + ',' + q(d) + ',\'txt\')">Txt</button>'
-        + (sessionDir ? '<button class="btn btn-ghost btn-sm" onclick="openFolder(' + q(sessionDir) + ')" title="Open session folder">↗</button>' : '')
-        + '<button class="btn btn-destructive btn-sm" onclick="deleteSpeechSession(' + q(s.id) + ')" title="Delete session">✕</button>'
+        + (sessionDir ? '<button class="btn btn-ghost btn-sm" onclick="openFolder(' + q(sessionDir) + ')" title="Open session folder"><i class="nc-icon nc-tail-right"></i></button>' : '')
+        + '<button class="btn btn-destructive btn-sm" onclick="deleteSpeechSession(' + q(s.id) + ')" title="Delete session"><i class="nc-icon nc-simple-remove"></i></button>'
         + '</div>'
         + '</div>';
     }).join('');
@@ -2849,7 +2922,7 @@ async function deleteSpeechSession(id) {
   const confirmed = await openDialog({
     title: 'Delete Speech Session',
     description: 'This action cannot be undone.',
-    body: '<p>Delete speech session <strong>' + x(id) + '</strong>?</p><p style="color:var(--muted-fg);font-size:13px;margin-top:8px">All recordings and transcripts will be permanently deleted.</p>',
+    body: '<p>Delete speech session <strong>' + x(id) + '</strong>?</p><p style="color:var(--muted-fg);font-size: 13px;margin-top:8px">All recordings and transcripts will be permanently deleted.</p>',
     type: 'danger',
     confirmText: 'Delete'
   });
@@ -2872,7 +2945,7 @@ async function syncTools(btn) {
       btn.textContent = res.ok ? 'Synced!' : 'Error';
       setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
     }
-    if (res.ok) setTimeout(loadToolsSection, 2500);
+    if (res.ok) { tsqTrack('tools_synced'); setTimeout(loadToolsSection, 2500); }
   } catch (e) {
     if (btn) { btn.textContent = 'Error'; setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000); }
   }
@@ -2889,14 +2962,14 @@ async function loadToolsSection() {
 
     const toolPills = (items, pathFn, prefix = '') => items.map(i => {
       const path = pathFn ? pathFn(i) : null;
-      const clickAttr = path ? `onclick="openFileInDrawer(${JSON.stringify(path)},${JSON.stringify(i)})" title="View file content" style="cursor:pointer;display:inline-flex;align-items:center;height:24px;padding:0 10px;background:var(--muted);border:1px solid var(--border);border-radius:9999px;font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;font-size:12px;color:var(--accent-blue);white-space:nowrap"` : `style="display:inline-flex;align-items:center;height:24px;padding:0 10px;background:var(--muted);border:1px solid var(--border);border-radius:9999px;font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;font-size:12px;color:var(--fg);white-space:nowrap"`;
+      const clickAttr = path ? `onclick="openFileInDrawer(${JSON.stringify(path)},${JSON.stringify(i)})" title="View file content" style="cursor:pointer;display:inline-flex;align-items:center;height:24px;padding:0 10px;background:var(--muted);border:1px solid var(--border);border-radius:9999px;font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;font-size: 12px;color:var(--accent-blue);white-space:nowrap"` : `style="display:inline-flex;align-items:center;height:24px;padding:0 10px;background:var(--muted);border:1px solid var(--border);border-radius:9999px;font-family:ui-monospace,'JetBrains Mono',Menlo,monospace;font-size: 12px;color:var(--fg);white-space:nowrap"`;
       return `<span ${clickAttr}>${prefix}${x(i)}</span>`;
     }).join('');
 
     const toolBlock = (label, items, pathFn, prefix = '') => {
       if (!items || !items.length) return '';
       return `<div style="padding:12px 16px 14px;border-top:1px solid var(--border)">
-        <div style="font-size:11px;font-weight:600;color:var(--muted-fg);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">
+        <div style="font-size: 12px;font-weight:600;color:var(--muted-fg);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">
           ${label} <span style="font-weight:400;opacity:.6">${items.length}</span>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">${toolPills(items, pathFn, prefix)}</div>
@@ -2991,16 +3064,16 @@ function renderTasksPage() {
   }
   document.getElementById('tasks-list').innerHTML = slice.map(t => {
     const sub = x(t.subject || '(no subject)');
-    const agentBadge = t.agent ? '<span class="badge badge-idle" style="font-size:10px;margin-left:6px">' + x(t.agent) + '</span>' : '';
+    const agentBadge = t.agent ? '<span class="badge badge-idle" style="font-size: 12px;margin-left:6px">' + x(t.agent) + '</span>' : '';
     const taskIdPart = t.task_id
-      ? '<span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">' + t.task_id.slice(0,12) + '…</span>'
-        + '<button class="link-btn" style="font-size:10px;padding:0 3px" onclick="event.stopPropagation();copyToClipboard(' + q(t.task_id) + ')" title="Copy Task ID">⎘</button>'
+      ? '<span style="font-family:ui-monospace,Menlo,monospace;font-size: 12px">' + t.task_id.slice(0,12) + '…</span>'
+        + '<button class="link-btn" style="font-size: 12px;padding:0 3px" onclick="event.stopPropagation();copyToClipboard(' + q(t.task_id) + ')" title="Copy Task ID"><i class="nc-icon nc-copy-27"></i></button>'
       : '';
     const tsRel = t.ts ? ago(new Date(t.ts).getTime()) : '';
     return '<div class="row" style="cursor:pointer" onclick="showTask(' + q(t.task_id) + ',' + q(t.subject||'') + ')">'
       + '<div class="status-dot dot-start"></div>'
       + '<div class="row-info"><div class="row-name">' + sub + agentBadge + '</div><div class="row-sub">' + taskIdPart + (tsRel ? ' · ' + x(tsRel) : '') + '</div></div>'
-      + '<div class="row-actions"><button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="event.stopPropagation();showTask(' + q(t.task_id) + ',' + q(t.subject||'') + ')">View →</button></div></div>';
+      + '<div class="row-actions"><button class="btn btn-ghost btn-sm" style="font-size: 12px" onclick="event.stopPropagation();showTask(' + q(t.task_id) + ',' + q(t.subject||'') + ')">View →</button></div></div>';
   }).join('');
   const pageInfo = document.getElementById('page-info');
   const prevBtn = document.getElementById('btn-prev-page');
@@ -3019,37 +3092,38 @@ function tasksPage(delta) {
 
 async function showTask(taskId, subject) {
   if (!taskId) return;
+  tsqTrack('task_timeline_viewed', { task_id: taskId });
   currentTaskId = taskId;
   const titleEl = document.getElementById('task-title');
   if (titleEl) titleEl.textContent = (subject || taskId).slice(0, 60);
-  document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:hsl(210 40% 70%);font-size:12px"><span class="spinner"></span> Loading…</div>';
+  document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:hsl(210 40% 70%);font-size: 12px"><span class="spinner"></span> Loading…</div>';
   document.getElementById('log-drawer').classList.add('open');
   document.getElementById('drawer-backdrop').style.display = '';
   switchLogTab('tasks');
   try {
     const r = await fetch('/api/tasks/' + encodeURIComponent(taskId));
-    if (!r.ok) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Not found</div>'; return; }
+    if (!r.ok) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--destructive);font-size: 12px">Not found</div>'; return; }
     const text = await r.text();
     renderTaskTimeline(text);
-  } catch(e) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Error: ' + x(e.message) + '</div>'; }
+  } catch(e) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--destructive);font-size: 12px">Error: ' + x(e.message) + '</div>'; }
 }
 
 async function loadTaskRaw() {
   if (!currentTaskId) return;
   const body = document.getElementById('task-body');
-  body.innerHTML = '<div style="padding:16px;color:hsl(210 40% 70%);font-size:12px"><span class="spinner"></span> Loading raw JSON…</div>';
+  body.innerHTML = '<div style="padding:16px;color:hsl(210 40% 70%);font-size: 12px"><span class="spinner"></span> Loading raw JSON…</div>';
   try {
     const r = await fetch('/api/tasks-log/' + encodeURIComponent(currentTaskId) + '?raw=true');
-    if (!r.ok) { body.innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Not found</div>'; return; }
+    if (!r.ok) { body.innerHTML = '<div style="padding:16px;color:var(--destructive);font-size: 12px">Not found</div>'; return; }
     const text = await r.text();
-    body.innerHTML = '<pre style="color:hsl(210 40% 85%);font-size:11.5px;line-height:1.6;white-space:pre-wrap;word-break:break-all">' + x(text) + '</pre>';
-  } catch(e) { body.innerHTML = '<div style="padding:16px;color:var(--destructive);font-size:12px">Error: ' + x(e.message) + '</div>'; }
+    body.innerHTML = '<pre style="color:var(--fg);font-size: 12px;line-height:1.6;white-space:pre-wrap;word-break:break-all">' + x(text) + '</pre>';
+  } catch(e) { body.innerHTML = '<div style="padding:16px;color:var(--destructive);font-size: 12px">Error: ' + x(e.message) + '</div>'; }
 }
 
 function renderTaskTimeline(jsonl) {
   const lines = jsonl.trim().split('\n').filter(Boolean);
   const events = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-  if (!events.length) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--muted-fg);font-size:12px">Empty record</div>'; return; }
+  if (!events.length) { document.getElementById('task-body').innerHTML = '<div style="padding:16px;color:var(--muted-fg);font-size: 12px">Empty record</div>'; return; }
   const html = events.map(ev => {
     let dotCls = 'dot-end', label = ev.type || '', bodyTxt = '', ts = ev.ts || '', extraHtml = '';
     switch(ev.type) {
@@ -3384,7 +3458,7 @@ btnDownload.addEventListener('click', async () => {
           try {
             const p = JSON.parse(line.slice(6));
             if (p.error) { speechToast('Download failed: ' + p.error); stop = true; break; }
-            if (p.done) { dlProgressFill.style.width = '100%'; succeeded = true; stop = true; break; }
+            if (p.done) { dlProgressFill.style.width = '100%'; succeeded = true; tsqTrack('speech_model_downloaded', { model: selectedModel }); stop = true; break; }
             if (p.pct !== undefined) dlProgressFill.style.width = p.pct + '%';
           } catch(_) {}
         }
@@ -3559,6 +3633,7 @@ async function startRecording() {
 
   audioStream = stream;
   setSpeechSessionState('recording');
+  tsqTrack('speech_recording_started');
   startSpeechChunk(); scheduleNextSpeechChunk();
 }
 
@@ -3601,7 +3676,7 @@ function cycleSpeechChunk() {
 }
 
 function scheduleNextSpeechChunk() { clearTimeout(chunkTimer); chunkTimer = setTimeout(cycleSpeechChunk, 5000); }
-async function stopRecording() { setSpeechSessionState('paused'); stopMedia(); await fetch('/api/speech-to-md/recording/pause', {method:'POST'}); }
+async function stopRecording() { setSpeechSessionState('paused'); tsqTrack('speech_recording_paused'); stopMedia(); await fetch('/api/speech-to-md/recording/pause', {method:'POST'}); }
 function stopMedia() {
   clearTimeout(chunkTimer); chunkTimer = null;
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
@@ -3766,6 +3841,7 @@ loadDashboard();
 loadTasks();
 function periodicRefresh() { loadDashboard(); loadTasks(); }
 setInterval(periodicRefresh, 5000);
+initAnalytics();
 document.addEventListener('keydown', e => { 
   if (e.key === 'Escape') { 
     // Close dialog first
@@ -3791,7 +3867,7 @@ document.addEventListener('keydown', e => {
   <div class="vm-modal-card">
     <div class="vm-modal-header">
       <span class="vm-modal-title">New prompt</span>
-      <button class="vm-modal-close" id="btn-prompt-modal-close" aria-label="Close">✕</button>
+      <button class="vm-modal-close" id="btn-prompt-modal-close" aria-label="Close"><i class="nc-icon nc-simple-remove"></i></button>
     </div>
     <div class="vm-form-group">
       <label class="vm-label" for="prompt-name-input">Name</label>

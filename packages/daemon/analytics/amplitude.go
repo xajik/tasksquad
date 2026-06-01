@@ -148,6 +148,23 @@ func SetUserID(userID string) {
 	TrackUser(userID)
 }
 
+func Enabled() bool {
+	globalMu.RLock()
+	c := globalClient
+	globalMu.RUnlock()
+	return c != nil && c.enabled
+}
+
+func APIKey() string {
+	globalMu.RLock()
+	c := globalClient
+	globalMu.RUnlock()
+	if c == nil {
+		return ""
+	}
+	return c.apiKey
+}
+
 func TrackUser(userID string) {
 	globalMu.RLock()
 	c := globalClient
