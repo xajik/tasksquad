@@ -8,6 +8,7 @@ import { sendFCMNotification } from '../fcm.js'
 import { getCombinedInboxVersion } from '../inbox_version.js'
 import { calculateNextRun, type ConveyorRow } from './conveyors.js'
 import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
+import { onTaskDone } from '../planner/hook.js'
 
 function truncate(text: string, maxLen = 80): string {
   return text.slice(0, maxLen) + (text.length > maxLen ? '…' : '')
@@ -54,6 +55,7 @@ async function notifyTeamMembers(env: Env, taskId: string, title: string, body: 
     console.error('[fcm] notifyTeamMembers failed:', e)
   }
 }
+
 
 const HEARTBEAT_MIN_INTERVAL_MS = 45_000
 // Base poll interval + up to 5 s of random jitter to spread agent traffic.
@@ -523,6 +525,15 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
     : session.subject
   await notifyTeamMembers(env, session.task_id, notifTitle, notifBody)
 
+  // Planner hook — errors are logged but must not fail the daemon response
+  if (taskStatus === TaskStatus.Done) {
+    try {
+      await onTaskDone(env.DB, session.task_id)
+    } catch (e) {
+      console.error('[planner] onTaskDone failed for task', session.task_id, e)
+    }
+  }
+
   return json({ ok: true, session_id, message_id: final_text ? msgId : null })
 }
 
@@ -576,6 +587,13 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
   }
 
   await notifyTeamMembers(env, session.task_id, 'Task completed', `Completed: ${session.subject}`)
+
+  // Planner hook — errors are logged but must not fail the daemon response
+  try {
+    await onTaskDone(env.DB, session.task_id)
+  } catch (e) {
+    console.error('[planner] onTaskDone failed for task', session.task_id, e)
+  }
 
   return json({ ok: true, session_id, message_id: output ? msgId : null })
 }

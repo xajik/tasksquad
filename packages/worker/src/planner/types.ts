@@ -65,6 +65,7 @@ export interface PhaseDispatchRequest {
   phase: PhaseRow
   teamId: string
   senderId: string    // user who created the planner — used as task sender
+  previousContext: string | null  // last_response of previous phase, or planner description for phase 0
 }
 
 // ── PlannerEvent — named events emitted by the engine ─────────────────────────

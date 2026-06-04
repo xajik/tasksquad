@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   api,
   type Planner,
@@ -175,11 +175,11 @@ function LastResponse({ text }: { text: string }) {
 
 export function Planners({ teamId }: { teamId: string }) {
   const nav = useNavigate()
+  const { plannerId } = useParams<{ plannerId?: string }>()
   const [planners, setPlanners] = useState<Planner[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [agents, setAgents] = useState<Agent[]>([])
   const [subAgents, setSubAgents] = useState<SubAgent[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   // Create form state
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
@@ -207,44 +207,87 @@ export function Planners({ teamId }: { teamId: string }) {
     })
   }, [teamId])
 
+  // Poll the list every 5s while any planner is running
+  const hasRunningPlanners = planners.some(p => p.status === 'running')
+  useEffect(() => {
+    if (!hasRunningPlanners) return
+
+    const id = setInterval(async () => {
+      try {
+        const fresh = await api.planners.list(teamId)
+        setPlanners(prev => (fresh.planners ?? []).map(fp => {
+          const existing = prev.find(p => pid(p) === pid(fp))
+          return existing?.phases ? { ...fp, phases: existing.phases } : fp
+        }))
+      } catch { /* ignore */ }
+    }, 5000)
+    return () => clearInterval(id)
+  }, [teamId, hasRunningPlanners])
+
+  // Load full planner (with phases) whenever the detail URL is active
+  useEffect(() => {
+    if (!plannerId) return
+    api.planners.get(teamId, plannerId).then(full => {
+      setPlanners(prev => {
+        const exists = prev.some(p => pid(p) === plannerId)
+        if (exists) return prev.map(p => pid(p) === plannerId ? full : p)
+        return [...prev, full]
+      })
+    }).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamId, plannerId])
+
   // Poll the selected planner every 5s while it is running
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current)
-    if (!selectedId) return
+    if (!plannerId) return
 
-    const selected = planners.find(p => p.planner_id === selectedId)
+    const pId = (p: Planner) => p.planner_id ?? (p as unknown as { id: string }).id
+    const selected = planners.find(p => pId(p) === plannerId)
     if (selected?.status !== 'running') return
 
     pollRef.current = setInterval(async () => {
       try {
-        const fresh = await api.planners.get(teamId, selectedId)
-        setPlanners(prev => prev.map(p => p.planner_id === selectedId ? fresh : p))
+        const fresh = await api.planners.get(teamId, plannerId)
+        setPlanners(prev => prev.map(p => pId(p) === plannerId ? fresh : p))
         if (fresh.status !== 'running') clearInterval(pollRef.current!)
       } catch { /* ignore transient errors */ }
     }, 5000)
 
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, planners.find(p => p.planner_id === selectedId)?.status])
+  }, [plannerId, planners.find(p => (p.planner_id ?? (p as unknown as {id:string}).id) === plannerId)?.status])
 
   const agentName = (id?: string) => agents.find(a => a.id === id)?.name ?? id ?? '—'
   const subAgentName = (id?: string) => subAgents.find(s => s.id === id)?.name ?? id ?? '—'
 
-  const selected = planners.find(p => p.planner_id === selectedId) ?? null
+  // The backend exposes planner_id once deployed; before that it only has id.
+  const pid = (p: Planner) => p.planner_id ?? (p as unknown as { id: string }).id
 
-  async function handlePause(plannerId: string, paused: boolean) {
-    await api.planners.update(teamId, plannerId, { paused })
+  const selected = planners.find(p => pid(p) === plannerId) ?? null
+
+  async function handlePause(pId: string, paused: boolean) {
+    await api.planners.update(teamId, pId, { paused })
     setPlanners(prev => prev.map(p =>
-      p.planner_id === plannerId ? { ...p, paused } : p
+      pid(p) === pId ? { ...p, paused } : p
     ))
   }
 
-  async function handlePlannerVerdict(plannerId: string, verdict: 0 | 1) {
-    const planner = planners.find(p => p.planner_id === plannerId)
+  async function handlePhaseGrade(taskId: string, grade: 0 | 1) {
+    const currentPlannerId = plannerId  // capture before any await
+    await api.tasks.grade(taskId, grade)
+    if (currentPlannerId) {
+      const fresh = await api.planners.get(teamId, currentPlannerId)
+      setPlanners(prev => prev.map(p => pid(p) === currentPlannerId ? fresh : p))
+    }
+  }
+
+  async function handlePlannerVerdict(pId: string, verdict: 0 | 1) {
+    const planner = planners.find(p => pid(p) === pId)
     const next = planner?.planner_verdict === verdict ? null : verdict
-    await api.planners.update(teamId, plannerId, { planner_verdict: next })
+    await api.planners.update(teamId, pId, { planner_verdict: next })
     setPlanners(prev => prev.map(p =>
-      p.planner_id === plannerId ? { ...p, planner_verdict: next ?? undefined } : p
+      pid(p) === pId ? { ...p, planner_verdict: next ?? undefined } : p
     ))
   }
 
@@ -287,12 +330,18 @@ export function Planners({ teamId }: { teamId: string }) {
         max_retries: maxR,
       })),
     })
-    // Reload list to get real data from server
-    const fresh = await api.planners.list(teamId)
-    setPlanners(fresh.planners ?? [])
+    // Reload list; also fetch the new planner in full (list omits phases)
+    const [freshList, freshPlanner] = await Promise.all([
+      api.planners.list(teamId),
+      api.planners.get(teamId, res.id),
+    ])
+    const updatedList = (freshList.planners ?? []).map(p =>
+      pid(p) === res.id ? freshPlanner : p
+    )
+    setPlanners(updatedList)
     setShowCreate(false)
     resetForm()
-    setSelectedId(res.id)
+    nav('/dashboard/planner/' + res.id)
   }
 
   // ── List view ───────────────────────────────────────────────────────────────
@@ -340,7 +389,7 @@ export function Planners({ teamId }: { teamId: string }) {
                           </Badge>
                         )}
                         <span className="text-xs text-muted-foreground bg-secondary rounded-full px-2 py-0.5">
-                          Phase {Math.min(planner.current_phase_index + 1, planner.phases.length)} / {planner.phases.length}
+                          Phase {Math.max(0, planner.current_phase_index) + 1} / {planner.phase_count ?? (planner.phases ?? []).length}
                         </span>
                       </div>
                       {planner.description && (
@@ -357,7 +406,7 @@ export function Planners({ teamId }: { teamId: string }) {
                             ? 'text-green-600 bg-green-50'
                             : 'text-muted-foreground hover:text-green-600 hover:bg-green-50',
                         )}
-                        onClick={() => handlePlannerVerdict(planner.planner_id, 1)}
+                        onClick={() => handlePlannerVerdict(pid(planner), 1)}
                         title="Approve planner"
                       >
                         <ThumbsUp className="h-4 w-4" />
@@ -369,7 +418,7 @@ export function Planners({ teamId }: { teamId: string }) {
                             ? 'text-destructive bg-red-50'
                             : 'text-muted-foreground hover:text-destructive hover:bg-red-50',
                         )}
-                        onClick={() => handlePlannerVerdict(planner.planner_id, 0)}
+                        onClick={() => handlePlannerVerdict(pid(planner), 0)}
                         title="Reject planner"
                       >
                         <ThumbsDown className="h-4 w-4" />
@@ -378,7 +427,7 @@ export function Planners({ teamId }: { teamId: string }) {
                         variant="outline"
                         size="sm"
                         className="ml-1"
-                        onClick={() => setSelectedId(planner.planner_id)}
+                        onClick={() => nav('/dashboard/planner/' + pid(planner))}
                       >
                         View
                       </Button>
@@ -571,7 +620,7 @@ export function Planners({ teamId }: { teamId: string }) {
   // ── Detail view ─────────────────────────────────────────────────────────────
   return (
     <div className="max-w-2xl mx-auto">
-      <Button variant="ghost" size="sm" className="mb-4 -ml-1 text-muted-foreground" onClick={() => setSelectedId(null)}>
+      <Button variant="ghost" size="sm" className="mb-4 -ml-1 text-muted-foreground" onClick={() => nav('/dashboard/planner')}>
         <ArrowLeft className="h-4 w-4 mr-1.5" />
         Back to Planners
       </Button>
@@ -594,7 +643,7 @@ export function Planners({ teamId }: { teamId: string }) {
                     ? 'text-green-700 border-green-200 hover:bg-green-50'
                     : 'text-amber-700 border-amber-200 hover:bg-amber-50'
                   }
-                  onClick={() => handlePause(selected.planner_id, !selected.paused)}
+                  onClick={() => handlePause(pid(selected), !selected.paused)}
                 >
                   {selected.paused
                     ? <><Play className="h-3.5 w-3.5 mr-1.5" />Resume</>
@@ -609,7 +658,7 @@ export function Planners({ teamId }: { teamId: string }) {
                     ? 'text-green-600 bg-green-50'
                     : 'text-muted-foreground hover:text-green-600 hover:bg-green-50',
                 )}
-                onClick={() => handlePlannerVerdict(selected.planner_id, 1)}
+                onClick={() => handlePlannerVerdict(pid(selected), 1)}
                 title="Approve planner"
               >
                 <ThumbsUp className="h-4 w-4" />
@@ -621,7 +670,7 @@ export function Planners({ teamId }: { teamId: string }) {
                     ? 'text-destructive bg-red-50'
                     : 'text-muted-foreground hover:text-destructive hover:bg-red-50',
                 )}
-                onClick={() => handlePlannerVerdict(selected.planner_id, 0)}
+                onClick={() => handlePlannerVerdict(pid(selected), 0)}
                 title="Reject planner"
               >
                 <ThumbsDown className="h-4 w-4" />
@@ -631,7 +680,7 @@ export function Planners({ teamId }: { teamId: string }) {
           </div>
           <div className="flex items-center gap-3 flex-wrap pt-1">
             <span className="text-xs text-muted-foreground bg-secondary rounded-full px-2.5 py-1">
-              Phase {Math.min(selected.current_phase_index + 1, selected.phases.length)} of {selected.phases.length}
+              Phase {Math.max(0, selected.current_phase_index) + 1} of {selected.phase_count ?? (selected.phases ?? []).length}
             </span>
             <span className="text-xs text-muted-foreground bg-secondary rounded-full px-2.5 py-1">
               Max retries: {selected.max_retries}
@@ -658,8 +707,8 @@ export function Planners({ teamId }: { teamId: string }) {
 
       {/* Phase stepper */}
       <div>
-        {selected.phases.map((phase, idx) => {
-          const isLast = idx === selected.phases.length - 1
+        {(selected.phases ?? []).map((phase, idx) => {
+          const isLast = idx === (selected.phases ?? []).length - 1
           const hasTask = !!phase.task_id
 
           return (
@@ -691,7 +740,7 @@ export function Planners({ teamId }: { teamId: string }) {
                   phase.status === 'failed' && 'border-destructive/30 bg-red-50/30',
                   phase.status === 'reverted' && 'border-amber-200 bg-amber-50/30',
                 )}>
-                  <CardContent className="p-4">
+                  <CardContent className="p-4 relative">
                     {/* Header row */}
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <div className="flex items-center gap-2 min-w-0">
@@ -744,6 +793,28 @@ export function Planners({ teamId }: { teamId: string }) {
                       />
                     )}
 
+                    {/* Proceed / Stop — visible once the linked task is done */}
+                    {!isLast && phase.status === 'in_progress' && phase.task_id && phase.task_status === 'done' && !phase.user_verdict && !phase.auto_close && (
+                      <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-green-700 border-green-700 hover:bg-green-50 hover:text-green-700"
+                          onClick={() => handlePhaseGrade(phase.task_id!, 1)}
+                        >
+                          Proceed
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive border-destructive hover:bg-red-50 hover:text-destructive"
+                          onClick={() => handlePhaseGrade(phase.task_id!, 0)}
+                        >
+                          Stop
+                        </Button>
+                      </div>
+                    )}
+
                     {/* Inbox grade (read-only) */}
                     {phase.user_verdict && (
                       <div className="flex items-center gap-2 mt-3 flex-wrap">
@@ -759,7 +830,7 @@ export function Planners({ teamId }: { teamId: string }) {
                             )}
                           </p>
                         )}
-                        {phase.user_verdict === 'approved' && selected.paused && idx + 1 < selected.phases.length && selected.phases[idx + 1].status === 'pending' && (
+                        {phase.user_verdict === 'approved' && selected.paused && idx + 1 < (selected.phases ?? []).length && (selected.phases ?? [])[idx + 1].status === 'pending' && (
                           <p className="text-xs text-amber-700 flex items-center gap-1">
                             <Pause className="h-3 w-3" /> Paused — resume planner to start next phase
                           </p>

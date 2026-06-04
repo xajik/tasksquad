@@ -15,10 +15,14 @@ export interface IPhaseDispatcher {
 
 export class TaskDispatcher implements IPhaseDispatcher {
   async dispatch(db: D1Database, req: PhaseDispatchRequest): Promise<string> {
-    const { planner, phase, teamId, senderId } = req
+    const { planner, phase, teamId, senderId, previousContext } = req
     const taskId  = ulid()
     const now     = Date.now()
     const subject = `[${planner.name}] Phase ${phase.phase_index + 1}: ${phase.name}`
+
+    const body = previousContext
+      ? `${subject}\n\n---\n\n${previousContext}`
+      : subject
 
     // Inherit planner-level harness if the phase has none
     const agentId = phase.harness_agent_id ?? planner.default_harness_agent_id
@@ -36,7 +40,7 @@ export class TaskDispatcher implements IPhaseDispatcher {
       db.prepare(`
         INSERT INTO messages (id, task_id, sender_id, role, type, body, created_at)
         VALUES (?, ?, ?, 'user', 'inbox', ?, ?)
-      `).bind(ulid(), taskId, senderId, subject, now),
+      `).bind(ulid(), taskId, senderId, body, now),
     ])
 
     return taskId

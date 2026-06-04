@@ -460,6 +460,7 @@ export interface Phase {
   harness_agent_id?: string
   status: PhaseStatus
   task_id?: string
+  task_status?: string
   retry_count: number
   max_retries: number
   auto_close: boolean
@@ -483,5 +484,6 @@ export interface Planner {
   default_sub_agent_id?: string
   default_harness_agent_id?: string
   planner_verdict?: 0 | 1 | null   // 1 = approved (👍), 0 = rejected (👎)
-  phases: Phase[]
+  phase_count?: number
+  phases: Phase[] | null
 }

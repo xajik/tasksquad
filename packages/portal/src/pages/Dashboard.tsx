@@ -2713,6 +2713,7 @@ export default function Dashboard() {
           <Route path="/notes/:noteId" element={<NoteDetail teamId={teamId} />} />
           <Route path="/conveyor" element={<Conveyors teamId={teamId} />} />
           <Route path="/planner" element={<Planners teamId={teamId} />} />
+          <Route path="/planner/:plannerId" element={<Planners teamId={teamId} />} />
           <Route path="/supervisor" element={<Supervisor teamId={teamId} />} />
           <Route path="/skills" element={<Skills teamId={teamId} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />

@@ -1,6 +1,7 @@
 import * as amplitude from '@amplitude/unified';
 
 export const initAnalytics = () => {
+  if (!import.meta.env.VITE_AMPLITUDE_KEY) return;
   amplitude.initAll(import.meta.env.VITE_AMPLITUDE_KEY, {
     "analytics": {
       "autocapture": {
@@ -27,10 +28,12 @@ export const initAnalytics = () => {
 };
 
 export const trackEvent = (eventName: string, eventProperties?: Record<string, any>) => {
+  if (!import.meta.env.VITE_AMPLITUDE_KEY) return;
   amplitude.track(eventName, eventProperties);
 };
 
 export const identifyUser = (userId: string | null, userProperties?: Record<string, any>) => {
+  if (!import.meta.env.VITE_AMPLITUDE_KEY) return;
   if (userId) {
     amplitude.setUserId(userId);
     if (userProperties) {

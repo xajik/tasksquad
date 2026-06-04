@@ -3,16 +3,7 @@ import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { bumpInboxVersion } from '../inbox_version.js'
 import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
-import { PlannerEngine } from '../planner/engine.js'
-import { TaskDispatcher } from '../planner/dispatcher.js'
-import { DefaultSupervisorStrategy } from '../planner/supervisor.js'
-import type { VerdictSource } from '../planner/types.js'
-
-const supervisorStrategy = new DefaultSupervisorStrategy()
-
-function makePlannerEngine(): PlannerEngine {
-  return new PlannerEngine(new TaskDispatcher(), supervisorStrategy)
-}
+import { onTaskDone } from '../planner/hook.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -239,26 +230,11 @@ export async function closeTask(req: Request, env: Env, _ctx: unknown, auth: Aut
 
   await env.DB.batch(ops)
 
-  // Planner hook — look up role from the join table
-  const link = await env.DB
-    .prepare('SELECT role FROM planner_task WHERE task_id = ?')
-    .bind(taskId)
-    .first<{ role: string } | null>()
-
-  if (link) {
-    const engine = makePlannerEngine()
-
-    if (link.role === 'supervisor') {
-      const lastMsg = await env.DB
-        .prepare("SELECT body FROM messages WHERE task_id = ? AND role = 'agent' ORDER BY created_at DESC LIMIT 1")
-        .bind(taskId)
-        .first<{ body: string }>()
-      const verdict = supervisorStrategy.parseResponse(lastMsg?.body ?? '')
-      const source: VerdictSource = { kind: 'supervisor', verdict: verdict ?? 'no' }
-      await engine.onVerdict(env.DB, taskId, source)
-    } else if (task.auto_close) {
-      await engine.onVerdict(env.DB, taskId, { kind: 'auto_close' })
-    }
+  // Planner hook — errors are logged but must not fail the close request
+  try {
+    await onTaskDone(env.DB, taskId)
+  } catch (e) {
+    console.error('[planner] onTaskDone failed for task', taskId, e)
   }
 
   return json({ ok: true })

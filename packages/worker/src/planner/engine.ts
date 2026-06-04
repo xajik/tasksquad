@@ -120,12 +120,16 @@ export class PlannerEngine implements IPlannerEngine {
         .bind('in_progress', now, nextPhase.id),
     ])
 
+    // Fetch context for this phase: previous phase's last_response, or planner description for phase 0
+    const previousContext = await this.getPreviousContext(db, planner, nextIndex)
+
     // Dispatch the phase task (separate write so we can store the returned task ID)
     const taskId = await this.dispatcher.dispatch(db, {
       planner,
       phase: nextPhase,
       teamId: planner.team_id,
       senderId: planner.sender_id,
+      previousContext,
     })
 
     await db
@@ -184,12 +188,14 @@ export class PlannerEngine implements IPlannerEngine {
       .bind(phase.retry_count + 1, now, phaseId)
       .run()
 
-    // Re-dispatch
+    // Re-dispatch with same context as the original dispatch for this phase
+    const previousContext = await this.getPreviousContext(db, planner, phase.phase_index)
     const taskId = await this.dispatcher.dispatch(db, {
       planner,
       phase: { ...phase, task_id: null, retry_count: phase.retry_count + 1 },
       teamId: planner.team_id,
       senderId: planner.sender_id,
+      previousContext,
     })
 
     await db
@@ -234,6 +240,21 @@ export class PlannerEngine implements IPlannerEngine {
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  private async getPreviousContext(
+    db: D1Database,
+    planner: PlannerRow,
+    phaseIndex: number,
+  ): Promise<string | null> {
+    if (phaseIndex === 0) {
+      return planner.description ?? null
+    }
+    const prevPhase = await db
+      .prepare('SELECT last_response FROM planner_phases WHERE planner_id = ? AND phase_index = ?')
+      .bind(planner.id, phaseIndex - 1)
+      .first<{ last_response: string | null }>()
+    return prevPhase?.last_response ?? null
+  }
 
   private async resolvePhaseVerdict(
     db: D1Database,

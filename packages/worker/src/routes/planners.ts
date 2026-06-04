@@ -26,6 +26,7 @@ function makeEngine(): PlannerEngine {
 function serialisePlanner(row: PlannerRow) {
   return {
     ...row,
+    planner_id: row.id,
     auto_close: !!row.auto_close,
     paused:     !!row.paused,
   }
@@ -34,6 +35,7 @@ function serialisePlanner(row: PlannerRow) {
 function serialisePhase(row: PhaseRow) {
   return {
     ...row,
+    phase_id:  row.id,
     auto_close: !!row.auto_close,
   }
 }
@@ -78,11 +80,17 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
   const { results: rows } = await env.DB
-    .prepare('SELECT * FROM planners WHERE team_id = ? ORDER BY created_at DESC')
+    .prepare(`
+      SELECT p.*,
+        (SELECT COUNT(*) FROM planner_phases pp WHERE pp.planner_id = p.id) AS phase_count
+      FROM planners p
+      WHERE p.team_id = ?
+      ORDER BY p.created_at DESC
+    `)
     .bind(teamId)
-    .all<PlannerRow>()
+    .all<PlannerRow & { phase_count: number }>()
 
-  return json({ planners: rows.map(serialisePlanner) })
+  return json({ planners: rows.map(r => ({ ...serialisePlanner(r), phase_count: r.phase_count })) })
 }
 
 export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
@@ -99,11 +107,17 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
   if (!planner) return err('not_found', 404)
 
   const { results: phases } = await env.DB
-    .prepare('SELECT * FROM planner_phases WHERE planner_id = ? ORDER BY phase_index ASC')
+    .prepare(`
+      SELECT pp.*, t.status AS task_status
+      FROM planner_phases pp
+      LEFT JOIN tasks t ON t.id = pp.task_id
+      WHERE pp.planner_id = ?
+      ORDER BY pp.phase_index ASC
+    `)
     .bind(plannerId)
-    .all<PhaseRow>()
+    .all<PhaseRow & { task_status: string | null }>()
 
-  return json({ ...serialisePlanner(planner), phases: phases.map(serialisePhase) })
+  return json({ ...serialisePlanner(planner), phases: phases.map(r => ({ ...serialisePhase(r), task_status: r.task_status })) })
 }
 
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
