@@ -1,5 +1,6 @@
 import { Router, IRequest } from 'itty-router'
 import { withFirebaseAuth, withDaemonAgentAuth, mintCliToken, revokeCliToken, err, json } from './auth.js'
+export { TerminalRelay } from './terminal/relay.js'
 import { checkCircuitBreaker, checkCliTokenRateLimit } from './middleware/circuitBreaker.js'
 import * as teams    from './routes/teams.js'
 import * as agents   from './routes/agents.js'
@@ -13,6 +14,7 @@ import * as skills     from './routes/skills.js'
 import * as subAgents  from './routes/sub-agents.js'
 import * as commands   from './routes/commands.js'
 import * as planners   from './routes/planners.js'
+import * as portals    from './routes/portals.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 
 
@@ -166,6 +168,95 @@ router.post('/daemon/permission/request',         daemonRoute(daemon.permissionR
 router.post('/daemon/supervisor/report',          daemonRoute(daemon.supervisorReport))
 router.get ('/daemon/skills/:skillId',             firebaseRoute(skills.daemonSkillGet))
 router.post('/daemon/skills',                     daemonRoute(skills.daemonUpsert))
+
+// ── Portal routes (browser) ───────────────────────────────────────────────────
+router.get ('/portals',                              firebaseRoute(portals.list))
+router.post('/portals',                              firebaseRoute(portals.create))
+router.get ('/portals/:portalId',                    firebaseRoute(portals.get))
+router.post('/portals/:portalId/close',              firebaseRoute(portals.browserClose))
+
+// ── Portal routes (daemon) ────────────────────────────────────────────────────
+router.get ('/daemon/portal/poll',    daemonRoute(portals.daemonPoll))
+router.post('/daemon/portal/open',    daemonRoute(portals.daemonOpen))
+router.post('/daemon/portal/close',   daemonRoute(portals.daemonClose))
+
+// Issue a short-lived one-time ticket so the browser can open the relay WebSocket
+// without putting a long-lived Firebase JWT in the URL (which would appear in logs).
+router.post('/terminal/ticket', firebaseRoute(async (req, env, _ctx, auth) => {
+  const body = await (req as Request).json<{ session_id?: string }>().catch(() => ({} as { session_id?: string }))
+  if (!body.session_id) return err('missing_fields', 400)
+
+  // Accept portal relay sessions (portals.session_id set by daemonOpen) and task session IDs.
+  // Only match portals.session_id — not portals.id — so pending portals (session_id IS NULL)
+  // cannot receive a ticket that would fail at WebSocket upgrade time.
+  const [portalRow, sessionRow] = await Promise.all([
+    env.DB
+      .prepare('SELECT p.team_id FROM portals p WHERE p.session_id = ?')
+      .bind(body.session_id)
+      .first<{ team_id: string }>(),
+    env.DB
+      .prepare('SELECT t.team_id FROM sessions s JOIN tasks t ON t.id = s.task_id WHERE s.id = ?')
+      .bind(body.session_id)
+      .first<{ team_id: string }>(),
+  ])
+
+  const teamId = portalRow?.team_id ?? sessionRow?.team_id
+  if (!teamId) return err('not_found', 404)
+
+  const isMember = await env.DB
+    .prepare('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?')
+    .bind(teamId, auth.userId)
+    .first()
+  if (!isMember) return err('forbidden', 403)
+
+  // Store ticket keyed by UUID; value = session_id so the relay route can verify it
+  const ticket = crypto.randomUUID()
+  await env.POLL_CACHE.put(`tt:${ticket}`, body.session_id, { expirationTtl: 30 })
+  return json({ ticket })
+}))
+
+// ── Terminal relay (Durable Object WebSocket) ─────────────────────────────────
+router.get('/terminal/:sessionId', async (req: IRequest, env: Env) => {
+  const sessionId = (req.params as { sessionId: string }).sessionId
+  const url = new URL((req as Request).url)
+
+  if ((req as Request).headers.has('X-TSQ-Agent')) {
+    // Daemon path — validate daemon CLI token + confirm session ownership.
+    // Check both portals table (session_id set by daemonOpen) and sessions table
+    // (task relay sessions from lifecycle.go use the sessions table, not portals).
+    const d = await withDaemonAgentAuth(req as Request, env)
+    if (d instanceof Response) return d
+    const [portalRow, sessionRow] = await Promise.all([
+      env.DB
+        .prepare('SELECT agent_id FROM portals WHERE session_id = ?')
+        .bind(sessionId)
+        .first<{ agent_id: string }>(),
+      env.DB
+        .prepare('SELECT agent_id FROM sessions WHERE id = ?')
+        .bind(sessionId)
+        .first<{ agent_id: string }>(),
+    ])
+    const owner = portalRow?.agent_id ?? sessionRow?.agent_id
+    if (!owner || owner !== d.agentId) return err('forbidden', 403)
+  } else {
+    // Browser path — one-time ticket issued by POST /terminal/ticket.
+    // Tickets expire after 30 s and are deleted on first use, keeping the
+    // Firebase JWT out of the WebSocket URL (and therefore out of access logs).
+    const ticket = url.searchParams.get('ticket')
+    if (!ticket) return err('unauthorized', 401)
+    const stored = await env.POLL_CACHE.get(`tt:${ticket}`)
+    if (!stored || stored !== sessionId) return err('forbidden', 403)
+    // Delete after the upgrade succeeds so the ticket remains valid for retry
+    // if the DO fetch throws (e.g. cold-start race). The 30 s TTL is the fallback.
+    const id = env.TERMINAL_RELAY.idFromName(sessionId)
+    const res = await env.TERMINAL_RELAY.get(id).fetch(req as Request)
+    await env.POLL_CACHE.delete(`tt:${ticket}`)
+    return res
+  }
+
+  const id = env.TERMINAL_RELAY.idFromName(sessionId)
+  return env.TERMINAL_RELAY.get(id).fetch(req as Request)
+})
 
 router.all('*', () => err('not_found', 404))
 

@@ -92,7 +92,9 @@ async function processAgentHeartbeat(
   agentStatus: string,
   agentRow: { last_seen: number | null; reset_pending: number; paused: number } | undefined,
   now: number,
-  nextPollMs: number
+  nextPollMs: number,
+  portalActive: boolean,
+  daemonUptimeMs: number = 0
 ): Promise<Record<string, unknown>> {
   if (agentRow?.reset_pending) {
     await env.DB.batch([
@@ -211,6 +213,32 @@ async function processAgentHeartbeat(
     }
   }
 
+  // Idle: check for a portal needing attention for this agent.
+  // Priority order: close signal (browser-initiated or crash recovery) > new pending portal.
+  const activePortal = await env.DB
+    .prepare(`SELECT id, status FROM portals WHERE agent_id = ? AND status IN ('pending', 'running') ORDER BY created_at ASC LIMIT 1`)
+    .bind(agentId)
+    .first<{ id: string; status: string }>()
+
+  if (activePortal) {
+    if (activePortal.status === 'running') {
+      if (!portalActive) {
+        // portalActive=false + running portal. Two cases:
+        // 1. Daemon just restarted (uptime < 30s) — portal goroutine hasn't had time to
+        //    restart yet. Apply a grace period to avoid marking it as crashed on every deploy.
+        // 2. Daemon has been running > 30s with no portal goroutine — genuinely crashed.
+        if (daemonUptimeMs < 30_000) {
+          return { agent_id: agentId, ok: true, next_poll_ms: nextPollMs }
+        }
+        return { agent_id: agentId, ok: true, close_portal: { id: activePortal.id, crashed: true }, next_poll_ms: nextPollMs }
+      }
+      // portalActive=true: daemon is actively running the portal — no action needed.
+      return { agent_id: agentId, ok: true, next_poll_ms: nextPollMs }
+    }
+    // status === 'pending' — dispatch to daemon
+    return { agent_id: agentId, ok: true, portal: { id: activePortal.id }, next_poll_ms: nextPollMs }
+  }
+
   return { agent_id: agentId, ok: true, next_poll_ms: nextPollMs }
 }
 
@@ -279,9 +307,10 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
  * the entire batch when all agents are idle and nothing has changed.
  */
 export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Promise<Response> {
+  type AgentEntry = { id: string; status: string; close_step_idx?: number; portal_active?: boolean; daemon_uptime_ms?: number }
   const body = await req
-    .json<{ agents?: Array<{ id: string; status: string; close_step_idx?: number }> }>()
-    .catch(() => ({} as { agents?: Array<{ id: string; status: string; close_step_idx?: number }> }))
+    .json<{ agents?: Array<AgentEntry> }>()
+    .catch(() => ({} as { agents?: Array<AgentEntry> }))
 
   const agentEntries = body.agents
   if (!agentEntries?.length) return err('missing_fields', 400)
@@ -289,6 +318,8 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   const agentIds = agentEntries.map(e => e.id)
   const statuses = agentEntries.map(e => e.status ?? AgentStatus.Idle)
   const closeStepIdxs = agentEntries.map(e => e.close_step_idx ?? -1)
+  const portalActives = agentEntries.map(e => e.portal_active ?? false)
+  const daemonUptimesMs = agentEntries.map(e => e.daemon_uptime_ms ?? 0)
 
   // Authenticate via Firebase token; verify all agent IDs belong to the user.
   const authResult = await withDaemonBatchAuth(req, agentIds, env)
@@ -400,7 +431,7 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   // Process each agent independently (in parallel)
   const agentResponses = await Promise.all(
     agentIds.map((agentId, i) =>
-      processAgentHeartbeat(env, agentId, statuses[i], agentRows[i], now, nextPollMs)
+      processAgentHeartbeat(env, agentId, statuses[i], agentRows[i], now, nextPollMs, portalActives[i], daemonUptimesMs[i])
     )
   )
 

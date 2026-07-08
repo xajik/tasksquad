@@ -7,6 +7,7 @@ import { api, type Agent, type Task, type Message, type Team, type Member } from
 import { MessageType } from '../lib/messageTypes'
 import { requestNotificationPermission, notify, STATUS_NOTIF, registerPushToken } from '../lib/notifications'
 import { cn } from '@/lib/utils'
+import { LiveTerminal } from '@/components/LiveTerminal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -89,6 +90,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   Layers,
+  Monitor,
 } from 'lucide-react'
 
 import { Notes } from './Notes'
@@ -97,6 +99,7 @@ import { Conveyors } from './Conveyors'
 import { Skills } from './Skills'
 import { Supervisor } from './Supervisor'
 import { Planners } from './Planners'
+import { Portals } from './Portals'
 import { AgentWorkflow } from '../components/AgentWorkflow'
 import { MemberWorkflow } from '../components/MemberWorkflow'
 import { HowItWorks, HowItWorksToggle } from '../components/HowItWorks'
@@ -1306,6 +1309,13 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
         </div>
       </div>
 
+      {/* ── Live terminal — raw PTY output via xterm.js while task is running ── */}
+      {task?.session_id && ['running', 'waiting_input'].includes(task.status) && (
+        <div style={{ height: 'calc(100vh - 380px)', minHeight: 300, marginBottom: 16 }}>
+          <LiveTerminal sessionId={task.session_id} />
+        </div>
+      )}
+
       {/* ── Messages — natural page scroll ── */}
       <div className="space-y-1 mb-4">
         {messages.map(m => (
@@ -2474,6 +2484,7 @@ export default function Dashboard() {
   const isSkills = location.pathname.startsWith('/dashboard/skills')
   const isPlanner = location.pathname.startsWith('/dashboard/planner')
   const isSupervisor = location.pathname.startsWith('/dashboard/supervisor')
+  const isPortals = location.pathname.startsWith('/dashboard/portals')
   if (isLoadingTeams) return (
     <div className="flex h-screen items-center justify-center">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -2563,6 +2574,14 @@ export default function Dashboard() {
           >
             <Inbox className="mr-2 h-4 w-4" />
             Inbox
+          </Button>
+          <Button
+            variant={isPortals ? 'secondary' : 'ghost'}
+            className="w-full justify-start mb-1"
+            onClick={() => handleNav('/dashboard/portals')}
+          >
+            <Monitor className="mr-2 h-4 w-4" />
+            Portals
           </Button>
           <Button
             variant={isNotes ? 'secondary' : 'ghost'}
@@ -2711,6 +2730,7 @@ export default function Dashboard() {
           <Route path="/tasks/:taskId" element={<TaskThread teamId={teamId} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/notes" element={<Notes teamId={teamId} />} />
           <Route path="/notes/:noteId" element={<NoteDetail teamId={teamId} />} />
+          <Route path="/portals/*" element={<Portals teamId={teamId} plan={plan} />} />
           <Route path="/conveyor" element={<Conveyors teamId={teamId} />} />
           <Route path="/planner" element={<Planners teamId={teamId} />} />
           <Route path="/planner/:plannerId" element={<Planners teamId={teamId} />} />

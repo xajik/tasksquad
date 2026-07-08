@@ -38,6 +38,15 @@ id      = "60e989c16f6d4ce4946df7393a6031ce"
 tag = "v2"
 deleted_classes = ["AgentRelay"]
 
+# Durable Object migration — add TerminalRelay for live terminal streaming
+[[migrations]]
+tag = "v3"
+new_classes = ["TerminalRelay"]
+
+[[durable_objects.bindings]]
+name = "TERMINAL_RELAY"
+class_name = "TerminalRelay"
+
 [observability]
 enabled = true
 

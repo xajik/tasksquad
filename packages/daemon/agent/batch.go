@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/tasksquad/daemon/analytics"
@@ -11,6 +12,10 @@ import (
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 )
+
+// daemonStartedAt records when this daemon process started so the server can
+// apply a grace period before treating a 'running' portal as crashed on restart.
+var daemonStartedAt = time.Now()
 
 // BatchController allows external code to trigger an immediate poll.
 type BatchController struct {
@@ -61,12 +66,20 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 		}
 
 		// Build per-agent entry list.
+		uptimeMs := time.Since(daemonStartedAt).Milliseconds()
 		entries := make([]map[string]any, len(agents))
 		for i, a := range agents {
-			entry := map[string]any{"id": a.Config.ID, "status": a.st.Mode()}
+			entry := map[string]any{
+				"id":               a.Config.ID,
+				"status":           a.st.Mode(),
+				"daemon_uptime_ms": uptimeMs,
+			}
 			if a.st.ModeValue() == ModeLearning {
 				_, executed := a.st.CloseSteps()
 				entry["close_step_idx"] = len(executed)
+			}
+			if atomic.LoadInt32(&a.portalActive) == 1 {
+				entry["portal_active"] = true
 			}
 			entries[i] = entry
 		}
@@ -142,6 +155,40 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 			a.st.lastPollAt = time.Now()
 			a.st.mu.Unlock()
 			a.processResponse(cfg, item)
+
+			// Portal assigned by server in batch response (idle agents only).
+			if portalRaw, ok := item["portal"]; ok && portalRaw != nil {
+				if pMap, ok2 := portalRaw.(map[string]any); ok2 {
+					if id, _ := pMap["id"].(string); id != "" && a.st.ModeValue() == ModeIdle {
+						go a.handlePortal(cfg, &portalRecord{id: id})
+					}
+				}
+			}
+
+			// Close signal: browser closed the portal or crash recovery (agent idle, portal 'running').
+			if cpRaw, ok := item["close_portal"]; ok && cpRaw != nil {
+				if cpMap, ok2 := cpRaw.(map[string]any); ok2 {
+					if id, _ := cpMap["id"].(string); id != "" {
+						crashed, _ := cpMap["crashed"].(bool)
+						if atomic.LoadInt32(&a.portalActive) == 1 {
+							// Portal goroutine is alive — deliver signal so it kills tmux.
+							select {
+							case a.portalSignals <- id:
+							default:
+							}
+						} else {
+							// No running goroutine (daemon was restarted / crashed).
+							// Report the portal as closed so the server can mark it terminal.
+							closeStatus := "done"
+							if crashed {
+								closeStatus = "failed"
+							}
+							logger.Info(fmt.Sprintf("[batch] portal %s: crash recovery — reporting %s", id, closeStatus))
+							go a.reportPortalClose(cfg, id, closeStatus)
+						}
+					}
+				}
+			}
 		}
 
 		timer.Reset(nextInterval)

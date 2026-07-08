@@ -156,6 +156,12 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 
 	a.closeProcessResources(sess, fifo, pw, outputDone)
 
+	// Close terminal relay after output is fully drained.
+	if a.relayConn != nil {
+		a.relayConn.Close()
+		a.relayConn = nil
+	}
+
 	a.st.mu.Lock()
 	lines := append([]string(nil), a.st.outputLines...)
 	a.st.mu.Unlock()

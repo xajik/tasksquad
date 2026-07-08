@@ -21,15 +21,22 @@ func (a *Agent) writeRunLog(msg string) {
 	fmt.Fprintf(f, "%s %s\n", time.Now().Format(time.RFC3339), msg)
 }
 
-// streamOutput drains a process output reader (FIFO or stdout pipe), strips ANSI
-// sequences, appends each clean line to outputLines, writes it to the run log,
-// and batches lines to the server via SSE push.
+// streamOutput drains a process output reader (FIFO or stdout pipe).
+// Raw PTY bytes are forwarded to the terminal relay WebSocket (if connected) before
+// any processing, providing 1-to-1 rendering in the browser via xterm.js.
+// Cleaned lines (ANSI stripped) are appended to outputLines and written to the run log.
 func (a *Agent) streamOutput(cfg *config.Config, agentID string, r io.Reader) {
 	a.st.mu.Lock()
 	runLog := a.st.runLog
 	a.st.mu.Unlock()
 
-	scanner := bufio.NewScanner(r)
+	// Tee raw bytes to the relay before the scanner strips ANSI sequences.
+	src := io.Reader(r)
+	if a.relayConn != nil {
+		src = io.TeeReader(r, &relayWriter{conn: a.relayConn})
+	}
+
+	scanner := bufio.NewScanner(src)
 	// OpenCode renders full-screen TUI frames that can be very large ANSI blobs.
 	// The default 64KB limit causes scanner to fail silently, closing outputDone
 	// and triggering a false crash. Use a 4MB buffer to handle any real-world frame.

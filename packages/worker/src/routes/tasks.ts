@@ -62,7 +62,12 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
   let closeSteps: string[] | null = null
   try { closeSteps = task.close_steps ? JSON.parse(task.close_steps) : null } catch { closeSteps = null }
 
-  return json({ ...task, settings: task.settings ? JSON.parse(task.settings) : null, close_steps: closeSteps })
+  const activeSession = await env.DB
+    .prepare('SELECT id FROM sessions WHERE task_id = ? AND closed_at IS NULL ORDER BY started_at DESC LIMIT 1')
+    .bind(taskId)
+    .first<{ id: string }>()
+
+  return json({ ...task, settings: task.settings ? JSON.parse(task.settings) : null, close_steps: closeSteps, session_id: activeSession?.id ?? null })
 }
 
 export async function gradeTask(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

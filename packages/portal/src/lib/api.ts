@@ -267,6 +267,23 @@ export const api = {
     delete: (teamId: string, id: string) =>
       del(`/teams/${teamId}/planners/${id}`),
   },
+  portals: {
+    list: (teamId: string) =>
+      request<{ portals: Portal[] }>(`/portals?team_id=${teamId}`),
+    get: (portalId: string) =>
+      request<Portal>(`/portals/${portalId}`),
+    create: (body: { team_id: string; agent_id: string }) =>
+      request<{ id: string; status: string }>('/portals', { method: 'POST', body: JSON.stringify(body) }),
+    close: (portalId: string) =>
+      request<{ ok: boolean }>(`/portals/${portalId}/close`, { method: 'POST' }),
+  },
+  terminal: {
+    ticket: (sessionId: string) =>
+      request<{ ticket: string }>('/terminal/ticket', {
+        method: 'POST',
+        body: JSON.stringify({ session_id: sessionId }),
+      }),
+  },
 }
 
 export interface UserProfile {
@@ -388,6 +405,7 @@ export interface Task {
   grade?: number | null
   planner_id?: string | null
   conveyor_id?: string | null
+  session_id?: string | null
 }
 
 export interface Message {
@@ -438,6 +456,18 @@ export interface NoteComment {
   agent_name?: string | null
   content: string
   created_at: number
+}
+
+export interface Portal {
+  id: string
+  team_id: string
+  agent_id: string
+  sender_id: string
+  status: 'pending' | 'running' | 'done' | 'failed'
+  session_id?: string | null
+  created_at: number
+  started_at?: number | null
+  completed_at?: number | null
 }
 
 export interface TaskLog {

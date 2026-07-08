@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/tasksquad/daemon/agentmode"
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
@@ -37,25 +38,30 @@ const (
 // Agent is the runtime representation of a configured agent process.
 // Behaviour is spread across focused files in this package:
 //
-//	agent.go     — struct, constructor, accessors
-//	lifecycle.go — startTask (process spawn)
-//	session.go   — Complete, StopAndPause, closeSession, handleReset, startCloseSequence
-//	complete.go  — internalComplete and its helpers
-//	response.go  — processResponse, SetWaitingInput, PushIntermediateResponse
-//	streaming.go — streamOutput, writeRunLog
-//	transcript.go — transcript reading and extractFinalText
-//	upload.go    — R2 artifact uploads
+//	agent.go          — struct, constructor, accessors
+//	lifecycle.go      — startTask (process spawn)
+//	session.go        — Complete, StopAndPause, closeSession, handleReset, startCloseSequence
+//	complete.go       — internalComplete and its helpers
+//	response.go       — processResponse, SetWaitingInput, PushIntermediateResponse
+//	streaming.go      — streamOutput, writeRunLog
+//	terminal_relay.go — live PTY byte relay via Durable Object WebSocket
+//	transcript.go     — transcript reading and extractFinalText
+//	upload.go         — R2 artifact uploads
 type Agent struct {
-	Config config.AgentConfig
-	prov   provider.Provider
-	st     *AgentState
+	Config        config.AgentConfig
+	prov          provider.Provider
+	st            *AgentState
+	relayConn     *websocket.Conn // live terminal relay WS; nil when idle
+	portalActive  int32           // atomic: 1 while a portal goroutine is running
+	portalSignals chan string      // receives portal IDs to close (buffered 1)
 }
 
 // New creates an Agent from the given config, detecting the provider from the command.
 func New(cfg config.AgentConfig) *Agent {
 	return &Agent{
-		Config: cfg,
-		prov:   provider.Detect(cfg.Command, cfg.Provider),
+		Config:        cfg,
+		prov:          provider.Detect(cfg.Command, cfg.Provider),
+		portalSignals: make(chan string, 1),
 		st: &AgentState{
 			agentID: cfg.ID,
 			mode:    ModeIdle,

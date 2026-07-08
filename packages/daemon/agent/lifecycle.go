@@ -11,6 +11,7 @@ import (
 
 	"github.com/tasksquad/daemon/agentmode"
 	"github.com/tasksquad/daemon/analytics"
+	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/tasklog"
@@ -110,6 +111,11 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	a.st.mu.Lock()
 	a.st.sessionID = sessionID
 	a.st.mu.Unlock()
+
+	// Dial the terminal relay DO so raw PTY bytes stream to the portal in real-time.
+	if token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL); err == nil {
+		a.relayConn = dialTerminalRelay(cfg, token, sessionID)
+	}
 
 	// Open per-task JSONL record.
 	tlog, tlErr := tasklog.Open(taskID)

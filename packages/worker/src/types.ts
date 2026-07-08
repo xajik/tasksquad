@@ -22,6 +22,8 @@ export interface Env {
   // KV namespace for circuit breaker rate limiting (optional — gracefully skipped if not provisioned)
   // Provision with: wrangler kv namespace create CB_CACHE
   CB_KV?: KVNamespace
+  // Durable Object namespace for live terminal relay
+  TERMINAL_RELAY: DurableObjectNamespace
 }
 
 export interface AuthContext {
