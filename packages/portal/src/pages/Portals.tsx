@@ -286,7 +286,7 @@ function PortalsList({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' })
 
 // ── Portal detail ─────────────────────────────────────────────────────────────
 
-function PortalDetail({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' }) {
+function PortalDetail({ teamId }: { teamId: string; plan: 'free' | 'pro' }) {
   const { portalId } = useParams<{ portalId: string }>()
   const nav = useNavigate()
   const [portal, setPortal] = useState<Portal | null>(null)

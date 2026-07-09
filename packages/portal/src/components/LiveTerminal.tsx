@@ -53,24 +53,25 @@ export function LiveTerminal({ sessionId }: { sessionId: string }) {
         const { ticket } = await api.terminal.ticket(sessionId)
         if (disposed) return
 
-        ws = new WebSocket(`${WS_BASE}/terminal/${sessionId}?ticket=${ticket}`)
-        ws.binaryType = 'arraybuffer'
+        const socket = new WebSocket(`${WS_BASE}/terminal/${sessionId}?ticket=${ticket}`)
+        socket.binaryType = 'arraybuffer'
+        ws = socket
 
-        ws.onmessage = (e) => {
+        socket.onmessage = (e) => {
           if (typeof e.data === 'string') return // ignore __ping__
           term.write(new Uint8Array(e.data as ArrayBuffer))
         }
 
-        ws.onopen = () => {
+        socket.onopen = () => {
           retryCount = 0
           // Send initial terminal dimensions so tmux starts at the right size
           fitAddon.fit()
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(new TextEncoder().encode(JSON.stringify({ t: 'r', c: term.cols, r: term.rows })))
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(new TextEncoder().encode(JSON.stringify({ t: 'r', c: term.cols, r: term.rows })))
           }
         }
 
-        ws.onclose = () => {
+        socket.onclose = () => {
           if (!disposed) {
             if (retryCount < MAX_RETRIES) {
               const delay = Math.min(1000 * 2 ** retryCount, 30_000)
