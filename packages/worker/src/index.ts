@@ -262,6 +262,10 @@ router.get('/terminal/:sessionId', async (req: IRequest, env: Env) => {
 router.all('*', () => err('not_found', 404))
 
 function addCors(res: Response, req: Request, env: Env): Response {
+  // WebSocket upgrade responses (status 101) must be returned as-is — rebuilding
+  // them via `new Response(...)` drops the `webSocket` pairing and breaks the
+  // handshake for both the browser and daemon terminal-relay connections.
+  if (res.webSocket) return res
   const headers = new Headers(res.headers)
   for (const [k, v] of Object.entries(getCorsHeaders(req, env))) headers.set(k, v)
   return new Response(res.body, { status: res.status, headers })

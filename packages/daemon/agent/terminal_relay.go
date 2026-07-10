@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -38,9 +39,15 @@ func dialTerminalRelay(cfg *config.Config, token, agentID, sessionID string) *we
 		"Authorization": {"Bearer " + token},
 		"X-TSQ-Agent":   {agentID},
 	}
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, header)
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, header)
 	if err != nil {
-		logger.Warn(fmt.Sprintf("[terminal relay] dial failed (session=%s): %v", sessionID, err))
+		if resp != nil {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+			resp.Body.Close()
+			logger.Warn(fmt.Sprintf("[terminal relay] dial failed (session=%s): %v — HTTP %d: %s", sessionID, err, resp.StatusCode, string(body)))
+		} else {
+			logger.Warn(fmt.Sprintf("[terminal relay] dial failed (session=%s): %v", sessionID, err))
+		}
 		return nil
 	}
 	logger.Info(fmt.Sprintf("[terminal relay] connected for session %s", sessionID))
