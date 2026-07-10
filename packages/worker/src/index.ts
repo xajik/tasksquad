@@ -209,9 +209,10 @@ router.post('/terminal/ticket', firebaseRoute(async (req, env, _ctx, auth) => {
     .first()
   if (!isMember) return err('forbidden', 403)
 
-  // Store ticket keyed by UUID; value = session_id so the relay route can verify it
+  // Store ticket keyed by UUID; value = session_id so the relay route can verify it.
+  // 60 s is the Cloudflare KV minimum expirationTtl.
   const ticket = crypto.randomUUID()
-  await env.POLL_CACHE.put(`tt:${ticket}`, body.session_id, { expirationTtl: 30 })
+  await env.POLL_CACHE.put(`tt:${ticket}`, body.session_id, { expirationTtl: 60 })
   return json({ ticket })
 }))
 
@@ -240,14 +241,14 @@ router.get('/terminal/:sessionId', async (req: IRequest, env: Env) => {
     if (!owner || owner !== d.agentId) return err('forbidden', 403)
   } else {
     // Browser path — one-time ticket issued by POST /terminal/ticket.
-    // Tickets expire after 30 s and are deleted on first use, keeping the
+    // Tickets expire after 60 s and are deleted on first use, keeping the
     // Firebase JWT out of the WebSocket URL (and therefore out of access logs).
     const ticket = url.searchParams.get('ticket')
     if (!ticket) return err('unauthorized', 401)
     const stored = await env.POLL_CACHE.get(`tt:${ticket}`)
     if (!stored || stored !== sessionId) return err('forbidden', 403)
     // Delete after the upgrade succeeds so the ticket remains valid for retry
-    // if the DO fetch throws (e.g. cold-start race). The 30 s TTL is the fallback.
+    // if the DO fetch throws (e.g. cold-start race). The 60 s TTL is the fallback.
     const id = env.TERMINAL_RELAY.idFromName(sessionId)
     const res = await env.TERMINAL_RELAY.get(id).fetch(req as Request)
     await env.POLL_CACHE.delete(`tt:${ticket}`)
