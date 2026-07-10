@@ -31,10 +31,13 @@ func (r *relayWriter) Write(p []byte) (int, error) {
 
 // dialTerminalRelay connects to the TerminalRelay Durable Object for the given session.
 // Returns nil on failure so callers can proceed without the relay.
-func dialTerminalRelay(cfg *config.Config, token, sessionID string) *websocket.Conn {
+func dialTerminalRelay(cfg *config.Config, token, agentID, sessionID string) *websocket.Conn {
 	serverURL := cfg.Server.URL
 	wsURL := strings.NewReplacer("https://", "wss://", "http://", "ws://").Replace(serverURL) + "/terminal/" + sessionID
-	header := http.Header{"X-TSQ-Agent": {token}}
+	header := http.Header{
+		"Authorization": {"Bearer " + token},
+		"X-TSQ-Agent":   {agentID},
+	}
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, header)
 	if err != nil {
 		logger.Warn(fmt.Sprintf("[terminal relay] dial failed (session=%s): %v", sessionID, err))

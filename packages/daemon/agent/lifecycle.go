@@ -114,7 +114,10 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 
 	// Dial the terminal relay DO so raw PTY bytes stream to the portal in real-time.
 	if token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL); err == nil {
-		a.relayConn = dialTerminalRelay(cfg, token, sessionID)
+		a.st.mu.Lock()
+		agentID := a.st.agentID
+		a.st.mu.Unlock()
+		a.relayConn = dialTerminalRelay(cfg, token, agentID, sessionID)
 	}
 
 	// Open per-task JSONL record.

@@ -135,7 +135,7 @@ func (a *Agent) handlePortal(cfg *config.Config, p *portalRecord) {
 	token, _ := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)
 	var relay *websocket.Conn
 	if token != "" {
-		relay = dialTerminalRelay(cfg, token, sessionID)
+		relay = dialTerminalRelay(cfg, token, a.Config.ID, sessionID)
 		if relay != nil {
 			defer relay.Close()
 			// Start relay reader: forwards browser stdin and resize frames to tmux.
