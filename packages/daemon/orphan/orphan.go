@@ -88,7 +88,11 @@ func (c *OrphanController) listTmuxSessions() ([]string, error) {
 	var ids []string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		name := strings.TrimSpace(line)
-		if !strings.HasPrefix(name, "tsq-") || strings.HasPrefix(name, "tsq-sup-") {
+		// Supervisor sessions are tracked separately via killOrphan's task lookup, and
+		// portal sessions live in the `portals` table, not `sessions` — /daemon/session/state
+		// would never find them, so leaving them in scope here would get every portal
+		// killed as a false orphan on each sweep.
+		if !strings.HasPrefix(name, "tsq-") || strings.HasPrefix(name, "tsq-sup-") || strings.HasPrefix(name, "tsq-portal-") {
 			continue
 		}
 		ids = append(ids, strings.TrimPrefix(name, "tsq-"))
