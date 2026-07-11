@@ -291,6 +291,7 @@ function PortalDetail({ teamId }: { teamId: string; plan: 'free' | 'pro' }) {
   const nav = useNavigate()
   const [portal, setPortal] = useState<Portal | null>(null)
   const [agents, setAgents] = useState<Agent[]>([])
+  const [closing, setClosing] = useState(false)
 
   const load = useCallback(async () => {
     if (!portalId) return
@@ -300,6 +301,17 @@ function PortalDetail({ teamId }: { teamId: string; plan: 'free' | 'pro' }) {
   }, [portalId, teamId])
 
   useEffect(() => { load() }, [load])
+
+  async function handleClose() {
+    if (!portal) return
+    setClosing(true)
+    try {
+      await api.portals.close(portal.id)
+      await load()
+    } finally {
+      setClosing(false)
+    }
+  }
 
   // Poll while pending or running
   useEffect(() => {
@@ -343,6 +355,18 @@ function PortalDetail({ teamId }: { teamId: string; plan: 'free' | 'pro' }) {
             <span>{relativeTime(portal.created_at)}</span>
           </div>
         </div>
+        {isActiveStatus(portal.status) && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClose}
+            disabled={closing}
+            className="shrink-0"
+          >
+            {closing ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 mr-1.5" />}
+            Close session
+          </Button>
+        )}
       </div>
 
       {/* Pending state — waiting for daemon to connect */}
