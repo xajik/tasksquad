@@ -91,12 +91,14 @@ import {
   ThumbsDown,
   Layers,
   Monitor,
+  Database,
 } from 'lucide-react'
 
 import { Notes } from './Notes'
 import { NoteDetail } from './NoteDetail'
 import { Conveyors } from './Conveyors'
 import { Skills } from './Skills'
+import { Memory } from './Memory'
 import { Supervisor } from './Supervisor'
 import { Planners } from './Planners'
 import { Portals } from './Portals'
@@ -2235,6 +2237,12 @@ export function SettingsView({ teamName, currentTeam, onDelete, onLeave, plan: _
     await onRefresh()
   }
 
+  async function toggleMemoryEnabled() {
+    if (!currentTeam) return
+    await api.teams.updateSettings(currentTeam.id, { memory_enabled: !currentTeam.memory_enabled })
+    await onRefresh()
+  }
+
   return (
     <div className="animate-fade-in">
       <h2 className="text-2xl font-semibold mb-6">Settings</h2>
@@ -2289,6 +2297,35 @@ export function SettingsView({ teamName, currentTeam, onDelete, onLeave, plan: _
               <span className={cn(
                 "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
                 currentTeam?.learn_from_session ?? true ? "translate-x-4" : "translate-x-0"
+              )} />
+            </button>
+          </div>
+        )}
+
+        {isMaintainer && (
+          <div className="flex items-start justify-between gap-4 py-4 border-t">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Database className="h-4 w-4" />
+                Memory
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                When enabled, agents automatically extract and share project knowledge (decisions, conventions, architecture notes) across sessions. Disable to skip memory extraction.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={currentTeam?.memory_enabled ?? true}
+              aria-label="Memory"
+              onClick={toggleMemoryEnabled}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mt-0.5",
+                currentTeam?.memory_enabled ?? true ? "bg-primary" : "bg-muted-foreground/30"
+              )}
+            >
+              <span className={cn(
+                "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                currentTeam?.memory_enabled ?? true ? "translate-x-4" : "translate-x-0"
               )} />
             </button>
           </div>
@@ -2482,6 +2519,7 @@ export default function Dashboard() {
   const isSettings = location.pathname === '/dashboard/settings'
   const isNotes = location.pathname.startsWith('/dashboard/notes')
   const isSkills = location.pathname.startsWith('/dashboard/skills')
+  const isMemory = location.pathname.startsWith('/dashboard/memory')
   const isPlanner = location.pathname.startsWith('/dashboard/planner')
   const isSupervisor = location.pathname.startsWith('/dashboard/supervisor')
   const isPortals = location.pathname.startsWith('/dashboard/portals')
@@ -2568,7 +2606,7 @@ export default function Dashboard() {
         </div>
         <nav className="flex-1 px-2">
           <Button
-            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills && !isPlanner && !isSupervisor ? 'secondary' : 'ghost'}
+            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills && !isMemory && !isPlanner && !isSupervisor ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
             onClick={() => handleNav('/dashboard')}
           >
@@ -2622,6 +2660,14 @@ export default function Dashboard() {
             >
             <BookOpen className="mr-2 h-4 w-4" />
             Skills & Sub-agents
+            </Button>
+            <Button
+            variant={isMemory ? 'secondary' : 'ghost'}
+            className="w-full justify-start mb-1"
+            onClick={() => handleNav('/dashboard/memory')}
+            >
+            <Database className="mr-2 h-4 w-4" />
+            Memory
             </Button>
 <Button
             variant={isAgents ? 'secondary' : 'ghost'}            className="w-full justify-start mb-1"
@@ -2736,6 +2782,7 @@ export default function Dashboard() {
           <Route path="/planner/:plannerId" element={<Planners teamId={teamId} />} />
           <Route path="/supervisor" element={<Supervisor teamId={teamId} />} />
           <Route path="/skills" element={<Skills teamId={teamId} />} />
+          <Route path="/memory" element={<Memory teamId={teamId} currentTeam={currentTeam} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/settings" element={<SettingsView teamName={teamName} currentTeam={currentTeam} onDelete={handleDeleteProject} onLeave={handleLeaveProject} plan={plan} isOwner={isOwner} isMaintainer={isMaintainer} onRefresh={refreshTeams} />} />
         </Routes>

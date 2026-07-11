@@ -35,7 +35,7 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ name }),
       }),
-    updateSettings: (teamId: string, body: { learn_from_session?: boolean }) =>
+    updateSettings: (teamId: string, body: { learn_from_session?: boolean; memory_enabled?: boolean }) =>
       request<{ ok: boolean }>(`/teams/${teamId}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
@@ -239,6 +239,16 @@ export const api = {
       request<{ ok: boolean }>(`/teams/${teamId}/commands/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     delete: (teamId: string, id: string) => del(`/teams/${teamId}/commands/${id}`),
   },
+  memory: {
+    list: (teamId: string, category?: MemoryCategory) => {
+      const qs = category ? `?category=${category}` : ''
+      return request<{ memory: Memory[] }>(`/teams/${teamId}/memory${qs}`)
+    },
+    get: (teamId: string, memoryId: string) => request<Memory>(`/teams/${teamId}/memory/${memoryId}`),
+  },
+  tags: {
+    list: (teamId: string) => request<{ tags: Tag[] }>(`/teams/${teamId}/tags`),
+  },
   planners: {
     list: (teamId: string) =>
       request<{ planners: Planner[] }>(`/teams/${teamId}/planners`),
@@ -315,6 +325,7 @@ export interface Team {
   name: string
   role: string
   learn_from_session: boolean
+  memory_enabled: boolean
 }
 
 export interface Skill {
@@ -359,6 +370,28 @@ export interface Command {
   version: number
   created_at: number
   updated_at: number
+}
+
+export type MemoryCategory = 'personal' | 'preferences' | 'structure' | 'architecture' | 'events'
+
+export interface Memory {
+  id: string
+  team_id: string
+  agent_id: string | null
+  category: MemoryCategory
+  title: string
+  /** Omitted in list responses (perf) — present when fetched via `api.memory.get`. */
+  content?: string
+  tags: string[]
+  created_at: number
+  updated_at: number
+}
+
+export interface Tag {
+  id: string
+  team_id: string
+  name: string
+  created_at: number
 }
 
 export interface Conveyor {
