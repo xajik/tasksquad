@@ -22,7 +22,21 @@ import (
 // For a fresh task (single message), it uses that message directly.
 // For a follow-up (multiple messages), it formats the full thread as a
 // Human/Assistant conversation so the model has prior context.
-func buildConversationPrompt(subject string, rawMsgs any) string {
+//
+// memoryRollup, when non-empty, is the team's recent-activity summary
+// (server-computed from global-scope memory; see the agentic memory spec)
+// and is prepended as a clearly-delimited section ahead of the usual
+// subject/thread content. An empty memoryRollup leaves the prompt exactly as
+// it was before this parameter existed.
+func buildConversationPrompt(subject string, rawMsgs any, memoryRollup string) string {
+	base := buildBasePrompt(subject, rawMsgs)
+	if memoryRollup == "" {
+		return base
+	}
+	return fmt.Sprintf("## Project memory (recent activity)\n%s\n\n---\n\n%s", memoryRollup, base)
+}
+
+func buildBasePrompt(subject string, rawMsgs any) string {
 	msgs, _ := rawMsgs.([]interface{})
 	if len(msgs) == 0 {
 		return subject
@@ -54,7 +68,7 @@ func buildConversationPrompt(subject string, rawMsgs any) string {
 	return strings.TrimSpace(sb.String())
 }
 
-func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
+func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup string) {
 	taskID, _ := task["id"].(string)
 	subject, _ := task["subject"].(string)
 
@@ -161,7 +175,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any) {
 	}
 
 	// Build prompt from the full conversation history.
-	prompt := buildConversationPrompt(subject, task["messages"])
+	prompt := buildConversationPrompt(subject, task["messages"], memoryRollup)
 	a.st.mu.Lock()
 	a.st.lastPrompt = prompt
 	a.st.mu.Unlock()

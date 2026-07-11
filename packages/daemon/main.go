@@ -6,20 +6,22 @@ import (
 	"os"
 
 	"github.com/tasksquad/daemon/agent"
+	"github.com/tasksquad/daemon/agents"
 	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/autostart"
 	authcmd "github.com/tasksquad/daemon/cmd/auth"
 	hookscmd "github.com/tasksquad/daemon/cmd/hooks"
 	logscmd "github.com/tasksquad/daemon/cmd/logs"
+	memorycmd "github.com/tasksquad/daemon/cmd/memory"
+	tagscmd "github.com/tasksquad/daemon/cmd/tags"
 	tmuxcmd "github.com/tasksquad/daemon/cmd/tmux"
+	"github.com/tasksquad/daemon/commands"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/orphan"
 	"github.com/tasksquad/daemon/provider"
-	"github.com/tasksquad/daemon/agents"
-	"github.com/tasksquad/daemon/commands"
 	"github.com/tasksquad/daemon/skills"
 	"github.com/tasksquad/daemon/supervisor"
 	"github.com/tasksquad/daemon/ui"
@@ -59,6 +61,12 @@ func main() {
 			return
 		case "skill":
 			hookscmd.RunSkill(os.Args[2:]) //nolint:errcheck
+			return
+		case "memory":
+			memorycmd.RunMemory(os.Args[2:]) //nolint:errcheck
+			return
+		case "tags":
+			tagscmd.RunTags(os.Args[2:]) //nolint:errcheck
 			return
 		}
 	}

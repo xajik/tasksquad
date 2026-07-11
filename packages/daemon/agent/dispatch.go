@@ -123,7 +123,15 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 			"agent_id":   agentID,
 			"agent_name": a.Config.Name,
 		})
-		go a.startTask(cfg, task)
+		// memory_rollup, when present, is a small daily/weekly summary of the
+		// team's recent global-memory activity — the worker computes it
+		// server-side (see agentic memory spec) and attaches it alongside
+		// "task" the same way "close_steps" rides alongside the response for
+		// a different heartbeat state. It's absent until the worker feature
+		// ships and optional even after, so a missing/empty value here is
+		// the normal case, not an error.
+		memoryRollup, _ := resp["memory_rollup"].(string)
+		go a.startTask(cfg, task, memoryRollup)
 	} else {
 		logger.Debug(fmt.Sprintf("[%s] No pending tasks", a.Config.Name))
 	}

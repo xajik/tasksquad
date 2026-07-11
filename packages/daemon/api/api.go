@@ -82,6 +82,38 @@ func GetConditional(cfg *config.Config, token, path, etag string) (map[string]an
 	return result, nil
 }
 
+// GetWithAgent sends a JSON GET to the worker API using Firebase ID token
+// auth, scoped to a specific agent via the X-TSQ-Agent header. Plain Get has
+// no way to set that header, which is fine for firebaseRoute (user-scoped)
+// endpoints but fails daemonRoute-wrapped GET endpoints — those require
+// X-TSQ-Agent the same way Post does, and reject the request with 400
+// missing_agent_id without it.
+func GetWithAgent(cfg *config.Config, token, agentID, path string) (map[string]any, error) {
+	req, err := http.NewRequest("GET", cfg.Server.URL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	if agentID != "" {
+		req.Header.Set("X-TSQ-Agent", agentID)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, b)
+	}
+
+	var result map[string]any
+	json.Unmarshal(b, &result) //nolint:errcheck
+	return result, nil
+}
+
 // PostBatch sends a batch heartbeat request and handles ETag-based 304 responses.
 // The Firebase ID token is sent in the Authorization header; agent IDs and statuses
 // are sent in the request body (no per-agent tokens needed).
