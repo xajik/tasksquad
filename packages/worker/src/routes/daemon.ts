@@ -89,6 +89,7 @@ function hb304(version: string): Response {
 async function processAgentHeartbeat(
   env: Env,
   agentId: string,
+  teamId: string,
   agentStatus: string,
   agentRow: { last_seen: number | null; reset_pending: number; paused: number } | undefined,
   now: number,
@@ -205,10 +206,28 @@ async function processAgentHeartbeat(
       }
       return m
     })
+
+    // Auto-inject the team's most recent short-term memory rollup, if memory is
+    // enabled — small, bounded-size "recent activity" context, not full long-term
+    // memory (which is reachable on demand via `tsq memory search` instead).
+    let memoryRollup: string | undefined
+    const team = await env.DB
+      .prepare('SELECT memory_enabled FROM teams WHERE id = ?')
+      .bind(teamId)
+      .first<{ memory_enabled: number }>()
+    if (team?.memory_enabled) {
+      const rollup = await env.DB
+        .prepare("SELECT content FROM memory_rollup WHERE team_id = ? AND period = 'daily' ORDER BY period_key DESC LIMIT 1")
+        .bind(teamId)
+        .first<{ content: string }>()
+      if (rollup?.content) memoryRollup = rollup.content
+    }
+
     return {
       agent_id: agentId,
       ok: true,
       task: { id: task.id, subject: task.subject, messages },
+      ...(memoryRollup ? { memory_rollup: memoryRollup } : {}),
       next_poll_ms: nextPollMs,
     }
   }
@@ -431,7 +450,7 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   // Process each agent independently (in parallel)
   const agentResponses = await Promise.all(
     agentIds.map((agentId, i) =>
-      processAgentHeartbeat(env, agentId, statuses[i], agentRows[i], now, nextPollMs, portalActives[i], daemonUptimesMs[i])
+      processAgentHeartbeat(env, agentId, authResult[i].teamId, statuses[i], agentRows[i], now, nextPollMs, portalActives[i], daemonUptimesMs[i])
     )
   )
 
