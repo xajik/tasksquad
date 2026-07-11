@@ -209,12 +209,15 @@ func toFloat64(v any) float64 {
 func streamPortalOutput(r io.Reader, relay *websocket.Conn) {
 	buf := make([]byte, 4096)
 	rw := &relayWriter{conn: relay}
+	var total int
 	for {
 		n, err := r.Read(buf)
 		if n > 0 {
+			total += n
 			rw.Write(buf[:n]) //nolint:errcheck
 		}
 		if err != nil {
+			logger.Info(fmt.Sprintf("[portal] FIFO stream ended: %d bytes total, err=%v", total, err))
 			break
 		}
 	}
