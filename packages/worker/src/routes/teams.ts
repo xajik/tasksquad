@@ -22,15 +22,21 @@ async function requireMaintainer(db: D1Database, teamId: string, userId: string)
 export async function list(_req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const rows = await env.DB
     .prepare(`
-      SELECT DISTINCT t.id, t.name, tm.role, t.learn_from_session
+      SELECT DISTINCT t.id, t.name, tm.role, t.learn_from_session, t.memory_enabled
       FROM teams t JOIN team_members tm ON t.id = tm.team_id
       WHERE tm.user_id = ? AND t.is_deactivated = 0
       ORDER BY t.created_at DESC
     `)
     .bind(auth.userId)
-    .all<{ id: string; name: string; role: string; learn_from_session: number }>()
+    .all<{ id: string; name: string; role: string; learn_from_session: number; memory_enabled: number }>()
 
-  return json({ teams: rows.results.map(r => ({ ...r, learn_from_session: r.learn_from_session !== 0 })) })
+  return json({
+    teams: rows.results.map(r => ({
+      ...r,
+      learn_from_session: r.learn_from_session !== 0,
+      memory_enabled: r.memory_enabled !== 0,
+    })),
+  })
 }
 
 export async function updateSettings(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
@@ -39,11 +45,16 @@ export async function updateSettings(req: Request, env: Env, _ctx: unknown, auth
 
   if (!(await requireMaintainer(env.DB, teamId, auth.userId))) return err('forbidden', 403)
 
-  const body = await req.json<{ learn_from_session?: boolean }>().catch(() => ({} as { learn_from_session?: boolean }))
+  const body = await req.json<{ learn_from_session?: boolean; memory_enabled?: boolean }>().catch(() => ({} as { learn_from_session?: boolean; memory_enabled?: boolean }))
   if (body.learn_from_session !== undefined) {
     const val = body.learn_from_session ? 1 : 0
     await env.DB.prepare('UPDATE teams SET learn_from_session = ? WHERE id = ?').bind(val, teamId).run()
     return json({ ok: true, learn_from_session: !!val })
+  }
+  if (body.memory_enabled !== undefined) {
+    const val = body.memory_enabled ? 1 : 0
+    await env.DB.prepare('UPDATE teams SET memory_enabled = ? WHERE id = ?').bind(val, teamId).run()
+    return json({ ok: true, memory_enabled: !!val })
   }
 
   return err('no_fields_to_update', 400)

@@ -14,6 +14,18 @@ async function requireMember(db: D1Database, teamId: string, userId: string): Pr
   return !!row
 }
 
+// Default close_steps for a task that doesn't specify its own — used only when the
+// caller omits close_steps entirely. Unlike learn_from_session (stored but never
+// read — see 0029_team_learn_from_session.sql), memory_enabled actually gates
+// whether /tsq-end-session-memory is injected between the learning and cleanup steps.
+async function defaultCloseSteps(db: D1Database, teamId: string): Promise<string[]> {
+  const team = await db.prepare('SELECT memory_enabled FROM teams WHERE id = ?').bind(teamId).first<{ memory_enabled: number }>()
+  const steps = ['/tsq-end-session-learning']
+  if (team?.memory_enabled) steps.push('/tsq-end-session-memory')
+  steps.push('/tsq-cleanup')
+  return steps
+}
+
 export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const url = new URL(req.url)
   const agentId = url.searchParams.get('agent_id')
@@ -170,7 +182,7 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   const settingsVal = save_tokens ? JSON.stringify({ save_tokens }) : null
   const closeStepsVal = close_steps?.length
     ? JSON.stringify(close_steps)
-    : JSON.stringify(['/tsq-end-session-learning', '/tsq-cleanup'])
+    : JSON.stringify(await defaultCloseSteps(env.DB, team_id))
 
   if (isScheduled) {
     await env.DB.batch([

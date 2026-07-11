@@ -15,6 +15,9 @@ import * as subAgents  from './routes/sub-agents.js'
 import * as commands   from './routes/commands.js'
 import * as planners   from './routes/planners.js'
 import * as portals    from './routes/portals.js'
+import * as memory     from './routes/memory.js'
+import * as tags       from './routes/tags.js'
+import { runRollups }  from './cron/rollup.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 
 
@@ -112,6 +115,11 @@ router.get   ('/teams/:teamId/skills/:skillId',     firebaseRoute(skills.get))
 router.put   ('/teams/:teamId/skills/:skillId',     firebaseRoute(skills.update))
 router.delete('/teams/:teamId/skills/:skillId',     firebaseRoute(skills.remove))
 
+router.get   ('/teams/:teamId/memory',              firebaseRoute(memory.list))
+router.get   ('/teams/:teamId/memory/:memoryId',    firebaseRoute(memory.get))
+
+router.get   ('/teams/:teamId/tags',                firebaseRoute(tags.list))
+
 router.get   ('/teams/:teamId/sub-agents',                   firebaseRoute(subAgents.list))
 router.post  ('/teams/:teamId/sub-agents',                   firebaseRoute(subAgents.create))
 router.get   ('/teams/:teamId/sub-agents/:subAgentId',       firebaseRoute(subAgents.get))
@@ -168,6 +176,8 @@ router.post('/daemon/permission/request',         daemonRoute(daemon.permissionR
 router.post('/daemon/supervisor/report',          daemonRoute(daemon.supervisorReport))
 router.get ('/daemon/skills/:skillId',             firebaseRoute(skills.daemonSkillGet))
 router.post('/daemon/skills',                     daemonRoute(skills.daemonUpsert))
+router.post('/daemon/memory',                     daemonRoute(memory.daemonPush))
+router.get ('/daemon/memory/search',              daemonRoute(memory.search))
 
 // ── Portal routes (browser) ───────────────────────────────────────────────────
 router.get ('/portals',                              firebaseRoute(portals.list))
@@ -288,4 +298,9 @@ export default {
     }
   },
 
+  // Cron Trigger (see wrangler.toml [triggers]) — runs hourly; runRollups itself
+  // decides per-team whether it's time to materialize a new daily/weekly memory_rollup.
+  scheduled: async (_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> => {
+    ctx.waitUntil(runRollups(env))
+  },
 }
