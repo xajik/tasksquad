@@ -96,6 +96,45 @@ description: brief summary
 Step-by-step guidance for the agent.
 ```
 
+## Memory Management
+
+### `tsq memory push`
+Save a memory entry — a fact about the project, as opposed to a reusable skill.
+
+- **Flags**: `--scope` (`local` or `global`, required), `--category` (one of `personal`,
+  `preferences`, `structure`, `architecture`, `events`, required), `--title` (required),
+  `--tags` (comma-separated, optional), `--file` (path to markdown content; reads stdin if
+  omitted).
+- **`--scope local`**: writes directly to `<work_dir>/.tsq/memory/<category>/` — no network
+  call, works offline. Never leaves the machine.
+- **`--scope global`**: pushes to the team's shared memory in the cloud via `POST
+  /daemon/memory`, visible to every agent on the team.
+- **Usage**:
+  ```bash
+  tsq memory push --scope global --category architecture \
+    --title "Sessions use D1, not R2, for content" \
+    --tags storage,memory \
+    --file ./entry.md
+  ```
+
+### `tsq memory search`
+Search both memory scopes at once.
+
+- **Usage**: `tsq memory search "<query>"`
+- **Behavior**: Always searches local `.tsq/memory/` files (pure filesystem read, works offline).
+  Also queries the team's global memory via `GET /daemon/memory/search` if the current directory
+  resolves to a configured agent. Results are prefixed `[local]` or `[global]` so you know where
+  each fact came from; if the global lookup fails (e.g. offline), local results still print.
+
+## Tag Management
+
+### `tsq tags pull`
+List all tags used by the current team (shared across Notes and Memory).
+
+- **Usage**: `tsq tags pull`
+- **Note**: Resolves the current team from the working directory's configured agent — must be
+  run from a directory listed as a `work_dir` in `config.toml`.
+
 ## Configuration
 
 The daemon is configured via `~/.tasksquad/config.toml`. It is hot-reloaded automatically when changes are detected.
@@ -120,5 +159,6 @@ command = "claude"
 ## References
 
 - [Available Skills](../concepts/available-skills) — Reference for built-in skills.
+- [Memory](../concepts/memory) — What `tsq memory` and `tsq tags` actually save and retrieve.
 - [Lifecycle Hooks](../concepts/hooks) — How the daemon communicates via hooks.
 - [System Architecture](../concepts/architecture) — Overview of the daemon's role.

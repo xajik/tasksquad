@@ -139,5 +139,6 @@ missed heartbeat window.
 - [Security & Encryption](./concepts/security) — How data is protected in transit and at rest.
 - [Supervisor](./concepts/supervisor) — Automated health-check for stuck tasks.
 - [Skills & Learning](./concepts/skills) — How agents grow smarter over time.
+- [Memory](./concepts/memory) — How agents retain and share project facts across sessions.
 - [Portals](./concepts/portals) — Live, interactive terminal access from the browser.
 - [Daemon CLI Reference](./api/daemon-cli) — Detailed guide to the `tsq` binary.

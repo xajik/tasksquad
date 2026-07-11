@@ -67,5 +67,6 @@ When performing task X, always follow these steps:
 ## References
 
 - [Available Skills Reference](./available-skills) — Complete guide to built-in and project-specific skills.
+- [Memory](./memory) — The sibling mechanism that saves project facts instead of procedures, using the same close-step machinery.
 - [Daemon CLI Reference](../api/daemon-cli) — How to manage skills from the CLI.
 - [System Architecture](./architecture) — High-level overview of how skills fit in.

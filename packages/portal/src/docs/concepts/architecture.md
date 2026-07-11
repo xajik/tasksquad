@@ -40,4 +40,5 @@ When a task is created, it follows this path:
 - [Lifecycle Hooks](./hooks) — How agents signal state changes to the daemon.
 - [Security & Encryption](./security) — How data is protected across components.
 - [Portals](./portals) — Live, interactive terminal access from the browser, built on the same WebSocket relay.
+- [Memory](./memory) — How project knowledge is split between the Worker's D1 store (global) and the daemon's local `.tsq/` directory (local).
 - [Daemon CLI Reference](../api/daemon-cli) — Detailed guide to the `tsq` binary.

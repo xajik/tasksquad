@@ -28,6 +28,11 @@ These skills are essential for the operation and maintenance of TaskSquad agents
 - **Goal**: Identify non-trivial patterns or workarounds discovered during the session and save them as new skills.
 - **Use Case**: Ensures that the team's collective knowledge grows with every task completed.
 
+### `tsq-end-session-memory`
+**Description**: Protocol for saving project *facts* (as opposed to reusable procedures) before a TaskSquad session closes.
+- **Goal**: Reflect on the session across 5 categories (personal, preferences, structure, architecture, events) and save any memory-worthy facts, each scoped `local` (this machine only, via the filesystem) or `global` (shared with the team via the cloud).
+- **Use Case**: Runs immediately after `tsq-end-session-learning` in the close sequence, when the team's Memory setting is enabled. See [Memory](./memory) for the full picture.
+
 ## Automation & Tools
 
 These skills provide specialized capabilities for common development and automation tasks.
@@ -63,4 +68,5 @@ Skills for interacting with the broader TaskSquad ecosystem.
 ## References
 
 - [Skills & Learning](./skills) — Overview of how the learning loop works.
+- [Memory](./memory) — The sibling mechanism for project facts rather than procedures.
 - [Daemon CLI Reference](../api/daemon-cli) — Detailed documentation of the `tsq` binary.
