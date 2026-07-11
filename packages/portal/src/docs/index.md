@@ -11,8 +11,12 @@ Select a topic from the sidebar to get started.
 - [System Architecture](/docs/concepts/architecture)
 - [Security](/docs/concepts/security)
 - [Lifecycle Hooks](/docs/concepts/hooks)
+- [Supervisor](/docs/concepts/supervisor)
+- [Skills & Learning](/docs/concepts/skills)
 - [Available Skills](/docs/concepts/available-skills)
 - [Voice to Markdown](/docs/concepts/voice-to-md)
+- [Portals](/docs/concepts/portals)
+- [Daemon CLI Reference](/docs/api/daemon-cli)
 
 ## Need help?
 

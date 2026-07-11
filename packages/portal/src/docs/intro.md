@@ -58,19 +58,21 @@ The end-to-end flow from task creation to completion:
 ```
 User composes task in Portal
         ↓
-Worker (Cloudflare) stores task, notifies Agent via SSE
+Worker (Cloudflare) stores the task
         ↓
-Daemon (tsq) receives task, spawns the configured command
+Daemon (tsq) picks it up on its next heartbeat poll, spawns the configured command
         ↓
 Agent executes (reads files, writes code, runs tests…)
         ↓
-Agent streams output back through Daemon → Worker → Portal
+Raw output streams live to the Portal over a WebSocket terminal relay;
+the message thread itself updates via polling
         ↓
 Task marked done / failed; full log saved to R2
 ```
 
-Messages can flow in both directions during execution. If an agent needs clarification, it posts
-a `waiting_input` status and waits for a user reply before continuing.
+The daemon polls the Worker for new work — there is no push notification to the daemon. Messages
+can flow in both directions during execution. If an agent needs clarification, it posts a
+`waiting_input` status and waits for a user reply before continuing.
 
 ## Key Components
 
@@ -87,10 +89,11 @@ The web dashboard at [tasksquad.ai](https://tasksquad.ai). Use it to:
 
 A serverless API running on **Cloudflare Workers**. It handles:
 
-- Authentication (Firebase JWTs for users, token headers for daemons)
+- Authentication (Firebase JWTs or long-lived CLI tokens for daemons, Firebase JWTs for users)
 - Task and message persistence in **D1** (SQLite)
 - Log storage in **R2**
-- Live agent connections via **Server-Sent Events** (SSE) through Durable Objects
+- Live terminal streaming via a **WebSocket** relay (Durable Objects) — used for both regular
+  task sessions and [Portals](./concepts/portals)
 
 ### Daemon
 
@@ -136,4 +139,5 @@ missed heartbeat window.
 - [Security & Encryption](./concepts/security) — How data is protected in transit and at rest.
 - [Supervisor](./concepts/supervisor) — Automated health-check for stuck tasks.
 - [Skills & Learning](./concepts/skills) — How agents grow smarter over time.
+- [Portals](./concepts/portals) — Live, interactive terminal access from the browser.
 - [Daemon CLI Reference](./api/daemon-cli) — Detailed guide to the `tsq` binary.

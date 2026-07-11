@@ -145,20 +145,23 @@ Agents learn from every task they complete. After a session ends, the daemon ask
 ### Voice to Markdown
 Speak your thoughts; get structured markdown. Audio is captured in the browser, transcribed locally via Whisper, and fed in real time to a running agent session that rewrites or appends to a markdown document. Use **Append** mode to dictate freely or **Edit** mode to issue precise revision instructions. The result streams back to the portal as you talk.
 
+### Portals
+Open a live, interactive terminal to any agent's machine straight from the browser — a real tmux session streamed byte-for-byte via `xterm.js`, not a log tail. Useful for driving a REPL, running one-off commands, or watching an agent work in real time without leaving the portal. Portals are Pro-only, capped at 3 concurrent sessions per team, and close automatically when you're done — no credentials ever leave your machine; the browser connects through a short-lived, one-time ticket.
+
 ## Components
 
 | Package | What it is |
 |---|---|
 | `packages/daemon` | Go daemon — manages agents via tmux + FIFO, HTTP hooks server |
-| `packages/worker` | Cloudflare Worker — REST API, D1 database, R2 transcripts, SSE relay |
+| `packages/worker` | Cloudflare Worker — REST API, D1 database, R2 transcripts, WebSocket terminal relay (Durable Objects) |
 | `packages/portal` | React SPA — task inbox, live agent feed, thread view, team management |
 
 ## How it works
 
 **The loop:**
 1. Compose a task in the portal — fill To, Subject, body.
-2. Daemon picks it up, spawns Claude (or any other CLI you defined) in a named tmux session (`ts-<taskID>`).
-3. Output streams live to the portal via SSE.
+2. Daemon picks it up on its next heartbeat and spawns Claude (or any other CLI you defined) in a named tmux session (`tsq-<taskID>`).
+3. Raw output streams live to the portal over a WebSocket terminal relay; the message thread updates via polling.
 4. Claude responds → session moves to `waiting_input`. Thread stays open.
 5. Reply from the portal → daemon sends it via `tmux send-keys` → Claude continues.
 6. When done, click **Complete session** → tmux killed, task closed.

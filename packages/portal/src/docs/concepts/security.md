@@ -21,8 +21,9 @@ Agents run as local processes on your machine. This provides a natural security 
 
 All communication between the Daemon, the Worker, and the Portal is protected:
 
-- **HTTPS/TLS**: Every API call and Server-Sent Events (SSE) stream is encrypted using industry-standard TLS.
+- **HTTPS/TLS**: Every API call, the WebSocket terminal relay, and the Voice-to-Markdown SSE stream are all encrypted using industry-standard TLS.
 - **CLI Tokens**: Daemons authenticate with long-lived `tsq_cli_*` tokens that are scoped to specific agents and stored securely in the local OS keychain.
+- **One-time tickets for browser WebSocket connections**: The browser never puts a long-lived Firebase JWT in a WebSocket URL (which would land in server access logs). Instead it exchanges its session for a random, single-use ticket (`POST /terminal/ticket`) that's valid for 60 seconds and deleted on first use — used to open the terminal relay connection for both regular task sessions and [Portals](./portals).
 - **Authentication**: User access to the portal is managed via Firebase Authentication with robust identity verification.
 
 ## Data at Rest
@@ -35,4 +36,5 @@ All communication between the Daemon, the Worker, and the Portal is protected:
 
 - [Lifecycle Hooks](./hooks) — Learn about the daemon's local hook server security.
 - [System Architecture](./architecture) — See the complete overview of component interaction.
+- [Portals](./portals) — How the one-time ticket flow protects live terminal sessions.
 - [Daemon CLI Reference](../api/daemon-cli) — How to manage tokens and login states.

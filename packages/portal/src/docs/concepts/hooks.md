@@ -36,6 +36,11 @@ Used by providers that support turn-based streaming (e.g., Gemini).
 - **Parameters**: `agent`, `task_id`, `provider`.
 - **Effect**: Posts intermediate responses to the task thread without pausing the session.
 
+### `POST /hooks/opencode`
+Receives generic lifecycle events from the OpenCode plugin.
+- **Payload**: `{"type": "..."}`.
+- **Effect**: Currently log-only — event type and agent name are recorded to the daemon log.
+
 ### `POST /hooks/codex`
 Specific endpoint for the Codex provider to report turn completion.
 - **Payload**: `{"type": "agent-turn-complete", "turn-id": "...", "last-assistant-message": "..."}`
@@ -68,6 +73,7 @@ Codex uses a global `notify` command in `~/.codex/config.toml` that triggers aft
 The daemon also exposes hooks for internal components to report progress:
 - **`POST /hooks/supervisor`**: Used by the supervisor agent to report verdicts (e.g., `resolved`) back to the platform.
 - **`POST /hooks/skill`**: Allows an agent to "push" a newly learned skill to the server from within a running session.
+- **`POST /hooks/trigger-supervisor`**: Manually launches a supervisor session for a specific `task_id`, bypassing the normal 10-minute inactivity wait. Requires `[supervisor]` to be configured; returns `409` if supervision is already active for that task.
 
 ## References
 
