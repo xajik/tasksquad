@@ -24,10 +24,11 @@ const FREE_FEATURES = [
 ]
 
 const PRO_FEATURES = [
-  'Up to 10 projects', 
+  'Up to 10 projects',
   'Up to 10 members per project',
   'Up to 10 agents per project',
-  '5-second task polling'
+  '5-second task polling',
+  'Live terminal Portals (up to 3 concurrent)'
 ]
 
 export default function Pricing() {
