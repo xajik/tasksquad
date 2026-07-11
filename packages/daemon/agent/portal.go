@@ -116,6 +116,16 @@ func (a *Agent) handlePortal(cfg *config.Config, p *portalRecord) {
 	}
 	defer fifoFile.Close()
 
+	// O_NONBLOCK was only needed so the open() above couldn't hang forever
+	// waiting for a writer. Left in place, every Read() on an idle-but-open
+	// FIFO returns EAGAIN instead of blocking for the next chunk, which
+	// streamPortalOutput would treat as a hard EOF the moment the pane goes
+	// quiet between output bursts. Switch back to blocking mode now that a
+	// writer (pipe-pane's `cat`) is connected.
+	if err := syscall.SetNonblock(int(fifoFile.Fd()), false); err != nil {
+		logger.Warn(fmt.Sprintf("[portal] SetNonblock(false) failed: %v", err))
+	}
+
 	// Tell the server the portal is now running — this sets portals.session_id,
 	// which the relay auth check requires before the daemon can dial the relay.
 	closeNow, err := a.reportPortalOpen(cfg, p.id, sessionID)
