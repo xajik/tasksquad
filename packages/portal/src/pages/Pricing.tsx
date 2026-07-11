@@ -1,7 +1,9 @@
-import { useNavigate } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
+import { Link } from 'react-router-dom'
+import { Helmet } from 'react-helmet-async'
+import { buttonVariants } from '@/components/ui/button'
 import { trackEvent } from '../lib/analytics'
 import Header from '../components/Header'
+import { useRouteMeta } from '../lib/useRouteMeta'
 import {
   Card,
   CardContent,
@@ -32,15 +34,21 @@ const PRO_FEATURES = [
 ]
 
 export default function Pricing() {
-  const nav = useNavigate()
+  const meta = useRouteMeta('/pricing')
 
   return (
     <div className="min-h-screen bg-background">
+      <Helmet>
+        <title>{meta.title}</title>
+        <meta name="description" content={meta.description} />
+        <link rel="canonical" href="https://tasksquad.ai/pricing" />
+      </Helmet>
       <Header source="pricing_nav" />
 
-      <div className="max-w-[800px] mx-auto px-4 sm:px-6 pb-10 sm:pb-16 text-center">
+      <main className="max-w-[800px] mx-auto px-4 sm:px-6 pb-10 sm:pb-16 text-center">
         <h1 className="text-4xl font-bold mb-4">Simple, honest pricing</h1>
-        <p className="text-muted-foreground text-lg mb-16">Start free. Upgrade when you need more.</p>
+        <p className="text-muted-foreground text-lg mb-10">Start free. Upgrade when you need more.</p>
+        <h2 className="text-2xl font-semibold mb-6">Choose your plan</h2>
 
         <div className="grid md:grid-cols-2 gap-6 text-left">
           <Card className="border-2 border-primary/20">
@@ -60,7 +68,13 @@ export default function Pricing() {
               ))}
             </CardContent>
             <CardFooter>
-              <Button className="w-full" onClick={() => { trackEvent('pricing_plan_selected', { plan: 'free' }); nav('/auth') }}>Get started free</Button>
+              <Link
+                to="/auth"
+                onClick={() => trackEvent('pricing_plan_selected', { plan: 'free' })}
+                className={`${buttonVariants()} w-full`}
+              >
+                Get started free
+              </Link>
             </CardFooter>
           </Card>
 
@@ -93,11 +107,11 @@ export default function Pricing() {
             </CardFooter>
           </Card>
         </div>
-      </div>
+      </main>
 
-      <div className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] border-t pt-10 text-muted-foreground text-sm sm:pb-12">
+      <footer className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] border-t pt-10 text-muted-foreground text-sm sm:pb-12">
       <a href="mailto:contact@tasksquad.ai" className="underline">contact@tasksquad.ai</a> © 2026 TaskSquad
-      </div>
+      </footer>
     </div>
   )
 }

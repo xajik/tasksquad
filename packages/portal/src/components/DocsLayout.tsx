@@ -1,10 +1,11 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useMemo } from 'react';
+import { Helmet } from 'react-helmet-async';
 import { ChevronRight } from 'lucide-react';
 import DocsSidebar from './DocsSidebar';
 import MarkdownRenderer from './MarkdownRenderer';
 import { getDocByPath } from '../lib/docs';
-import { Button } from './ui/button';
+import { buttonVariants } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { cn } from '../lib/utils';
 
@@ -21,14 +22,24 @@ function extractHeadings(content: string): { id: string; text: string; level: nu
   return headings;
 }
 
+// DocsLayout already renders doc.metadata.title as the page's own <h1>, so a leading
+// `# Title` line in the markdown body would produce a duplicate <h1> once rendered.
+function stripLeadingH1(content: string): string {
+  return content.replace(/^\s*#[ \t]+.+\r?\n+/, '');
+}
+
 export default function DocsLayout() {
   const { '*': rawPath } = useParams();
-  const navigate = useNavigate();
-  
+
   const path = rawPath || 'intro';
-  
+
   const doc = useMemo(() => getDocByPath(path), [path]);
-  
+
+  const bodyContent = useMemo(() => {
+    if (!doc?.content) return '';
+    return stripLeadingH1(doc.content);
+  }, [doc]);
+
   const breadcrumbs = useMemo(() => {
     if (!doc) return [];
     const parts = path.split('/');
@@ -36,7 +47,7 @@ export default function DocsLayout() {
     let currentPath = '';
     parts.forEach((part, idx) => {
       currentPath += (idx > 0 ? '/' : '') + part;
-      const label = idx === parts.length - 1 
+      const label = idx === parts.length - 1
         ? (doc.metadata?.title || doc.name)
         : part.charAt(0).toUpperCase() + part.slice(1).replace(/-/g, ' ');
       crumbs.push({ label, path: currentPath });
@@ -45,21 +56,25 @@ export default function DocsLayout() {
   }, [path, doc]);
 
   const headings = useMemo(() => {
-    if (!doc?.content) return [];
-    return extractHeadings(doc.content);
-  }, [doc]);
+    if (!bodyContent) return [];
+    return extractHeadings(bodyContent);
+  }, [bodyContent]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      {doc && (
+        <Helmet>
+          <title>{doc.metadata?.title ? `${doc.metadata.title} — TaskSquad Docs` : 'TaskSquad Docs'}</title>
+          {doc.metadata?.description && <meta name="description" content={doc.metadata.description} />}
+          <link rel="canonical" href={`https://tasksquad.ai/docs/${path}`} />
+        </Helmet>
+      )}
       {/* Sidebar - desktop */}
       <aside className="hidden md:flex w-72 flex-col flex-shrink-0">
         <div className="p-6 border-b">
-          <strong 
-            className="text-xl font-bold cursor-pointer" 
-            onClick={() => navigate('/')}
-          >
+          <Link to="/" className="text-xl font-bold no-underline text-foreground">
             TaskSquad Docs
-          </strong>
+          </Link>
         </div>
         <DocsSidebar />
       </aside>
@@ -70,33 +85,30 @@ export default function DocsLayout() {
         <header className="h-16 flex items-center justify-between px-4 sm:px-6 border-b flex-shrink-0 bg-background/80 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center gap-2 sm:gap-4 overflow-hidden">
             <div className="md:hidden flex-shrink-0">
-               <strong 
-                className="text-lg font-bold cursor-pointer" 
-                onClick={() => navigate('/')}
-              >
+               <Link to="/" className="text-lg font-bold no-underline text-foreground">
                 TaskSquad
-              </strong>
+              </Link>
             </div>
             {breadcrumbs.length > 0 && (
                <nav className="hidden sm:flex items-center gap-1 text-sm text-muted-foreground min-w-0">
-                 <button 
-                   onClick={() => navigate('/docs/intro')}
+                 <Link
+                   to="/docs/intro"
                    className="hover:text-foreground transition-colors flex-shrink-0"
                  >
                    Docs
-                 </button>
+                 </Link>
                 {breadcrumbs.map((crumb, idx) => (
                   <span key={crumb.path} className="flex items-center gap-1 min-w-0">
                     <ChevronRight className="h-3 w-3 flex-shrink-0" />
-                    <button
-                      onClick={() => navigate(`/docs/${crumb.path}`)}
+                    <Link
+                      to={`/docs/${crumb.path}`}
                       className={cn(
                         'hover:text-foreground transition-colors truncate max-w-[120px]',
                         idx === breadcrumbs.length - 1 && 'text-foreground font-medium'
                       )}
                     >
                       {crumb.label}
-                    </button>
+                    </Link>
                   </span>
                 ))}
               </nav>
@@ -115,13 +127,13 @@ export default function DocsLayout() {
                     {doc.metadata.title}
                   </h1>
                 )}
-                <MarkdownRenderer content={doc.content || ''} />
+                <MarkdownRenderer content={bodyContent} />
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-[50vh] space-y-4">
                 <h1 className="text-4xl font-bold">404</h1>
                 <p className="text-muted-foreground text-xl">Document not found</p>
-                <Button onClick={() => navigate('/docs/intro')}>Go to Intro</Button>
+                <Link to="/docs/intro" className={buttonVariants()}>Go to Intro</Link>
               </div>
             )}
             

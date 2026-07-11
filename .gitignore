@@ -84,3 +84,7 @@ logs
 
 #forge
 .forge
+
+# Generated at build time by packages/portal/scripts/generate-seo-manifest.ts
+packages/portal/generated/
+packages/portal/public/sitemap.xml

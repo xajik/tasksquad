@@ -6,8 +6,8 @@ interface HeaderProps {
 
 export default function Header({ source }: HeaderProps) {
   return (
-    <div className="max-w-[800px] mx-auto px-4 sm:px-6 pt-[calc(2.5rem+env(safe-area-inset-top,0px))] sm:pt-16">
+    <header className="max-w-[800px] mx-auto px-4 sm:px-6 pt-[calc(2.5rem+env(safe-area-inset-top,0px))] sm:pt-16">
       <TopNav source={source} />
-    </div>
+    </header>
   )
 }

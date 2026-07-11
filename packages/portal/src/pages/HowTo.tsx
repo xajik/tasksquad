@@ -1,14 +1,21 @@
-import { useNavigate } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
+import { Link } from 'react-router-dom'
+import { Helmet } from 'react-helmet-async'
+import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import Header from '../components/Header'
+import { useRouteMeta } from '../lib/useRouteMeta'
 
 export default function HowTo() {
-  const nav = useNavigate()
+  const meta = useRouteMeta('/howto')
   return (
     <div className="min-h-screen bg-background">
+      <Helmet>
+        <title>{meta.title}</title>
+        <meta name="description" content={meta.description} />
+        <link rel="canonical" href="https://tasksquad.ai/howto" />
+      </Helmet>
       <Header source="howto_nav" />
-      <div className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] sm:pb-16">
+      <main className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] sm:pb-16">
         <h1 className="text-3xl sm:text-5xl font-bold leading-tight mb-6">
           Getting Started with TaskSquad
         </h1>
@@ -48,7 +55,7 @@ export default function HowTo() {
                   <span className="text-amber-500 mt-0.5">⚠</span>
                   <div>
                     <p className="text-sm font-medium text-amber-800">Prerequisite: tmux</p>
-                    <p className="text-sm text-amber-700 mb-2">TaskSquad requires <a href="https://github.com/tmux/tmux/wiki" target="_blank" className="underline">tmux</a> to manage agent sessions on your machine.</p>
+                    <p className="text-sm text-amber-700 mb-2">TaskSquad requires <a href="https://github.com/tmux/tmux/wiki" target="_blank" rel="noopener noreferrer" className="underline">tmux</a> to manage agent sessions on your machine.</p>
                     <div className="bg-amber-100 p-2 rounded overflow-x-auto">
                       <code className="text-sm whitespace-nowrap text-amber-900">brew install tmux</code>
                     </div>
@@ -105,14 +112,14 @@ work_dir = "~/Projects/my-tasksquad-project"`}
         <section>
           <h2 className="text-2xl font-bold mb-4">6. Start a Task</h2>
           <p className="text-muted-foreground mb-4">Send a task from the portal and watch your agent execute it in real-time in your shared inbox.</p>
-          <Button onClick={() => nav('/auth')} className="w-full sm:w-auto">Get Started Free →</Button>
+          <Link to="/auth" className={`${buttonVariants()} w-full sm:w-auto`}>Get Started Free →</Link>
         </section>
       </div>
 
-      <div className="border-t mt-20 pt-10 text-muted-foreground text-sm">
+      <footer className="border-t mt-20 pt-10 text-muted-foreground text-sm">
         <a href="mailto:contact@tasksquad.ai" className="underline">contact@tasksquad.ai</a> © 2026 TaskSquad
-      </div>
-    </div>
+      </footer>
+    </main>
   </div>
   )
 }

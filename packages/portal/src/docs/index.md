@@ -1,5 +1,6 @@
 ---
 title: Documentation Overview
+description: Documentation for TaskSquad — installation, architecture, core concepts, and CLI reference.
 order: 0
 ---
 

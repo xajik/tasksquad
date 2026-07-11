@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { 
   Search, 
   Folder, 
@@ -22,7 +22,6 @@ interface NavItemProps {
 
 function NavItem({ node, level }: NavItemProps) {
   const [isOpen, setIsOpen] = useState(true);
-  const navigate = useNavigate();
   const location = useLocation();
   const activePath = location.pathname.replace('/docs/', '');
 
@@ -52,26 +51,25 @@ function NavItem({ node, level }: NavItemProps) {
   }
 
   return (
-    <button
-      onClick={() => navigate(`/docs/${node.path}`)}
+    <Link
+      to={`/docs/${node.path}`}
       className={cn(
         "w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium rounded-md transition-colors",
-        isActive 
-          ? "bg-primary/10 text-primary" 
+        isActive
+          ? "bg-primary/10 text-primary"
           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
       )}
       style={{ paddingLeft: `${level * 12 + 28}px` }}
     >
       <FileText className="w-4 h-4 opacity-70" />
       <span className="truncate">{node.metadata?.title || node.name}</span>
-    </button>
+    </Link>
   );
 }
 
 export default function DocsSidebar() {
   const [query, setQuery] = useState('');
   const tree = useMemo(() => parseDocsTree(), []);
-  const navigate = useNavigate();
 
   const searchResults = useMemo(() => {
     if (!query.trim()) return null;
@@ -101,17 +99,15 @@ export default function DocsSidebar() {
             </p>
             {searchResults.length > 0 ? (
               searchResults.map((result) => (
-                <button
+                <Link
                   key={result.path}
-                  onClick={() => {
-                    navigate(`/docs/${result.path}`);
-                    setQuery('');
-                  }}
+                  to={`/docs/${result.path}`}
+                  onClick={() => setQuery('')}
                   className="w-full flex flex-col gap-0.5 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground rounded-md transition-colors"
                 >
                   <span className="font-medium text-foreground">{result.title}</span>
                   <span className="text-xs truncate opacity-70">{result.path}</span>
-                </button>
+                </Link>
               ))
             ) : (
               <p className="px-3 py-2 text-sm text-muted-foreground italic">No results found.</p>

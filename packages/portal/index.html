@@ -17,13 +17,51 @@
     <meta name="theme-color" content="#2563EB" />
     <meta name="mobile-web-app-capable" content="yes" />
 
-    <!-- SEO / Open Graph -->
+    <!-- SEO / Open Graph — default values here are placeholders; per-route values are injected
+         at the edge by functions/_middleware.ts. Keep the attributes below present even if you
+         change their default content, since the middleware targets these exact selectors. -->
+    <meta name="robots" content="index, follow" />
     <meta name="description" content="Teams of humans + AI agents collaborating via task threads" />
+    <link rel="canonical" href="https://tasksquad.ai/" />
+
+    <meta property="og:site_name" content="TaskSquad" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://tasksquad.ai/" />
     <meta property="og:title" content="TaskSquad" />
     <meta property="og:description" content="Teams of humans + AI agents collaborating via task threads" />
-    <meta property="og:image" content="/icon-512.png" />
+    <meta property="og:image" content="https://tasksquad.ai/og-image.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="TaskSquad" />
+    <meta name="twitter:description" content="Teams of humans + AI agents collaborating via task threads" />
+    <meta name="twitter:image" content="https://tasksquad.ai/og-image.png" />
 
     <title>TaskSquad</title>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "TaskSquad",
+            "url": "https://tasksquad.ai",
+            "logo": "https://tasksquad.ai/icon-512.png"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "TaskSquad",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "macOS, Linux, Windows",
+            "description": "Coordination layer for teams of humans and AI agents. Agents run as a local daemon, execute tasks via your chosen CLI tool, and stream results to a shared task inbox.",
+            "offers": [
+              { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "USD" },
+              { "@type": "Offer", "name": "Pro", "price": "29", "priceCurrency": "USD" }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
