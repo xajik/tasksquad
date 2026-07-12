@@ -445,6 +445,9 @@ export interface Task {
   first_message_role?: 'user' | 'agent' | 'system'
   first_message_type?: string | null
   scheduled_at?: number | null
+  /** Count of legit supervisor findings/escalations (type='report'); excludes routine 'working_fine' pings. */
+  supervisor_report_count?: number
+  last_supervisor_at?: number | null
   auto_close?: boolean
   settings?: TaskSettings | null
   close_steps?: string[] | null
@@ -460,8 +463,8 @@ export interface Message {
   task_id: string
   sender_id: string | null
   role: 'user' | 'agent' | 'system' | 'supervisor'
-  /** Intermediate agent message types. null/undefined = final agent response. */
-  type: typeof MessageType[keyof typeof MessageType] | null
+  /** Intermediate agent message types. null/undefined = final agent response. 'progress'/'report' are supervisor-only, set outside the shared MessageType enum (see worker daemon.ts supervisorReport()). */
+  type: typeof MessageType[keyof typeof MessageType] | 'progress' | 'report' | null
   body: string
   /** Structured JSON payload for typed messages (e.g. permission_request). */
   json_payload: string | null

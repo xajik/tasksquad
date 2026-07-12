@@ -66,7 +66,17 @@ export function Supervisor({ teamId }: { teamId: string }) {
     setLoading(true)
     try {
       const { tasks: all } = await api.tasks.list(teamId)
-      setTasks(all.sort((a, b) => b.created_at - a.created_at))
+      // Tasks with legit supervisor findings (type='report') float to the top, most
+      // recent first, so you see what the supervisor actually did without expanding
+      // every task. Tasks with no legit runs fall back to created_at DESC.
+      setTasks(all.sort((a, b) => {
+        const aCount = a.supervisor_report_count ?? 0
+        const bCount = b.supervisor_report_count ?? 0
+        if (aCount > 0 && bCount === 0) return -1
+        if (aCount === 0 && bCount > 0) return 1
+        if (aCount > 0 && bCount > 0) return (b.last_supervisor_at ?? 0) - (a.last_supervisor_at ?? 0)
+        return b.created_at - a.created_at
+      }))
     } finally {
       setLoading(false)
     }
@@ -82,6 +92,8 @@ export function Supervisor({ teamId }: { teamId: string }) {
     setMsgCache(c => ({ ...c, [taskId]: null }))
     try {
       const { messages } = await api.messages.list(taskId)
+      // Cache all supervisor messages (including routine 'progress' pings) so the
+      // empty state can distinguish "checked in, nothing to report" from "never ran".
       setMsgCache(c => ({ ...c, [taskId]: messages.filter(m => m.role === 'supervisor') }))
     } catch {
       setMsgCache(c => ({ ...c, [taskId]: [] }))
@@ -174,10 +186,15 @@ export function Supervisor({ teamId }: { teamId: string }) {
           <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
             {tasks.map(task => {
               const isOpen = expanded === task.id
-              const msgs = msgCache[task.id]
-              const supMsgs = msgs ?? []
-              const hasLoaded = msgs !== undefined && msgs !== null
-              const isLoading = msgs === null
+              const rawMsgs = msgCache[task.id]
+              const allSupMsgs = rawMsgs ?? []
+              // Legit runs = actual findings/escalations. Routine 'working_fine' check-ins
+              // (type='progress') are noise and excluded from the list and the count.
+              const supMsgs = allSupMsgs.filter(m => m.type === 'report')
+              const hasLoaded = rawMsgs !== undefined && rawMsgs !== null
+              const isLoading = rawMsgs === null
+              const checkedInOnly = hasLoaded && supMsgs.length === 0 && allSupMsgs.length > 0
+              const runCount = task.supervisor_report_count ?? (hasLoaded ? supMsgs.length : 0)
 
               return (
                 <div key={task.id}>
@@ -189,9 +206,9 @@ export function Supervisor({ teamId }: { teamId: string }) {
                       ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                     <span className="text-sm flex-1 truncate">{task.subject}</span>
-                    {hasLoaded && supMsgs.length > 0 && (
+                    {runCount > 0 && (
                       <span className="text-[10px] font-medium text-amber-600 shrink-0">
-                        {supMsgs.length} run{supMsgs.length !== 1 ? 's' : ''}
+                        {runCount} run{runCount !== 1 ? 's' : ''}
                       </span>
                     )}
                     <span className="text-[10px] text-muted-foreground shrink-0 ml-1">
@@ -204,8 +221,11 @@ export function Supervisor({ teamId }: { teamId: string }) {
                       {isLoading && (
                         <p className="text-xs text-muted-foreground">Loading…</p>
                       )}
-                      {hasLoaded && supMsgs.length === 0 && (
+                      {hasLoaded && supMsgs.length === 0 && !checkedInOnly && (
                         <p className="text-xs text-muted-foreground">No supervisor runs for this task.</p>
+                      )}
+                      {checkedInOnly && (
+                        <p className="text-xs text-muted-foreground">Supervisor checked in — task looked fine, nothing to report.</p>
                       )}
                       {supMsgs.map(msg => {
                         const v = parseVerdictBody(msg.body)

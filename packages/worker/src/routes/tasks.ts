@@ -36,11 +36,17 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!teamId) return err('team_id_required', 400)
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
+  // supervisor_report_count / last_supervisor_at only count role='supervisor' messages
+  // with type='report' — i.e. actual findings/escalations, not routine 'working_fine'
+  // progress pings (type='progress', see daemon.ts supervisorReport()). Reuses the
+  // existing all_m join so it costs nothing extra query-plan-wise.
   let query = `
     SELECT t.id, t.team_id, t.agent_id, t.sender_id, t.subject, t.status, t.created_at, t.started_at, t.completed_at,
            pt.planner_id,
            m.role as first_message_role, m.type as first_message_type,
-           MAX(all_m.scheduled_at) as scheduled_at
+           MAX(all_m.scheduled_at) as scheduled_at,
+           SUM(CASE WHEN all_m.role = 'supervisor' AND all_m.type = 'report' THEN 1 ELSE 0 END) as supervisor_report_count,
+           MAX(CASE WHEN all_m.role = 'supervisor' AND all_m.type = 'report' THEN all_m.created_at END) as last_supervisor_at
     FROM tasks t
     LEFT JOIN planner_task pt ON pt.task_id = t.id
     LEFT JOIN messages m ON m.task_id = t.id AND m.id = (
