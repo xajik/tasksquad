@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, type Memory as MemoryEntry, type MemoryCategory, type Team } from '../lib/api'
+import { api, type Memory as MemoryEntry, type MemoryCategory, type MemoryRollup, type Team } from '../lib/api'
 import { Button } from '@/components/ui/button'
 import { Loader2, Database, RefreshCw } from 'lucide-react'
-import { MemoryCard, MemoryDetail, MEMORY_CATEGORY_LABELS } from '../components/MemoryPanel'
+import { MemoryCard, MemoryDetail, DailyRollups, MEMORY_CATEGORY_LABELS } from '../components/MemoryPanel'
 
 const CATEGORIES: MemoryCategory[] = ['personal', 'preferences', 'structure', 'architecture', 'events']
 
@@ -25,9 +25,11 @@ function EmptyState({ primary, secondary, action }: { primary: string; secondary
 export function Memory({ teamId, currentTeam }: { teamId: string; currentTeam: Team | undefined }) {
   const nav = useNavigate()
   const [entries, setEntries] = useState<MemoryEntry[]>([])
+  const [rollups, setRollups] = useState<MemoryRollup[]>([])
   const [agents, setAgents] = useState<Map<string, string>>(new Map())
   const [tags, setTags] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const [view, setView] = useState<'category' | 'daily'>('category')
   const [category, setCategory] = useState<MemoryCategory | null>(null)
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [selected, setSelected] = useState<MemoryEntry | null>(null)
@@ -37,12 +39,14 @@ export function Memory({ teamId, currentTeam }: { teamId: string; currentTeam: T
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [memoryData, agentsData, tagsData] = await Promise.all([
+      const [memoryData, rollupsData, agentsData, tagsData] = await Promise.all([
         api.memory.list(teamId),
+        api.memory.rollups(teamId).catch(() => ({ rollups: [] })),
         api.agents.list(teamId).catch(() => ({ agents: [] })),
         api.tags.list(teamId).catch(() => ({ tags: [] })),
       ])
       setEntries(memoryData.memory ?? [])
+      setRollups(rollupsData.rollups ?? [])
       const map = new Map<string, string>()
       for (const a of agentsData.agents ?? []) map.set(a.id, a.name)
       setAgents(map)
@@ -56,6 +60,11 @@ export function Memory({ teamId, currentTeam }: { teamId: string; currentTeam: T
 
   function switchCategory(c: MemoryCategory | null) {
     setCategory(c)
+    setSelected(null)
+  }
+
+  function switchView(v: 'category' | 'daily') {
+    setView(v)
     setSelected(null)
   }
 
@@ -77,50 +86,73 @@ export function Memory({ teamId, currentTeam }: { teamId: string; currentTeam: T
           </div>
         </div>
 
-        {/* Category tabs */}
-        <div className="flex items-center gap-1 mb-3 p-1 bg-muted rounded-lg w-fit flex-wrap">
+        {/* View tabs */}
+        <div className="flex items-center gap-1 mb-3 p-1 bg-muted rounded-lg w-fit">
           <button
-            onClick={() => switchCategory(null)}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${category === null ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            onClick={() => switchView('category')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'category' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
           >
-            All
-            <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{entries.length}</span>
+            By Category
           </button>
-          {CATEGORIES.map(c => (
-            <button
-              key={c}
-              onClick={() => switchCategory(c)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${category === c ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {MEMORY_CATEGORY_LABELS[c]}
-              <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-                {entries.filter(e => e.category === c).length}
-              </span>
-            </button>
-          ))}
+          <button
+            onClick={() => switchView('daily')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${view === 'daily' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            Daily
+            {rollups.length > 0 && (
+              <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{rollups.length}</span>
+            )}
+          </button>
         </div>
 
-        {/* Tag filter */}
-        {tags.length > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap mb-4 shrink-0">
-            <Button variant={selectedTag === null ? 'secondary' : 'ghost'} size="sm" className="h-7 text-xs" onClick={() => setSelectedTag(null)}>
-              All tags
-            </Button>
-            {tags.map(tag => (
-              <Button
-                key={tag}
-                variant={selectedTag === tag ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+        {view === 'category' && (
+          <>
+            {/* Category tabs */}
+            <div className="flex items-center gap-1 mb-3 p-1 bg-muted rounded-lg w-fit flex-wrap">
+              <button
+                onClick={() => switchCategory(null)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${category === null ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
               >
-                {tag}
-              </Button>
-            ))}
-          </div>
+                All
+                <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{entries.length}</span>
+              </button>
+              {CATEGORIES.map(c => (
+                <button
+                  key={c}
+                  onClick={() => switchCategory(c)}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${category === c ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  {MEMORY_CATEGORY_LABELS[c]}
+                  <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                    {entries.filter(e => e.category === c).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Tag filter */}
+            {tags.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap mb-4 shrink-0">
+                <Button variant={selectedTag === null ? 'secondary' : 'ghost'} size="sm" className="h-7 text-xs" onClick={() => setSelectedTag(null)}>
+                  All tags
+                </Button>
+                {tags.map(tag => (
+                  <Button
+                    key={tag}
+                    variant={selectedTag === tag ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                  >
+                    {tag}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
-        {/* Grid */}
+        {/* Content */}
         <div className="flex-1 overflow-auto p-6 pt-2">
           {loading ? (
             <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
@@ -130,6 +162,8 @@ export function Memory({ teamId, currentTeam }: { teamId: string; currentTeam: T
               secondary="Enable it in Settings to let agents automatically extract and share project knowledge across sessions."
               action={<Button variant="link" size="sm" onClick={() => nav('/dashboard/settings')}>Go to Settings</Button>}
             />
+          ) : view === 'daily' ? (
+            <DailyRollups rollups={rollups} loading={false} />
           ) : filtered.length === 0 ? (
             <EmptyState
               primary={entries.length === 0 ? 'No memory yet.' : 'No memory matches this filter.'}

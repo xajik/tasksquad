@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { daemonPush, list, get, search } from './memory.js'
+import { daemonPush, list, get, search, rollups } from './memory.js'
 import { withDaemonAgentAuth, sha256 } from '../auth.js'
 import type { Env, AuthContext, DaemonContext } from '../types.js'
 
@@ -17,6 +17,7 @@ function norm(sql: string) { return sql.replace(/\s+/g, ' ').trim() }
 interface TagRow { id: string; team_id: string; name: string; created_at: number }
 interface MemoryRow { id: string; team_id: string; agent_id: string | null; category: string; title: string; content: string; created_at: number; updated_at: number }
 interface MemoryTagRow { memory_id: string; tag_id: string }
+interface MemoryRollupRow { id: string; team_id: string; period: string; period_key: string; content: string; created_at: number }
 interface TeamMemberRow { team_id: string; user_id: string; role: string }
 interface AgentRow { id: string; team_id: string }
 interface UserRow { id: string; firebase_uid: string; email: string; plan: string }
@@ -26,6 +27,7 @@ class FakeDB {
   tags: TagRow[] = []
   memory: MemoryRow[] = []
   memoryTags: MemoryTagRow[] = []
+  memoryRollups: MemoryRollupRow[] = []
   teamMembers: TeamMemberRow[] = []
   agents: AgentRow[] = []
   users: UserRow[] = []
@@ -106,6 +108,12 @@ class FakeDB {
       return this.memory
         .filter(m => m.team_id === teamId && (m.title.includes(q) || m.content.includes(q) || this.tagNamesFor(m.id).some(n => n.includes(q))))
         .sort((a, b) => b.created_at - a.created_at)
+    }
+    if (sql.startsWith('SELECT id, team_id, period, period_key, content, created_at FROM memory_rollup')) {
+      const [teamId, period] = args as [string, string]
+      return this.memoryRollups
+        .filter(r => r.team_id === teamId && r.period === period)
+        .sort((a, b) => (a.period_key < b.period_key ? 1 : -1))
     }
     throw new Error(`FakeDB: unhandled all() query: ${sql}`)
   }
@@ -351,6 +359,40 @@ describe('search', () => {
     const req = new Request('https://api.example.com/daemon/memory/search')
     const res = await search(req, makeEnv(db), {}, DAEMON)
     expect(res.status).toBe(400)
+  })
+})
+
+// ── rollups ───────────────────────────────────────────────────────────────────
+
+describe('rollups', () => {
+  beforeEach(() => {
+    db.memoryRollups.push(
+      { id: 'r-1', team_id: 'team-1', period: 'daily', period_key: '2026-07-10', content: 'day 1', created_at: 100 },
+      { id: 'r-2', team_id: 'team-1', period: 'daily', period_key: '2026-07-11', content: 'day 2', created_at: 200 },
+      { id: 'r-3', team_id: 'team-1', period: 'weekly', period_key: '2026-W28', content: 'week 1', created_at: 200 },
+      { id: 'r-4', team_id: 'team-2', period: 'daily', period_key: '2026-07-11', content: 'other team', created_at: 200 },
+    )
+  })
+
+  it('returns the caller team\'s daily rollups newest period_key first, by default', async () => {
+    const req = new Request('https://api.example.com/teams/team-1/rollups')
+    const res = await rollups(req, makeEnv(db), {}, AUTH)
+    expect(res.status).toBe(200)
+    const body = await res.json() as { rollups: Array<{ id: string }> }
+    expect(body.rollups.map(r => r.id)).toEqual(['r-2', 'r-1'])
+  })
+
+  it('filters by period=weekly', async () => {
+    const req = new Request('https://api.example.com/teams/team-1/rollups?period=weekly')
+    const res = await rollups(req, makeEnv(db), {}, AUTH)
+    const body = await res.json() as { rollups: Array<{ id: string }> }
+    expect(body.rollups.map(r => r.id)).toEqual(['r-3'])
+  })
+
+  it('returns not_found for a non-member', async () => {
+    const req = new Request('https://api.example.com/teams/team-1/rollups')
+    const res = await rollups(req, makeEnv(db), {}, { ...AUTH, userId: 'stranger' })
+    expect(res.status).toBe(404)
   })
 })
 

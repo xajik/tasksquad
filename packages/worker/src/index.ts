@@ -117,6 +117,7 @@ router.delete('/teams/:teamId/skills/:skillId',     firebaseRoute(skills.remove)
 
 router.get   ('/teams/:teamId/memory',              firebaseRoute(memory.list))
 router.get   ('/teams/:teamId/memory/:memoryId',    firebaseRoute(memory.get))
+router.get   ('/teams/:teamId/rollups',             firebaseRoute(memory.rollups))
 
 router.get   ('/teams/:teamId/tags',                firebaseRoute(tags.list))
 

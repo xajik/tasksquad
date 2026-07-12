@@ -105,6 +105,27 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
   return json(row)
 }
 
+// GET /teams/:teamId/rollups?period=daily|weekly — daily/weekly memory_rollup
+// snapshots for the Portal's "Daily" tab, newest period_key first. period_key is
+// 'YYYY-MM-DD' (daily) or 'YYYY-Www' (weekly) — both lexicographically sortable,
+// so ORDER BY period_key DESC is correct without parsing dates. See
+// packages/worker/src/cron/rollup.ts for how these rows get written.
+export async function rollups(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const url = new URL(req.url)
+  const teamId = url.pathname.split('/')[2] // /teams/:teamId/rollups
+
+  if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
+
+  const period = url.searchParams.get('period') === 'weekly' ? 'weekly' : 'daily'
+
+  const rows = await env.DB
+    .prepare('SELECT id, team_id, period, period_key, content, created_at FROM memory_rollup WHERE team_id = ? AND period = ? ORDER BY period_key DESC LIMIT 60')
+    .bind(teamId, period)
+    .all()
+
+  return json({ rollups: rows.results })
+}
+
 // ─── Daemon routes ─────────────────────────────────────────────────────────────
 
 // POST /daemon/memory — pushed by `tsq memory push --scope global` at session close.

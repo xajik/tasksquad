@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
-import { api, type Memory, type MemoryCategory } from '../lib/api'
+import { api, type Memory, type MemoryCategory, type MemoryRollup } from '../lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Database, Bot, X, Copy, Check, Link2 } from 'lucide-react'
+import { Loader2, Database, Bot, X, Copy, Check, Link2, CalendarDays } from 'lucide-react'
 import { relativeTime } from '../lib/utils'
 import MarkdownRenderer from './MarkdownRenderer'
 
@@ -150,6 +150,54 @@ export function MemoryDetail({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/** 'YYYY-MM-DD' -> 'Today' / 'Yesterday' / 'Friday, July 10, 2026'. UTC-based since
+ * period_key is computed in UTC (see packages/worker/src/cron/rollup.ts). */
+function formatPeriodKey(periodKey: string): string {
+  const now = new Date()
+  const todayKey = now.toISOString().slice(0, 10)
+  const yesterdayKey = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10)
+  if (periodKey === todayKey) return 'Today'
+  if (periodKey === yesterdayKey) return 'Yesterday'
+  return new Date(`${periodKey}T00:00:00Z`).toLocaleDateString(undefined, {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  })
+}
+
+export function DailyRollups({ rollups, loading }: { rollups: MemoryRollup[]; loading: boolean }) {
+  if (loading) {
+    return <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
+  }
+
+  if (rollups.length === 0) {
+    return (
+      <div className="text-center text-muted-foreground py-12">
+        <CalendarDays className="h-8 w-8 mx-auto mb-3 opacity-40" />
+        <p className="text-sm">No daily snapshots yet.</p>
+        <p className="text-xs mt-1 max-w-md mx-auto">
+          A snapshot is compiled once a day has at least one global memory entry. Local-only
+          memory never appears here, same as the category view.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4 max-w-3xl">
+      {rollups.map(r => (
+        <Card key={r.id}>
+          <CardHeader className="p-4 pb-2 flex-row items-center gap-2 space-y-0">
+            <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+            <CardTitle className="text-sm font-medium">{formatPeriodKey(r.period_key)}</CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <MarkdownRenderer content={r.content} />
+          </CardContent>
+        </Card>
+      ))}
     </div>
   )
 }

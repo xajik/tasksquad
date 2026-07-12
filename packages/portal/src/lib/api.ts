@@ -245,6 +245,8 @@ export const api = {
       return request<{ memory: Memory[] }>(`/teams/${teamId}/memory${qs}`)
     },
     get: (teamId: string, memoryId: string) => request<Memory>(`/teams/${teamId}/memory/${memoryId}`),
+    rollups: (teamId: string, period: MemoryRollupPeriod = 'daily') =>
+      request<{ rollups: MemoryRollup[] }>(`/teams/${teamId}/rollups?period=${period}`),
   },
   tags: {
     list: (teamId: string) => request<{ tags: Tag[] }>(`/teams/${teamId}/tags`),
@@ -385,6 +387,18 @@ export interface Memory {
   tags: string[]
   created_at: number
   updated_at: number
+}
+
+export type MemoryRollupPeriod = 'daily' | 'weekly'
+
+export interface MemoryRollup {
+  id: string
+  team_id: string
+  period: MemoryRollupPeriod
+  /** 'YYYY-MM-DD' for daily, 'YYYY-Www' (ISO week) for weekly. */
+  period_key: string
+  content: string
+  created_at: number
 }
 
 export interface Tag {
