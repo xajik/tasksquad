@@ -2606,7 +2606,7 @@ export default function Dashboard() {
         </div>
         <nav className="flex-1 px-2">
           <Button
-            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills && !isMemory && !isPlanner && !isSupervisor ? 'secondary' : 'ghost'}
+            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills && !isMemory && !isPlanner && !isSupervisor && !isPortals ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
             onClick={() => handleNav('/dashboard')}
           >
