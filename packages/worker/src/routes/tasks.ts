@@ -5,6 +5,7 @@ import { bumpInboxVersion } from '../inbox_version.js'
 import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
 import { onTaskDone, makePlannerEngine } from '../planner/hook.js'
 import type { VerdictSource } from '../planner/types.js'
+import { storeAttachments, ATTACHMENT_MAX_PER_MESSAGE, ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME_ALLOWLIST } from './helpers.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -160,8 +161,48 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 }
 
 export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
-  const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: string }; close_steps?: string[] }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: string }; close_steps?: string[] }))
-  const { agent_id, subject, team_id, body: taskBody, scheduled_at, auto_close, save_tokens, close_steps } = body
+  let agent_id: string | undefined
+  let subject: string | undefined
+  let team_id: string | undefined
+  let taskBody: string | undefined
+  let scheduled_at: number | undefined
+  let auto_close: boolean | undefined
+  let save_tokens: { enabled: boolean; level: string } | undefined
+  let close_steps: string[] | undefined
+  let files: File[] = []
+
+  const contentType = req.headers.get('Content-Type') ?? ''
+  if (contentType.includes('multipart/form-data')) {
+    const form = await req.formData()
+    agent_id = (form.get('agent_id') as string) || undefined
+    subject = (form.get('subject') as string) || undefined
+    team_id = (form.get('team_id') as string) || undefined
+    taskBody = (form.get('body') as string) || undefined
+    const scheduledRaw = form.get('scheduled_at')
+    scheduled_at = scheduledRaw ? Number(scheduledRaw) : undefined
+    auto_close = form.get('auto_close') === 'true'
+    const saveTokensRaw = form.get('save_tokens')
+    if (typeof saveTokensRaw === 'string' && saveTokensRaw) {
+      try { save_tokens = JSON.parse(saveTokensRaw) } catch { /* ignore malformed field */ }
+    }
+    const closeStepsRaw = form.get('close_steps')
+    if (typeof closeStepsRaw === 'string' && closeStepsRaw) {
+      try { close_steps = JSON.parse(closeStepsRaw) } catch { /* ignore malformed field */ }
+    }
+    // @cloudflare/workers-types types FormData.getAll() as string[] only, even
+    // though the runtime genuinely returns File entries for file fields —
+    // go through unknown[] to filter them out safely.
+    files = (form.getAll('images') as unknown[]).filter((f): f is File => f instanceof File)
+    if (files.length > ATTACHMENT_MAX_PER_MESSAGE) return err('too_many_attachments', 400)
+    for (const f of files) {
+      if (!ATTACHMENT_MIME_ALLOWLIST.has(f.type)) return err('unsupported_mime_type', 400)
+      if (f.size > ATTACHMENT_MAX_BYTES) return err('file_too_large', 400)
+    }
+  } else {
+    const body = await req.json<{ agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: string }; close_steps?: string[] }>().catch(() => ({} as { agent_id?: string; subject?: string; team_id?: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: string }; close_steps?: string[] }))
+    ;({ agent_id, subject, team_id, body: taskBody, scheduled_at, auto_close, save_tokens, close_steps } = body)
+  }
+
   if (!agent_id || !subject?.trim() || !team_id) return err('missing_fields', 400)
 
   if (!(await requireMember(env.DB, team_id, auth.userId))) return err('forbidden', 403)
@@ -181,6 +222,7 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   if (!agent) return err('agent_not_found', 404)
 
   const taskId = ulid()
+  const firstMessageId = ulid()
   const now = Date.now()
   const isScheduled = scheduled_at && scheduled_at > now
 
@@ -197,9 +239,10 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
         .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), TaskStatus.Scheduled, now, autoCloseVal, settingsVal, closeStepsVal),
       // Insert initial user message with scheduled_at
       env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(ulid(), taskId, auth.userId, 'user', MessageType.Inbox, taskBody?.trim() || subject.trim(), now, scheduled_at),
+        .bind(firstMessageId, taskId, auth.userId, 'user', MessageType.Inbox, taskBody?.trim() || subject.trim(), now, scheduled_at),
     ])
-    return json({ id: taskId, status: TaskStatus.Scheduled }, 201)
+    const attachments = await storeAttachments(env, agent_id, firstMessageId, files)
+    return json({ id: taskId, status: TaskStatus.Scheduled, attachments }, 201)
   }
 
   await env.DB.batch([
@@ -207,12 +250,14 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
       .bind(taskId, team_id, agent_id, auth.userId, subject.trim(), TaskStatus.Pending, now, autoCloseVal, settingsVal, closeStepsVal),
     // Insert initial user message — use body if provided, else fall back to subject
     env.DB.prepare('INSERT INTO messages (id, task_id, sender_id, role, type, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(ulid(), taskId, auth.userId, 'user', MessageType.Inbox, taskBody?.trim() || subject.trim(), now),
+      .bind(firstMessageId, taskId, auth.userId, 'user', MessageType.Inbox, taskBody?.trim() || subject.trim(), now),
   ])
+
+  const attachments = await storeAttachments(env, agent_id, firstMessageId, files)
 
   await bumpInboxVersion(env, agent_id)
 
-  return json({ id: taskId, status: TaskStatus.Pending }, 201)
+  return json({ id: taskId, status: TaskStatus.Pending, attachments }, 201)
 }
 
 export async function closeTask(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

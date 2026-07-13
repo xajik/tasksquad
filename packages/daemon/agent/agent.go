@@ -164,6 +164,9 @@ func (a *Agent) GetLastActivityAt() time.Time { return a.st.LastActivityAt() }
 // TmuxSession implements ui.AgentStatus — returns the active tmux session name.
 func (a *Agent) TmuxSession() string { return a.st.Session() }
 
+// SessionID returns the server-side (D1) session ID for the current task.
+func (a *Agent) SessionID() string { return a.st.SessionID() }
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 // post authenticates and sends a JSON POST to the daemon API.

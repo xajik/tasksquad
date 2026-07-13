@@ -174,8 +174,12 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 		logger.Warn(fmt.Sprintf("[%s] Provider setup warning: %v", a.Config.Name, err))
 	}
 
-	// Build prompt from the full conversation history.
-	prompt := buildConversationPrompt(subject, task["messages"], memoryRollup)
+	// Build prompt from the full conversation history. Any inbound image
+	// attachments are downloaded and written into the agent's working
+	// directory first, so the prompt can reference them by local path.
+	msgs, _ := task["messages"].([]interface{})
+	msgs = materializeInboundImages(cfg, a.Config.ID, a.Config.WorkDir, msgs)
+	prompt := buildConversationPrompt(subject, msgs, memoryRollup)
 	a.st.mu.Lock()
 	a.st.lastPrompt = prompt
 	a.st.mu.Unlock()
@@ -193,7 +197,10 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	cmd := exec.Command(parts[0], args...)
 	cmd.Dir = a.Config.WorkDir
 
-	provEnv := a.prov.Env(cfg.Hooks.Port)
+	// TSQ_TASK_ID lets the agent invoke `tsq attach --task "$TSQ_TASK_ID" <path>`
+	// (see the tsq-attach-image system skill) without the task ID ever needing
+	// to appear in the prompt text itself.
+	provEnv := append(a.prov.Env(cfg.Hooks.Port), fmt.Sprintf("TSQ_TASK_ID=%s", taskID))
 	if len(provEnv) > 0 {
 		cmd.Env = append(os.Environ(), provEnv...)
 	} else {

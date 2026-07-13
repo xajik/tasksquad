@@ -4,6 +4,14 @@ import type { Env, AuthContext } from '../types.js'
 import { importMasterKey, unwrapDEK, decrypt } from '../crypto.js'
 import { bumpInboxVersion } from '../inbox_version.js'
 import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
+import {
+  readMessageAttachment,
+  fetchAttachmentsForMessages,
+  storeAttachments,
+  ATTACHMENT_MAX_PER_MESSAGE,
+  ATTACHMENT_MAX_BYTES,
+  ATTACHMENT_MIME_ALLOWLIST,
+} from './helpers.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
@@ -46,8 +54,12 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
       ORDER BY CASE WHEN m.scheduled_at IS NOT NULL THEN 1 ELSE 0 END ASC, m.created_at ASC
     `)
     .bind(taskId, MessageType.PermissionRequest, taskId)
-    .all()
-  return json({ messages: rows.results })
+    .all<{ id: string }>()
+
+  const attachmentsByMessage = await fetchAttachmentsForMessages(env, rows.results.map(m => m.id))
+  const messages = rows.results.map(m => ({ ...m, attachments: attachmentsByMessage.get(m.id) ?? [] }))
+
+  return json({ messages })
 }
 
 export async function getTranscript(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
@@ -99,6 +111,35 @@ export async function getTranscript(req: Request, env: Env, _ctx: unknown, auth:
   })
 }
 
+export async function getMessageAttachment(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const parts = new URL(req.url).pathname.split('/')
+  const taskId = parts[2]
+  const msgId = parts[4]
+  const attachmentId = parts[6]
+
+  const task = await env.DB
+    .prepare('SELECT team_id, agent_id FROM tasks WHERE id = ?')
+    .bind(taskId)
+    .first<{ team_id: string; agent_id: string }>()
+  if (!task) return err('not_found', 404)
+  if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
+
+  const msg = await env.DB
+    .prepare('SELECT id FROM messages WHERE id = ? AND task_id = ?')
+    .bind(msgId, taskId)
+    .first<{ id: string }>()
+  if (!msg) return err('not_found', 404)
+
+  const attachment = await readMessageAttachment(env, attachmentId, msgId, task.agent_id)
+  if (!attachment) return err('not_found', 404)
+
+  return new Response(attachment.bytes, {
+    headers: {
+      'Content-Type': attachment.mimeType,
+    },
+  })
+}
+
 export async function gradeMessage(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const parts = new URL(req.url).pathname.split('/')
   const taskId = parts[2]
@@ -139,13 +180,35 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
   if (task.status === TaskStatus.Done || task.status === TaskStatus.Failed) return err('task_closed', 403)
 
-  const body = await req.json<{ body?: string; scheduled_at?: number }>().catch(() => ({} as { body?: string; scheduled_at?: number }))
-  const text = body.body?.trim()
+  const contentType = req.headers.get('Content-Type') ?? ''
+  let text = ''
+  let scheduledAt: number | undefined
+  let files: File[] = []
+
+  if (contentType.includes('multipart/form-data')) {
+    const form = await req.formData()
+    text = ((form.get('body') as string) ?? '').trim()
+    const scheduledRaw = form.get('scheduled_at')
+    scheduledAt = scheduledRaw ? Number(scheduledRaw) : undefined
+    // @cloudflare/workers-types types FormData.getAll() as string[] only, even
+    // though the runtime genuinely returns File entries for file fields —
+    // go through unknown[] to filter them out safely.
+    files = (form.getAll('images') as unknown[]).filter((f): f is File => f instanceof File)
+    if (files.length > ATTACHMENT_MAX_PER_MESSAGE) return err('too_many_attachments', 400)
+    for (const f of files) {
+      if (!ATTACHMENT_MIME_ALLOWLIST.has(f.type)) return err('unsupported_mime_type', 400)
+      if (f.size > ATTACHMENT_MAX_BYTES) return err('file_too_large', 400)
+    }
+  } else {
+    const body = await req.json<{ body?: string; scheduled_at?: number }>().catch(() => ({} as { body?: string; scheduled_at?: number }))
+    text = body.body?.trim() ?? ''
+    scheduledAt = body.scheduled_at
+  }
+
   if (!text) return err('body_required', 400)
 
   const id = ulid()
   const now = Date.now()
-  const scheduledAt = body.scheduled_at
 
   // If scheduled for future, insert with scheduled_at but don't notify agent
   if (scheduledAt && scheduledAt > now) {
@@ -153,7 +216,8 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
       .prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .bind(id, taskId, auth.userId, 'user', text, now, scheduledAt)
       .run()
-    return json({ id, role: 'user', body: text, created_at: now, scheduled_at: scheduledAt }, 201)
+    const attachments = await storeAttachments(env, task.agent_id, id, files)
+    return json({ id, role: 'user', body: text, created_at: now, scheduled_at: scheduledAt, attachments }, 201)
   }
 
   // Immediate delivery
@@ -161,6 +225,8 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     .prepare('INSERT INTO messages (id, task_id, sender_id, role, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(id, taskId, auth.userId, 'user', text, now)
     .run()
+
+  const attachments = await storeAttachments(env, task.agent_id, id, files)
 
   // If task was waiting for input, reopen it as pending so daemon picks it up
   if (task.status === TaskStatus.WaitingInput) {
@@ -173,7 +239,7 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   // Notify the assigned agent that its inbox has a new message.
   await bumpInboxVersion(env, task.agent_id)
 
-  return json({ id, role: 'user', body: text, created_at: now }, 201)
+  return json({ id, role: 'user', body: text, created_at: now, attachments }, 201)
 }
 
 export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

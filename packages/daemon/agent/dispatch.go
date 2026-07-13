@@ -67,6 +67,8 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 	// When waiting for user input: check if the server has a reply ready.
 	if currentMode == ModeWaitingInput {
 		if reply, ok := resp["reply"].(string); ok && reply != "" {
+			reply = materializeReplyAttachments(cfg, a.Config.ID, a.Config.WorkDir, reply, resp)
+
 			a.st.mu.Lock()
 			sess := a.st.tmuxSession
 			pw := a.st.stdinWrite

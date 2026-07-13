@@ -88,6 +88,24 @@ func (u *Uploader) AttachToMessage(messageID, key string) error {
 	return nil
 }
 
+// AttachImageToMessage records an uploaded image (e.g. a supervisor terminal
+// screenshot, or an image sent via `tsq send-image`) as a message_attachments
+// row, distinct from AttachToMessage's transcript_key. filename/mimeType are
+// stored as attachment metadata; size is inferred server-side from the R2
+// object already written by the presign+PUT step.
+func (u *Uploader) AttachImageToMessage(messageID, key, filename, mimeType string) error {
+	_, err := u.post("/daemon/messages/"+messageID+"/attach", map[string]any{
+		"image_key": key,
+		"filename":  filename,
+		"mime_type": mimeType,
+	})
+	if err != nil {
+		return fmt.Errorf("attach image to message: %w", err)
+	}
+	logger.Debug(fmt.Sprintf("[%s] Attached R2 image key %s to message %s", u.agentName, key, messageID))
+	return nil
+}
+
 func (u *Uploader) AttachToSession(sessionID, key string) error {
 	_, err := u.post("/daemon/sessions/"+sessionID+"/attach", map[string]any{
 		"r2_log_key": key,
@@ -105,6 +123,14 @@ type AttachOptions struct {
 	Filename  string
 	FilePath  string
 	Content   []byte
+	// AsImage attaches via a message_attachments row instead of
+	// transcript_key when MessageID is set — use for non-transcript binary
+	// attachments (e.g. a terminal screenshot) that should be previewed
+	// rather than parsed as a CLI transcript.
+	AsImage bool
+	// MimeType is required when AsImage is set — stored as attachment
+	// metadata so the portal knows how to render it.
+	MimeType string
 }
 
 func (u *Uploader) Attach(opts AttachOptions) error {
@@ -144,6 +170,9 @@ func (u *Uploader) Attach(opts AttachOptions) error {
 	}
 
 	if opts.MessageID != "" {
+		if opts.AsImage {
+			return u.AttachImageToMessage(opts.MessageID, presign.Key, filename, opts.MimeType)
+		}
 		return u.AttachToMessage(opts.MessageID, presign.Key)
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/screenshot"
 	"github.com/tasksquad/daemon/tmux"
 	"github.com/tasksquad/daemon/util"
 )
@@ -76,8 +77,8 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 		return
 	}
 
-	tmuxSnapshot := captureTmuxPane(agentTmux, 50)
-	contextBlock := buildContextBlock(a.Name(), taskID, agentTmux, logPath, troubleshootPath, cleanLine(tmuxSnapshot))
+	snapshot, snapshotIsImage := captureSnapshot(agentTmux, supLog, taskID)
+	contextBlock := buildContextBlock(a.Name(), taskID, agentTmux, logPath, troubleshootPath, snapshot, snapshotIsImage)
 
 	header := fmt.Sprintf(
 		"# TaskSquad Supervisor Log\n# agent=%s  task_id=%s\n# started=%s\n\n--- CONTEXT ---\n%s\n\n--- OUTPUT ---\n",
@@ -127,7 +128,7 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 		// Fall back to posting the raw CLI output so the task thread reflects what
 		// the supervisor actually did, even when tsq report was not called.
 		if output := readSupervisorOutput(supLog); output != "" {
-			go s.reportToWorker(taskID, agentID, output)
+			go s.reportToWorker(taskID, agentID, a.Name(), a.SessionID(), agentTmux, output)
 		}
 		if count >= maxSupervisorFailures {
 			s.mu.Lock()
@@ -159,7 +160,7 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 	if verdict.Status == VerdictWorkingFine {
 		go s.notifyProgress(taskID, agentID, "Task is running well — picked up and in progress")
 	} else {
-		go s.reportToWorker(taskID, agentID, report)
+		go s.reportToWorker(taskID, agentID, a.Name(), a.SessionID(), agentTmux, report)
 	}
 }
 
@@ -171,8 +172,30 @@ func captureTmuxPane(session string, lines int) string {
 	return tmux.CapturePane(session, lines)
 }
 
+// captureSnapshot renders the agent's tmux pane to a PNG screenshot next to
+// the supervisor log, returning its path for the context block. If
+// screenshot capture fails for any reason, it falls back to the plain-text
+// pane capture so a rendering bug never leaves the supervisor with zero
+// context.
+func captureSnapshot(session, supLog, taskID string) (content string, isImage bool) {
+	if session == "" {
+		return "", false
+	}
+	png, err := screenshot.Capture(session, 0)
+	if err != nil {
+		logger.Warn(fmt.Sprintf("[supervisor] Screenshot capture failed, falling back to text: %v", err))
+		return cleanLine(captureTmuxPane(session, 50)), false
+	}
+	snapshotPath := filepath.Join(filepath.Dir(supLog), taskID+"-snapshot.png")
+	if err := os.WriteFile(snapshotPath, png, 0644); err != nil {
+		logger.Warn(fmt.Sprintf("[supervisor] Failed to write screenshot, falling back to text: %v", err))
+		return cleanLine(captureTmuxPane(session, 50)), false
+	}
+	return snapshotPath, true
+}
+
 // buildContextBlock returns the initial message sent to the supervisor CLI.
-func buildContextBlock(agentName, taskID, tmuxSession, logPath, troubleshootingPath, tmuxSnapshot string) string {
+func buildContextBlock(agentName, taskID, tmuxSession, logPath, troubleshootingPath, snapshot string, snapshotIsImage bool) string {
 	sessionID := "(none — session may have crashed)"
 	if tmuxSession != "" {
 		sessionID = tmuxSession
@@ -181,9 +204,18 @@ func buildContextBlock(agentName, taskID, tmuxSession, logPath, troubleshootingP
 	if logPath != "" {
 		logSection = logPath
 	}
+	snapshotLabel := "Terminal snapshot (last 50 lines captured at supervisor start):"
 	snapshotSection := "(session not available)"
-	if tmuxSnapshot != "" {
-		snapshotSection = tmuxSnapshot
+	if snapshot != "" {
+		if snapshotIsImage {
+			snapshotLabel = "Terminal screenshot (captured at supervisor start):"
+			snapshotSection = fmt.Sprintf(
+				"View this image with your Read tool to see the terminal's actual colors and layout:\n%s",
+				snapshot,
+			)
+		} else {
+			snapshotSection = snapshot
+		}
 	}
 
 	return fmt.Sprintf(
@@ -199,7 +231,7 @@ Run log:      %s
 Past fixes:   %s
 Hooks port:   7374
 
-Terminal snapshot (last 50 lines captured at supervisor start):
+%s
 ────────────────────────────────────────────────────────
 %s
 ────────────────────────────────────────────────────────
@@ -225,7 +257,7 @@ You MUST call tsq report as the very last action, regardless of outcome:
 
 The daemon uses this call to know you are finished. If you exit without
 calling tsq report, the session is counted as a failure.`,
-		agentName, taskID, sessionID, logSection, troubleshootingPath, snapshotSection, taskID,
+		agentName, taskID, sessionID, logSection, troubleshootingPath, snapshotLabel, snapshotSection, taskID,
 	)
 }
 

@@ -58,6 +58,7 @@ type MonitoredAgent interface {
 	GetMode() string
 	GetTaskID() string
 	TmuxSession() string
+	SessionID() string
 	WorkDir() string
 	LastLogPath() string
 	GetLastActivityAt() time.Time

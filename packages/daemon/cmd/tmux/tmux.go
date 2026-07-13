@@ -14,14 +14,7 @@ import (
 const sessionPrefix = "tsq-"
 
 func sessionNameFromArg(arg string) string {
-	if strings.HasPrefix(arg, sessionPrefix) {
-		return arg
-	}
-	suffix := arg
-	if len(suffix) > 8 {
-		suffix = suffix[:8]
-	}
-	return sessionPrefix + suffix
+	return tmuxpkg.NormalizeSessionName(arg)
 }
 
 func RunSessions() {

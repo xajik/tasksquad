@@ -13,24 +13,26 @@ import (
 // ── Fake Agent ────────────────────────────────────────────────────────────────
 
 type fakeAgent struct {
-	id      string
-	name    string
-	mode    string
-	taskID  string
+	id       string
+	name     string
+	mode     string
+	taskID   string
 	learning bool
-	hookMsg string
+	hookMsg  string
 
 	completeCalled        bool
 	stopAndPauseCalled    bool
 	setWaitingInputCalled bool
 	setHookMessageCalled  bool
+	attachImageCalled     bool
+	attachImageErr        error
 }
 
-func (a *fakeAgent) ID() string            { return a.id }
-func (a *fakeAgent) Name() string          { return a.name }
-func (a *fakeAgent) GetMode() string       { return a.mode }
-func (a *fakeAgent) GetTaskID() string     { return a.taskID }
-func (a *fakeAgent) IsLearning() bool      { return a.learning }
+func (a *fakeAgent) ID() string              { return a.id }
+func (a *fakeAgent) Name() string            { return a.name }
+func (a *fakeAgent) GetMode() string         { return a.mode }
+func (a *fakeAgent) GetTaskID() string       { return a.taskID }
+func (a *fakeAgent) IsLearning() bool        { return a.learning }
 func (a *fakeAgent) SetHookMessage(m string) { a.hookMsg = m; a.setHookMessageCalled = true }
 
 func (a *fakeAgent) Complete(_ *config.Config, _ string, _ string) {
@@ -45,6 +47,11 @@ func (a *fakeAgent) SetWaitingInput(_ *config.Config, _, _ string) {
 func (a *fakeAgent) PushIntermediateResponse(_ *config.Config, _, _ string) {}
 func (a *fakeAgent) AdvanceCloseStep(_ *config.Config)                      {}
 func (a *fakeAgent) GetLastTmuxCapture() string                             { return "" }
+func (a *fakeAgent) SessionID() string                                      { return "" }
+func (a *fakeAgent) AttachImage(_ *config.Config, _, _ string) error {
+	a.attachImageCalled = true
+	return a.attachImageErr
+}
 
 // ── findAndDispatch ───────────────────────────────────────────────────────────
 
@@ -96,6 +103,24 @@ func TestFindAndDispatch_NoAgentsReturnsFalse(t *testing.T) {
 	found := findAndDispatch([]Agent{}, "", "", func(_ Agent) {})
 	if found {
 		t.Error("expected false for empty agent list")
+	}
+}
+
+func TestFindAndDispatch_AttachImageCalled(t *testing.T) {
+	// Mirrors how handleAttach dispatches: resolve the agent by task_id, then
+	// call AttachImage on it. Exercised here at the findAndDispatch level
+	// rather than through a full HTTP round trip, matching this file's
+	// existing test boundary.
+	a := &fakeAgent{id: "agent-1", taskID: "task-attach"}
+	found := findAndDispatch([]Agent{a}, "", "task-attach", func(ag Agent) {
+		_ = ag.AttachImage(nil, "/tmp/screenshot.png", "here's the result")
+	})
+
+	if !found {
+		t.Error("expected found=true")
+	}
+	if !a.attachImageCalled {
+		t.Error("expected AttachImage to be called")
 	}
 }
 

@@ -154,6 +154,7 @@ router.post('/tasks/:taskId/messages',                        firebaseRoute(mess
 router.put ('/tasks/:taskId/messages/:msgId',                firebaseRoute(messages.update))
 router.delete('/tasks/:taskId/messages/:msgId',              firebaseRoute(messages.remove))
 router.get ('/tasks/:taskId/messages/:msgId/transcript',      firebaseRoute(messages.getTranscript))
+router.get ('/tasks/:taskId/messages/:msgId/attachments/:attachmentId', firebaseRoute(messages.getMessageAttachment))
 router.get ('/tasks/:taskId/logs',       firebaseRoute(tasks.logs))
 
 // ── Daemon routes (Firebase JWT) ──────────────────────────────────────────────
@@ -172,6 +173,7 @@ router.post('/daemon/session/message',  daemonRoute(daemon.sessionMessage))
 router.post('/daemon/session/state',    (req: IRequest, env: Env, ctx: ExecutionContext) => daemon.sessionState(req as Request, env, ctx))
 router.post('/daemon/r2/presign',        daemonRoute(daemon.presignUpload))
 router.post('/daemon/messages/:msgId/attach', daemonRoute(daemon.messageAttach))
+router.get ('/daemon/messages/:msgId/attachments/:attachmentId', daemonRoute(daemon.getAttachmentForDaemon))
 router.post('/daemon/sessions/:sessionId/attach', daemonRoute(daemon.sessionAttach))
 router.post('/daemon/permission/request',         daemonRoute(daemon.permissionRequest))
 router.post('/daemon/supervisor/report',          daemonRoute(daemon.supervisorReport))

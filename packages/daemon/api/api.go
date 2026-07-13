@@ -114,6 +114,35 @@ func GetWithAgent(cfg *config.Config, token, agentID, path string) (map[string]a
 	return result, nil
 }
 
+// GetBytesWithAgent sends a GET to the worker API scoped to a specific agent
+// via X-TSQ-Agent, returning the raw response body — for binary downloads
+// (e.g. an inbound message attachment) rather than JSON.
+func GetBytesWithAgent(cfg *config.Config, token, agentID, path string) ([]byte, error) {
+	req, err := http.NewRequest("GET", cfg.Server.URL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	if agentID != "" {
+		req.Header.Set("X-TSQ-Agent", agentID)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, b)
+	}
+	return b, nil
+}
+
 // PostBatch sends a batch heartbeat request and handles ETag-based 304 responses.
 // The Firebase ID token is sent in the Authorization header; agent IDs and statuses
 // are sent in the request body (no per-agent tokens needed).

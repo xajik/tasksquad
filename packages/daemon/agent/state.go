@@ -163,6 +163,13 @@ func (s *AgentState) Session() string {
 	return s.tmuxSession
 }
 
+// SessionID returns the server-side (D1) session ID for the current task.
+func (s *AgentState) SessionID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sessionID
+}
+
 // LogPath returns the path to the current per-task run log file.
 func (s *AgentState) LogPath() string {
 	s.mu.Lock()

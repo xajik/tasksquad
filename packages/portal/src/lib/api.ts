@@ -26,6 +26,39 @@ async function request<T>(path: string, init: RequestInit = {}, rawText = false)
   return rawText ? res.text() as Promise<T> : res.json() as Promise<T>
 }
 
+// Binary fetch (e.g. an image attachment) — a bare `<img src>` can't carry
+// an Authorization header, so callers fetch the blob and render it via
+// URL.createObjectURL instead.
+async function requestBlob(path: string): Promise<Blob> {
+  const token = await getToken()
+  const res = await fetch(BASE + path, {
+    headers: { 'Authorization': token ? `Bearer ${token}` : '' },
+  })
+  if (!res.ok) {
+    trackEvent('api_error', { path, status: res.status, error: 'Unknown' })
+    throw new Error(`Failed to fetch ${path}: ${res.status}`)
+  }
+  return res.blob()
+}
+
+// Multipart POST — used when a compose/reply submission includes attached
+// image files. No 'Content-Type' header is set explicitly so the browser
+// fills in the multipart boundary itself.
+async function requestFormData<T>(path: string, form: FormData): Promise<T> {
+  const token = await getToken()
+  const res = await fetch(BASE + path, {
+    method: 'POST',
+    headers: { 'Authorization': token ? `Bearer ${token}` : '' },
+    body: form,
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    trackEvent('api_error', { path, status: res.status, error: err.error || err.message || 'Unknown' })
+    throw err
+  }
+  return res.json() as Promise<T>
+}
+
 export const api = {
   me: () => request<UserProfile>('/me'),
   teams: {
@@ -82,8 +115,22 @@ export const api = {
   tasks: {
     list: (teamId: string) => request<{ tasks: Task[] }>(`/tasks?team_id=${teamId}`),
     get: (id: string) => request<Task>(`/tasks/${id}`),
-    create: (body: { agent_id: string; subject: string; team_id: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: 'lite' | 'full' | 'ultra' }; close_steps?: string[] }) =>
-      request<{ id: string; status: string }>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
+    create: (body: { agent_id: string; subject: string; team_id: string; body?: string; scheduled_at?: number; auto_close?: boolean; save_tokens?: { enabled: boolean; level: 'lite' | 'full' | 'ultra' }; close_steps?: string[] }, images?: File[]) => {
+      if (images && images.length > 0) {
+        const form = new FormData()
+        form.set('agent_id', body.agent_id)
+        form.set('subject', body.subject)
+        form.set('team_id', body.team_id)
+        if (body.body) form.set('body', body.body)
+        if (body.scheduled_at) form.set('scheduled_at', String(body.scheduled_at))
+        if (body.auto_close !== undefined) form.set('auto_close', String(body.auto_close))
+        if (body.save_tokens) form.set('save_tokens', JSON.stringify(body.save_tokens))
+        if (body.close_steps) form.set('close_steps', JSON.stringify(body.close_steps))
+        for (const img of images) form.append('images', img)
+        return requestFormData<{ id: string; status: string; attachments: MessageAttachment[] }>('/tasks', form)
+      }
+      return request<{ id: string; status: string }>('/tasks', { method: 'POST', body: JSON.stringify(body) })
+    },
     update: (taskId: string, body: { status: string }) =>
       request<{ ok: boolean }>(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify(body) }),
     updateSettings: (taskId: string, settings: TaskSettings) =>
@@ -153,11 +200,21 @@ export const api = {
     list: (taskId: string) => request<{ messages: Message[] }>(`/tasks/${taskId}/messages`),
     transcript: (taskId: string, msgId: string) =>
       request<string>(`/tasks/${taskId}/messages/${msgId}/transcript`, {}, true),
-    create: (taskId: string, body: string, scheduledAt?: number) =>
-      request<Message>(`/tasks/${taskId}/messages`, {
+    attachment: (taskId: string, msgId: string, attachmentId: string) =>
+      requestBlob(`/tasks/${taskId}/messages/${msgId}/attachments/${attachmentId}`),
+    create: (taskId: string, body: string, scheduledAt?: number, images?: File[]) => {
+      if (images && images.length > 0) {
+        const form = new FormData()
+        form.set('body', body)
+        if (scheduledAt) form.set('scheduled_at', String(scheduledAt))
+        for (const img of images) form.append('images', img)
+        return requestFormData<Message>(`/tasks/${taskId}/messages`, form)
+      }
+      return request<Message>(`/tasks/${taskId}/messages`, {
         method: 'POST',
         body: JSON.stringify({ body, scheduled_at: scheduledAt }),
-      }),
+      })
+    },
     update: (taskId: string, msgId: string, body?: string, scheduledAt?: number) =>
       request<Message>(`/tasks/${taskId}/messages/${msgId}`, {
         method: 'PUT',
@@ -469,12 +526,20 @@ export interface Message {
   /** Structured JSON payload for typed messages (e.g. permission_request). */
   json_payload: string | null
   transcript_key: string | null
+  attachments: MessageAttachment[]
   created_at: number
   scheduled_at: number | null
   /** Only present on permission_request messages. */
   interaction_status?: 'pending' | 'resolved' | null
   interaction_response?: string | null
   grade?: number | null
+}
+
+export interface MessageAttachment {
+  id: string
+  filename: string
+  mime_type: string
+  size: number
 }
 
 export interface Note {

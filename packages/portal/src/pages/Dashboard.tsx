@@ -3,7 +3,7 @@ import { signOut } from 'firebase/auth'
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { auth } from '../lib/firebase'
 import { trackEvent } from '../lib/analytics'
-import { api, type Agent, type Task, type Message, type Team, type Member } from '../lib/api'
+import { api, type Agent, type Task, type Message, type Team, type Member, type MessageAttachment } from '../lib/api'
 import { MessageType } from '../lib/messageTypes'
 import { requestNotificationPermission, notify, STATUS_NOTIF, registerPushToken } from '../lib/notifications'
 import { cn } from '@/lib/utils'
@@ -92,6 +92,8 @@ import {
   Layers,
   Monitor,
   Database,
+  Image as ImageIcon,
+  Paperclip,
 } from 'lucide-react'
 
 import { Notes } from './Notes'
@@ -161,6 +163,154 @@ function TranscriptButton({ taskId, msgId }: { taskId: string; msgId: string }) 
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+// ── Message image attachments (folded by default) ─────────────────────────────
+//
+// Renders any message's attachments (0–3) behind a single fold toggle —
+// used for supervisor screenshots, images an agent sends via `tsq
+// send-image`, and images a user attaches when composing/replying. Each
+// attachment is fetched lazily as a blob on first expand (a bare `<img src>`
+// can't carry the Authorization header these endpoints require).
+
+function AttachmentImage({ taskId, msgId, attachmentId, filename }: { taskId: string; msgId: string; attachmentId: string; filename: string }) {
+  const [imgUrl, setImgUrl] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    let objectUrl: string | null = null
+    api.messages.attachment(taskId, msgId, attachmentId)
+      .then(blob => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(blob)
+        setImgUrl(objectUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [taskId, msgId, attachmentId])
+
+  if (failed) return <div className="text-xs text-destructive">Failed to load {filename}.</div>
+  if (!imgUrl) return <div className="text-xs text-muted-foreground">Loading {filename}…</div>
+  return <img src={imgUrl} alt={filename} className="max-w-full rounded border border-border" />
+}
+
+function MessageAttachments({ taskId, msgId, attachments }: { taskId: string; msgId: string; attachments: MessageAttachment[] }) {
+  const [expanded, setExpanded] = useState(false)
+
+  if (attachments.length === 0) return null
+
+  return (
+    <div className="mt-1.5">
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ImageIcon className="h-3 w-3" />
+        {expanded
+          ? 'Hide attachment' + (attachments.length > 1 ? 's' : '')
+          : `Show ${attachments.length} attachment${attachments.length > 1 ? 's' : ''}`}
+      </button>
+      {expanded && (
+        <div className="mt-2 flex flex-col gap-2">
+          {attachments.map(att => (
+            <AttachmentImage key={att.id} taskId={taskId} msgId={msgId} attachmentId={att.id} filename={att.filename} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Image attachment picker (compose/reply) ───────────────────────────────────
+//
+// Shared by the compose dialog and the reply box: holds up to 3 image files
+// client-side (no upload yet — only sent along with the surrounding
+// compose/reply submission) so an attachment the user changes their mind
+// about never creates an orphaned upload.
+
+const MAX_ATTACHMENTS = 3
+
+function useImageAttachments() {
+  const [files, setFiles] = useState<File[]>([])
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function addFiles(incoming: FileList | File[]) {
+    const images = Array.from(incoming).filter(f => f.type.startsWith('image/'))
+    if (images.length === 0) return
+    setFiles(prev => [...prev, ...images].slice(0, MAX_ATTACHMENTS))
+  }
+
+  function removeFile(index: number) {
+    setFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  function clear() {
+    setFiles([])
+  }
+
+  function onDrop(e: React.DragEvent) {
+    if (e.dataTransfer.files.length === 0) return
+    e.preventDefault()
+    addFiles(e.dataTransfer.files)
+  }
+
+  function onDragOver(e: React.DragEvent) {
+    if (e.dataTransfer.types.includes('Files')) e.preventDefault()
+  }
+
+  function onPaste(e: React.ClipboardEvent) {
+    const pasted = Array.from(e.clipboardData.items)
+      .filter(item => item.type.startsWith('image/'))
+      .map(item => item.getAsFile())
+      .filter((f): f is File => f != null)
+    if (pasted.length > 0) addFiles(pasted)
+  }
+
+  function onInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) addFiles(e.target.files)
+    e.target.value = ''
+  }
+
+  return { files, removeFile, clear, inputRef, onDrop, onDragOver, onPaste, onInputChange, atLimit: files.length >= MAX_ATTACHMENTS }
+}
+
+function ImageAttachmentPicker({ attach, className }: { attach: ReturnType<typeof useImageAttachments>; className?: string }) {
+  return (
+    <div className={cn('flex flex-wrap items-center gap-2', className)}>
+      <button
+        type="button"
+        onClick={() => attach.inputRef.current?.click()}
+        disabled={attach.atLimit}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        title={attach.atLimit ? `Up to ${MAX_ATTACHMENTS} images` : 'Attach image'}
+      >
+        <Paperclip className="h-3.5 w-3.5" />
+        Attach image
+      </button>
+      <input
+        ref={attach.inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        multiple
+        className="hidden"
+        onChange={attach.onInputChange}
+      />
+      {attach.files.map((file, i) => (
+        <span key={i} className="flex items-center gap-1 text-xs bg-muted rounded px-2 py-0.5">
+          {file.name}
+          <button type="button" onClick={() => attach.removeFile(i)} className="text-muted-foreground hover:text-destructive">
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -282,6 +432,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
   const [saveTokensLevel, setSaveTokensLevel] = useState<'lite' | 'full' | 'ultra'>('full')
   const [closeStepsInput, setCloseStepsInput] = useState('')
   const [closeStepsEnabled, setCloseStepsEnabled] = useState(true)
+  const composeAttach = useImageAttachments()
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'queued' | 'running' | 'waiting_input' | 'done' | 'failed' | 'scheduled'>('all')
@@ -342,7 +493,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
         auto_close: autoClose || undefined,
         save_tokens: saveTokens ? { enabled: true, level: saveTokensLevel } : undefined,
         close_steps: parsedCloseSteps,
-      })
+      }, composeAttach.files)
       trackEvent('task_created', { agent_id: agentId, team_id: teamId, scheduled: !!scheduledAt, auto_close: autoClose });
       setShowCompose(false);
       setSubject('');
@@ -355,6 +506,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
       setSaveTokensLevel('full')
       setCloseStepsInput('')
       setCloseStepsEnabled(true)
+      composeAttach.clear()
       load()
     } finally { setCreating(false) }
   }
@@ -459,7 +611,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
           </Select>
         </div>
 
-      <Dialog open={showCompose} onOpenChange={setShowCompose}>
+      <Dialog open={showCompose} onOpenChange={(open) => { setShowCompose(open); if (!open) composeAttach.clear() }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>New message</DialogTitle>
@@ -502,9 +654,13 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
                   placeholder="Task description (optional — give Claude full context here)"
                   rows={5}
                   className="font-mono text-sm"
+                  onDrop={composeAttach.onDrop}
+                  onDragOver={composeAttach.onDragOver}
+                  onPaste={composeAttach.onPaste}
                 />
+                <ImageAttachmentPicker attach={composeAttach} />
               </div>
-              
+
               <div className="flex items-center space-x-2">
                 <input
                   type="checkbox"
@@ -822,6 +978,11 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit, onGrade }
               {message.body}
             </pre>
           )}
+          {message.attachments?.length > 0 && taskId && (
+            <div className={cn('px-3 py-2', expanded && 'border-t border-border')}>
+              <MessageAttachments taskId={taskId} msgId={message.id} attachments={message.attachments} />
+            </div>
+          )}
         </div>
       </div>
     )
@@ -952,6 +1113,11 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit, onGrade }
         <div className={cn('text-sm leading-relaxed whitespace-pre-wrap select-text', isScheduled ? 'text-foreground/80' : 'text-foreground/90')}>
           {message.body}
         </div>
+        {message.attachments?.length > 0 && taskId && (
+          <div className="mt-3 pt-2.5 border-t border-border/30">
+            <MessageAttachments taskId={taskId} msgId={message.id} attachments={message.attachments} />
+          </div>
+        )}
         {isAgent && message.transcript_key && taskId && (
           <div className="mt-3 pt-2.5 border-t border-border/30">
             <TranscriptButton taskId={taskId} msgId={message.id} />
@@ -969,6 +1135,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
   const [agents, setAgents] = useState<Agent[]>([])
   const [reply, setReply] = useState('')
   const [sending, setSending] = useState(false)
+  const replyAttach = useImageAttachments()
   const [showForward, setShowForward] = useState(false)
   const [forwardAgentId, setForwardAgentId] = useState('')
   const [forwardInstructions, setForwardInstructions] = useState('')
@@ -1114,11 +1281,12 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
       if (scheduledDate && scheduledDate.getTime() > Date.now()) {
         scheduledAt = scheduledDate.getTime()
       }
-      await api.messages.create(taskId, reply, scheduledAt)
+      await api.messages.create(taskId, reply, scheduledAt, replyAttach.files)
       trackEvent('message_sent', { task_id: taskId, role: 'user', scheduled: !!scheduledAt });
       setReply('')
       setShowSchedulePicker(false)
       setScheduledDate(undefined)
+      replyAttach.clear()
       load()
     } finally { setSending(false) }
   }
@@ -1471,10 +1639,14 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
               value={reply}
               onChange={e => setReply(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendReply(e as any) }}
-              placeholder="Write your reply…"
+              onDrop={replyAttach.onDrop}
+              onDragOver={replyAttach.onDragOver}
+              onPaste={replyAttach.onPaste}
+              placeholder="Write your reply… (drag, paste, or attach up to 3 images)"
               rows={4}
               className="border-0 rounded-none resize-none focus-visible:ring-0 text-sm px-4 py-3 bg-transparent"
             />
+            <ImageAttachmentPicker attach={replyAttach} className="px-4 pb-2" />
             {showSchedulePicker && (
               <div className="px-4 py-3 border-t border-border/20">
                 <DateTimePicker date={scheduledDate} setDate={setScheduledDate} />

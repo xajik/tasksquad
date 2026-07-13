@@ -10,7 +10,9 @@ import (
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/screenshot"
 	"github.com/tasksquad/daemon/tmux"
+	"github.com/tasksquad/daemon/upload"
 )
 
 // maxEscalationLogLines is how many trailing lines of the supervisor log are
@@ -146,8 +148,14 @@ func readLastLines(path string, max int) string {
 	return strings.Join(lines, "\n")
 }
 
-// reportToWorker posts a supervisor message to the task inbox via the daemon API.
-func (s *Supervisor) reportToWorker(taskID, agentID, body string) {
+// reportToWorker posts a supervisor message to the task inbox via the daemon
+// API, then attaches a fresh screenshot of the monitored agent's terminal —
+// captured now, reflecting the outcome of the supervisor's work, not the
+// stale snapshot taken when supervision started — so a human reviewing the
+// task thread can see what happened without re-running anything. Screenshot
+// capture/upload failures only log a warning; the text report has already
+// posted successfully by that point and must not be affected.
+func (s *Supervisor) reportToWorker(taskID, agentID, agentName, sessionID, agentTmux, body string) {
 	if s.cfg == nil {
 		return
 	}
@@ -156,7 +164,7 @@ func (s *Supervisor) reportToWorker(taskID, agentID, body string) {
 		logger.Error(fmt.Sprintf("[supervisor] Auth failed for report (task %s): %v", taskID, err))
 		return
 	}
-	_, err = api.Post(s.cfg, token, agentID, "/daemon/supervisor/report", map[string]any{
+	resp, err := api.Post(s.cfg, token, agentID, "/daemon/supervisor/report", map[string]any{
 		"task_id": taskID,
 		"body":    body,
 	})
@@ -165,6 +173,29 @@ func (s *Supervisor) reportToWorker(taskID, agentID, body string) {
 		return
 	}
 	logger.Info(fmt.Sprintf("[supervisor] Report posted for task %s (%d chars)", taskID, len(body)))
+
+	msgID, _ := resp["message_id"].(string)
+	if msgID == "" || sessionID == "" || agentTmux == "" {
+		return
+	}
+	png, err := screenshot.Capture(agentTmux, 0)
+	if err != nil {
+		logger.Warn(fmt.Sprintf("[supervisor] Could not capture closing screenshot for task %s: %v", taskID, err))
+		return
+	}
+	uploader := upload.NewUploader(s.cfg, token, agentID, agentName)
+	if err := uploader.Attach(upload.AttachOptions{
+		SessionID: sessionID,
+		MessageID: msgID,
+		Filename:  "supervisor-snapshot.png",
+		Content:   png,
+		AsImage:   true,
+		MimeType:  "image/png",
+	}); err != nil {
+		logger.Warn(fmt.Sprintf("[supervisor] Failed to attach closing screenshot for task %s: %v", taskID, err))
+		return
+	}
+	logger.Info(fmt.Sprintf("[supervisor] Closing screenshot attached to message %s for task %s", msgID, taskID))
 }
 
 // notifyProgress posts a minimal "running well" progress message to the task inbox.

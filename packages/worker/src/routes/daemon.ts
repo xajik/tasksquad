@@ -9,6 +9,7 @@ import { getCombinedInboxVersion } from '../inbox_version.js'
 import { calculateNextRun, type ConveyorRow } from './conveyors.js'
 import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
 import { onTaskDone } from '../planner/hook.js'
+import { readMessageAttachment, fetchAttachmentsForMessages, ATTACHMENT_MAX_PER_MESSAGE } from './helpers.js'
 
 function truncate(text: string, maxLen = 80): string {
   return text.slice(0, maxLen) + (text.length > maxLen ? '…' : '')
@@ -145,7 +146,7 @@ async function processAgentHeartbeat(
       if (agentStatus === AgentStatus.WaitingInput) {
         const reply = await env.DB
           .prepare(`
-            SELECT body FROM messages
+            SELECT id, body FROM messages
             WHERE task_id = ? AND role = 'user'
               AND (scheduled_at IS NULL OR scheduled_at <= ?)
               AND created_at > (
@@ -155,7 +156,7 @@ async function processAgentHeartbeat(
             ORDER BY created_at ASC LIMIT 1
           `)
           .bind(state.current_task_id, now, state.current_task_id)
-          .first<{ body: string }>()
+          .first<{ id: string; body: string }>()
 
         if (reply) {
           await env.DB.batch([
@@ -163,7 +164,14 @@ async function processAgentHeartbeat(
             env.DB.prepare("UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?").bind(AgentMode.Running, now, agentId),
             env.DB.prepare("UPDATE tasks SET status = ? WHERE id = ?").bind(TaskStatus.Running, state.current_task_id),
           ])
-          return { agent_id: agentId, ok: true, reply: injectCaveman(reply.body, task?.settings ?? null), next_poll_ms: nextPollMs }
+          const replyAttachments = (await fetchAttachmentsForMessages(env, [reply.id])).get(reply.id) ?? []
+          return {
+            agent_id: agentId,
+            ok: true,
+            reply: injectCaveman(reply.body, task?.settings ?? null),
+            ...(replyAttachments.length ? { reply_attachments: replyAttachments, reply_message_id: reply.id } : {}),
+            next_poll_ms: nextPollMs,
+          }
         }
       }
     }
@@ -194,17 +202,20 @@ async function processAgentHeartbeat(
 
   if (task) {
     const msgRows = await env.DB
-      .prepare("SELECT role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') AND (scheduled_at IS NULL OR scheduled_at <= ?) ORDER BY created_at ASC")
+      .prepare("SELECT id, role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') AND (scheduled_at IS NULL OR scheduled_at <= ?) ORDER BY created_at ASC")
       .bind(task.id, now)
-      .all<{ role: string; body: string }>()
+      .all<{ id: string; role: string; body: string }>()
+    const attachmentsByMessage = await fetchAttachmentsForMessages(env, msgRows.results.map(m => m.id))
     // Inject caveman instruction into the first user message if save_tokens is enabled
     let firstUserInjected = false
     const messages = msgRows.results.map(m => {
+      const attachments = attachmentsByMessage.get(m.id) ?? []
+      const withAttachments = attachments.length ? { ...m, attachments } : m
       if (!firstUserInjected && m.role === 'user') {
         firstUserInjected = true
-        return { ...m, body: injectCaveman(m.body, task.settings) }
+        return { ...withAttachments, body: injectCaveman(m.body, task.settings) }
       }
-      return m
+      return withAttachments
     })
 
     // Auto-inject the team's most recent short-term memory rollup, if memory is
@@ -809,8 +820,9 @@ export async function presignUpload(req: Request, env: Env, _ctx: unknown, daemo
 export async function messageAttach(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const url = new URL(req.url)
   const msgId = url.pathname.split('/')[3]
-  const body = await req.json<{ transcript_key?: string }>().catch(() => ({} as { transcript_key?: string }))
-  if (!body.transcript_key) return err('missing_key', 400)
+  const body = await req.json<{ transcript_key?: string; image_key?: string; filename?: string; mime_type?: string }>()
+    .catch(() => ({} as { transcript_key?: string; image_key?: string; filename?: string; mime_type?: string }))
+  if (!body.transcript_key && !body.image_key) return err('missing_key', 400)
 
   // Verify message belongs to a task assigned to this agent (within the agent's team)
   const msg = await env.DB
@@ -819,11 +831,59 @@ export async function messageAttach(req: Request, env: Env, _ctx: unknown, daemo
     .first()
   if (!msg) return err('not_found', 404)
 
-  await env.DB.prepare('UPDATE messages SET transcript_key = ? WHERE id = ?')
-    .bind(body.transcript_key, msgId)
-    .run()
+  if (body.transcript_key) {
+    await env.DB.prepare('UPDATE messages SET transcript_key = ? WHERE id = ?')
+      .bind(body.transcript_key, msgId)
+      .run()
+  }
+  if (body.image_key) {
+    if (!body.filename || !body.mime_type) return err('missing_fields', 400)
+
+    const count = await env.DB
+      .prepare('SELECT COUNT(*) as n FROM message_attachments WHERE message_id = ?')
+      .bind(msgId)
+      .first<{ n: number }>()
+    if ((count?.n ?? 0) >= ATTACHMENT_MAX_PER_MESSAGE) return err('too_many_attachments', 400)
+
+    // The image bytes were already written to R2 by the daemon via a
+    // presigned PUT (see presignUpload above) — this just records the
+    // metadata. Size is read back from the object rather than trusted from
+    // the client.
+    const obj = await env.LOGS.head(body.image_key)
+    const size = obj?.size ?? 0
+
+    await env.DB
+      .prepare('INSERT INTO message_attachments (id, message_id, r2_key, mime_type, filename, size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(ulid(), msgId, body.image_key, body.mime_type, body.filename, size, Date.now())
+      .run()
+  }
 
   return json({ ok: true })
+}
+
+// GET /daemon/messages/:msgId/attachments/:attachmentId — lets the daemon
+// download an image a user or supervisor attached to a message it needs to
+// materialize locally (e.g. into the assigned agent's working directory
+// before the CLI tool sees the prompt). Mirrors messages.ts's
+// getMessageAttachment but scoped by daemon.agentId/teamId instead of
+// requireMember, since this is called by the daemon, not the portal.
+export async function getAttachmentForDaemon(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
+  const parts = new URL(req.url).pathname.split('/')
+  const msgId = parts[3]
+  const attachmentId = parts[5]
+
+  const msg = await env.DB
+    .prepare('SELECT m.id FROM messages m JOIN tasks t ON m.task_id = t.id WHERE m.id = ? AND t.team_id = ? AND t.agent_id = ?')
+    .bind(msgId, daemon.teamId, daemon.agentId)
+    .first()
+  if (!msg) return err('not_found', 404)
+
+  const attachment = await readMessageAttachment(env, attachmentId, msgId, daemon.agentId)
+  if (!attachment) return err('not_found', 404)
+
+  return new Response(attachment.bytes, {
+    headers: { 'Content-Type': attachment.mimeType },
+  })
 }
 
 export async function sessionAttach(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {

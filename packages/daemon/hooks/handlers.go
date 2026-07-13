@@ -377,3 +377,41 @@ func (s *hookServer) handleSupervisor(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
+
+// handleAttach handles POST /hooks/attach — the CLI tool itself (via
+// `tsq send-image --task <id> <path>`, taught by the tsq-attach-image system
+// skill) asking to send an image back to the user as part of its response.
+// Resolves the agent by task_id via findAndDispatch, the same lookup every
+// other hook route uses.
+func (s *hookServer) handleAttach(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, _ := io.ReadAll(r.Body)
+	var payload struct {
+		TaskID  string `json:"task_id"`
+		Path    string `json:"path"`
+		Caption string `json:"caption"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil || payload.TaskID == "" || payload.Path == "" {
+		http.Error(w, "invalid payload: task_id and path required", http.StatusBadRequest)
+		return
+	}
+
+	var attachErr error
+	found := findAndDispatch(s.agents, "", payload.TaskID, func(a Agent) {
+		attachErr = a.AttachImage(s.cfg, payload.Path, payload.Caption)
+	})
+	if !found {
+		http.Error(w, "no active agent for task", http.StatusNotFound)
+		return
+	}
+	if attachErr != nil {
+		logger.Error(fmt.Sprintf("[hooks/attach] AttachImage failed for task %s: %v", payload.TaskID, attachErr))
+		http.Error(w, fmt.Sprintf("attach failed: %v", attachErr), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}

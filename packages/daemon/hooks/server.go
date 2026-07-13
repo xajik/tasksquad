@@ -39,6 +39,14 @@ type Agent interface {
 	// GetLastTmuxCapture returns the stored tmux capture for fallback when
 	// transcript is unavailable. Returns empty string if not available.
 	GetLastTmuxCapture() string
+	// SessionID returns the server-side (D1) session ID for the current task.
+	SessionID() string
+	// AttachImage reads the file at path and sends it to the user as a new
+	// message in the current task's thread (caption becomes the message
+	// body, or a default if empty). Called from /hooks/attach, which the
+	// tsq-attach-image system skill teaches every agent to hit via
+	// `tsq send-image --task <id> <path>`.
+	AttachImage(cfg *config.Config, path, caption string) error
 }
 
 // SupervisorReporter is implemented by the supervisor package and allows the
@@ -97,10 +105,11 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 	mux.HandleFunc("/hooks/skill", srv.handleSkill)
 	mux.HandleFunc("/hooks/supervisor", srv.handleSupervisor)
 	mux.HandleFunc("/hooks/trigger-supervisor", srv.handleTriggerSupervisor)
+	mux.HandleFunc("/hooks/attach", srv.handleAttach)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
 	logger.Info(fmt.Sprintf("[hooks] Server listening on http://localhost:%d", cfg.Hooks.Port))
-	logger.Info("[hooks] Registered endpoints: /hooks/stop (speech=true for voice), /hooks/notification, /hooks/after_agent, /hooks/opencode, /hooks/skill, /hooks/supervisor, /hooks/trigger-supervisor")
+	logger.Info("[hooks] Registered endpoints: /hooks/stop (speech=true for voice), /hooks/notification, /hooks/after_agent, /hooks/opencode, /hooks/skill, /hooks/supervisor, /hooks/trigger-supervisor, /hooks/attach")
 	go http.ListenAndServe(addr, corsMiddleware(mux)) //nolint:errcheck
 }
 

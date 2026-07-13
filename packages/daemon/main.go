@@ -10,10 +10,12 @@ import (
 	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/autostart"
+	attachcmd "github.com/tasksquad/daemon/cmd/attach"
 	authcmd "github.com/tasksquad/daemon/cmd/auth"
 	hookscmd "github.com/tasksquad/daemon/cmd/hooks"
 	logscmd "github.com/tasksquad/daemon/cmd/logs"
 	memorycmd "github.com/tasksquad/daemon/cmd/memory"
+	screenshotcmd "github.com/tasksquad/daemon/cmd/screenshot"
 	tagscmd "github.com/tasksquad/daemon/cmd/tags"
 	tmuxcmd "github.com/tasksquad/daemon/cmd/tmux"
 	"github.com/tasksquad/daemon/commands"
@@ -53,11 +55,17 @@ func main() {
 		case "pane":
 			tmuxcmd.RunPane(os.Args[2:])
 			return
+		case "screenshot":
+			screenshotcmd.RunScreenshot(os.Args[2:])
+			return
 		case "send":
 			tmuxcmd.RunSend(os.Args[2:])
 			return
 		case "report":
 			hookscmd.RunReport(os.Args[2:]) //nolint:errcheck
+			return
+		case "send-image":
+			attachcmd.RunAttach(os.Args[2:]) //nolint:errcheck
 			return
 		case "skill":
 			hookscmd.RunSkill(os.Args[2:]) //nolint:errcheck

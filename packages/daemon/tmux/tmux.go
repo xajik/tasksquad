@@ -9,6 +9,25 @@ import (
 
 const tmuxBin = "tmux"
 
+// sessionPrefix is prepended to short session-name arguments (e.g. a bare
+// taskID) so they resolve to the daemon's tmux naming convention.
+const sessionPrefix = "tsq-"
+
+// NormalizeSessionName resolves a user-supplied session argument to a full
+// tmux session name. Arguments already prefixed with "tsq-" are returned
+// as-is; otherwise the first 8 characters are taken and prefixed, matching
+// the daemon's `tsq-<first8CharsOfTaskID>` session naming convention.
+func NormalizeSessionName(arg string) string {
+	if strings.HasPrefix(arg, sessionPrefix) {
+		return arg
+	}
+	suffix := arg
+	if len(suffix) > 8 {
+		suffix = suffix[:8]
+	}
+	return sessionPrefix + suffix
+}
+
 // SessionReadyWait is how long to wait after starting a tmux session before
 // sending the initial prompt. CLI tools (Claude Code, Gemini, etc.) need time
 // to initialise their TUI before they can accept keyboard input.
