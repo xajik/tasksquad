@@ -33,6 +33,16 @@ These skills are essential for the operation and maintenance of TaskSquad agents
 - **Goal**: Reflect on the session across 5 categories (personal, preferences, structure, architecture, events) and save any memory-worthy facts, each scoped `local` (this machine only, via the filesystem) or `global` (shared with the team via the cloud).
 - **Use Case**: Runs immediately after `tsq-end-session-learning` in the close sequence, when the team's Memory setting is enabled. See [Memory](./memory) for the full picture.
 
+### `tsq-kb-builder`
+**Description**: One-time bootstrap protocol that builds a project's `tsq/kb/` knowledge base from scratch.
+- **Workflow**: Enumerate the project's top-level directories → dispatch the `kb-directory-summarizer` sub-agent per directory (small, scoped context) → each writes `tsq/kb/<path>/<name>.md` → commit and push.
+- **Use Case**: Triggered by `tsq kb init`. Runs once per project to create the initial knowledge base that nightly [Dreaming](./dreaming) then keeps incrementally up to date.
+
+### `tsq-dreaming`
+**Description**: Nightly incremental protocol that keeps an existing `tsq/kb/` knowledge base current.
+- **Workflow**: Walk today's Memory rollup fact-by-fact → find and edit the specific `tsq/kb/*.md` file(s) each fact touches → commit and push → record a summary via `tsq memory push`.
+- **Use Case**: Run automatically by the daemon at a random time inside the configured `[dreamer]` night window, one project at a time. See [Dreaming](./dreaming) for the full lifecycle.
+
 ## Automation & Tools
 
 These skills provide specialized capabilities for common development and automation tasks.
@@ -69,4 +79,5 @@ Skills for interacting with the broader TaskSquad ecosystem.
 
 - [Skills & Learning](./skills) — Overview of how the learning loop works.
 - [Memory](./memory) — The sibling mechanism for project facts rather than procedures.
+- [Dreaming](./dreaming) — The nightly knowledge-base lifecycle `tsq-kb-builder` and `tsq-dreaming` drive.
 - [Daemon CLI Reference](../api/daemon-cli) — Detailed documentation of the `tsq` binary.

@@ -13,6 +13,7 @@ import (
 	attachcmd "github.com/tasksquad/daemon/cmd/attach"
 	authcmd "github.com/tasksquad/daemon/cmd/auth"
 	hookscmd "github.com/tasksquad/daemon/cmd/hooks"
+	kbcmd "github.com/tasksquad/daemon/cmd/kb"
 	logscmd "github.com/tasksquad/daemon/cmd/logs"
 	memorycmd "github.com/tasksquad/daemon/cmd/memory"
 	screenshotcmd "github.com/tasksquad/daemon/cmd/screenshot"
@@ -20,6 +21,7 @@ import (
 	tmuxcmd "github.com/tasksquad/daemon/cmd/tmux"
 	"github.com/tasksquad/daemon/commands"
 	"github.com/tasksquad/daemon/config"
+	"github.com/tasksquad/daemon/dreamer"
 	"github.com/tasksquad/daemon/hooks"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/orphan"
@@ -72,6 +74,9 @@ func main() {
 			return
 		case "memory":
 			memorycmd.RunMemory(os.Args[2:]) //nolint:errcheck
+			return
+		case "kb":
+			kbcmd.RunKB(os.Args[2:]) //nolint:errcheck
 			return
 		case "tags":
 			tagscmd.RunTags(os.Args[2:]) //nolint:errcheck
@@ -177,6 +182,17 @@ func runDaemon() {
 		supAgents[i] = a
 	}
 	go sup.Monitor(supAgents)
+
+	dreamAgents := make([]dreamer.DreamAgent, len(rawAgents))
+	for i, a := range rawAgents {
+		dreamAgents[i] = a
+	}
+	if token != "" {
+		d := dreamer.New(cfg)
+		go d.Monitor(dreamAgents, token)
+	} else {
+		logger.Warn("[dreamer] skipped: no auth token")
+	}
 
 	skillAgents := make([]skills.AgentRef, len(rawAgents))
 	for i, a := range rawAgents {

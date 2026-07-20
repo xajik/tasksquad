@@ -109,8 +109,11 @@ export default function Pricing() {
         </div>
       </main>
 
-      <footer className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] border-t pt-10 text-muted-foreground text-sm sm:pb-12">
-      <a href="mailto:contact@tasksquad.ai" className="underline">contact@tasksquad.ai</a> © 2026 TaskSquad
+      <footer className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] border-t pt-10 text-muted-foreground text-sm sm:pb-12 flex flex-wrap gap-x-4 gap-y-2">
+      <a href="mailto:contact@tasksquad.ai" className="underline">contact@tasksquad.ai</a>
+      <span>© 2026 TaskSquad</span>
+      <Link to="/policy" className="underline">Privacy Policy</Link>
+      <Link to="/terms" className="underline">Terms of Service</Link>
       </footer>
     </div>
   )

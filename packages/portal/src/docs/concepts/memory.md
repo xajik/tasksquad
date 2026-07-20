@@ -106,6 +106,7 @@ card-grid-plus-detail-pane pattern used by [Skills](./skills).
 
 - [Skills & Learning](./skills) — The sibling mechanism for reusable procedures, and the
   close-step machinery memory extraction reuses.
+- [Dreaming](./dreaming) — How Memory feeds a git-tracked knowledge base agents can search.
 - [System Architecture](./architecture) — Where the Worker's D1 store and the daemon's local
   `.tsq/` directory fit into the bigger picture.
 - [Daemon CLI Reference](../api/daemon-cli) — `tsq memory` and `tsq tags` command reference.

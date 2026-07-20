@@ -18,6 +18,7 @@ export function LiveTerminal({ sessionId }: { sessionId: string }) {
     let ws: WebSocket | undefined
     let disposed = false
     let retryCount = 0
+    let everConnected = false
 
     const term = new Terminal({
       convertEol: true,
@@ -53,7 +54,11 @@ export function LiveTerminal({ sessionId }: { sessionId: string }) {
         const { ticket } = await api.terminal.ticket(sessionId)
         if (disposed) return
 
-        const socket = new WebSocket(`${WS_BASE}/terminal/${sessionId}?ticket=${ticket}`)
+        // replay=1 only on a genuine mount (fresh, blank xterm buffer) so the
+        // relay sends its buffered PTY tail — a same-session drop/retry omits
+        // it since this terminal already has that content on screen.
+        const replay = everConnected ? '0' : '1'
+        const socket = new WebSocket(`${WS_BASE}/terminal/${sessionId}?ticket=${ticket}&replay=${replay}`)
         socket.binaryType = 'arraybuffer'
         ws = socket
 
@@ -64,6 +69,7 @@ export function LiveTerminal({ sessionId }: { sessionId: string }) {
 
         socket.onopen = () => {
           retryCount = 0
+          everConnected = true
           // Send initial terminal dimensions so tmux starts at the right size
           fitAddon.fit()
           if (socket.readyState === WebSocket.OPEN) {

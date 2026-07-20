@@ -116,8 +116,11 @@ work_dir = "~/Projects/my-tasksquad-project"`}
         </section>
       </div>
 
-      <footer className="border-t mt-20 pt-10 text-muted-foreground text-sm">
-        <a href="mailto:contact@tasksquad.ai" className="underline">contact@tasksquad.ai</a> © 2026 TaskSquad
+      <footer className="border-t mt-20 pt-10 text-muted-foreground text-sm flex flex-wrap gap-x-4 gap-y-2">
+        <a href="mailto:contact@tasksquad.ai" className="underline">contact@tasksquad.ai</a>
+        <span>© 2026 TaskSquad</span>
+        <Link to="/policy" className="underline">Privacy Policy</Link>
+        <Link to="/terms" className="underline">Terms of Service</Link>
       </footer>
     </main>
   </div>

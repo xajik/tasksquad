@@ -34,4 +34,15 @@ export const STATIC_ROUTES: RouteMeta[] = [
     description: 'Sign in to TaskSquad.',
     noindex: true,
   },
+  {
+    path: '/policy',
+    title: 'Privacy Policy — TaskSquad',
+    description:
+      'How TaskSquad collects, uses, and protects your information across the tsq daemon and the cloud-hosted portal.',
+  },
+  {
+    path: '/terms',
+    title: 'Terms of Service — TaskSquad',
+    description: 'The terms that govern your use of TaskSquad, the tsq daemon, and the cloud-hosted portal.',
+  },
 ];

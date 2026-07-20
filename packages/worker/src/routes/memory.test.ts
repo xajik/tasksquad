@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { daemonPush, list, get, search, rollups } from './memory.js'
+import { daemonPush, list, get, search, rollups, daemonRollup } from './memory.js'
 import { withDaemonAgentAuth, sha256 } from '../auth.js'
 import type { Env, AuthContext, DaemonContext } from '../types.js'
 
@@ -90,6 +90,13 @@ class FakeDB {
       if (!agent) return null
       const member = this.teamMembers.find(m => m.team_id === agent.team_id && m.user_id === userId)
       return member ? { team_id: agent.team_id } : null
+    }
+    if (sql === 'SELECT content, period_key FROM memory_rollup WHERE team_id = ? AND period = ? ORDER BY period_key DESC LIMIT 1') {
+      const [teamId, period] = args as [string, string]
+      const hit = this.memoryRollups
+        .filter(r => r.team_id === teamId && r.period === period)
+        .sort((a, b) => (a.period_key < b.period_key ? 1 : -1))[0]
+      return hit ? { content: hit.content, period_key: hit.period_key } : null
     }
     throw new Error(`FakeDB: unhandled first() query: ${sql}`)
   }
@@ -393,6 +400,41 @@ describe('rollups', () => {
     const req = new Request('https://api.example.com/teams/team-1/rollups')
     const res = await rollups(req, makeEnv(db), {}, { ...AUTH, userId: 'stranger' })
     expect(res.status).toBe(404)
+  })
+})
+
+// ── daemonRollup ──────────────────────────────────────────────────────────────
+
+describe('daemonRollup', () => {
+  beforeEach(() => {
+    db.memoryRollups.push(
+      { id: 'r-1', team_id: 'team-1', period: 'daily', period_key: '2026-07-10', content: 'day 1', created_at: 100 },
+      { id: 'r-2', team_id: 'team-1', period: 'daily', period_key: '2026-07-11', content: 'day 2', created_at: 200 },
+      { id: 'r-3', team_id: 'team-2', period: 'daily', period_key: '2026-07-12', content: 'other team', created_at: 300 },
+    )
+  })
+
+  it('returns the latest daily rollup content for the authenticated team', async () => {
+    const req = new Request('https://api.example.com/daemon/memory/rollup?period=daily')
+    const res = await daemonRollup(req, makeEnv(db), {}, DAEMON)
+    expect(res.status).toBe(200)
+    const body = await res.json() as { content: string; period_key: string | null }
+    expect(body).toEqual({ content: 'day 2', period_key: '2026-07-11' })
+  })
+
+  it('returns empty content and a null period_key when none exists', async () => {
+    const req = new Request('https://api.example.com/daemon/memory/rollup?period=weekly')
+    const res = await daemonRollup(req, makeEnv(db), {}, DAEMON)
+    expect(res.status).toBe(200)
+    const body = await res.json() as { content: string; period_key: string | null }
+    expect(body).toEqual({ content: '', period_key: null })
+  })
+
+  it('ignores other teams\' rollups', async () => {
+    const req = new Request('https://api.example.com/daemon/memory/rollup?period=daily')
+    const res = await daemonRollup(req, makeEnv(db), {}, { ...DAEMON, teamId: 'team-2' })
+    const body = await res.json() as { content: string; period_key: string | null }
+    expect(body).toEqual({ content: 'other team', period_key: '2026-07-12' })
   })
 })
 

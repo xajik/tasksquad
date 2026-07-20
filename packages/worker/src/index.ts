@@ -16,6 +16,7 @@ import * as commands   from './routes/commands.js'
 import * as planners   from './routes/planners.js'
 import * as portals    from './routes/portals.js'
 import * as memory     from './routes/memory.js'
+import * as dream      from './routes/dream.js'
 import * as tags       from './routes/tags.js'
 import { runRollups }  from './cron/rollup.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
@@ -181,6 +182,8 @@ router.get ('/daemon/skills/:skillId',             firebaseRoute(skills.daemonSk
 router.post('/daemon/skills',                     daemonRoute(skills.daemonUpsert))
 router.post('/daemon/memory',                     daemonRoute(memory.daemonPush))
 router.get ('/daemon/memory/search',              daemonRoute(memory.search))
+router.get ('/daemon/memory/rollup',              daemonRoute(memory.daemonRollup))
+router.post('/daemon/dream/claim',                daemonRoute(dream.claim))
 
 // ── Portal routes (browser) ───────────────────────────────────────────────────
 router.get ('/portals',                              firebaseRoute(portals.list))

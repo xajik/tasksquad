@@ -126,6 +126,23 @@ export async function rollups(req: Request, env: Env, _ctx: unknown, auth: AuthC
   return json({ rollups: rows.results })
 }
 
+// GET /daemon/memory/rollup?period=daily — daemon-facing variant of rollups() above,
+// used by Dreaming to fetch "today's changes in Memory" as its entire prompt input.
+// Same query, swapping requireMember+URL teamId for the authenticated DaemonContext
+// (same substitution as list -> daemonPush in this file). Returns only the single
+// latest period's content, not the full history rollups() gives the Portal.
+export async function daemonRollup(req: Request, env: Env, _ctx: unknown, d: DaemonContext): Promise<Response> {
+  const url = new URL(req.url)
+  const period = url.searchParams.get('period') === 'weekly' ? 'weekly' : 'daily'
+
+  const row = await env.DB
+    .prepare('SELECT content, period_key FROM memory_rollup WHERE team_id = ? AND period = ? ORDER BY period_key DESC LIMIT 1')
+    .bind(d.teamId, period)
+    .first<{ content: string; period_key: string }>()
+
+  return json({ content: row?.content ?? '', period_key: row?.period_key ?? null })
+}
+
 // ─── Daemon routes ─────────────────────────────────────────────────────────────
 
 // POST /daemon/memory — pushed by `tsq memory push --scope global` at session close.

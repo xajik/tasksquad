@@ -39,6 +39,17 @@ type SupervisorConfig struct {
 	Command string `toml:"command"`
 }
 
+// DreamerConfig holds the optional [dreamer] section, which controls the
+// nightly Dreaming background job (see packages/daemon/dreamer). If absent
+// from config.toml, Dreamer will be nil; Command then falls back to
+// [supervisor]'s command (Dreaming runs via Supervisor's CLI by default) and
+// WindowStart/WindowEnd fall back to their documented defaults.
+type DreamerConfig struct {
+	Command     string `toml:"command"`      // optional; falls back to Supervisor.Command if empty
+	WindowStart string `toml:"window_start"` // default "01:00"
+	WindowEnd   string `toml:"window_end"`   // default "05:00"
+}
+
 type HooksConfig struct {
 	Port int `toml:"port"`
 }
@@ -67,6 +78,7 @@ type Config struct {
 	Firebase   FirebaseConfig    `toml:"firebase"`
 	Analytics  AnalyticsConfig   `toml:"analytics"`
 	Supervisor *SupervisorConfig `toml:"supervisor"`
+	Dreamer    *DreamerConfig    `toml:"dreamer"`
 }
 
 func expandHome(path string) string {

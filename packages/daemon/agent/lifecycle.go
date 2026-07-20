@@ -13,6 +13,7 @@ import (
 	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
+	"github.com/tasksquad/daemon/kb"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/tasklog"
 	"github.com/tasksquad/daemon/tmux"
@@ -34,6 +35,25 @@ func buildConversationPrompt(subject string, rawMsgs any, memoryRollup string) s
 		return base
 	}
 	return fmt.Sprintf("## Project memory (recent activity)\n%s\n\n---\n\n%s", memoryRollup, base)
+}
+
+// injectKBNote appends a short note about the project's git-tracked
+// knowledge base (tsq/kb/, see packages/daemon/kb) when one has been
+// bootstrapped, independent of memoryRollup/team Memory settings — kb.Exists
+// is a purely local filesystem check scoped to this checkout, not a
+// team-level feature flag, so it fires even when Memory is disabled or empty
+// for the team. This is unrelated to Dreaming as a process — Dreaming only
+// ever runs as a nightly background job that writes tsq/kb/ files and never
+// touches a live task prompt; this note just reports whether tsq/kb/
+// happens to be populated right now, regardless of what (or whether
+// anything) put it there.
+func injectKBNote(prompt, workDir string) string {
+	if !kb.Exists(workDir) {
+		return prompt
+	}
+	return prompt + "\n\n## Knowledge base available\n" +
+		"This project has a knowledge base at tsq/kb/. Run `tsq kb search <query>` " +
+		"to look up package/API details before exploring the codebase from scratch."
 }
 
 func buildBasePrompt(subject string, rawMsgs any) string {
@@ -180,6 +200,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	msgs, _ := task["messages"].([]interface{})
 	msgs = materializeInboundImages(cfg, a.Config.ID, a.Config.WorkDir, msgs)
 	prompt := buildConversationPrompt(subject, msgs, memoryRollup)
+	prompt = injectKBNote(prompt, a.Config.WorkDir)
 	a.st.mu.Lock()
 	a.st.lastPrompt = prompt
 	a.st.mu.Unlock()

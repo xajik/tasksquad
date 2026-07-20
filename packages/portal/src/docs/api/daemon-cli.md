@@ -75,6 +75,28 @@ Post a supervisor verdict to the local hooks API.
 - **Required Flags**: `--task`, `--status`, `--summary`.
 - **Status values**: `working_fine`, `resolved`, `cannot_help`.
 
+## Knowledge Base & Dreaming
+
+### `tsq kb search <query>`
+Search the project's knowledge base.
+
+- **Behavior**: Pure local filesystem read over `<work_dir>/tsq/kb/**/*.md` — no worker
+  round-trip, works offline.
+- **Usage**: `tsq kb search "supervisor spawn flow"`
+
+### `tsq kb init`
+Bootstrap the knowledge base for the current project from scratch.
+
+- **Purpose**: One-time setup that generates the initial `tsq/kb/` tree, fanning out to a
+  sub-agent per top-level directory to keep each pass small.
+- **Behavior**: Standalone — does not require the background daemon to be running. Spawns its
+  own background tmux session running the `tsq-kb-builder` skill; attach to it to watch progress
+  if desired.
+- **Usage**: `tsq kb init`
+
+See [Dreaming](../concepts/dreaming) for the full lifecycle, including how the knowledge base is
+kept up to date automatically after this first bootstrap.
+
 ## Skill Management
 
 ### `tsq skill`
@@ -160,5 +182,6 @@ command = "claude"
 
 - [Available Skills](../concepts/available-skills) — Reference for built-in skills.
 - [Memory](../concepts/memory) — What `tsq memory` and `tsq tags` actually save and retrieve.
+- [Dreaming](../concepts/dreaming) — What `tsq kb search` and `tsq kb init` actually save and retrieve.
 - [Lifecycle Hooks](../concepts/hooks) — How the daemon communicates via hooks.
 - [System Architecture](../concepts/architecture) — Overview of the daemon's role.

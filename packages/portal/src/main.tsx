@@ -12,6 +12,8 @@ import Login from './pages/Login'
 import CLIAuth from './pages/CLIAuth'
 import Dashboard from './pages/Dashboard'
 import Pricing from './pages/Pricing'
+import Privacy from './pages/Privacy'
+import Terms from './pages/Terms'
 import DocsLayout from './components/DocsLayout'
 import './index.css'
 
@@ -41,6 +43,8 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/howto" element={<HowTo />} />
         <Route path="/pricing" element={<Pricing />} />
+        <Route path="/policy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
         <Route path="/auth/cli" element={<CLIAuth />} />
         <Route path="/docs/*" element={<DocsLayout />} />
         {authed === null ? null : (
