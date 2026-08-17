@@ -142,3 +142,80 @@ func TestAgentState_Paused(t *testing.T) {
 		t.Error("expected paused=true")
 	}
 }
+
+// ── PinCLISessionID ───────────────────────────────────────────────────────────
+
+func TestPinCLISessionID_EmptyAlwaysAllowed(t *testing.T) {
+	st := &AgentState{}
+	if !st.PinCLISessionID("") {
+		t.Error("empty session_id should always be allowed (provider doesn't report one)")
+	}
+	if !st.PinCLISessionID("real-session") {
+		t.Error("pinning a real session_id after an empty one should succeed")
+	}
+	// Once pinned, empty is still allowed (no-op check), but must not clear the pin.
+	if !st.PinCLISessionID("") {
+		t.Error("empty session_id should still be allowed after a pin exists")
+	}
+	if !st.PinCLISessionID("real-session") {
+		t.Error("the originally pinned session_id should still match")
+	}
+}
+
+func TestPinCLISessionID_FirstCallPins(t *testing.T) {
+	st := &AgentState{}
+	if !st.PinCLISessionID("session-a") {
+		t.Error("first call should pin and return true")
+	}
+	if !st.PinCLISessionID("session-a") {
+		t.Error("matching the pinned session_id should return true")
+	}
+}
+
+func TestPinCLISessionID_MismatchRejected(t *testing.T) {
+	st := &AgentState{}
+	st.PinCLISessionID("session-a")
+	if st.PinCLISessionID("session-b") {
+		t.Error("a different session_id after pinning should be rejected")
+	}
+	// Rejection must not overwrite the pin.
+	if !st.PinCLISessionID("session-a") {
+		t.Error("the original pin should still be intact after a rejected mismatch")
+	}
+}
+
+// ── TUIBlocked ────────────────────────────────────────────────────────────────
+
+func TestSetTUIBlocked_OnlyAppliesWhileRunning(t *testing.T) {
+	st := &AgentState{mode: ModeIdle}
+	st.SetTUIBlocked(true)
+	if st.TUIBlocked() {
+		t.Error("SetTUIBlocked(true) should no-op outside ModeRunning")
+	}
+
+	st.mode = ModeRunning
+	st.SetTUIBlocked(true)
+	if !st.TUIBlocked() {
+		t.Error("SetTUIBlocked(true) should take effect in ModeRunning")
+	}
+}
+
+func TestTransition_ClearsTUIBlocked(t *testing.T) {
+	st := &AgentState{mode: ModeRunning, tuiBlocked: true}
+	if err := st.Transition(EventHookStop); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if st.TUIBlocked() {
+		t.Error("any successful mode transition should clear tuiBlocked")
+	}
+}
+
+func TestTransition_InvalidLeavesTUIBlockedUnchanged(t *testing.T) {
+	st := &AgentState{mode: ModeIdle, tuiBlocked: true}
+	if err := st.Transition(EventHookStop); err == nil {
+		t.Fatal("expected invalid transition to error")
+	}
+	if !st.TUIBlocked() {
+		t.Error("a rejected transition must not clear tuiBlocked (mode never changed)")
+	}
+}

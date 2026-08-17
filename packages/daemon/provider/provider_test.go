@@ -81,6 +81,105 @@ func TestProvider_ClaudeCode_Basics(t *testing.T) {
 	}
 }
 
+func TestProvider_ClaudeCode_SetupIsNoop(t *testing.T) {
+	// Setup must not write into the shared, workDir-scoped settings file
+	// anymore — that's what let an unrelated `claude` process in the same
+	// directory inherit and fire another task's hooks.
+	tmpDir := t.TempDir()
+	p := &ClaudeCode{}
+	if err := p.Setup(tmpDir, 7374, "agent-123", "task-456"); err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+	if _, err := os.Stat(tmpDir + "/.claude/settings.json"); !os.IsNotExist(err) {
+		t.Fatalf("Setup should not write %s/.claude/settings.json, got err=%v", tmpDir, err)
+	}
+}
+
+func TestProvider_ClaudeCode_SetupArgsScopesHooksToInvocation(t *testing.T) {
+	p := &ClaudeCode{}
+	args := p.SetupArgs(7374, "agent-123", "task-456")
+	if len(args) != 2 || args[0] != "--settings" {
+		t.Fatalf("SetupArgs() = %v, want [--settings <path>]", args)
+	}
+	settingsPath := args[1]
+	defer os.Remove(settingsPath)
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("Failed to read %s: %v", settingsPath, err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("Failed to parse %s: %v", settingsPath, err)
+	}
+	hooks, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		t.Fatal("settings missing 'hooks' key")
+	}
+	if _, ok := hooks["Stop"]; !ok {
+		t.Error("settings missing 'Stop' hook")
+	}
+	if _, ok := hooks["StopFailure"]; !ok {
+		t.Error("settings missing 'StopFailure' hook")
+	}
+	if !strings.Contains(string(data), "agent=agent-123") || !strings.Contains(string(data), "task_id=task-456") {
+		t.Errorf("settings hooks missing expected agent/task_id query params: %s", data)
+	}
+	if _, ok := hooks["PreToolUse"]; !ok {
+		t.Error("settings missing 'PreToolUse' hook")
+	}
+	if _, ok := hooks["PostToolUse"]; !ok {
+		t.Error("settings missing 'PostToolUse' hook")
+	}
+}
+
+func TestProvider_ClaudeCode_SetupArgsPreToolUseMatchesAskUserQuestion(t *testing.T) {
+	p := &ClaudeCode{}
+	args := p.SetupArgs(7374, "agent-123", "task-456")
+	settingsPath := args[1]
+	defer os.Remove(settingsPath)
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("Failed to read %s: %v", settingsPath, err)
+	}
+	var settings struct {
+		Hooks struct {
+			PreToolUse []struct {
+				Matcher string `json:"matcher"`
+				Hooks   []struct {
+					URL string `json:"url"`
+				} `json:"hooks"`
+			} `json:"PreToolUse"`
+			PostToolUse []struct {
+				Matcher string `json:"matcher"`
+				Hooks   []struct {
+					URL string `json:"url"`
+				} `json:"hooks"`
+			} `json:"PostToolUse"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("Failed to parse %s: %v", settingsPath, err)
+	}
+
+	if len(settings.Hooks.PreToolUse) != 1 || settings.Hooks.PreToolUse[0].Matcher != "AskUserQuestion" {
+		t.Fatalf("PreToolUse = %+v, want one entry matching AskUserQuestion", settings.Hooks.PreToolUse)
+	}
+	if !strings.Contains(settings.Hooks.PreToolUse[0].Hooks[0].URL, "/hooks/tui-blocked") ||
+		!strings.Contains(settings.Hooks.PreToolUse[0].Hooks[0].URL, "state=on") {
+		t.Errorf("PreToolUse URL = %q, want /hooks/tui-blocked?...state=on", settings.Hooks.PreToolUse[0].Hooks[0].URL)
+	}
+
+	if len(settings.Hooks.PostToolUse) != 1 || settings.Hooks.PostToolUse[0].Matcher != "AskUserQuestion" {
+		t.Fatalf("PostToolUse = %+v, want one entry matching AskUserQuestion", settings.Hooks.PostToolUse)
+	}
+	if !strings.Contains(settings.Hooks.PostToolUse[0].Hooks[0].URL, "/hooks/tui-blocked") ||
+		!strings.Contains(settings.Hooks.PostToolUse[0].Hooks[0].URL, "state=off") {
+		t.Errorf("PostToolUse URL = %q, want /hooks/tui-blocked?...state=off", settings.Hooks.PostToolUse[0].Hooks[0].URL)
+	}
+}
+
 func TestProvider_Gemini_Basics(t *testing.T) {
 	p := &Gemini{}
 	if p.Name() != "gemini" {

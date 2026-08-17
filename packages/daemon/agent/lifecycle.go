@@ -108,6 +108,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	a.st.lastActivityAt = now
 	a.st.transcriptPath = ""
 	a.st.lastTmuxCapturePath = ""
+	a.st.cliSessionID = ""
+	a.st.tuiBlocked = false
 	a.st.mu.Unlock()
 
 	logger.Lifecycle(fmt.Sprintf("[%s] event=started task_id=%s subject=%q", a.Config.Name, taskID, subject))
@@ -208,6 +210,11 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	// Spawn the command.
 	parts := strings.Fields(a.Config.Command)
 	extraArgs := a.prov.ExtraArgs()
+	// Hook config scoped to this exact invocation (e.g. Claude Code's
+	// --settings flag) — takes precedence over Setup()'s workDir-shared file
+	// so an unrelated process in the same directory can't fire this task's
+	// hooks. See provider.Provider.SetupArgs.
+	extraArgs = append(extraArgs, a.prov.SetupArgs(cfg.Hooks.Port, a.Config.ID, taskID)...)
 	stdinData := a.prov.Stdin(prompt)
 	var args []string
 	if stdinData != "" {
@@ -296,6 +303,17 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 		a.st.mu.Unlock()
 
 		logger.Info(fmt.Sprintf("[%s] tmux session started — attach: tmux attach-session -t %s", a.Config.Name, sessionName))
+
+		if a.relayConn != nil {
+			// Forward browser keystrokes/resizes from the task's live terminal
+			// into this tmux session, mirroring what portal.go already does
+			// for Portals — the relay/worker/frontend already carry these
+			// frames end-to-end. Stdin is gated on TUIBlocked() so it only
+			// reaches the CLI while it's actually blocked on an interactive
+			// prompt (e.g. AskUserQuestion) — not during a normal autonomous
+			// turn, where stray keystrokes could corrupt the generation.
+			go handleRelayInput(a.relayConn, sessionName, func() bool { return a.st.TUIBlocked() })
+		}
 
 		select {
 		case f := <-fifoCh:

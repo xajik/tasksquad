@@ -30,6 +30,7 @@ func (p *Gemini) Env(_ int) []string {
 func (p *Gemini) Stdin(prompt string) string { return prompt }
 
 func (p *Gemini) ExtraArgs() []string       { return nil }
+func (p *Gemini) SetupArgs(_ int, _, _ string) []string { return nil }
 func (p *Gemini) VoiceCLIArg() string       { return "" }
 func (p *Gemini) VoiceInitCommand() string  { return "@tsq-speech-to-md" }
 

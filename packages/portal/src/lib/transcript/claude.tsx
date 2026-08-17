@@ -1,6 +1,20 @@
 import React from 'react'
 import { TranscriptEntry, RendererRegistry, ToolExecution } from './base'
 
+// tool_result.content can be a plain string or an array of content blocks
+// (e.g. [{type:'text', text:'...'}]) — never render it raw as a JSX child.
+function toolResultText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .map(c => (c && typeof c === 'object' && typeof (c as { text?: unknown }).text === 'string')
+        ? (c as { text: string }).text
+        : JSON.stringify(c))
+      .join('\n')
+  }
+  return JSON.stringify(content, null, 2)
+}
+
 function createClaudeRenderers(): RendererRegistry {
   const toolUseResults: Record<string, TranscriptEntry['toolUseResult']> = {}
   
@@ -23,7 +37,7 @@ function createClaudeRenderers(): RendererRegistry {
               {toolResults.map((tr, j) => (
                 <div key={j} className="ml-3 p-2 rounded bg-zinc-900 border border-zinc-700">
                   <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-semibold mb-1">Tool Result</div>
-                  <pre className="text-xs text-zinc-300 whitespace-pre-wrap font-mono">{tr.content}</pre>
+                  <pre className="text-xs text-zinc-300 whitespace-pre-wrap font-mono">{toolResultText(tr.content)}</pre>
                 </div>
               ))}
             </div>

@@ -28,6 +28,7 @@ type hookServer struct {
 	agents       []Agent
 	reporter     SupervisorReporter
 	speechHandler SpeechToMDHandler // nil when speech-to-md feature is not active
+	ctrl         Poller             // nil-safe; used to force an immediate heartbeat poll
 }
 
 // handleStop handles POST /hooks/stop.
@@ -89,6 +90,11 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
+		if !a.PinCLISessionID(ev.SessionID) {
+			logger.Warn(fmt.Sprintf("[hooks] Stop hook session_id=%q does not match agent %s's pinned CLI session for task_id=%q — ignoring (likely an unrelated process sharing this agent's hook URL)",
+				ev.SessionID, a.Name(), taskIDParam))
+			return
+		}
 		switch agentmode.Mode(a.GetMode()) {
 		case agentmode.ModeLearning:
 			logger.Debug(fmt.Sprintf("[hooks] Advancing close step for agent %s", a.Name()))
@@ -190,6 +196,34 @@ func (s *hookServer) handleAfterAgent(w http.ResponseWriter, r *http.Request) {
 	})
 	if !found {
 		logger.Debug(fmt.Sprintf("[hooks] AfterAgent ignored: agent %q task_id=%q not in 'running' state", agentID, taskIDParam))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleTUIBlocked handles POST /hooks/tui-blocked — a PreToolUse
+// (state=on) / PostToolUse (state=off) hook pair scoped to tools that
+// present a blocking interactive TUI menu (e.g. AskUserQuestion; see
+// provider/claudecode.go for the matcher list). Gates whether the live
+// terminal's raw keystrokes are forwarded into the tmux session.
+//
+// Deliberately responds with the same plain {"status":"ok"} body every
+// other fire-and-forget hook here returns — a decision-bearing PreToolUse
+// response could otherwise affect whether the tool call proceeds.
+func (s *hookServer) handleTUIBlocked(w http.ResponseWriter, r *http.Request) {
+	agentID := r.URL.Query().Get("agent")
+	taskIDParam := r.URL.Query().Get("task_id")
+	blocked := r.URL.Query().Get("state") == "on"
+
+	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
+		logger.Info(fmt.Sprintf("[hooks] tui-blocked: agent=%s task_id=%s blocked=%v", a.Name(), taskIDParam, blocked))
+		a.SetTUIBlocked(blocked)
+	})
+	if !found {
+		logger.Debug(fmt.Sprintf("[hooks] tui-blocked ignored: no matching agent (agent=%q task_id=%q)", agentID, taskIDParam))
+	}
+	if s.ctrl != nil {
+		s.ctrl.ForcePoll()
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

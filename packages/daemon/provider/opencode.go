@@ -132,6 +132,7 @@ export const TaskSquadPlugin = async ({ client }) => {
 func (p *OpenCode) UsesHooks() bool             { return true }
 func (p *OpenCode) Stdin(prompt string) string  { return prompt }
 func (p *OpenCode) Env(_ int) []string          { return nil }
+func (p *OpenCode) SetupArgs(_ int, _, _ string) []string { return nil }
 func (p *OpenCode) ExtraArgs() []string         { return []string{"--print-logs"} }
 func (p *OpenCode) VoiceCLIArg() string       { return "--agent tsq-speech-to-md" }
 func (p *OpenCode) VoiceInitCommand() string  { return "/tsq-speech-to-md" }

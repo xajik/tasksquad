@@ -71,9 +71,9 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
   const taskId = url.pathname.split('/')[2]
 
   const task = await env.DB
-    .prepare('SELECT id, team_id, agent_id, sender_id, subject, status, created_at, started_at, completed_at, settings, close_steps, close_steps_active_idx, grade FROM tasks WHERE id = ?')
+    .prepare('SELECT id, team_id, agent_id, sender_id, subject, status, created_at, started_at, completed_at, settings, close_steps, close_steps_active_idx, grade, tui_blocked FROM tasks WHERE id = ?')
     .bind(taskId)
-    .first<{ id: string; team_id: string; agent_id: string; sender_id: string; subject: string; status: string; created_at: number; started_at: number | null; completed_at: number | null; settings: string | null; close_steps: string | null; close_steps_active_idx: number; grade: number | null }>()
+    .first<{ id: string; team_id: string; agent_id: string; sender_id: string; subject: string; status: string; created_at: number; started_at: number | null; completed_at: number | null; settings: string | null; close_steps: string | null; close_steps_active_idx: number; grade: number | null; tui_blocked: number }>()
 
   if (!task) return err('not_found', 404)
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)

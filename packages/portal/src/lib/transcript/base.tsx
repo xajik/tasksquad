@@ -11,7 +11,9 @@ export interface TranscriptEntry {
       name?: string
       input?: unknown
       tool_use_id?: string
-      content?: string
+      // Real content can be a plain string or an array of blocks (e.g.
+      // [{type:'text', text:'...'}]) — treat as untrusted, never render raw.
+      content?: string | unknown[] | unknown
       is_error?: boolean
     }>
   }

@@ -81,6 +81,10 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 			if atomic.LoadInt32(&a.portalActive) == 1 {
 				entry["portal_active"] = true
 			}
+			if taskID := a.st.TaskID(); taskID != "" {
+				entry["task_id"] = taskID
+				entry["tui_blocked"] = a.st.TUIBlocked()
+			}
 			entries[i] = entry
 		}
 

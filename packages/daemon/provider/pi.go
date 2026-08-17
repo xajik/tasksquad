@@ -82,6 +82,7 @@ func (p *Pi) UsesHooks() bool            { return true }
 func (p *Pi) Stdin(_ string) string      { return "" }
 func (p *Pi) Env(_ int) []string         { return nil }
 func (p *Pi) ExtraArgs() []string        { return nil }
+func (p *Pi) SetupArgs(_ int, _, _ string) []string { return nil }
 func (p *Pi) VoiceCLIArg() string        { return "" }
 func (p *Pi) VoiceInitCommand() string   { return "/tsq-speech-to-md" }
 

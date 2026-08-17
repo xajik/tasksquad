@@ -85,6 +85,14 @@ func (a *tmuxAgent) Start() error {
 	if extra := prov.VoiceCLIArg(); extra != "" {
 		cmd += " " + extra
 	}
+	// Providers that support scoping hook config to this exact invocation
+	// (e.g. Claude Code's --settings flag) return args via this optional
+	// interface instead of SetupVoice writing into the shared workDir file.
+	if vp, ok := prov.(interface{ VoiceSetupArgs(int) []string }); ok {
+		for _, arg := range vp.VoiceSetupArgs(a.hooksPort) {
+			cmd += fmt.Sprintf(" '%s'", arg)
+		}
+	}
 
 	newArgs := append([]string{
 		"new-session", "-d", "-s", sessionName,

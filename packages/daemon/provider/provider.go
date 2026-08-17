@@ -31,6 +31,14 @@ type Provider interface {
 	// agentID (server-assigned UUID) and taskID are embedded in hook URLs so the
 	// hook server can route to the correct agent and reject stale events.
 	Setup(workDir string, hooksPort int, agentID string, taskID string) error
+	// SetupArgs returns extra CLI args that deliver this task's hook config
+	// directly to the spawned process, scoped to this one invocation only.
+	// Prefer this over Setup() when the CLI supports it: Setup() writes into
+	// workDir, a location shared by every process launched there (including a
+	// user manually running the CLI by hand), so its hooks can fire for and be
+	// misattributed to the wrong session. Providers without a per-invocation
+	// override return nil and rely on Setup() alone.
+	SetupArgs(hooksPort int, agentID string, taskID string) []string
 	// SetupVoice writes hook config for speech-to-md notification.
 	// Returns ErrNotSupported if the provider doesn't support speech hooks.
 	SetupVoice(workDir string, hooksPort int) error
