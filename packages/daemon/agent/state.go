@@ -92,6 +92,15 @@ type AgentState struct {
 	transcriptPath      string // conversation transcript path (from Stop hook payload)
 	lastTmuxCapturePath string // path to local tmux capture file for fallback when transcript is empty
 
+	// cliSessionID pins the CLI tool's own session_id (from the hook payload,
+	// distinct from the server-side sessionID above) the first time a Stop
+	// hook fires for this task. Subsequent Stop hooks with a different
+	// session_id are rejected — this catches an unrelated process (e.g. a
+	// user manually running the CLI in the same work_dir) whose hook
+	// happens to hit this agent's hook URL. Empty means "not observed yet"
+	// or "provider doesn't report session_id" (check is skipped).
+	cliSessionID string
+
 	// Prompt tracking
 	lastPrompt string // the initial prompt or latest reply sent to the process
 
@@ -168,6 +177,26 @@ func (s *AgentState) SessionID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.sessionID
+}
+
+// PinCLISessionID pins sessionID (the CLI tool's own hook-reported session_id)
+// as the one legitimate source for this task's hooks the first time it's
+// called, and reports whether subsequent calls match. Returns true when
+// sessionID is empty (provider doesn't report one — nothing to check) or
+// matches the pinned value; false when it conflicts with an already-pinned
+// value, meaning the hook likely came from a different CLI process than the
+// one this agent spawned.
+func (s *AgentState) PinCLISessionID(sessionID string) bool {
+	if sessionID == "" {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cliSessionID == "" {
+		s.cliSessionID = sessionID
+		return true
+	}
+	return s.cliSessionID == sessionID
 }
 
 // LogPath returns the path to the current per-task run log file.

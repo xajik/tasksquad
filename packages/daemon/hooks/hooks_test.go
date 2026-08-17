@@ -20,6 +20,9 @@ type fakeAgent struct {
 	learning bool
 	hookMsg  string
 
+	pinnedSessionID string
+	tuiBlocked      bool
+
 	completeCalled        bool
 	stopAndPauseCalled    bool
 	setWaitingInputCalled bool
@@ -34,6 +37,20 @@ func (a *fakeAgent) GetMode() string         { return a.mode }
 func (a *fakeAgent) GetTaskID() string       { return a.taskID }
 func (a *fakeAgent) IsLearning() bool        { return a.learning }
 func (a *fakeAgent) SetHookMessage(m string) { a.hookMsg = m; a.setHookMessageCalled = true }
+
+// PinCLISessionID mirrors AgentState.PinCLISessionID's first-write-wins semantics.
+func (a *fakeAgent) PinCLISessionID(sessionID string) bool {
+	if sessionID == "" {
+		return true
+	}
+	if a.pinnedSessionID == "" {
+		a.pinnedSessionID = sessionID
+		return true
+	}
+	return a.pinnedSessionID == sessionID
+}
+
+func (a *fakeAgent) SetTUIBlocked(blocked bool) { a.tuiBlocked = blocked }
 
 func (a *fakeAgent) Complete(_ *config.Config, _ string, _ string) {
 	a.completeCalled = true

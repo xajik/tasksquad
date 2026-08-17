@@ -513,6 +513,8 @@ export interface Task {
   planner_id?: string | null
   conveyor_id?: string | null
   session_id?: string | null
+  /** True while the agent's CLI is blocked on an interactive TUI prompt (e.g. AskUserQuestion) — distinct from status='waiting_input'. */
+  tui_blocked?: boolean
 }
 
 export interface Message {

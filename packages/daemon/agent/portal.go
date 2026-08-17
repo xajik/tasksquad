@@ -148,8 +148,10 @@ func (a *Agent) handlePortal(cfg *config.Config, p *portalRecord) {
 		relay = dialTerminalRelay(cfg, token, a.Config.ID, sessionID)
 		if relay != nil {
 			defer relay.Close()
-			// Start relay reader: forwards browser stdin and resize frames to tmux.
-			go handleRelayInput(relay, sessionName)
+			// Start relay reader: forwards browser stdin and resize frames to
+			// tmux. Portals have no task/mode concept, so input is always
+			// allowed (unlike the gated regular-task path in lifecycle.go).
+			go handleRelayInput(relay, sessionName, func() bool { return true })
 		}
 	}
 
@@ -181,7 +183,12 @@ func (a *Agent) handlePortal(cfg *config.Config, p *portalRecord) {
 //
 //	{ "t": "i", "d": "<base64 stdin bytes>" }   — stdin keystrokes
 //	{ "t": "r", "c": <cols>, "r": <rows> }       — terminal resize
-func handleRelayInput(relay *websocket.Conn, sessionName string) {
+//
+// allowInput gates stdin frames only — resize frames are always applied
+// regardless, since they're cosmetic and harmless. Portals pass a
+// always-true predicate (no task/mode concept); regular tasks
+// (lifecycle.go) gate on AgentState.TUIBlocked().
+func handleRelayInput(relay *websocket.Conn, sessionName string, allowInput func() bool) {
 	for {
 		_, msg, err := relay.ReadMessage()
 		if err != nil {
@@ -193,6 +200,9 @@ func handleRelayInput(relay *websocket.Conn, sessionName string) {
 		}
 		switch frame["t"] {
 		case "i":
+			if !allowInput() {
+				continue
+			}
 			encoded, _ := frame["d"].(string)
 			data, err := base64.StdEncoding.DecodeString(encoded)
 			if err != nil || len(data) == 0 {

@@ -106,6 +106,12 @@ func (a *Agent) CloseSteps() (pending []string, executed []string) { return a.st
 // GetTaskID returns the task ID the agent is currently working on.
 func (a *Agent) GetTaskID() string { return a.st.TaskID() }
 
+// PinCLISessionID implements hooks.Agent — see AgentState.PinCLISessionID.
+func (a *Agent) PinCLISessionID(sessionID string) bool { return a.st.PinCLISessionID(sessionID) }
+
+// SetTUIBlocked implements hooks.Agent — see AgentState.SetTUIBlocked.
+func (a *Agent) SetTUIBlocked(blocked bool) { a.st.SetTUIBlocked(blocked) }
+
 // SetHookMessage stores an assistant message delivered by a provider-specific
 // hook (e.g. codex "last-assistant-message"). internalComplete reads it as the
 // first priority for finalText.

@@ -13,6 +13,12 @@ type StopEvent struct {
 	TranscriptPath string
 	HookMessage    string // pre-extracted final text (OpenCode "message" field); empty for others
 	IsFailure      bool
+	// SessionID is the CLI tool's own hook-reported session identifier
+	// (e.g. Claude Code's "session_id"), when the provider includes one.
+	// Used by hooks/handlers.go to reject a Stop hook that fired from a
+	// different process than the one the daemon spawned for this task.
+	// Empty when the provider doesn't report it.
+	SessionID string
 }
 
 // NotificationEvent is the normalized result of parsing a /hooks/notification payload.

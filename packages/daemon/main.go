@@ -163,9 +163,9 @@ func runDaemon() {
 	ui.InitSpeechToMD(cfg)
 
 	sup := supervisor.New(cfg)
-	hooks.StartHookServer(cfg, agentList, sup, ui.GetSpeechManager())
-
 	batchCtrl := agent.NewBatchController()
+	hooks.StartHookServer(cfg, agentList, sup, ui.GetSpeechManager(), batchCtrl)
+
 	go agent.RunBatch(cfg, rawAgents, batchCtrl)
 
 	// Start orphan cleanup (runs on startup + hourly)

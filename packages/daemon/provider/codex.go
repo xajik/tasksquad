@@ -37,6 +37,7 @@ func (p *Codex) UsesHooks() bool         { return true }
 func (p *Codex) Env(_ int) []string       { return nil }
 func (p *Codex) Stdin(_ string) string   { return "" }
 func (p *Codex) ExtraArgs() []string       { return nil }
+func (p *Codex) SetupArgs(_ int, _, _ string) []string { return nil }
 func (p *Codex) VoiceCLIArg() string       { return "" }
 func (p *Codex) VoiceInitCommand() string  { return "@tsq-speech-to-md" }
 

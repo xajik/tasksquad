@@ -7,7 +7,7 @@ import { api, type Agent, type Task, type Message, type Team, type Member, type 
 import { MessageType } from '../lib/messageTypes'
 import { requestNotificationPermission, notify, STATUS_NOTIF, registerPushToken } from '../lib/notifications'
 import { cn } from '@/lib/utils'
-import { LiveTerminal } from '@/components/LiveTerminal'
+import { LiveTerminalSection } from '@/components/LiveTerminalSection'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -1481,9 +1481,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
 
       {/* ── Live terminal — raw PTY output via xterm.js while task is running ── */}
       {task?.session_id && ['running', 'waiting_input'].includes(task.status) && (
-        <div style={{ height: 'calc(100vh - 380px)', minHeight: 300, marginBottom: 16 }}>
-          <LiveTerminal sessionId={task.session_id} />
-        </div>
+        <LiveTerminalSection sessionId={task.session_id} tuiBlocked={!!task.tui_blocked} />
       )}
 
       {/* ── Messages — natural page scroll ── */}

@@ -27,6 +27,19 @@ type Agent interface {
 	// GetTaskID returns the task ID the agent is currently working on.
 	// Used to reject stale hook events that fired after the task changed.
 	GetTaskID() string
+	// PinCLISessionID pins the CLI tool's own hook-reported session_id as
+	// this task's legitimate source the first time it's called, and reports
+	// whether subsequent calls match. Returns true if sessionID is empty
+	// (provider doesn't report one). Used to reject a Stop hook that fired
+	// from an unrelated process sharing the same agent/task_id in its hook
+	// URL — e.g. a user manually running the CLI in the agent's work_dir.
+	PinCLISessionID(sessionID string) bool
+	// SetTUIBlocked records whether the CLI is currently blocked on an
+	// interactive TUI prompt (e.g. Claude Code's AskUserQuestion menu), set
+	// by a PreToolUse hook and cleared by the matching PostToolUse hook. Gates
+	// whether the live terminal's raw keystrokes are forwarded into the tmux
+	// session (see agent/portal.go handleRelayInput).
+	SetTUIBlocked(blocked bool)
 	// IsLearning returns true when the agent is in the close-sequence phase.
 	IsLearning() bool
 	// AdvanceCloseStep marks the current close step as done and injects the next,
@@ -80,6 +93,14 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// Poller lets a hook handler force an immediate heartbeat poll instead of
+// waiting for the next scheduled tick, so a flag it just set (e.g.
+// tui_blocked) reaches the worker/portal with low latency.
+// *agent.BatchController satisfies this structurally.
+type Poller interface {
+	ForcePoll()
+}
+
 // StartHookServer starts a local HTTP server that receives lifecycle events from
 // CLI providers and dispatches them to the appropriate agent.
 //
@@ -90,16 +111,18 @@ func corsMiddleware(next http.Handler) http.Handler {
 //	POST /hooks/after_agent        — Gemini per-turn response
 //	POST /hooks/opencode           — OpenCode lifecycle events
 //	POST /hooks/codex              — Codex turn completion
+//	POST /hooks/tui-blocked        — PreToolUse/PostToolUse hook for interactive TUI prompts
 //	POST /hooks/skill              — agent pushes a learned skill
 //	POST /hooks/supervisor         — supervisor verdict
 //	POST /hooks/trigger-supervisor — manual supervisor trigger from portal
-func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorReporter, speechHandler SpeechToMDHandler) {
-	srv := &hookServer{cfg: cfg, agents: agents, reporter: reporter, speechHandler: speechHandler}
+func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorReporter, speechHandler SpeechToMDHandler, ctrl Poller) {
+	srv := &hookServer{cfg: cfg, agents: agents, reporter: reporter, speechHandler: speechHandler, ctrl: ctrl}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/hooks/stop", srv.handleStop)
 	mux.HandleFunc("/hooks/notification", srv.handleNotification)
 	mux.HandleFunc("/hooks/after_agent", srv.handleAfterAgent)
+	mux.HandleFunc("/hooks/tui-blocked", srv.handleTUIBlocked)
 	mux.HandleFunc("/hooks/opencode", srv.handleOpenCode)
 	mux.HandleFunc("/hooks/codex", srv.handleCodex)
 	mux.HandleFunc("/hooks/skill", srv.handleSkill)
@@ -109,7 +132,7 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
 	logger.Info(fmt.Sprintf("[hooks] Server listening on http://localhost:%d", cfg.Hooks.Port))
-	logger.Info("[hooks] Registered endpoints: /hooks/stop (speech=true for voice), /hooks/notification, /hooks/after_agent, /hooks/opencode, /hooks/skill, /hooks/supervisor, /hooks/trigger-supervisor, /hooks/attach")
+	logger.Info("[hooks] Registered endpoints: /hooks/stop (speech=true for voice), /hooks/notification, /hooks/after_agent, /hooks/tui-blocked, /hooks/opencode, /hooks/skill, /hooks/supervisor, /hooks/trigger-supervisor, /hooks/attach")
 	go http.ListenAndServe(addr, corsMiddleware(mux)) //nolint:errcheck
 }
 

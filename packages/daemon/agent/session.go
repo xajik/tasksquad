@@ -182,6 +182,8 @@ func (a *Agent) autoCloseAndReset() {
 	a.st.taskID = ""
 	a.st.transcriptPath = ""
 	a.st.lastTmuxCapturePath = ""
+	a.st.cliSessionID = ""
+	a.st.tuiBlocked = false
 	a.st.stdinWrite = nil
 	a.st.runLog = nil
 	a.st.mode = ModeIdle
@@ -217,6 +219,8 @@ func (a *Agent) handleReset() {
 	a.st.lastTmuxCapturePath = ""
 	a.st.sessionID = ""
 	a.st.taskID = ""
+	a.st.cliSessionID = ""
+	a.st.tuiBlocked = false
 	a.st.completing = false
 	a.st.mode = ModeIdle
 	a.st.mu.Unlock()
@@ -248,6 +252,7 @@ func (a *Agent) closeSession(cfg *config.Config) {
 	a.st.sessionID = ""
 	a.st.transcriptPath = ""
 	a.st.lastTmuxCapturePath = ""
+	a.st.tuiBlocked = false
 	a.st.mode = ModeIdle
 	a.st.outputLines = nil
 	a.st.runLog = nil

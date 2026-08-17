@@ -337,7 +337,7 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
  * the entire batch when all agents are idle and nothing has changed.
  */
 export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Promise<Response> {
-  type AgentEntry = { id: string; status: string; close_step_idx?: number; portal_active?: boolean; daemon_uptime_ms?: number }
+  type AgentEntry = { id: string; status: string; close_step_idx?: number; portal_active?: boolean; daemon_uptime_ms?: number; task_id?: string; tui_blocked?: boolean }
   const body = await req
     .json<{ agents?: Array<AgentEntry> }>()
     .catch(() => ({} as { agents?: Array<AgentEntry> }))
@@ -350,6 +350,8 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   const closeStepIdxs = agentEntries.map(e => e.close_step_idx ?? -1)
   const portalActives = agentEntries.map(e => e.portal_active ?? false)
   const daemonUptimesMs = agentEntries.map(e => e.daemon_uptime_ms ?? 0)
+  const taskIdsForTui = agentEntries.map(e => e.task_id ?? null)
+  const tuiBlockedFlags = agentEntries.map(e => e.tui_blocked ?? false)
 
   // Authenticate via Firebase token; verify all agent IDs belong to the user.
   const authResult = await withDaemonBatchAuth(req, agentIds, env)
@@ -442,6 +444,16 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
         stmts.push(
           env.DB.prepare('UPDATE tasks SET close_steps_active_idx = ? WHERE agent_id = ? AND status = ?')
             .bind(closeStepIdxs[i], id, TaskStatus.WrappingUp)
+        )
+      }
+      // Targeted by task id (not agent_id + status like close_steps_active_idx
+      // above) — tasks.status can flip away from 'running' via a separate,
+      // synchronous call before the next heartbeat tick, and a status-gated
+      // write would silently no-op after that, leaving tui_blocked stuck at 1.
+      if (taskIdsForTui[i]) {
+        stmts.push(
+          env.DB.prepare('UPDATE tasks SET tui_blocked = ? WHERE id = ? AND agent_id = ?')
+            .bind(tuiBlockedFlags[i] ? 1 : 0, taskIdsForTui[i], id)
         )
       }
       return stmts
