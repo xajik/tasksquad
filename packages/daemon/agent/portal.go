@@ -34,6 +34,9 @@ func (a *Agent) handlePortal(cfg *config.Config, p *portalRecord) {
 	}
 	defer atomic.StoreInt32(&a.portalActive, 0)
 
+	a.setActivePortalID(p.id)
+	defer a.setActivePortalID("")
+
 	// Drain any stale close signal left over from a previous portal invocation.
 	select {
 	case <-a.portalSignals:
@@ -260,4 +263,46 @@ func (a *Agent) reportPortalClose(cfg *config.Config, portalID, status string) {
 		"portal_id": portalID,
 		"status":    status,
 	})
+}
+
+func (a *Agent) setActivePortalID(id string) {
+	a.portalMu.Lock()
+	a.activePortalID = id
+	a.portalMu.Unlock()
+}
+
+func (a *Agent) getActivePortalID() string {
+	a.portalMu.Lock()
+	defer a.portalMu.Unlock()
+	return a.activePortalID
+}
+
+// CloseActivePortal signals the running portal (if any) to kill its tmux
+// session and report itself closed, then blocks until that finishes or
+// timeout elapses. Used on daemon shutdown so quitting doesn't just kill the
+// process out from under a live portal — leaving its tmux session orphaned
+// and the browser's terminal relay connection dangling with no one to
+// reconnect it. Returns true if a portal was closed cleanly.
+func (a *Agent) CloseActivePortal(timeout time.Duration) bool {
+	if atomic.LoadInt32(&a.portalActive) != 1 {
+		return false
+	}
+	id := a.getActivePortalID()
+	if id == "" {
+		return false
+	}
+
+	select {
+	case a.portalSignals <- id:
+	default:
+	}
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if atomic.LoadInt32(&a.portalActive) == 0 {
+			return true
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return false
 }

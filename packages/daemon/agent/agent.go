@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -54,6 +55,9 @@ type Agent struct {
 	relayConn     *websocket.Conn // live terminal relay WS; nil when idle
 	portalActive  int32           // atomic: 1 while a portal goroutine is running
 	portalSignals chan string      // receives portal IDs to close (buffered 1)
+
+	portalMu       sync.Mutex // guards activePortalID
+	activePortalID string     // ID of the currently running portal, "" when idle
 }
 
 // New creates an Agent from the given config, detecting the provider from the command.

@@ -49,18 +49,23 @@ var iconActiveData []byte
 //go:embed systray-off.png
 var iconPausedData []byte
 
+// portalCloseTimeout bounds how long Quit/Logout waits for active portals to
+// close cleanly (tmux kill-session + reportPortalClose) before giving up and
+// exiting anyway.
+const portalCloseTimeout = 3 * time.Second
+
 // Run starts the system tray UI on the main OS thread (required by macOS AppKit).
 // It blocks until the user clicks Quit or the process is killed.
-func Run(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, dashboardURL string, configPath string, version string, uiPort int) {
+func Run(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, shutdownCtrl ShutdownController, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, dashboardURL string, configPath string, version string, uiPort int) {
 	systray.Run(
 		func() {
-			onReady(agents, ctrl, authCtrl, autostartCtrl, skillsSyncer, conveyorSyncer, dashboardURL, configPath, version, uiPort)
+			onReady(agents, ctrl, authCtrl, autostartCtrl, shutdownCtrl, skillsSyncer, conveyorSyncer, dashboardURL, configPath, version, uiPort)
 		},
 		func() { os.Exit(0) },
 	)
 }
 
-func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, dashboardURL string, configPath string, version string, uiPort int) {
+func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController, autostartCtrl AutostartController, shutdownCtrl ShutdownController, skillsSyncer SkillsSyncer, conveyorSyncer ConveyorSyncer, dashboardURL string, configPath string, version string, uiPort int) {
 	// Green icon = pulling active; red icon = paused.
 	if ctrl.IsPaused() {
 		systray.SetIcon(iconPaused())
@@ -140,7 +145,8 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 
 	go func() {
 		for range mLogout.ClickedCh {
-			logger.Info("[ui] Logout selected — clearing credentials and stopping daemon")
+			logger.Info("[ui] Logout selected — closing active portals, clearing credentials, and stopping daemon")
+			shutdownCtrl.CloseActivePortals(portalCloseTimeout)
 			if err := authCtrl.Logout(); err != nil {
 				logger.Warn(fmt.Sprintf("[ui] Logout error: %v", err))
 			}
@@ -181,7 +187,8 @@ func onReady(agents []AgentStatus, ctrl PullController, authCtrl AuthController,
 	}()
 	go func() {
 		for range mQuit.ClickedCh {
-			logger.Info("[ui] Quit selected — stopping daemon")
+			logger.Info("[ui] Quit selected — closing active portals and stopping daemon")
+			shutdownCtrl.CloseActivePortals(portalCloseTimeout)
 			systray.Quit()
 		}
 	}()

@@ -228,10 +228,11 @@ func runDaemon() {
 		}
 	}
 
+	agentCtrl := &agentController{agents: rawAgents}
 	authCtrl := &mainAuthController{}
 	autostartCtrl := &mainAutostartController{execPath: execPath}
 	logger.Info(fmt.Sprintf("UI port: %d", cfg.UI.Port))
-	ui.Run(uiAgents, &agentController{agents: rawAgents}, authCtrl, autostartCtrl, skillsSyncer, batchCtrl, dashboardURL(cfg.Server.URL), *cfgPath, version, cfg.UI.Port)
+	ui.Run(uiAgents, agentCtrl, authCtrl, autostartCtrl, agentCtrl, skillsSyncer, batchCtrl, dashboardURL(cfg.Server.URL), *cfgPath, version, cfg.UI.Port)
 }
 
 func dashboardURL(cfgServerURL string) string {

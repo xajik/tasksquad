@@ -53,6 +53,17 @@ type ConveyorSyncer interface {
 	ForcePoll()
 }
 
+// ShutdownController lets the UI close any active portal sessions cleanly
+// before the process exits. Without this, quitting kills the daemon process
+// out from under a running portal: its tmux session is orphaned (no defer
+// runs to kill it) and the browser's live-terminal relay connection is
+// abandoned mid-stream with nothing to reconnect it.
+type ShutdownController interface {
+	// CloseActivePortals asks every agent with a running portal to close it
+	// and blocks until they do, or timeout elapses per agent.
+	CloseActivePortals(timeout time.Duration)
+}
+
 // AutostartController manages OS-boot registration for the daemon.
 type AutostartController interface {
 	// IsEnabled returns true if the daemon is registered to start on OS boot.
