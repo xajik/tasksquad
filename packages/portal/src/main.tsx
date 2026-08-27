@@ -25,6 +25,11 @@ function App() {
   console.log('[App] render, authed=', authed, 'path=', window.location.pathname)
 
   useEffect(() => {
+    if (!auth) {
+      console.warn('[App] Firebase auth not configured, skipping auth state subscription')
+      setAuthed(false)
+      return
+    }
     console.log('[App] subscribing to onAuthStateChanged')
     return onAuthStateChanged(auth, (user) => {
       console.log('[App] onAuthStateChanged fired, user=', user?.email ?? null)
