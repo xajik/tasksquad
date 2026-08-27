@@ -72,6 +72,7 @@ type AgentState struct {
 	mode       Mode
 	paused     bool // when true, heartbeat is skipped
 	completing bool // set before internalComplete is called; prevents double-call
+	tuiBlocked bool // when true, relay stdin is gated; only settable while ModeRunning
 
 	// Identity
 	agentID   string // resolved from server on first heartbeat
@@ -141,7 +142,26 @@ func (s *AgentState) Transition(event AgentEvent) error {
 		return fmt.Errorf("invalid transition: %s -[%s]-> ? (no rule defined)", s.mode, event)
 	}
 	s.mode = next
+	s.tuiBlocked = false
 	return nil
+}
+
+// SetTUIBlocked sets whether relay stdin is currently gated. Only takes
+// effect while the agent is in ModeRunning; a no-op otherwise.
+func (s *AgentState) SetTUIBlocked(blocked bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.mode != ModeRunning {
+		return
+	}
+	s.tuiBlocked = blocked
+}
+
+// TUIBlocked reports whether relay stdin is currently gated.
+func (s *AgentState) TUIBlocked() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tuiBlocked
 }
 
 // Mode returns the current mode as a string (satisfies external interface callers).
