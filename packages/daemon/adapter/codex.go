@@ -2,35 +2,25 @@ package adapter
 
 import "encoding/json"
 
-// CodexAdapter handles OpenAI Codex CLI hook payloads.
-// Codex delivers its final assistant message via the dedicated /hooks/codex
-// endpoint (not /hooks/stop), so ParseStop only handles the failure path.
-// Codex has no transcript file; response text comes from SetHookMessage.
+// CodexAdapter reads notify's agent-turn-complete payload. The final response
+// is supplied directly, so no private Codex transcript format is needed.
 type CodexAdapter struct{}
 
 func (CodexAdapter) ParseStop(body []byte, isFailure bool) (StopEvent, error) {
-	// Codex uses /hooks/codex for normal completion; /hooks/stop is only reached
-	// for the failure=true path (process crash).
-	if isFailure {
-		var p struct {
-			ErrorType      string `json:"error_type"`
-			TranscriptPath string `json:"transcript_path"`
-		}
-		if err := json.Unmarshal(body, &p); err != nil {
-			return StopEvent{IsFailure: true}, err
-		}
-		return StopEvent{Reason: p.ErrorType, TranscriptPath: p.TranscriptPath, IsFailure: true}, nil
+	var p struct {
+		ErrorType      string `json:"error_type"`
+		TranscriptPath string `json:"transcript_path"`
+		ThreadID       string `json:"thread-id"`
+		Message        string `json:"last-assistant-message"`
 	}
-	return StopEvent{}, nil
+	if err := json.Unmarshal(body, &p); err != nil {
+		return StopEvent{IsFailure: isFailure}, err
+	}
+	return StopEvent{Reason: p.ErrorType, TranscriptPath: p.TranscriptPath,
+		SessionID: p.ThreadID, HookMessage: p.Message, IsFailure: isFailure}, nil
 }
-
 func (CodexAdapter) ParseNotification(_ []byte) (NotificationEvent, error) {
-	return NotificationEvent{}, nil // Codex has no Notification hook
+	return NotificationEvent{}, nil
 }
-
-func (CodexAdapter) ParseAfterAgent(_ []byte) (AfterAgentEvent, error) {
-	return AfterAgentEvent{}, nil
-}
-
-// ExtractTranscript returns "" — Codex has no transcript file.
-func (CodexAdapter) ExtractTranscript(_ string) string { return "" }
+func (CodexAdapter) ParseAfterAgent(_ []byte) (AfterAgentEvent, error) { return AfterAgentEvent{}, nil }
+func (CodexAdapter) ExtractTranscript(_ string) string                 { return "" }

@@ -116,6 +116,13 @@ type Poller interface {
 //	POST /hooks/supervisor         — supervisor verdict
 //	POST /hooks/trigger-supervisor — manual supervisor trigger from portal
 func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorReporter, speechHandler SpeechToMDHandler, ctrl Poller) {
+	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
+	logger.Info(fmt.Sprintf("[hooks] Server listening on http://%s", addr))
+	go http.ListenAndServe(addr, NewHandler(cfg, agents, reporter, speechHandler, ctrl)) //nolint:errcheck
+}
+
+// NewHandler exposes the same hook routes for embedded servers and local tests.
+func NewHandler(cfg *config.Config, agents []Agent, reporter SupervisorReporter, speechHandler SpeechToMDHandler, ctrl Poller) http.Handler {
 	srv := &hookServer{cfg: cfg, agents: agents, reporter: reporter, speechHandler: speechHandler, ctrl: ctrl}
 	mux := http.NewServeMux()
 
@@ -130,10 +137,7 @@ func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorRepo
 	mux.HandleFunc("/hooks/trigger-supervisor", srv.handleTriggerSupervisor)
 	mux.HandleFunc("/hooks/attach", srv.handleAttach)
 
-	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
-	logger.Info(fmt.Sprintf("[hooks] Server listening on http://localhost:%d", cfg.Hooks.Port))
-	logger.Info("[hooks] Registered endpoints: /hooks/stop (speech=true for voice), /hooks/notification, /hooks/after_agent, /hooks/tui-blocked, /hooks/opencode, /hooks/skill, /hooks/supervisor, /hooks/trigger-supervisor, /hooks/attach")
-	go http.ListenAndServe(addr, corsMiddleware(mux)) //nolint:errcheck
+	return corsMiddleware(mux)
 }
 
 // findAndDispatch iterates agents, applies agentID/taskID filters, and calls fn

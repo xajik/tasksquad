@@ -32,11 +32,12 @@ func installAgent(workDir string, agent remoteAgent) error {
 		}
 	}
 
-	return nil
+	return harness.InstallCodexAgent(workDir, agent.Name, agent.Description, agent.Content)
 }
 
 // removeAgent deletes the sub-agent from .tsq/agents and its provider copies.
 func removeAgent(workDir, name string) {
+	harness.RemoveCodexAgent(workDir, name)
 	os.Remove(filepath.Join(workDir, ".tsq", "agents", name+".md")) //nolint:errcheck
 
 	for _, cd := range harness.AgentDirs(workDir) {

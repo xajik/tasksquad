@@ -43,7 +43,7 @@ Receives generic lifecycle events from the OpenCode plugin.
 
 ### `POST /hooks/codex`
 Specific endpoint for the Codex provider to report turn completion.
-- **Payload**: `{"type": "agent-turn-complete", "turn-id": "...", "last-assistant-message": "..."}`
+- **Payload**: `{"type": "agent-turn-complete", "thread-id": "...", "turn-id": "...", "last-assistant-message": "..."}`
 
 ## Provider Integrations
 
@@ -66,7 +66,16 @@ OpenCode uses a TypeScript plugin (`.opencode/plugins/tasksquad.ts`) that listen
 `message.part.updated` to aggregate responses and POST them back to the daemon.
 
 ### Codex
-Codex uses a global `notify` command in `~/.codex/config.toml` that triggers after each agent turn.
+TaskSquad passes an invocation-scoped `-c notify=[...]` argument to Codex.
+The callback receives JSON as its final argument, posts to `/hooks/codex` with
+`agent` and `task_id`, and leaves personal configuration unchanged. The daemon
+pins the CLI thread, ignores stale or duplicate turn events, posts the response,
+and pauses for a web reply. During session close, callbacks advance the close
+steps instead. Voice sessions route their text to `/hooks/stop?speech=true&provider=codex`.
+
+Codex runs inside tmux. Users can answer approval prompts in the live terminal;
+notify does not report intermediate approvals. Skills live in `.agents/skills`,
+and custom agents are TOML files in `.codex/agents`.
 
 ## Internal Hooks
 

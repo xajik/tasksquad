@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"al.essio.dev/pkg/shellescape"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/provider"
 )
 
 // safeIDRe accepts only short alphanumeric identifiers, the same allowlist
@@ -68,6 +70,13 @@ func printModeCmd(cli, fullCmd, promptFile, logFile, daemonBinDir string) string
 	pathPrefix := ""
 	if daemonBinDir != "" {
 		pathPrefix = fmt.Sprintf("PATH=%s:$PATH ", daemonBinDir)
+	}
+	if base == "codex" {
+		prefix := ""
+		if daemonBinDir != "" {
+			prefix = "PATH=" + shellescape.Quote(daemonBinDir) + ":$PATH "
+		}
+		return fmt.Sprintf("%s%s exec -c notify=[] --sandbox workspace-write - < %s >> %s 2>&1", prefix, fullCmd, shellescape.Quote(promptFile), shellescape.Quote(logFile))
 	}
 	if strings.HasPrefix(base, "claude") {
 		return fmt.Sprintf(`%scat %s | %s -p --dangerously-skip-permissions >> %s 2>&1`,
@@ -144,7 +153,7 @@ func spawnPrintModeSession(cli, fullCmd, sessionName, workDir, promptContent, lo
 		return fmt.Errorf("create prompt file: %w", err)
 	}
 	promptFile := tmpF.Name()
-	if _, err := tmpF.WriteString(promptContent); err != nil {
+	if _, err := tmpF.WriteString(provider.FormatPrompt(provider.Detect(fullCmd, ""), promptContent)); err != nil {
 		tmpF.Close()
 		os.Remove(promptFile) //nolint:errcheck
 		return fmt.Errorf("write prompt file: %w", err)

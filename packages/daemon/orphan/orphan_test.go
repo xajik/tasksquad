@@ -71,3 +71,14 @@ func TestSessionStateFields(t *testing.T) {
 		t.Errorf("SessionStatus = %q, want closed", state.SessionStatus)
 	}
 }
+
+func TestTaskSessionNames(t *testing.T) {
+	for _, prefix := range []string{"tsq-sup-", "tsq-portal-", "tsq-stm-", "tsq-dream-", "tsq-kbinit-", "personal-"} {
+		if isTaskSessionName(prefix + "123") {
+			t.Error("auxiliary session treated as orphan candidate", prefix)
+		}
+	}
+	if !isTaskSessionName("tsq-01SESSION") {
+		t.Error("task session skipped")
+	}
+}

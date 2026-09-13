@@ -35,6 +35,12 @@ func installSkill(workDir string, skill remoteSkill, lock skillsLock) error {
 	}
 
 	for _, cd := range harness.SkillDirs(workDir) {
+		if cd == filepath.Join(workDir, ".agents", "skills") {
+			if err := harness.InstallCodexSkill(workDir, skill.Name, skill.Content); err != nil {
+				return err
+			}
+			continue
+		}
 		os.MkdirAll(cd, 0755) //nolint:errcheck
 
 		dest := filepath.Join(cd, skill.Name)
@@ -54,6 +60,10 @@ func removeSkill(workDir, name string) {
 	os.RemoveAll(skillDir(workDir, name)) //nolint:errcheck
 
 	for _, cd := range harness.SkillDirs(workDir) {
+		if cd == filepath.Join(workDir, ".agents", "skills") {
+			harness.RemoveCodexSkill(workDir, name)
+			continue
+		}
 		os.RemoveAll(filepath.Join(cd, name)) //nolint:errcheck
 	}
 }

@@ -215,7 +215,7 @@ func (s *Supervisor) Monitor(agents []MonitoredAgent) {
 					continue
 				}
 				// Only supervise agents running via tmux; stdout-pipe providers
-				// (e.g. codex) have no session to inspect or send keys to.
+				// (e.g. stdout-only tools) have no session to inspect or send keys to.
 				if a.TmuxSession() == "" {
 					continue
 				}

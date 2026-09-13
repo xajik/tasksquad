@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 
 	hookadapter "github.com/tasksquad/daemon/adapter"
 	"github.com/tasksquad/daemon/agentmode"
@@ -23,12 +24,19 @@ import (
 var unsafeCharsRe = regexp.MustCompile(`[^\x09\x0A\x0D\x20-\x7E]`)
 
 // hookServer holds the shared state needed by every hook handler.
+type codexTaskTurns struct {
+	taskID string
+	seen   map[string]bool
+}
+
 type hookServer struct {
-	cfg          *config.Config
-	agents       []Agent
-	reporter     SupervisorReporter
+	codexMu       sync.Mutex
+	codexTurns    map[string]*codexTaskTurns
+	cfg           *config.Config
+	agents        []Agent
+	reporter      SupervisorReporter
 	speechHandler SpeechToMDHandler // nil when speech-to-md feature is not active
-	ctrl         Poller             // nil-safe; used to force an immediate heartbeat poll
+	ctrl          Poller            // nil-safe; used to force an immediate heartbeat poll
 }
 
 // handleStop handles POST /hooks/stop.
@@ -248,34 +256,68 @@ func (s *hookServer) handleOpenCode(w http.ResponseWriter, r *http.Request) {
 // Codex fires this after each turn; we store the last assistant message so
 // internalComplete can use it as finalText without a transcript file.
 func (s *hookServer) handleCodex(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(r.Body)
-	logger.Info(fmt.Sprintf("[hooks] POST /hooks/codex from %s", r.RemoteAddr))
-
-	agentID := r.URL.Query().Get("agent")
-	taskIDParam := r.URL.Query().Get("task_id")
-
-	var payload struct {
-		Type                 string `json:"type"`
-		TurnID               string `json:"turn-id"`
-		LastAssistantMessage string `json:"last-assistant-message"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		logger.Error(fmt.Sprintf("[hooks] Failed to unmarshal codex hook: %v", err))
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
-		if agentmode.Mode(a.GetMode()) == agentmode.ModeRunning {
-			a.SetHookMessage(payload.LastAssistantMessage)
-			logger.Info(fmt.Sprintf("[hooks] Codex turn complete for agent %s (turn-id=%s msg_len=%d)", a.Name(), payload.TurnID, len(payload.LastAssistantMessage)))
-		}
-	})
-	if !found {
-		logger.Debug(fmt.Sprintf("[hooks] Codex hook: no matching running agent for agent=%q task_id=%q", agentID, taskIDParam))
+	if r.URL.Query().Get("agent") == "" || r.URL.Query().Get("task_id") == "" {
+		http.Error(w, "agent and task_id are required", http.StatusBadRequest)
+		return
 	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<20))
+	if err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	var payload struct {
+		Type     string `json:"type"`
+		ThreadID string `json:"thread-id"`
+		TurnID   string `json:"turn-id"`
+	}
+	if json.Unmarshal(body, &payload) != nil || payload.ThreadID == "" {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	if payload.Type != "agent-turn-complete" {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ignored"})
+		return
+	}
+	// Only a matching active task may claim a turn. Deduplicate callbacks before
+	// the asynchronous state transition to prevent duplicate responses/close steps.
+	agentID, taskID := r.URL.Query().Get("agent"), r.URL.Query().Get("task_id")
+	accepted := false
+	s.codexMu.Lock()
+	for _, a := range s.agents {
+		if a.ID() != agentID || a.GetTaskID() != taskID || !a.PinCLISessionID(payload.ThreadID) {
+			continue
+		}
+		if s.codexTurns == nil {
+			s.codexTurns = make(map[string]*codexTaskTurns)
+		}
+		turns := s.codexTurns[agentID]
+		if turns == nil || turns.taskID != taskID {
+			turns = &codexTaskTurns{taskID: taskID, seen: make(map[string]bool)}
+			s.codexTurns[agentID] = turns
+		}
+		if payload.TurnID != "" && turns.seen[payload.TurnID] {
+			break
+		}
+		turns.seen[payload.TurnID] = true
+		accepted = true
+		break
+	}
+	s.codexMu.Unlock()
+	if !accepted {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ignored"})
+		return
+	}
+	// Reuse session pinning, pause/reply, and close-step handling for all turns.
+	clone := r.Clone(r.Context())
+	q := clone.URL.Query()
+	q.Set("provider", "codex")
+	clone.URL.RawQuery = q.Encode()
+	clone.Body = io.NopCloser(strings.NewReader(string(body)))
+	s.handleStop(w, clone)
 }
 
 // handleSkill handles POST /hooks/skill.

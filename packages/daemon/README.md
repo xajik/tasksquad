@@ -168,7 +168,7 @@ Providers tell the daemon how to integrate with a specific CLI tool. The provide
 |---|---|---|---|
 | `claude-code` | `claude` | HTTP hooks (`Stop`, `Notification`) | Fully implemented |
 | `opencode` | `opencode` | — | Stub (TODO) |
-| `codex` | `codex` | — | Stub (TODO) |
+| `codex` | `codex` | Per-invocation `notify` | Interactive tmux, turn completion, follow-up |
 | `stdout` | anything else | Process exit only | Stub |
 
 ### Claude Code (fully implemented)
@@ -198,7 +198,7 @@ The daemon runs a local HTTP server (default port `7374`) that receives provider
 | `POST` | `/hooks/stop` | Claude Code Stop event — closes the current session |
 | `POST` | `/hooks/notification` | Claude Code Notification event — marks task as waiting for input |
 | `POST` | `/hooks/supervisor` | Supervisor verdict delivery (status, summary, found, action) |
-| `POST` | `/hooks/codex` | Codex hook (not yet implemented — returns 501) |
+| `POST` | `/hooks/codex` | Codex turn completion (task-scoped, deduplicated) |
 
 ---
 
@@ -269,7 +269,7 @@ packages/daemon/
 │   ├── provider.go    # Provider interface + Detect() auto-detection
 │   ├── claudecode.go  # Claude Code: writes .claude/settings.json hooks
 │   ├── opencode.go    # OpenCode stub (TODO)
-│   ├── codex.go       # Codex stub (TODO)
+│   ├── codex.go       # Codex TUI and per-invocation notify
 │   └── stdout.go      # Generic stdout fallback (process-exit only)
 ├── supervisor/
 │   ├── supervisor.go  # Supervisor struct, Monitor loop, verdict handling
@@ -345,7 +345,38 @@ All requests use header `X-TSQ-Token: <agent token>`.
 ## Roadmap
 
 - [ ] OpenCode provider — verify hook config format and implement `Setup()`
-- [ ] Codex provider — implement `CODEX_HOOKS_SERVER_URL` env injection
+- [x] Codex provider — interactive tmux and per-invocation notify routing
 - [ ] Systray UI — `github.com/getlantern/systray` (requires CGo + platform deps)
 - [ ] Config hot-reload propagation to running agents
 - [ ] One-line install script (`install.sh`)
+
+## Codex workflows
+
+Configure `command = "codex"` and install tmux, sh, and curl. Authenticate with
+`codex login` first. TaskSquad launches the interactive CLI, sends the prompt
+through tmux, and passes a task-specific `-c notify=[...]` argv array. It does
+not edit personal Codex configuration and respects `CODEX_HOME` through the CLI.
+The notify program receives JSON as an argument, not stdin.
+
+Each completed turn posts the assistant response and leaves the session waiting
+for a web reply. Completing or cancelling the task kills its tmux session.
+The live terminal accepts input during Codex turns so users can answer approval
+prompts; notify reports completed turns, not intermediate approval requests.
+Existing Codex permissions and hook trust remain in force.
+
+Skills use `.agents/skills/<name>/SKILL.md`; synced custom agents use
+`.codex/agents/<name>.toml`. Commands are also exposed as skills named
+`source-command-<name>` so they cannot overwrite ordinary skills. Invoke them
+with `$source-command-<name>`. TaskSquad translates `/tsq-*` skill references
+to `$tsq-*` in task prompts, replies, and close steps.
+
+Supervisor and dreaming jobs use `codex exec` with a workspace-write sandbox.
+They retain configured CLI flags; commands requiring permissions outside that
+sandbox can fail and must be configured explicitly by the operator. Voice
+sessions receive their own invocation-scoped notify callback. Native Windows
+requires a compatible tmux/sh environment such as WSL.
+
+Run `make test` for regression coverage. To exercise two actual Codex turns,
+response hooks, web-reply dispatch, terminal relay output, and cleanup using a
+local API fixture: `make test GOFLAGS=-run=TestCodexLiveTwoTurns TSQ_CODEX_LIVE=1`.
+This opt-in test uses the installed authenticated CLI and consumes model usage.

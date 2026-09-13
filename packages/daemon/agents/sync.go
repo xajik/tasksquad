@@ -2,6 +2,7 @@ package agents
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/tasksquad/daemon/api"
@@ -98,7 +99,14 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 		agentFile := fmt.Sprintf("%s/.tsq/agents/%s.md", workDir, agent.Name)
 		if lock[agent.Name] == agent.Etag && agent.Etag != "" {
 			if harness.FileExists(agentFile) {
-				continue // already up to date
+				// Repair newly introduced provider formats even when the server etag
+				// has not changed since an older daemon installed the Markdown copy.
+				if body, err := os.ReadFile(agentFile); err == nil {
+					if err := harness.InstallCodexAgent(workDir, agent.Name, agent.Description, string(body)); err != nil {
+						logger.Warn(fmt.Sprintf("[agents] Codex sync: %v", err))
+					}
+				}
+				continue
 			}
 		}
 

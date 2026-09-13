@@ -66,7 +66,7 @@ The Supervisor only triggers when ALL of these conditions are met:
 - Agent is in **running** mode (not idle, waiting_input, or learning)
 - Task has been running for > 10 minutes with no output
 - No supervision attempt in the last 10 minutes
-- Agent runs via tmux (not PTY/pipe-only providers like Codex)
+- Agent runs via tmux (including Codex tasks)
 
 ## Viewing Supervisor Activity
 

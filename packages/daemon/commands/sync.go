@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/tasksquad/daemon/api"
@@ -93,7 +94,12 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 		cmdFile := fmt.Sprintf("%s/.tsq/commands/%s.md", workDir, cmd.Name)
 		if lock[cmd.Name] == cmd.Etag && cmd.Etag != "" {
 			if harness.FileExists(cmdFile) {
-				continue // already up to date
+				if body, err := os.ReadFile(cmdFile); err == nil {
+					if err := harness.InstallCodexCommand(workDir, cmd.Name, string(body)); err != nil {
+						logger.Warn(fmt.Sprintf("[commands] Codex sync: %v", err))
+					}
+				}
+				continue
 			}
 		}
 

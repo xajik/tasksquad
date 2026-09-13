@@ -11,6 +11,7 @@ import (
 	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/tasklog"
 	"github.com/tasksquad/daemon/tmux"
 )
@@ -467,5 +468,27 @@ func (a *Agent) injectNextStep(sess string) {
 
 	logger.Info(fmt.Sprintf("[%s] Close step %d/%d: %q", a.Config.Name, idx, total, step))
 	time.Sleep(500 * time.Millisecond)
-	tmux.SendKeys(sess, step) //nolint:errcheck
+	a.sendTmuxPrompt(sess, provider.FormatPrompt(a.prov, step)) //nolint:errcheck
+}
+
+// sendTmuxPrompt uses a tmux buffer for Codex because send-keys can lose
+// spaces/newlines while the TUI is switching from its completed-turn view.
+func (a *Agent) sendTmuxPrompt(sess, prompt string) error {
+	if a.prov.Name() != "codex" {
+		return tmux.SendKeys(sess, prompt)
+	}
+	f, err := os.CreateTemp("", "tsq-codex-reply-*.txt")
+	if err != nil {
+		return err
+	}
+	path := f.Name()
+	defer os.Remove(path)
+	if _, err = f.WriteString(prompt); err != nil {
+		f.Close()
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	return tmux.PastePromptFile(sess, "tsq-codex-reply", path)
 }

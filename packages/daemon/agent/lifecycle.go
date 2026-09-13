@@ -15,6 +15,7 @@ import (
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/kb"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/tasklog"
 	"github.com/tasksquad/daemon/tmux"
 )
@@ -215,12 +216,17 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	// so an unrelated process in the same directory can't fire this task's
 	// hooks. See provider.Provider.SetupArgs.
 	extraArgs = append(extraArgs, a.prov.SetupArgs(cfg.Hooks.Port, a.Config.ID, taskID)...)
-	stdinData := a.prov.Stdin(prompt)
+	stdinData := a.prov.Stdin(provider.FormatPrompt(a.prov, prompt))
 	var args []string
 	if stdinData != "" {
 		args = append(parts[1:], extraArgs...)
 	} else {
 		args = append(append(parts[1:], extraArgs...), "-p", prompt)
+	}
+	promptInArgs := false
+	if initial, ok := a.prov.(interface{ InitialPromptArgs(string) []string }); ok {
+		args = append(args, initial.InitialPromptArgs(provider.FormatPrompt(a.prov, prompt))...)
+		promptInArgs = true
 	}
 	cmd := exec.Command(parts[0], args...)
 	cmd.Dir = a.Config.WorkDir
@@ -283,6 +289,11 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 			return
 		}
 
+		a.st.mu.Lock()
+		a.st.tmuxSession = sessionName
+		a.st.fifoPath = fifoPath
+		a.st.mu.Unlock()
+
 		fifoCh := make(chan *os.File, 1)
 		go func() {
 			f, err := os.Open(fifoPath)
@@ -294,13 +305,12 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 
 		exec.Command(tmuxBin, "pipe-pane", "-t", sessionName, "cat > "+fifoPath).Run() //nolint:errcheck
 
-		tmux.WaitForReady()
-		tmux.SendKeys(sessionName, stdinData) //nolint:errcheck
-
-		a.st.mu.Lock()
-		a.st.tmuxSession = sessionName
-		a.st.fifoPath = fifoPath
-		a.st.mu.Unlock()
+		if !promptInArgs {
+			tmux.WaitForReady()
+		}
+		if !promptInArgs {
+			tmux.SendKeys(sessionName, stdinData)
+		} //nolint:errcheck
 
 		logger.Info(fmt.Sprintf("[%s] tmux session started — attach: tmux attach-session -t %s", a.Config.Name, sessionName))
 
@@ -308,11 +318,12 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 			// Forward browser keystrokes/resizes from the task's live terminal
 			// into this tmux session, mirroring what portal.go already does
 			// for Portals — the relay/worker/frontend already carry these
-			// frames end-to-end. Stdin is gated on TUIBlocked() so it only
+			// frames end-to-end. Codex has no approval notify event, so its
+			// terminal stays interactive. Other providers gate on TUIBlocked() so input only
 			// reaches the CLI while it's actually blocked on an interactive
 			// prompt (e.g. AskUserQuestion) — not during a normal autonomous
 			// turn, where stray keystrokes could corrupt the generation.
-			go handleRelayInput(a.relayConn, sessionName, func() bool { return a.st.TUIBlocked() })
+			go handleRelayInput(a.relayConn, sessionName, func() bool { return a.prov.Name() == "codex" || a.st.TUIBlocked() })
 		}
 
 		select {
@@ -332,7 +343,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 			return
 		}
 	} else {
-		// Non-stdin providers (e.g. codex): use regular stdout pipe with -p flag.
+		// Non-interactive providers use a regular stdout pipe.
 		stdout, serr := cmd.StdoutPipe()
 		if serr != nil {
 			logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))

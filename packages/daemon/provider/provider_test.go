@@ -266,9 +266,9 @@ func TestProvider_Codex_Basics(t *testing.T) {
 	if !p.UsesHooks() {
 		t.Error("Codex should use hooks")
 	}
-	// Codex uses -p flag (not stdin)
-	if p.Stdin("prompt") != "" {
-		t.Error("Codex should use -p flag, not stdin")
+	// Codex uses an interactive tmux session.
+	if p.Stdin("prompt") != "prompt" {
+		t.Error("Codex should receive the prompt through tmux")
 	}
 }
 

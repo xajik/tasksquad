@@ -9,9 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"al.essio.dev/pkg/shellescape"
 	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/screenshot"
 	"github.com/tasksquad/daemon/tmux"
 	"github.com/tasksquad/daemon/util"
@@ -92,7 +94,7 @@ func (s *Supervisor) spawn(a MonitoredAgent, taskID string) {
 		return
 	}
 	promptFile := tmpF.Name()
-	if _, err := tmpF.WriteString(contextBlock); err != nil {
+	if _, err := tmpF.WriteString(provider.FormatPrompt(provider.Detect(s.fullCmd, ""), contextBlock)); err != nil {
 		tmpF.Close()
 		os.Remove(promptFile) //nolint:errcheck
 		logger.Error(fmt.Sprintf("[supervisor] Failed to write prompt file: %v", err))
@@ -289,6 +291,13 @@ func printModeCmd(cli, fullCmd, promptFile, logFile, daemonBinDir string) string
 	pathPrefix := ""
 	if daemonBinDir != "" {
 		pathPrefix = fmt.Sprintf("PATH=%s:$PATH ", daemonBinDir)
+	}
+	if base == "codex" {
+		prefix := ""
+		if daemonBinDir != "" {
+			prefix = "PATH=" + shellescape.Quote(daemonBinDir) + ":$PATH "
+		}
+		return fmt.Sprintf("%s%s exec -c notify=[] --sandbox workspace-write - < %s >> %s 2>&1", prefix, fullCmd, shellescape.Quote(promptFile), shellescape.Quote(logFile))
 	}
 	if strings.HasPrefix(base, "claude") {
 		return fmt.Sprintf(`%scat %s | %s -p --dangerously-skip-permissions >> %s 2>&1`,

@@ -8,8 +8,8 @@ import (
 	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/tasklog"
-	"github.com/tasksquad/daemon/tmux"
 )
 
 // processResponse dispatches a single heartbeat response: resolves the agent ID,
@@ -77,8 +77,8 @@ func (a *Agent) processResponse(cfg *config.Config, resp map[string]any) {
 			if sess != "" {
 				// tmux path: deliver reply via send-keys
 				time.Sleep(1 * time.Second)
-				tmux.SendKeys(sess, reply)        //nolint:errcheck
-				a.st.Transition(EventUserReplied) //nolint:errcheck
+				a.sendTmuxPrompt(sess, provider.FormatPrompt(a.prov, reply)) //nolint:errcheck
+				a.st.Transition(EventUserReplied)                            //nolint:errcheck
 				a.st.mu.Lock()
 				a.st.lastPrompt = reply
 				a.st.notifyPosted = false

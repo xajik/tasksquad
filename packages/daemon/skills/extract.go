@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -134,7 +135,11 @@ func runCLI(cli, prompt string, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, cli, "--dangerously-skip-permissions", "-p", prompt)
+	args := []string{"--dangerously-skip-permissions", "-p", prompt}
+	if filepath.Base(cli) == "codex" {
+		args = []string{"exec", "-c", "notify=[]", "--sandbox", "read-only", prompt}
+	}
+	cmd := exec.CommandContext(ctx, cli, args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {

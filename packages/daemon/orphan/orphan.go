@@ -92,7 +92,7 @@ func (c *OrphanController) listTmuxSessions() ([]string, error) {
 		// portal sessions live in the `portals` table, not `sessions` — /daemon/session/state
 		// would never find them, so leaving them in scope here would get every portal
 		// killed as a false orphan on each sweep.
-		if !strings.HasPrefix(name, "tsq-") || strings.HasPrefix(name, "tsq-sup-") || strings.HasPrefix(name, "tsq-portal-") {
+		if !isTaskSessionName(name) {
 			continue
 		}
 		ids = append(ids, strings.TrimPrefix(name, "tsq-"))
@@ -149,4 +149,17 @@ func (c *OrphanController) killOrphan(sessionID string) {
 			logger.Info(fmt.Sprintf("[orphan] killed orphaned supervisor: %s", supSession))
 		}
 	}
+}
+
+// Auxiliary tmux sessions have their own lifecycle and no sessions-table row.
+func isTaskSessionName(name string) bool {
+	if !strings.HasPrefix(name, "tsq-") {
+		return false
+	}
+	for _, prefix := range []string{"tsq-sup-", "tsq-portal-", "tsq-stm-", "tsq-dream-", "tsq-kbinit-"} {
+		if strings.HasPrefix(name, prefix) {
+			return false
+		}
+	}
+	return true
 }

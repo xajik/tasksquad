@@ -31,10 +31,11 @@ func installCommand(workDir string, cmd remoteCommand) error {
 		}
 	}
 
-	return nil
+	return harness.InstallCodexCommand(workDir, cmd.Name, cmd.Content)
 }
 
 func removeCommand(workDir, name string) {
+	harness.RemoveCodexCommand(workDir, name)
 	os.Remove(filepath.Join(workDir, ".tsq", "commands", name+".md")) //nolint:errcheck
 
 	for _, cd := range harness.CommandDirs(workDir) {

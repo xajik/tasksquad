@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"al.essio.dev/pkg/shellescape"
+	"github.com/google/uuid"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
@@ -75,8 +77,7 @@ func (a *tmuxAgent) Start() error {
 		}
 	}
 
-	ts := fmt.Sprintf("%d", time.Now().UnixMilli())
-	sessionName := tmuxSessionPrefix + ts[:8]
+	sessionName := tmuxSessionPrefix + uuid.NewString()
 
 	cmd := a.agentCfg.Command
 	if cmd == "" {
@@ -90,7 +91,7 @@ func (a *tmuxAgent) Start() error {
 	// interface instead of SetupVoice writing into the shared workDir file.
 	if vp, ok := prov.(interface{ VoiceSetupArgs(int) []string }); ok {
 		for _, arg := range vp.VoiceSetupArgs(a.hooksPort) {
-			cmd += fmt.Sprintf(" '%s'", arg)
+			cmd += " " + shellescape.Quote(arg)
 		}
 	}
 
