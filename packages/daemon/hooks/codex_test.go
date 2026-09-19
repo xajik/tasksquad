@@ -60,6 +60,13 @@ func TestCodexHookRouting(t *testing.T) {
 	a.mode = "wrapping_up"
 	send("a", "t", "thread-a", "2", "agent-turn-complete")
 	expect(a.events, "advance")
+	// Reset/retry of the same task creates a new CLI thread whose turn IDs
+	// can repeat. The old thread must not suppress its first response.
+	a.mode = "running"
+	a.pinnedSessionID = ""
+	send("a", "t", "thread-restarted", "1", "agent-turn-complete")
+	expect(a.events, "pause:OK")
+	send("a", "t", "thread-restarted", "1", "agent-turn-complete")
 	select {
 	case event := <-a.events:
 		t.Fatal("unexpected dispatch", event)

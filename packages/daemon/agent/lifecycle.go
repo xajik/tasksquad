@@ -251,10 +251,10 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 
 	// ── tmux path (required for stdin-based providers) ────────────────────────
 	if stdinData != "" {
-		if tmuxBin == "" {
+		if _, err := exec.LookPath(tmuxBin); err != nil {
 			logger.Error(fmt.Sprintf("[%s] tmux is required but not found — cannot start task", a.Config.Name))
-			a.complete(cfg, string(agentmode.StatusCrashed))
 			close(outputDone)
+			a.complete(cfg, string(agentmode.StatusCrashed))
 			return
 		}
 
@@ -264,8 +264,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 
 		if err := mkfifo(fifoPath, 0644); err != nil {
 			logger.Error(fmt.Sprintf("[%s] mkfifo failed: %v — cannot start task", a.Config.Name, err))
-			a.complete(cfg, string(agentmode.StatusCrashed))
 			close(outputDone)
+			a.complete(cfg, string(agentmode.StatusCrashed))
 			return
 		}
 
@@ -284,8 +284,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 		if err := tmuxCmd.Run(); err != nil {
 			logger.Error(fmt.Sprintf("[%s] tmux new-session failed: %v stderr=%q — cannot start task", a.Config.Name, err, tmuxStderr.String()))
 			os.Remove(fifoPath)
-			a.complete(cfg, string(agentmode.StatusCrashed))
 			close(outputDone)
+			a.complete(cfg, string(agentmode.StatusCrashed))
 			return
 		}
 
@@ -338,8 +338,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 			a.st.tmuxSession = ""
 			a.st.fifoPath = ""
 			a.st.mu.Unlock()
-			a.complete(cfg, string(agentmode.StatusCrashed))
 			close(outputDone)
+			a.complete(cfg, string(agentmode.StatusCrashed))
 			return
 		}
 	} else {
@@ -347,19 +347,15 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 		stdout, serr := cmd.StdoutPipe()
 		if serr != nil {
 			logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))
-			a.st.mu.Lock()
-			a.st.mode = ModeIdle
-			a.st.mu.Unlock()
 			close(outputDone)
+			a.complete(cfg, string(agentmode.StatusCrashed))
 			return
 		}
 		stderr, _ := cmd.StderrPipe()
 		if serr = cmd.Start(); serr != nil {
 			logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, serr))
-			a.st.mu.Lock()
-			a.st.mode = ModeIdle
-			a.st.mu.Unlock()
 			close(outputDone)
+			a.complete(cfg, string(agentmode.StatusCrashed))
 			return
 		}
 		go io.Copy(io.Discard, stderr)

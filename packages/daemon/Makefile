@@ -5,6 +5,8 @@ export
 
 VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-X main.version=$(VERSION)"
+PREFIX ?= $(HOME)/.local
+BINDIR ?= $(PREFIX)/bin
 
 dev:
 	@which air > /dev/null 2>&1 || go install github.com/air-verse/air@latest
@@ -26,7 +28,9 @@ test:
 	CGO_ENABLED=0 go test ./...
 
 install: build
-	cp tsq /usr/local/bin/tsq
+	mkdir -p "$(DESTDIR)$(BINDIR)"
+	install -m 0755 tsq "$(DESTDIR)$(BINDIR)/tsq"
+	@echo "Installed $(DESTDIR)$(BINDIR)/tsq"
 
 # Builds an unsigned TaskSquad.app in dist/ for local smoke-testing (macOS only,
 # requires Xcode command line tools for cgo). CI signs/notarizes a separate build.

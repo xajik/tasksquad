@@ -48,9 +48,16 @@ cd packages/daemon
 # Build ./tsq binary
 make build
 
-# Install to /usr/local/bin so you can run `tsq` from anywhere
+# Install to ~/.local/bin without sudo
 make install
+
+# Add this to your shell config if ~/.local/bin is not already on PATH
+export PATH="$HOME/.local/bin:$PATH"
 ```
+
+Override the destination with `make install PREFIX=/your/prefix` or
+`make install BINDIR=/your/bin`. This installs the CLI binary; it does not
+replace or restart an installed `TaskSquad.app`.
 
 ### Option B — Cross-compile for all platforms
 
@@ -337,7 +344,7 @@ All requests use header `X-TSQ-Token: <agent token>`.
 |---|---|
 | `make build` | Build `./tsq` for the current platform |
 | `make build-all` | Cross-compile for macOS arm64/amd64 and Linux amd64 into `dist/` |
-| `make install` | Build and copy to `/usr/local/bin/tsq` |
+| `make install` | Build and install to `~/.local/bin/tsq` (override with `PREFIX` or `BINDIR`) |
 | `make clean` | Remove `./tsq` and `dist/` |
 
 ---

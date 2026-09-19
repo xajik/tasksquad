@@ -34,6 +34,7 @@ import (
 var version = "dev"
 
 func main() {
+	prepareAppEnvironment()
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "init":
@@ -97,6 +98,19 @@ func runDaemon() {
 		fmt.Println("tsq " + version)
 		return
 	}
+	if started, err := startAppSetup(*cfgPath); started || err != nil {
+		if err != nil {
+			startupError(err)
+			os.Exit(1)
+		}
+		return
+	}
+	releaseLock, err := acquireDaemonLock(config.DefaultDir())
+	if err != nil {
+		startupError(err)
+		os.Exit(1)
+	}
+	defer releaseLock()
 
 	if err := logger.Init(); err != nil {
 		fmt.Fprintf(os.Stderr, "logger init error: %v\n", err)
@@ -105,7 +119,7 @@ func runDaemon() {
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error loading config: %v\n", err)
+		startupError(fmt.Errorf("error loading config: %w", err))
 		os.Exit(1)
 	}
 	if *apiURL != "" {

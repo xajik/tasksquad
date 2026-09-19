@@ -45,7 +45,7 @@ func (a *Agent) handlePortal(cfg *config.Config, p *portalRecord) {
 
 	logger.Info(fmt.Sprintf("[%s] portal %s: starting", a.Config.Name, p.id))
 
-	if tmuxBin == "" {
+	if _, err := exec.LookPath(tmuxBin); err != nil {
 		logger.Error("[portal] tmux required but not found")
 		a.reportPortalClose(cfg, p.id, "failed")
 		return

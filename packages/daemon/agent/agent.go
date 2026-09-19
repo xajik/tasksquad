@@ -3,7 +3,6 @@ package agent
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -17,14 +16,9 @@ import (
 	"github.com/tasksquad/daemon/provider"
 )
 
-// tmuxBin is the path to the tmux binary, or empty if tmux is not installed.
-var tmuxBin string
-
-func init() {
-	if p, err := exec.LookPath("tmux"); err == nil {
-		tmuxBin = p
-	}
-}
+// Resolve tmux when launching, after main has prepared the app's PATH.
+// Package init runs before Finder/launchd's restricted PATH is repaired.
+var tmuxBin = "tmux"
 
 // Re-export agentmode types so callers that currently reference agent.Mode keep working.
 type Mode = agentmode.Mode
@@ -54,7 +48,7 @@ type Agent struct {
 	st            *AgentState
 	relayConn     *websocket.Conn // live terminal relay WS; nil when idle
 	portalActive  int32           // atomic: 1 while a portal goroutine is running
-	portalSignals chan string      // receives portal IDs to close (buffered 1)
+	portalSignals chan string     // receives portal IDs to close (buffered 1)
 
 	portalMu       sync.Mutex // guards activePortalID
 	activePortalID string     // ID of the currently running portal, "" when idle

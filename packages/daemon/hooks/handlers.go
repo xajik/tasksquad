@@ -25,8 +25,9 @@ var unsafeCharsRe = regexp.MustCompile(`[^\x09\x0A\x0D\x20-\x7E]`)
 
 // hookServer holds the shared state needed by every hook handler.
 type codexTaskTurns struct {
-	taskID string
-	seen   map[string]bool
+	taskID   string
+	threadID string
+	seen     map[string]bool
 }
 
 type hookServer struct {
@@ -295,8 +296,8 @@ func (s *hookServer) handleCodex(w http.ResponseWriter, r *http.Request) {
 			s.codexTurns = make(map[string]*codexTaskTurns)
 		}
 		turns := s.codexTurns[agentID]
-		if turns == nil || turns.taskID != taskID {
-			turns = &codexTaskTurns{taskID: taskID, seen: make(map[string]bool)}
+		if turns == nil || turns.taskID != taskID || turns.threadID != payload.ThreadID {
+			turns = &codexTaskTurns{taskID: taskID, threadID: payload.ThreadID, seen: make(map[string]bool)}
 			s.codexTurns[agentID] = turns
 		}
 		if payload.TurnID != "" && turns.seen[payload.TurnID] {

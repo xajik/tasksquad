@@ -39,6 +39,7 @@ mkdir -p dist/TaskSquad.app/Contents/MacOS dist/TaskSquad.app/Contents/Resources
 
 cp dist/TaskSquad-bin dist/TaskSquad.app/Contents/MacOS/TaskSquad
 chmod +x dist/TaskSquad.app/Contents/MacOS/TaskSquad
+ln -s TaskSquad dist/TaskSquad.app/Contents/MacOS/tsq
 
 cp dist/AppIcon.icns dist/TaskSquad.app/Contents/Resources/AppIcon.icns
 
