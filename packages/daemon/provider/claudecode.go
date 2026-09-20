@@ -28,9 +28,7 @@ func (p *ClaudeCode) Env(_ int) []string { return nil }
 // can run non-interactively without the -p flag.
 func (p *ClaudeCode) Stdin(prompt string) string { return prompt }
 
-func (p *ClaudeCode) ExtraArgs() []string      { return nil }
-func (p *ClaudeCode) VoiceCLIArg() string       { return "--agent tsq-speech-to-md" }
-func (p *ClaudeCode) VoiceInitCommand() string  { return "/tsq-speech-to-md" }
+func (p *ClaudeCode) ExtraArgs() []string { return nil }
 
 // Setup is a no-op for ClaudeCode: hook config is delivered per-invocation
 // via SetupArgs instead of being written here. Writing hooks into
@@ -129,41 +127,5 @@ func (p *ClaudeCode) SetupArgs(hooksPort int, agentID string, taskID string) []s
 		return nil
 	}
 	logger.Debug(fmt.Sprintf("[provider/claude-code] Wrote per-task hooks to %s (port %d)", settingsPath, hooksPort))
-	return []string{"--settings", settingsPath}
-}
-
-// SetupVoice is a no-op for ClaudeCode: hook config is delivered via
-// VoiceSetupArgs instead, for the same reason Setup() is a no-op above —
-// writing into <workDir>/.claude/settings.json is visible to any `claude`
-// process launched in that directory, not just the speech-to-md session.
-func (p *ClaudeCode) SetupVoice(_ string, _ int) error {
-	return nil
-}
-
-// VoiceSetupArgs writes the speech-to-md Stop hook config to a temp file
-// scoped to this invocation and returns the --settings flag pointing at it,
-// mirroring SetupArgs for the voice flow. Not part of the Provider interface
-// (voice is opt-in per provider); callers should type-assert for it.
-func (p *ClaudeCode) VoiceSetupArgs(hooksPort int) []string {
-	url := fmt.Sprintf("http://localhost:%d/hooks/stop?speech=true&provider=claude-code", hooksPort)
-	stopHook := []any{
-		map[string]any{
-			"matcher": "*",
-			"hooks":   []any{map[string]any{"type": "http", "url": url}},
-		},
-	}
-	data, err := json.Marshal(map[string]any{
-		"hooks": map[string]any{"Stop": stopHook, "StopFailure": stopHook},
-	})
-	if err != nil {
-		logger.Error(fmt.Sprintf("[provider/claude-code] marshal voice hooks: %v", err))
-		return nil
-	}
-	settingsPath := filepath.Join(os.TempDir(), fmt.Sprintf("tsq-voice-settings-%d.json", hooksPort))
-	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
-		logger.Error(fmt.Sprintf("[provider/claude-code] write voice settings temp file: %v", err))
-		return nil
-	}
-	logger.Debug(fmt.Sprintf("[provider/claude-code] Wrote per-invocation voice hooks to %s (port %d)", settingsPath, hooksPort))
 	return []string{"--settings", settingsPath}
 }

@@ -18,17 +18,10 @@ func (p *Codex) Env(_ int) []string                       { return nil }
 func (p *Codex) Stdin(prompt string) string               { return prompt }
 func (p *Codex) ExtraArgs() []string                      { return []string{"--no-alt-screen"} }
 func (p *Codex) Setup(_ string, _ int, _, _ string) error { return nil }
-func (p *Codex) SetupVoice(_ string, _ int) error         { return nil }
-func (p *Codex) VoiceCLIArg() string                      { return "" }
-func (p *Codex) VoiceInitCommand() string                 { return "$tsq-speech-to-md" }
 
 func (p *Codex) SetupArgs(port int, agentID, taskID string) []string {
 	q := url.Values{"agent": {agentID}, "task_id": {taskID}}
 	return codexNotifyArgs(fmt.Sprintf("http://127.0.0.1:%d/hooks/codex?%s", port, q.Encode()))
-}
-
-func (p *Codex) VoiceSetupArgs(port int) []string {
-	return codexNotifyArgs(fmt.Sprintf("http://127.0.0.1:%d/hooks/stop?speech=true&provider=codex", port))
 }
 
 func codexNotifyArgs(endpoint string) []string {

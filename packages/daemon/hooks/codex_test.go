@@ -20,14 +20,10 @@ func (a *codexTestAgent) StopAndPause(_ *config.Config, message, _ string) {
 }
 func (a *codexTestAgent) AdvanceCloseStep(_ *config.Config) { a.events <- "advance" }
 
-type codexSpeech struct{ message string }
-
-func (s *codexSpeech) HandleNotification(message string) { s.message = message }
-
 func TestCodexHookRouting(t *testing.T) {
 	a := &codexTestAgent{fakeAgent: fakeAgent{id: "a", taskID: "t", mode: "running"}, events: make(chan string, 10)}
 	b := &codexTestAgent{fakeAgent: fakeAgent{id: "b", taskID: "u", mode: "running"}, events: make(chan string, 10)}
-	h := NewHandler(&config.Config{}, []Agent{a, b}, nil, nil, nil)
+	h := NewHandler(&config.Config{}, []Agent{a, b}, nil, nil)
 	send := func(agent, task, thread, turn, kind string) {
 		t.Helper()
 		body := fmt.Sprintf(`{"type":%q,"thread-id":%q,"turn-id":%q,"last-assistant-message":"OK"}`, kind, thread, turn)
@@ -74,18 +70,8 @@ func TestCodexHookRouting(t *testing.T) {
 	}
 }
 
-func TestCodexVoiceMessage(t *testing.T) {
-	speech := &codexSpeech{}
-	h := NewHandler(&config.Config{}, nil, nil, speech, nil)
-	r := httptest.NewRequest("POST", "/hooks/stop?speech=true&provider=codex", strings.NewReader(`{"type":"agent-turn-complete","last-assistant-message":"# Dictation"}`))
-	h.ServeHTTP(httptest.NewRecorder(), r)
-	if speech.message != "# Dictation" {
-		t.Fatal("voice response lost", speech.message)
-	}
-}
-
 func TestCodexInvalidCallbacks(t *testing.T) {
-	h := NewHandler(&config.Config{}, nil, nil, nil, nil)
+	h := NewHandler(&config.Config{}, nil, nil, nil)
 	for _, tc := range []struct {
 		method, url, body string
 		status            int

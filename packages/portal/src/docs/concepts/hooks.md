@@ -71,7 +71,7 @@ The callback receives JSON as its final argument, posts to `/hooks/codex` with
 `agent` and `task_id`, and leaves personal configuration unchanged. The daemon
 pins the CLI thread, ignores stale or duplicate turn events, posts the response,
 and pauses for a web reply. During session close, callbacks advance the close
-steps instead. Voice sessions route their text to `/hooks/stop?speech=true&provider=codex`.
+steps instead.
 
 Codex runs inside tmux. Users can answer approval prompts in the live terminal;
 notify does not report intermediate approvals. Skills live in `.agents/skills`,

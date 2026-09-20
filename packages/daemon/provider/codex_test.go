@@ -55,14 +55,8 @@ func TestCodexInvocationIsolation(t *testing.T) {
 	if err := p.Setup("/nonexistent/unwritable", 1234, "a", "t"); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.SetupVoice("/nonexistent/unwritable", 1234); err != nil {
-		t.Fatal(err)
-	}
 	if p.Stdin("hello") != "hello" {
 		t.Fatal("TUI prompt lost")
-	}
-	if p.VoiceInitCommand() != "$tsq-speech-to-md" {
-		t.Fatal("wrong skill syntax")
 	}
 	// JSON argv is valid TOML, including shell metacharacters.
 	if _, err := json.Marshal(cfg.Notify); err != nil {

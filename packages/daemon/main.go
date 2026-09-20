@@ -174,11 +174,9 @@ func runDaemon() {
 		uiAgents = append(uiAgents, a)
 	}
 
-	ui.InitSpeechToMD(cfg)
-
 	sup := supervisor.New(cfg)
 	batchCtrl := agent.NewBatchController()
-	hooks.StartHookServer(cfg, agentList, sup, ui.GetSpeechManager(), batchCtrl)
+	hooks.StartHookServer(cfg, agentList, sup, batchCtrl)
 
 	go agent.RunBatch(cfg, rawAgents, batchCtrl)
 

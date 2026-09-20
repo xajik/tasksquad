@@ -12,14 +12,11 @@ package provider
 
 type Stdout struct{}
 
-func (p *Stdout) Name() string                { return "stdout" }
-func (p *Stdout) CLIName() string             { return "" }
-func (p *Stdout) UsesHooks() bool             { return false }
-func (p *Stdout) Env(_ int) []string          { return nil }
-func (p *Stdout) Stdin(_ string) string       { return "" }
-func (p *Stdout) ExtraArgs() []string         { return nil }
-func (p *Stdout) SetupArgs(_ int, _, _ string) []string { return nil }
+func (p *Stdout) Name() string                                    { return "stdout" }
+func (p *Stdout) CLIName() string                                 { return "" }
+func (p *Stdout) UsesHooks() bool                                 { return false }
+func (p *Stdout) Env(_ int) []string                              { return nil }
+func (p *Stdout) Stdin(_ string) string                           { return "" }
+func (p *Stdout) ExtraArgs() []string                             { return nil }
+func (p *Stdout) SetupArgs(_ int, _, _ string) []string           { return nil }
 func (p *Stdout) Setup(_ string, _ int, _ string, _ string) error { return nil }
-func (p *Stdout) SetupVoice(_ string, _ int) error                 { return ErrNotSupported }
-func (p *Stdout) VoiceCLIArg() string       { return "" }
-func (p *Stdout) VoiceInitCommand() string  { return "" }

@@ -106,7 +106,7 @@ type Poller interface {
 //
 // Registered endpoints:
 //
-//	POST /hooks/stop               — provider Stop hook; speech=true param routes to speech handler
+//	POST /hooks/stop               — provider Stop hook
 //	POST /hooks/notification       — provider Notification hook (waiting for input)
 //	POST /hooks/after_agent        — Gemini per-turn response
 //	POST /hooks/opencode           — OpenCode lifecycle events
@@ -115,15 +115,15 @@ type Poller interface {
 //	POST /hooks/skill              — agent pushes a learned skill
 //	POST /hooks/supervisor         — supervisor verdict
 //	POST /hooks/trigger-supervisor — manual supervisor trigger from portal
-func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorReporter, speechHandler SpeechToMDHandler, ctrl Poller) {
+func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorReporter, ctrl Poller) {
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
 	logger.Info(fmt.Sprintf("[hooks] Server listening on http://%s", addr))
-	go http.ListenAndServe(addr, NewHandler(cfg, agents, reporter, speechHandler, ctrl)) //nolint:errcheck
+	go http.ListenAndServe(addr, NewHandler(cfg, agents, reporter, ctrl)) //nolint:errcheck
 }
 
 // NewHandler exposes the same hook routes for embedded servers and local tests.
-func NewHandler(cfg *config.Config, agents []Agent, reporter SupervisorReporter, speechHandler SpeechToMDHandler, ctrl Poller) http.Handler {
-	srv := &hookServer{cfg: cfg, agents: agents, reporter: reporter, speechHandler: speechHandler, ctrl: ctrl}
+func NewHandler(cfg *config.Config, agents []Agent, reporter SupervisorReporter, ctrl Poller) http.Handler {
+	srv := &hookServer{cfg: cfg, agents: agents, reporter: reporter, ctrl: ctrl}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/hooks/stop", srv.handleStop)

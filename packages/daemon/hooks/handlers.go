@@ -31,13 +31,12 @@ type codexTaskTurns struct {
 }
 
 type hookServer struct {
-	codexMu       sync.Mutex
-	codexTurns    map[string]*codexTaskTurns
-	cfg           *config.Config
-	agents        []Agent
-	reporter      SupervisorReporter
-	speechHandler SpeechToMDHandler // nil when speech-to-md feature is not active
-	ctrl          Poller            // nil-safe; used to force an immediate heartbeat poll
+	codexMu    sync.Mutex
+	codexTurns map[string]*codexTaskTurns
+	cfg        *config.Config
+	agents     []Agent
+	reporter   SupervisorReporter
+	ctrl       Poller // nil-safe; used to force an immediate heartbeat poll
 }
 
 // handleStop handles POST /hooks/stop.
@@ -65,26 +64,6 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 
 	logger.Info(fmt.Sprintf("[hooks] Stop received: provider=%s stop_reason=%s transcript_path=%s",
 		provider, ev.Reason, ev.TranscriptPath))
-
-	// Speech-to-md turn completion — dispatch to speech handler and return early.
-	if r.URL.Query().Get("speech") == "true" {
-		if s.speechHandler != nil {
-			// Try transcript file first (Gemini, Claude Code), then fall back to
-			// HookMessage (OpenCode plugin delivers message directly in body).
-			var message string
-			if ev.TranscriptPath != "" {
-				message = adpt.ExtractTranscript(ev.TranscriptPath)
-			}
-			if message == "" {
-				message = ev.HookMessage
-			}
-			logger.Info(fmt.Sprintf("[hooks] speech stop: transcript_path=%q hook_message_len=%d final_message_len=%d",
-				ev.TranscriptPath, len(ev.HookMessage), len(message)))
-			s.speechHandler.HandleNotification(message)
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-		return
-	}
 
 	if isFailure {
 		analytics.Track("task_stop_failure", map[string]interface{}{

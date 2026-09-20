@@ -379,9 +379,8 @@ to `$tsq-*` in task prompts, replies, and close steps.
 
 Supervisor and dreaming jobs use `codex exec` with a workspace-write sandbox.
 They retain configured CLI flags; commands requiring permissions outside that
-sandbox can fail and must be configured explicitly by the operator. Voice
-sessions receive their own invocation-scoped notify callback. Native Windows
-requires a compatible tmux/sh environment such as WSL.
+sandbox can fail and must be configured explicitly by the operator. Native
+Windows requires a compatible tmux/sh environment such as WSL.
 
 Run `make test` for regression coverage. To exercise two actual Codex turns,
 response hooks, web-reply dispatch, terminal relay output, and cleanup using a

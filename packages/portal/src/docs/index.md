@@ -16,7 +16,6 @@ Select a topic from the sidebar to get started.
 - [Skills & Learning](/docs/concepts/skills)
 - [Available Skills](/docs/concepts/available-skills)
 - [Memory](/docs/concepts/memory)
-- [Voice to Markdown](/docs/concepts/voice-to-md)
 - [Portals](/docs/concepts/portals)
 - [Daemon CLI Reference](/docs/api/daemon-cli)
 

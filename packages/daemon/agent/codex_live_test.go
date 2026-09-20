@@ -116,7 +116,7 @@ func TestCodexLiveTwoTurns(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Server.URL = api.URL
 	a := New(config.AgentConfig{ID: id, Name: id, Command: wrapper, Provider: "codex", WorkDir: dir})
-	hook := httptest.NewServer(hooks.NewHandler(cfg, []hooks.Agent{a}, nil, nil, nil))
+	hook := httptest.NewServer(hooks.NewHandler(cfg, []hooks.Agent{a}, nil, nil))
 	defer hook.Close()
 	_, port, _ := net.SplitHostPort(strings.TrimPrefix(hook.URL, "http://"))
 	cfg.Hooks.Port, _ = strconv.Atoi(port)

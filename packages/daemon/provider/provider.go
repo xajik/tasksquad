@@ -1,13 +1,9 @@
 package provider
 
 import (
-	"errors"
 	"path/filepath"
 	"strings"
 )
-
-// ErrNotSupported is returned when a provider doesn't support a given feature.
-var ErrNotSupported = errors.New("provider does not support this feature")
 
 // Provider describes how the daemon integrates with a specific CLI tool.
 //
@@ -39,23 +35,12 @@ type Provider interface {
 	// misattributed to the wrong session. Providers without a per-invocation
 	// override return nil and rely on Setup() alone.
 	SetupArgs(hooksPort int, agentID string, taskID string) []string
-	// SetupVoice writes hook config for speech-to-md notification.
-	// Returns ErrNotSupported if the provider doesn't support speech hooks.
-	SetupVoice(workDir string, hooksPort int) error
 	Env(hooksPort int) []string
 	UsesHooks() bool
 	// Stdin returns the content to pipe to the process stdin, or "" to use -p flag.
 	Stdin(prompt string) string
 	// ExtraArgs returns additional CLI arguments to prepend (e.g. --dangerously-skip-permissions).
 	ExtraArgs() []string
-
-	// VoiceCLIArg returns an extra argument string to append to the CLI command
-	// when starting a speech-to-md session (e.g. "--agent tsq-speech-to-md"), or "".
-	VoiceCLIArg() string
-	// VoiceInitCommand returns the command to send via tmux.SendKeys after the
-	// session starts, to invoke the speech-to-md skill. Can be overridden by
-	// the user's promptOverride. For Claude-style: "/tsq-speech-to-md". For Gemini: "@tsq-speech-to-md".
-	VoiceInitCommand() string
 }
 
 // registry maps canonical provider name strings to factory functions.

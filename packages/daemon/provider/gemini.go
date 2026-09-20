@@ -29,37 +29,8 @@ func (p *Gemini) Env(_ int) []string {
 // can run non-interactively without the -p flag.
 func (p *Gemini) Stdin(prompt string) string { return prompt }
 
-func (p *Gemini) ExtraArgs() []string       { return nil }
+func (p *Gemini) ExtraArgs() []string                   { return nil }
 func (p *Gemini) SetupArgs(_ int, _, _ string) []string { return nil }
-func (p *Gemini) VoiceCLIArg() string       { return "" }
-func (p *Gemini) VoiceInitCommand() string  { return "@tsq-speech-to-md" }
-
-// SetupVoice writes .gemini/settings.json with an AfterAgent hook pointing at
-// /hooks/stop?speech=true, mirroring the inbox setup but with the speech flag.
-func (p *Gemini) SetupVoice(workDir string, hooksPort int) error {
-	settingsPath := filepath.Join(workDir, ".gemini", "settings.json")
-	stopURL := fmt.Sprintf("http://localhost:%d/hooks/stop?speech=true&provider=gemini", hooksPort)
-	err := writeHooks(settingsPath, map[string]any{
-		"AfterAgent": []any{
-			map[string]any{
-				"matcher": "*",
-				"hooks": []any{
-					map[string]any{
-						"name":    "tasksquad-speech",
-						"type":    "command",
-						"command": geminiHookCmd(stopURL),
-						"timeout": 5000,
-					},
-				},
-			},
-		},
-	})
-	if err != nil {
-		return err
-	}
-	logger.Debug(fmt.Sprintf("[provider/gemini] Wrote voice hooks to %s (port %d)", settingsPath, hooksPort))
-	return nil
-}
 
 // Setup writes .gemini/settings.json into workDir with AfterAgent hook
 // pointing to the daemon's local hook server on hooksPort.
