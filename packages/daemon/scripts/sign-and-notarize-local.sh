@@ -56,12 +56,6 @@ echo "Verifying Gatekeeper acceptance..."
 spctl --assess --type execute -vv dist/TaskSquad.app
 
 echo "Building DMG..."
-rm -rf dist/dmg-root
-mkdir dist/dmg-root
-cp -R dist/TaskSquad.app dist/dmg-root/
-ln -s /Applications dist/dmg-root/Applications
-hdiutil create -volname TaskSquad -srcfolder dist/dmg-root -ov -format UDZO \
-  "dist/TaskSquad-$VER.dmg"
-rm -rf dist/dmg-root
+./scripts/package-macos-app.sh
 
 echo "Done: dist/TaskSquad.app (signed, notarized, stapled) and dist/TaskSquad-$VER.dmg"

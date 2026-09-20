@@ -16,6 +16,25 @@ jobs:
       - run: make test
         working-directory: packages/daemon
 
+  test-macos-app:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Test native daemon and DMG installation
+        run: make test-native app app-dmg app-check app-cask-check VERSION=v0.0.0
+        working-directory: packages/daemon
+      - name: Keep unsigned test installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: TaskSquad-macos-unsigned
+          path: |
+            packages/daemon/dist/TaskSquad-0.0.0.dmg
+            packages/daemon/dist/TaskSquad-0.0.0.dmg.sha256
+          if-no-files-found: error
+
   test-portal:
     runs-on: ubuntu-latest
     steps:

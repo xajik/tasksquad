@@ -66,6 +66,12 @@ Using Homebrew (macOS/Linux):
 brew tap xajik/tap && brew install tsq
 ```
 
+For the macOS menu-bar app, signed releases also publish a separate cask:
+`brew install --cask xajik/tap/tasksquad`. Update it with `brew update` followed
+by `brew upgrade --cask xajik/tap/tasksquad`. See the
+[app installation and release guide](packages/daemon/RELEASING.md) for setup,
+DMG installation, signing prerequisites, and switching from the CLI daemon.
+
 Using installation script (macOS/Linux/Windows):
 ```bash
 curl -sSL install.tasksquad.ai | bash

@@ -1,0 +1,23 @@
+cask "tasksquad" do
+  version "__VERSION__"
+  sha256 "__SHA256__"
+
+  url "https://github.com/xajik/tasksquad/releases/download/v#{version}/TaskSquad-#{version}.dmg"
+  name "TaskSquad"
+  desc "Menu bar app for the TaskSquad agent daemon"
+  homepage "https://tasksquad.ai"
+
+  depends_on macos: :big_sur
+  depends_on formula: "tmux"
+
+  app "TaskSquad.app"
+
+  # The separate tsq formula owns the terminal command; both can be installed.
+  uninstall quit: "ai.tasksquad.tsq"
+
+  caveats <<~EOS
+    Open TaskSquad from Applications. First launch opens setup in Terminal.
+    Quit any running tsq CLI daemon before starting the menu bar app.
+    After upgrading, reopen TaskSquad to run the new version.
+  EOS
+end

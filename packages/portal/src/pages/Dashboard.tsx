@@ -2083,7 +2083,7 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
           ? { cmd: 'gemini --yolo', dir: '~/Projects/my-tasksquad-project' }
           : activeTab === 'opencode'
           ? { cmd: 'opencode', dir: '~/Projects/my-tasksquad-project' }
-          : { cmd: 'codex', dir: '~/Projects/my-tasksquad-project' }
+          : { cmd: 'codex --yolo', dir: '~/Projects/my-tasksquad-project' }
         
         const snippet = `[[agents]]
 id       = "${newToken.agentId}"

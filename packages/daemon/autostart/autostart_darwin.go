@@ -5,16 +5,22 @@ package autostart
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"text/template"
 )
 
 const labelID = "ai.tasksquad.tsq"
 
-var plistTmpl = template.Must(template.New("plist").Parse(`<?xml version="1.0" encoding="UTF-8"?>
+var plistTmpl = template.Must(template.New("plist").Funcs(template.FuncMap{
+	"xml": func(value string) string {
+		var b bytes.Buffer
+		xml.EscapeText(&b, []byte(value))
+		return b.String()
+	},
+}).Parse(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -22,16 +28,16 @@ var plistTmpl = template.Must(template.New("plist").Parse(`<?xml version="1.0" e
 	<string>{{.Label}}</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>{{.ExecPath}}</string>
+		<string>{{.ExecPath | xml}}</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
 	<false/>
 	<key>StandardOutPath</key>
-	<string>{{.LogPath}}</string>
+	<string>{{.LogPath | xml}}</string>
 	<key>StandardErrorPath</key>
-	<string>{{.LogPath}}</string>
+	<string>{{.LogPath | xml}}</string>
 </dict>
 </plist>
 `))
@@ -54,8 +60,8 @@ func IsEnabled() bool {
 	return err == nil
 }
 
-// Enable writes the LaunchAgent plist and loads it with launchctl so it takes
-// effect immediately and on every subsequent login.
+// Enable registers the next login. Loading a RunAtLoad job here would launch a
+// second daemon alongside the process whose menu is enabling autostart.
 func Enable(execPath string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -69,6 +75,9 @@ func Enable(execPath string) error {
 		return fmt.Errorf("mkdir LaunchAgents: %w", err)
 	}
 	logPath := filepath.Join(home, ".tasksquad", "logs", "launchd.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
+		return fmt.Errorf("mkdir logs: %w", err)
+	}
 	var buf bytes.Buffer
 	if err := plistTmpl.Execute(&buf, struct {
 		Label    string
@@ -80,21 +89,16 @@ func Enable(execPath string) error {
 	if err := os.WriteFile(p, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("write plist: %w", err)
 	}
-	// Load so it takes effect in the current login session too.
-	if out, err := exec.Command("launchctl", "load", "-w", p).CombinedOutput(); err != nil {
-		return fmt.Errorf("launchctl load: %w (%s)", err, bytes.TrimSpace(out))
-	}
 	return nil
 }
 
-// Disable unloads the LaunchAgent and removes the plist file.
+// Disable removes registration for the next login. Unloading here would kill
+// this process when it was itself started by launchd, before removing the plist.
 func Disable() error {
 	p, err := plistPath()
 	if err != nil {
 		return err
 	}
-	// Unload — ignore errors if the job is not currently loaded.
-	exec.Command("launchctl", "unload", "-w", p).Run() //nolint:errcheck
 	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove plist: %w", err)
 	}

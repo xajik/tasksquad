@@ -1,10 +1,12 @@
-.PHONY: build install clean build-all test dev app app-signed app-install
+.PHONY: build install clean build-all test dev app app-signed app-install test-native app-dmg app-check app-cask app-cask-check app-smoke release-check release-snapshot workflow-check
 
 -include .env
 export
 
 VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-X main.version=$(VERSION)"
+GORELEASER ?= goreleaser
+ACTIONLINT ?= actionlint
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 
@@ -26,6 +28,38 @@ build-all:
 
 test:
 	CGO_ENABLED=0 go test ./...
+
+test-native:
+	CGO_ENABLED=1 go test ./...
+
+app-check:
+	VERSION=$(VERSION) ./scripts/test-macos-app.sh
+
+app-dmg:
+	VERSION=$(VERSION) ./scripts/package-macos-app.sh
+
+app-cask:
+	VERSION=$(VERSION) ./scripts/generate-homebrew-cask.sh
+
+app-cask-check: app-cask
+	./scripts/test-homebrew-cask.sh
+
+release-check:
+	./scripts/check-release-secrets.sh
+
+workflow-check:
+	$(ACTIONLINT) ../../.github/workflows/ci.yml ../../.github/workflows/daemon.yml
+
+release-snapshot:
+	$(GORELEASER) check
+	$(GORELEASER) release --snapshot --clean --skip=publish
+
+# Isolated menu-bar fixture: no authentication, polling, tasks, or autostart.
+app-smoke:
+	mkdir -p dist/TaskSquad-Smoke.app/Contents/MacOS
+	CGO_ENABLED=1 go build -o dist/TaskSquad-Smoke.app/Contents/MacOS/TaskSquad ./scripts/macos-smoke
+	sed -e 's/ai.tasksquad.tsq/ai.tasksquad.smoke/' -e 's/__VERSION__/0.0.0/g' scripts/Info.plist.template > dist/TaskSquad-Smoke.app/Contents/Info.plist
+	./dist/TaskSquad-Smoke.app/Contents/MacOS/TaskSquad
 
 install: build
 	mkdir -p "$(DESTDIR)$(BINDIR)"

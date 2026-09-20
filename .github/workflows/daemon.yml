@@ -4,12 +4,23 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing stable tag to retry the macOS app release (vX.Y.Z)'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: daemon-release
+  cancel-in-progress: false
+
 jobs:
   goreleaser:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +33,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v5
         with:
           distribution: goreleaser
-          version: latest
+          version: v1.26.2 # Keep the existing v1 CLI formula format.
           args: release --clean
           workdir: packages/daemon
         env:
@@ -31,18 +42,40 @@ jobs:
 
   macos-app:
     needs: goreleaser
+    if: ${{ !cancelled() && (needs.goreleaser.result == 'success' || github.event_name == 'workflow_dispatch') }}
     runs-on: macos-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    defaults:
+      run:
+        working-directory: packages/daemon
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
 
-      - name: Build unsigned .app
-        working-directory: packages/daemon
+      - name: Validate release tag and credentials
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
-          ./scripts/generate-icon.sh
-          VERSION="${GITHUB_REF_NAME}" ./scripts/build-macos-app.sh
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Expected vX.Y.Z" >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
+          make release-check
+
+      - name: Test and build universal app
+        run: make test-native app app-check VERSION="$RELEASE_TAG"
 
       - name: Import signing certificate
         env:
@@ -50,23 +83,24 @@ jobs:
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
           KEYCHAIN_PASSWORD=$(uuidgen)
-          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          echo "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode -o cert.p12
-          security import cert.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-          rm -f cert.p12
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          KEYCHAIN="$RUNNER_TEMP/tasksquad-build.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 
       - name: Codesign
         env:
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
-          codesign --force --deep --options runtime --timestamp \
-            --entitlements packages/daemon/scripts/entitlements.plist \
-            --sign "$MACOS_SIGNING_IDENTITY" \
-            packages/daemon/dist/TaskSquad.app
-          codesign --verify --deep --strict --verbose=2 packages/daemon/dist/TaskSquad.app
+          codesign --force --options runtime --timestamp \
+            --entitlements scripts/entitlements.plist \
+            --sign "$MACOS_SIGNING_IDENTITY" dist/TaskSquad.app
+          codesign --verify --deep --strict --verbose=2 dist/TaskSquad.app
 
       - name: Notarize and staple
         env:
@@ -74,35 +108,60 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
         run: |
-          echo "$APPLE_API_KEY_P8" > AuthKey.p8
-          cd packages/daemon/dist
-          ditto -c -k --keepParent TaskSquad.app TaskSquad.zip
-          xcrun notarytool submit TaskSquad.zip \
-            --key ../../../AuthKey.p8 \
+          umask 077
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          ditto -c -k --keepParent dist/TaskSquad.app dist/TaskSquad.zip
+          xcrun notarytool submit dist/TaskSquad.zip \
+            --key "$RUNNER_TEMP/AuthKey.p8" \
             --key-id "$APPLE_API_KEY_ID" \
             --issuer "$APPLE_API_ISSUER" \
-            --wait
-          xcrun stapler staple TaskSquad.app
-          rm -f TaskSquad.zip
-          cd -
-          rm -f AuthKey.p8
+            --wait --output-format json > dist/notarization.json
+          python3 -c 'import json; r=json.load(open("dist/notarization.json")); print(r); assert r["status"] == "Accepted", "Notarization rejected"'
+          xcrun stapler staple dist/TaskSquad.app
+          xcrun stapler validate dist/TaskSquad.app
+          spctl --assess --type execute -vv dist/TaskSquad.app
 
-      - name: Verify Gatekeeper acceptance
-        run: |
-          spctl --assess --type execute -vv packages/daemon/dist/TaskSquad.app
+      - name: Package and test installation
+        run: make app-dmg app-check app-cask-check VERSION="$RELEASE_TAG"
 
-      - name: Build DMG
-        run: |
-          cd packages/daemon/dist
-          rm -rf dmg-root
-          mkdir dmg-root
-          cp -R TaskSquad.app dmg-root/
-          ln -s /Applications dmg-root/Applications
-          hdiutil create -volname TaskSquad -srcfolder dmg-root -ov -format UDZO \
-            "TaskSquad-${GITHUB_REF_NAME#v}.dmg"
-
-      - name: Upload release asset
+      - name: Upload release assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ github.ref_name }}" packages/daemon/dist/TaskSquad-*.dmg --clobber
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            "dist/TaskSquad-${RELEASE_TAG#v}.dmg" \
+            "dist/TaskSquad-${RELEASE_TAG#v}.dmg.sha256" --clobber
+
+      - name: Check out Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: xajik/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update app cask after asset publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Retrying an older release must not downgrade the current cask.
+          LATEST_TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          if [[ "$LATEST_TAG" != "$RELEASE_TAG" ]]; then
+            echo "Published $RELEASE_TAG assets; leaving latest cask at $LATEST_TAG."
+            exit 0
+          fi
+          mkdir -p ../../homebrew-tap/Casks
+          cp dist/homebrew/Casks/tasksquad.rb ../../homebrew-tap/Casks/tasksquad.rb
+          cd ../../homebrew-tap
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Casks/tasksquad.rb
+          if ! git diff --cached --quiet; then
+            git commit -m "Update TaskSquad app to $RELEASE_TAG"
+            git push
+          fi
+
+      - name: Clean up signing credentials
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/AuthKey.p8"
+          security delete-keychain "$RUNNER_TEMP/tasksquad-build.keychain-db" || true
