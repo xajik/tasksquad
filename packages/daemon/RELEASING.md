@@ -65,9 +65,17 @@ Configure these repository Actions secrets before tagging a release:
 An **Apple Development** certificate cannot replace a **Developer ID
 Application** certificate for public distribution. See Apple's
 [notarization guide](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
-Secrets are checked by name without printing their values. The app release
-fails if signing or notarization is unavailable; it never publishes an unsigned
-DMG as the production installer.
+Secrets are checked by name without printing their values.
+
+If any of the six signing/notarization secrets above are missing, the release
+does **not** fail: it ships `dist/TaskSquad.app` ad-hoc signed and unnotarized
+instead, uploaded to the GitHub release as usual. It deliberately skips the
+Homebrew cask update for that build — the cask is the default `brew install`
+path for most users, so an unnotarized app only goes out to people who
+explicitly download the DMG from the release page and know to bypass
+Gatekeeper (right-click → Open, or `xattr -d com.apple.quarantine
+"/Applications/TaskSquad.app"`). `TAP_GITHUB_TOKEN` only matters once real
+signing is configured.
 
 ## Release flow
 
@@ -75,12 +83,14 @@ Push a new stable `vX.Y.Z` tag containing the changes. The release workflow:
 
 1. Publishes CLI archives/checksums and updates `Formula/tsq.rb` via GoReleaser.
 2. Runs native tests, builds both macOS architectures, and checks the app bundle.
-3. Signs, requires an Accepted notarization result, staples, and checks Gatekeeper.
+3. If signing secrets are configured: signs, requires an Accepted notarization
+   result, staples, and checks Gatekeeper. Otherwise: ad-hoc signs instead
+   (see above) and skips straight to packaging.
 4. Packages a DMG and mounts/copies it into a temporary Applications directory
    to verify installation, executable version, and bundled `tsq` alias.
 5. Uploads the DMG and its SHA-256 file to the same GitHub release.
-6. Generates and validates `Casks/tasksquad.rb` against the actual DMG checksum,
-   then pushes it to the tap. The CLI formula is preserved. An older release
+6. If signed: generates and validates `Casks/tasksquad.rb` against the actual
+   DMG checksum, then pushes it to the tap. The CLI formula is preserved. An older release
    retry does not downgrade the latest app cask.
 
 Use **Release Daemon → Run workflow → tag** to retry the app portion for a

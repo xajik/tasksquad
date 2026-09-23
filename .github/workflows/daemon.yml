@@ -59,6 +59,7 @@ jobs:
           go-version: '1.23'
 
       - name: Validate release tag and credentials
+        id: validate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
@@ -73,11 +74,21 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
           make release-check
+          # Fall back to an ad-hoc-signed, unnotarized app instead of failing
+          # the release when Apple signing credentials aren't configured.
+          if [[ -n "$MACOS_CERTIFICATE_P12_BASE64" && -n "$MACOS_CERTIFICATE_PASSWORD" && -n "$MACOS_SIGNING_IDENTITY" \
+                && -n "$APPLE_API_KEY_ID" && -n "$APPLE_API_ISSUER" && -n "$APPLE_API_KEY_P8" ]]; then
+            echo "signing_available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Apple signing secrets are missing — shipping an ad-hoc-signed (unnotarized) app instead of failing. Users must right-click > Open on first launch. See packages/daemon/RELEASING.md."
+            echo "signing_available=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Test and build universal app
         run: make test-native app app-check VERSION="$RELEASE_TAG"
 
       - name: Import signing certificate
+        if: steps.validate.outputs.signing_available == 'true'
         env:
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -94,6 +105,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 
       - name: Codesign
+        if: steps.validate.outputs.signing_available == 'true'
         env:
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
@@ -103,6 +115,7 @@ jobs:
           codesign --verify --deep --strict --verbose=2 dist/TaskSquad.app
 
       - name: Notarize and staple
+        if: steps.validate.outputs.signing_available == 'true'
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
@@ -121,6 +134,16 @@ jobs:
           xcrun stapler validate dist/TaskSquad.app
           spctl --assess --type execute -vv dist/TaskSquad.app
 
+      # No Apple credentials configured: ship an ad-hoc-signed app instead of
+      # failing the release. Gatekeeper will still block it on first launch
+      # (unsigned/unnotarized downloads always are) — the user must right-click
+      # > Open, or run: xattr -d com.apple.quarantine "/Applications/TaskSquad.app"
+      - name: Ad-hoc sign (no Apple credentials configured)
+        if: steps.validate.outputs.signing_available != 'true'
+        run: |
+          codesign --force --sign - dist/TaskSquad.app
+          codesign --verify --deep --strict --verbose=2 dist/TaskSquad.app
+
       - name: Package and test installation
         run: make app-dmg app-check app-cask-check VERSION="$RELEASE_TAG"
 
@@ -132,7 +155,12 @@ jobs:
             "dist/TaskSquad-${RELEASE_TAG#v}.dmg" \
             "dist/TaskSquad-${RELEASE_TAG#v}.dmg.sha256" --clobber
 
+      # The Homebrew cask is the default install path for most users, so an
+      # ad-hoc/unnotarized build is deliberately kept out of it — it only goes
+      # up as a direct GitHub release download, for people who'll knowingly
+      # bypass Gatekeeper. Update the cask once real signing is configured.
       - name: Check out Homebrew tap
+        if: steps.validate.outputs.signing_available == 'true'
         uses: actions/checkout@v4
         with:
           repository: xajik/homebrew-tap
@@ -140,6 +168,7 @@ jobs:
           path: homebrew-tap
 
       - name: Update app cask after asset publication
+        if: steps.validate.outputs.signing_available == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
