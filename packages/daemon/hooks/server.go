@@ -132,6 +132,8 @@ func NewHandler(cfg *config.Config, agents []Agent, reporter SupervisorReporter,
 	mux.HandleFunc("/hooks/tui-blocked", srv.handleTUIBlocked)
 	mux.HandleFunc("/hooks/opencode", srv.handleOpenCode)
 	mux.HandleFunc("/hooks/codex", srv.handleCodex)
+	mux.HandleFunc("/hooks/terminal/input", srv.handleTerminal)
+	mux.HandleFunc("/hooks/terminal/close", srv.handleTerminal)
 	mux.HandleFunc("/hooks/skill", srv.handleSkill)
 	mux.HandleFunc("/hooks/supervisor", srv.handleSupervisor)
 	mux.HandleFunc("/hooks/trigger-supervisor", srv.handleTriggerSupervisor)

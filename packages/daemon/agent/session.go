@@ -22,10 +22,14 @@ import (
 // status. For the PTY path it closes stdin and lets cmd.Wait() in startTask
 // determine the exit code and call complete() from there.
 func (a *Agent) Complete(cfg *config.Config, status string, transcriptPath string) {
+	a.completeScoped(cfg, status, transcriptPath, "", "")
+}
+
+func (a *Agent) completeScoped(cfg *config.Config, status, transcriptPath, expectedTask, expectedSession string) bool {
 	a.st.mu.Lock()
-	if a.st.completing || a.st.sessionID == "" {
+	if a.st.completing || a.st.sessionID == "" || (expectedTask != "" && a.st.taskID != expectedTask) || (expectedSession != "" && a.st.tmuxSession != expectedSession) {
 		a.st.mu.Unlock()
-		return
+		return false
 	}
 	a.st.completing = true
 	wasLearning := a.st.mode == ModeLearning
@@ -48,6 +52,7 @@ func (a *Agent) Complete(cfg *config.Config, status string, transcriptPath strin
 	a.st.mu.Unlock()
 
 	go a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath, wasLearning)
+	return true
 }
 
 // StopAndPause is called by the hook server when Claude Code's Stop hook fires
@@ -126,6 +131,17 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 		"agent_id":   agentID,
 		"message":    finalText,
 	})
+	// The native activity feed reads the local journal, including normal paused
+	// turns (previously only Notification hooks wrote these records).
+	a.st.mu.Lock()
+	if a.st.sessionID != sessionID || a.st.completing {
+		a.st.mu.Unlock()
+		return // A close/reset won while the remote notify request was in flight.
+	}
+	if a.st.taskLog != nil {
+		a.st.taskLog.Write(tasklog.EventAgentTurn{Type: "agent_turn", Body: finalText, TranscriptPath: transcriptPath, Ts: tasklog.Now()}) //nolint:errcheck
+	}
+	a.st.mu.Unlock()
 
 	autoClose := false
 	if err != nil {
@@ -153,26 +169,33 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	go a.uploadAndAttachLog(cfg, sessionID, logContent)
 
 	if autoClose {
-		a.autoCloseAndReset()
+		a.autoCloseAndReset(sessionID)
 		return
 	}
 
 	a.st.mu.Lock()
+	if a.st.sessionID != sessionID || a.st.completing || a.st.mode != ModeRunning {
+		a.st.mu.Unlock()
+		return
+	}
 	if transcriptPath != "" {
 		a.st.transcriptPath = transcriptPath
 	}
+	a.st.mode = validTransitions[ModeRunning][EventHookStop]
+	a.st.tuiBlocked = false
 	a.st.mu.Unlock()
-	if err := a.st.Transition(EventHookStop); err != nil {
-		logger.Warn(fmt.Sprintf("[%s] StopAndPause: unexpected transition error: %v", a.Config.Name, err))
-	}
 
 	logger.Info(fmt.Sprintf("[%s] Paused after response — tmux session kept alive, waiting for reply or close", a.Config.Name))
 }
 
 // autoCloseAndReset cleans up all task-scoped resources and resets the agent to
 // idle when the server responds with close:true. Must NOT be called with a.st.mu held.
-func (a *Agent) autoCloseAndReset() {
+func (a *Agent) autoCloseAndReset(expectedSession string) {
 	a.st.mu.Lock()
+	if expectedSession == "" || a.st.sessionID != expectedSession || a.st.completing {
+		a.st.mu.Unlock()
+		return
+	}
 	fifo := a.st.fifoPath
 	runLog := a.st.runLog
 	pw := a.st.stdinWrite
@@ -316,7 +339,7 @@ func (a *Agent) PushIntermediateResponse(cfg *config.Config, promptResponse, tra
 	})
 
 	if autoClose, _ := resp["close"].(bool); autoClose {
-		a.autoCloseAndReset()
+		a.autoCloseAndReset(sessionID)
 	}
 }
 
