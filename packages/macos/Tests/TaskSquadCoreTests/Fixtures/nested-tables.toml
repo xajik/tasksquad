@@ -1,0 +1,12 @@
+[[agents]]
+id = 'one'
+[agents.future]
+foo = 'first'
+[[agents]]
+id = 'two'
+[agents.future]
+foo = 'second'
+[future.child]
+value = 'test'
+[future]
+other = 'test'

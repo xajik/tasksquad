@@ -1,0 +1,3 @@
+agents = [{id = 'a'}]
+[[agents]]
+id = 'b'

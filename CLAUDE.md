@@ -11,17 +11,21 @@ packages/
   daemon/   Go — the `tsq` binary users install locally
   worker/   TypeScript — Cloudflare Worker API (D1, R2, KV, Durable Objects)
   portal/   TypeScript/React — the web app at tasksquad.ai (Vite + Cloudflare Pages)
+  macos/    Swift — native macOS rewrite of the daemon/control panel, in progress
 ```
 
-Each package is independently deployed and has its own `Makefile` (`make build|test|dev|deploy`).
-The root `Makefile` just fans out `make test` to all three. There is no shared build step —
-changes to one package don't require touching the others unless the API contract between them
-changes.
+Each package has its own `Makefile`. daemon, worker, and portal are independently deployed and
+support `make build|test|dev|deploy`; `macos` is a local app with no deploy step of its own — it
+supports `make build|test|package|install` instead (see `packages/macos/Makefile`). The root
+`Makefile` fans out `make test` to daemon, worker, and portal always, plus `macos`
+(`test-compatibility`) when running on Darwin — `macos` isn't buildable on other platforms. There
+is no shared build step — changes to one package don't require touching the others unless the API
+contract between them changes.
 
 ## Commands
 
 ```bash
-make test                              # from repo root: runs daemon + portal + worker tests
+make test                              # from repo root: daemon + portal + worker always, macos too on Darwin
 
 cd packages/daemon && make dev         # air hot-reload — rebuilds+restarts tsq on save
 cd packages/daemon && make build       # go build -o tsq .

@@ -1,0 +1,87 @@
+name: Native macOS signed preview
+
+# Explicit preview workflow while feature parity is being implemented. It creates
+# a draft prerelease, never replaces the existing Go daemon's release assets.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Native preview version (X.Y.Z-preview.N)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-native-preview
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ inputs.version }}
+    defaults:
+      run:
+        working-directory: packages/macos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/daemon/go.mod
+      - name: Install terminal test dependency
+        run: command -v tmux || brew install tmux
+      - name: Validate version and test
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]] || { echo 'Expected X.Y.Z-preview.N'; exit 1; }
+          make test-compatibility app-check
+      - name: Import Developer ID and notarization credentials
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          : "${MACOS_CERTIFICATE_P12_BASE64:?Missing certificate}"
+          : "${MACOS_CERTIFICATE_PASSWORD:?Missing certificate password}"
+          : "${APPLE_API_KEY_ID:?Missing Apple API key ID}"
+          : "${APPLE_API_ISSUER:?Missing Apple issuer}"
+          : "${APPLE_API_KEY_P8:?Missing Apple API key}"
+          umask 077
+          keychain_password=$(uuidgen)
+          echo "::add-mask::$keychain_password"
+          keychain="$RUNNER_TEMP/tasksquad-native.keychain-db"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/native-cert.p12"
+          security import "$RUNNER_TEMP/native-cert.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/NativeAuthKey.p8"
+          xcrun notarytool store-credentials tasksquad-native-preview --keychain "$keychain" \
+            --key "$RUNNER_TEMP/NativeAuthKey.p8" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
+      - name: Sign, notarize, staple, and package
+        env:
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          NOTARY_PROFILE: tasksquad-native-preview
+          NOTARY_KEYCHAIN: ${{ runner.temp }}/tasksquad-native.keychain-db
+        run: make app-signed package
+      - name: Create draft prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="macos-v$VERSION"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --draft --prerelease --title "TaskSquad Native $VERSION" --notes-file PREVIEW.md \
+            "dist/TaskSquad-Native-$VERSION.dmg" "dist/TaskSquad-Native-$VERSION.dmg.sha256"
+      - name: Remove signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/native-cert.p12" "$RUNNER_TEMP/NativeAuthKey.p8"
+          security delete-keychain "$RUNNER_TEMP/tasksquad-native.keychain-db" || true

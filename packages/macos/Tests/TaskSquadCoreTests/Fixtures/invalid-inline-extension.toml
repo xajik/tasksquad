@@ -1,0 +1,5 @@
+server = {url = 'https://api.tasksquad.ai'}
+[server]
+poll_interval = 30
+[[agents]]
+id = 'a'

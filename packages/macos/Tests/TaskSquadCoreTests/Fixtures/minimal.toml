@@ -1,0 +1,5 @@
+[[agents]]
+id = "agent-abc"
+name = "coder"
+command = "claude"
+work_dir = "~/Projects/example"

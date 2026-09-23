@@ -1,0 +1,62 @@
+name: Native macOS
+
+on:
+  pull_request:
+    paths:
+      - 'packages/macos/**'
+      - 'packages/daemon/**'
+      - '.github/workflows/macos-native.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/macos/**'
+      - 'packages/daemon/**'
+      - '.github/workflows/macos-native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: macos-15
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: packages/macos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/daemon/go.mod
+      - name: Install terminal test dependency
+        run: command -v tmux || brew install tmux
+      - name: Test native implementation against Go
+        run: make test-compatibility
+      - name: Render native UI components
+        run: make test-ui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-ui-renders
+          path: packages/macos/.build/ui-artifacts/*.png
+      - name: Build and check universal application
+        run: make app-check
+      - name: Test installation in an isolated directory
+        env:
+          APP_DIR: ${{ runner.temp }}/TaskSquadInstall
+        run: |
+          make install
+          "$APP_DIR/TaskSquad Native.app/Contents/MacOS/TaskSquad" --version
+          "$APP_DIR/TaskSquad Native.app/Contents/MacOS/TaskSquad" --check-config Tests/TaskSquadCoreTests/Fixtures/full.toml
+      - name: Package development artifact
+        run: make package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TaskSquad-native-development
+          path: |
+            packages/macos/dist/TaskSquad-Native-*.dmg
+            packages/macos/dist/TaskSquad-Native-*.dmg.sha256

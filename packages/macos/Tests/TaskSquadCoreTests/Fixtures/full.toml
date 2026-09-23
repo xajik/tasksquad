@@ -1,0 +1,32 @@
+[server]
+url = 'http://localhost:8787/api'
+poll_interval = 5
+[hooks]
+port = 8000
+[ui]
+port = 8001
+[analytics]
+enabled = true
+api_key = 'test-key'
+[firebase]
+api_key = 'public-client-key'
+auth_domain = 'example.firebaseapp.com'
+[supervisor]
+command = 'opencode -m local/model'
+[dreamer]
+command = 'claude'
+window_start = '02:00'
+window_end = '06:00'
+[[agents]]
+id = 'agent-one'
+name = 'one'
+command = 'codex'
+work_dir = '~/Projects/demo'
+provider = 'codex'
+is_supervisor = true
+[[agents]]
+id = 'agent-two'
+name = 'two'
+command = '/usr/bin/printf'
+provider = 'stdout'
+work_dir = '/tmp'

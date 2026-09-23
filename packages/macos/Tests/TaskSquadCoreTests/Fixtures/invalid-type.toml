@@ -1,0 +1,4 @@
+[server]
+poll_interval = 'sixty'
+[[agents]]
+id = 'first'

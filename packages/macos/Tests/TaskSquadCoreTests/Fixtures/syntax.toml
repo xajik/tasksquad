@@ -1,0 +1,15 @@
+# Includes uncommon but valid user configuration syntax.
+server.url = 'http://localhost:8787'
+server.poll_interval = 0x3c
+agents = [
+  { id = 'one', command = "claude --model \"example\"", work_dir = '/tmp/#path' },
+  { id = "\u0074wo", name = '猫', command = '''printf 'test' ''', provider = 'stdout' },
+]
+[supervisor]
+command = """
+opencode \
+    -m local/model"""
+[future]
+date = 1979-05-27T07:32:00Z
+float = 1_000.25
+unknown = [{ nested = [1,2,3] }]
