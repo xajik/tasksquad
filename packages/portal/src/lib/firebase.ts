@@ -12,7 +12,10 @@ const firebaseConfig = {
 
 let app: FirebaseApp | null = null
 let auth: ReturnType<typeof getAuth> | null = null
-if (firebaseConfig.appId && firebaseConfig.apiKey) {
+// Auth only needs apiKey/authDomain/projectId. appId/messagingSenderId are
+// for Analytics/Messaging — required by getFCMToken() (which checks for them
+// itself), not by sign-in. Don't gate Auth on fields it never uses.
+if (firebaseConfig.apiKey) {
   app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig)
   auth = getAuth(app)
 } else {
