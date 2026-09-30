@@ -1,6 +1,9 @@
 .PHONY: build test test-compatibility test-keychain test-ui dev app app-check app-signed package install smoke workflow-check clean
 
 VERSION ?= 0.1.0-dev
+# Empty = universal when Rosetta is available, else native arm64 only.
+ARCHS ?=
+export ARCHS
 SWIFT ?= swift
 ACTIONLINT ?= go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
 APP_DIR ?= $(HOME)/Applications
@@ -24,7 +27,17 @@ test-keychain:
 
 test-ui:
 	mkdir -p .build/ui-artifacts
-	TSQ_UI_ARTIFACTS="$(CURDIR)/.build/ui-artifacts" $(SWIFT) test --filter NativeUITests
+	TSQ_UI_ARTIFACTS="$(CURDIR)/.build/ui-artifacts" $(SWIFT) test --filter 'NativeUITests|CustomerWorkspaceTests'
+
+.PHONY: preview-customer
+preview-customer: build
+	mkdir -p .build/CustomerPreview.app/Contents/MacOS .build/CustomerPreview.app/Contents/Resources
+	cp .build/debug/TaskSquad .build/CustomerPreview.app/Contents/MacOS/TaskSquad
+	cp scripts/customer-preview.plist .build/CustomerPreview.app/Contents/Info.plist
+	ditto .build/debug/SwiftTerm_SwiftTerm.bundle .build/CustomerPreview.app/Contents/Resources/SwiftTerm_SwiftTerm.bundle
+	ditto .build/debug/TaskSquad_TaskSquad.bundle .build/CustomerPreview.app/Contents/Resources/TaskSquad_TaskSquad.bundle
+	codesign --force --sign - .build/CustomerPreview.app
+	open .build/CustomerPreview.app --args --preview-customer
 
 dev: build
 	.build/debug/TaskSquad

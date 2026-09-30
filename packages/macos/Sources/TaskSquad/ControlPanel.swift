@@ -133,7 +133,7 @@ import TaskSquadCore
                 try await auth.acceptLogin(idToken: callback.idToken, refreshToken: callback.refreshToken, email: callback.email)
                 loginEmail = callback.email
                 error = nil
-            } catch is CancellationError { }
+            } catch where isCancellation(error) { }
             catch { self.error = error.localizedDescription }
         }
     }
@@ -215,114 +215,85 @@ import TaskSquadCore
 }
 
 enum PanelSection: String, CaseIterable, Identifiable {
-    case agents = "Agents", supervisor = "Supervisor", sessions = "Sessions", tasks = "Tasks"
-    case logs = "Daemon Logs", tools = "Tools", configuration = "Configuration"
+    case agents = "Local Agents", sessions = "Sessions", tasks = "Local Tasks"
+    case logs = "Logs", configuration = "Configuration", tools = "Tools"
     var id: String { rawValue }
-    var icon: String {
+    var icon: LucideIcon {
         switch self {
-        case .agents: "person.3"
-        case .supervisor: "eye"
-        case .sessions: "terminal"
-        case .tasks: "checklist"
-        case .logs: "doc.text"
-        case .tools: "wrench.and.screwdriver"
-        case .configuration: "gearshape"
+        case .agents: .bot
+        case .sessions: .terminal
+        case .tasks: .listChecks
+        case .logs: .scrollText
+        case .configuration: .fileCog
+        case .tools: .wrench
         }
     }
 }
 
-struct ControlPanel: View {
+/// Content for the sidebar's "This Mac" group: the local daemon's agents,
+/// tmux sessions, task journals, logs, and configuration.
+struct LocalSectionView: View {
     @ObservedObject var model: ControlPanelModel
-    @State private var section: PanelSection? = .agents
+    var section: PanelSection
+    var isActive = true
     var body: some View {
-        NavigationSplitView {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 10) {
-                    Image(systemName: "person.3.sequence.fill").font(.title2).foregroundStyle(.tint)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("TaskSquad").font(.headline)
-                        HStack(spacing: 5) { Circle().fill(model.engineRunning ? Color.green : Color.secondary).frame(width: 6, height: 6); Text(model.engineRunning ? "Engine online" : "Local workspace").font(.caption).foregroundStyle(.secondary) }
-                    }
-                }.padding(20)
-                List(PanelSection.allCases, selection: $section) { item in
-                    Label(item.rawValue, systemImage: item.icon).padding(.vertical, 4).tag(item)
-                }.listStyle(.sidebar)
-            }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 200)
-            .safeAreaInset(edge: .bottom) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label("Development build", systemImage: "hammer")
-                    Text("Currently supports stdout tasks. Other providers are in progress.").font(.caption).foregroundStyle(.secondary)
-                }.padding()
-            }
-        } detail: {
-            VStack(spacing: 0) {
-                if let error = model.error {
-                    HStack { Image(systemName: "exclamationmark.triangle"); Text(error); Spacer() }
-                        .foregroundStyle(.red).padding().textSelection(.enabled)
-                    Divider()
-                }
-                detail
-            }
-            .navigationTitle(section?.rawValue ?? "TaskSquad")
+        VStack(spacing: 0) {
+            if let error = model.error { ErrorBanner(message: error) { model.error = nil } }
+            detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .task {
+        .background(Theme.background)
+        .task(id: isActive) {
+            guard isActive else { return }
             while !Task.isCancelled {
                 await model.observeAgents()
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
             }
         }
-        .toolbar {
-            Button { Task { await model.load() } } label: { Label("Reload", systemImage: "arrow.clockwise") }
-            if model.engineRunning {
-                Button("Poll Now") { Task { await model.forcePoll() } }
-                Button("Stop Engine") { Task { await model.stopEngine() } }.disabled(model.engineBusy)
-            } else {
-                Button("Start Engine") { Task { await model.startEngine() } }
-                    .disabled(model.configuration == nil || model.engineBusy)
-            }
-        }
     }
 
     @ViewBuilder private var detail: some View {
-        switch section ?? .agents {
+        switch section {
         case .agents:
             AgentWorkspace(model: model) { pane in
-                section = .sessions
                 model.terminals.attach(pane)
+                NotificationCenter.default.post(name: .showLocalSection, object: PanelSection.sessions)
             }
-        case .supervisor:
-            Form {
-                LabeledContent("Supervisor", value: model.configuration?.supervisor?.command ?? "Not configured")
-                LabeledContent("Dreamer", value: model.configuration?.dreamer?.command ?? "Uses supervisor command")
-                LabeledContent("Dreaming window", value: "\(model.configuration?.dreamer?.windowStart.nonEmpty ?? "01:00") – \(model.configuration?.dreamer?.windowEnd.nonEmpty ?? "05:00")")
-            }.formStyle(.grouped)
         case .configuration:
-            VStack(alignment: .leading) {
-                Text(model.configurationURL.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                TextEditor(text: $model.document).font(.system(.body, design: .monospaced))
-                HStack {
-                    Button("Show in Finder") { model.revealConfiguration() }
-                    Spacer()
-                    Button("Discard Changes") { model.document = model.savedDocument }
-                    Button("Save Configuration") { Task { await model.save() } }.keyboardShortcut("s")
-                        .disabled(model.document == model.savedDocument)
+            VStack(alignment: .leading, spacing: 0) {
+                PageHeader(title: "Configuration", subtitle: model.configurationURL.path) {
+                    Button { Task { await model.load() } } label: { Icon(.refreshCw) }.buttonStyle(.tsqIcon).help("Reload from disk")
+                    Button("Show in Finder") { model.revealConfiguration() }.buttonStyle(.tsq(.outline, size: .default))
                 }
-            }.padding()
+                TextEditor(text: $model.document).font(.system(size: 12, design: .monospaced))
+                    .scrollContentBackground(.hidden).padding(8)
+                    .background(Theme.muted.opacity(0.4), in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.border))
+                    .padding(.horizontal, 20)
+                HStack {
+                    Spacer()
+                    Button("Discard Changes") { model.document = model.savedDocument }.buttonStyle(.tsq(.outline, size: .default))
+                        .disabled(model.document == model.savedDocument)
+                    Button("Save Configuration") { Task { await model.save() } }.buttonStyle(.tsqPrimary).keyboardShortcut("s")
+                        .disabled(model.document == model.savedDocument)
+                }.padding(20)
+            }
         case .tasks:
             TaskWorkspace(model: model)
         case .logs:
             HSplitView {
-                List(selection: $model.selectedLog) {
-                    ForEach(model.logFiles.filter { $0.pathExtension == "log" }, id: \.self) { url in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Label(url.lastPathComponent, systemImage: url.pathExtension == "log" ? "doc.text" : "curlybraces").lineLimit(1)
-                            Text(url.deletingLastPathComponent().lastPathComponent).font(.caption).foregroundStyle(.secondary)
-                        }.padding(.vertical, 5).tag(url)
+                VStack(spacing: 0) {
+                    TSQList(items: model.logFiles.filter { $0.pathExtension == "log" }, id: \.self, selection: $model.selectedLog) { url in
+                        HStack(spacing: 10) {
+                            Icon(.scrollText).foregroundStyle(Theme.mutedForeground)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(url.lastPathComponent).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                                Text(url.deletingLastPathComponent().lastPathComponent).font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
+                            }
+                        }
                     }
-                }.frame(minWidth: 200, idealWidth: 240, maxWidth: 320)
+                }.frame(minWidth: 220, idealWidth: 260, maxWidth: 340).edgeBorder(.trailing)
                 if let url = model.selectedLog { DocumentPreview(url: url).id(url) }
-                else { empty("Read your agent's activity", "Select a log or task journal. New output appears automatically.") }
+                else { EmptyState(icon: .scrollText, title: "Read your agent's activity", message: "Select a log or task journal. New output appears automatically.") }
             }
             .task {
                 while !Task.isCancelled { await model.refreshLogs(); do { try await Task.sleep(for: .seconds(2)) } catch { return } }
@@ -330,30 +301,58 @@ struct ControlPanel: View {
         case .sessions:
             TerminalWorkspace(model: model.terminals)
         case .tools:
-            Form {
-                Section("Account") {
-                    if let email = model.loginEmail { LabeledContent("Signed in", value: email) }
-                    if model.loginInProgress {
-                        HStack { ProgressView().controlSize(.small); Text("Waiting for browser sign-in"); Button("Cancel") { model.cancelLogin() } }
-                    } else { Button("Sign In to TaskSquad") { model.signIn() } }
-                }
-                LabeledContent("Configuration", value: model.configurationURL.path)
-                LabeledContent("Logs", value: model.paths.logs.path)
-                if let config = model.configuration {
-                    LabeledContent("API", value: config.server.url)
-                    LabeledContent("Hooks port", value: String(config.hooks.port))
-                    LabeledContent("Poll interval", value: "\(config.server.pollInterval) seconds")
-                }
-                Button("Open Logs in Finder") { NSWorkspace.shared.open(model.paths.logs) }
-            }.formStyle(.grouped).textSelection(.enabled)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    PageHeader(title: "Tools", subtitle: "Local daemon account, paths, and supervisor") { EmptyView() }.padding(.horizontal, -20)
+                    Card {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Daemon account").font(.system(size: 15, weight: .semibold))
+                            if let email = model.loginEmail { row("Signed in", email) }
+                            if model.loginInProgress {
+                                HStack { ProgressView().controlSize(.small); Text("Waiting for browser sign-in").foregroundStyle(Theme.mutedForeground); Spacer(); Button("Cancel") { model.cancelLogin() }.buttonStyle(.tsqOutline) }
+                            } else { Button("Sign in to TaskSquad") { model.signIn() }.buttonStyle(.tsqPrimary) }
+                            Text("The local daemon signs in separately from the project workspace.").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
+                        }
+                    }
+                    Card {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Paths").font(.system(size: 15, weight: .semibold))
+                            row("Configuration", model.configurationURL.path)
+                            row("Logs", model.paths.logs.path)
+                            if let config = model.configuration {
+                                row("API", config.server.url)
+                                row("Hooks port", String(config.hooks.port))
+                                row("Poll interval", "\(config.server.pollInterval) seconds")
+                            }
+                            HStack {
+                                Button { NSWorkspace.shared.open(model.paths.logs) } label: { Label("Open Logs in Finder", icon: .folder) }.buttonStyle(.tsqOutline)
+                                if model.engineRunning { Button { Task { await model.forcePoll() } } label: { Label("Poll Now", icon: .refreshCw) }.buttonStyle(.tsqOutline) }
+                            }
+                        }
+                    }
+                    Card {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Supervisor").font(.system(size: 15, weight: .semibold))
+                            row("Supervisor", model.configuration?.supervisor?.command ?? "Not configured")
+                            row("Dreamer", model.configuration?.dreamer?.command ?? "Uses supervisor command")
+                            row("Dreaming window", "\(model.configuration?.dreamer?.windowStart.nonEmpty ?? "01:00") – \(model.configuration?.dreamer?.windowEnd.nonEmpty ?? "05:00")")
+                        }
+                    }
+                }.padding(20).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            }.textSelection(.enabled)
         }
     }
-    private func empty(_ title: String, _ message: String) -> some View {
-        VStack(spacing: 12) {
-            Text(title).font(.title2)
-            Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center)
-        }.frame(maxWidth: .infinity, maxHeight: .infinity).padding()
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label).font(.system(size: 13)).foregroundStyle(Theme.mutedForeground).frame(width: 130, alignment: .leading)
+            Text(value).font(.system(size: 13)).foregroundStyle(Theme.foreground).lineLimit(2)
+        }
     }
+}
+
+extension Notification.Name {
+    /// Posted with a `PanelSection` to switch the main window's selection.
+    static let showLocalSection = Notification.Name("ai.tasksquad.showLocalSection")
 }
 
 private extension String { var nonEmpty: String? { isEmpty ? nil : self } }

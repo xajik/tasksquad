@@ -4,12 +4,14 @@ public struct LoginCallback: Decodable, Sendable {
     public let idToken: String
     public let refreshToken: String
     public let email: String
-    enum CodingKeys: String, CodingKey { case idToken = "id_token", refreshToken = "refresh_token", email }
+    public let firebaseAPIKey: String
+    enum CodingKeys: String, CodingKey { case idToken = "id_token", refreshToken = "refresh_token", email, firebaseAPIKey = "firebase_api_key" }
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         idToken = try c.decodeIfPresent(String.self, forKey: .idToken) ?? ""
         refreshToken = try c.decodeIfPresent(String.self, forKey: .refreshToken) ?? ""
         email = try c.decodeIfPresent(String.self, forKey: .email) ?? ""
+        firebaseAPIKey = try c.decodeIfPresent(String.self, forKey: .firebaseAPIKey) ?? ""
     }
 }
 
@@ -20,12 +22,16 @@ public struct LoginFlow: Sendable {
     private let continuation: AsyncThrowingStream<LoginCallback, Error>.Continuation
     private let timeout: Task<Void, Never>
 
-    public static func begin(dashboardURL: String, timeout: Duration = .seconds(300)) async throws -> Self {
+    public static func begin(dashboardURL: String, timeout: Duration = .seconds(300), secureCallback: Bool = false) async throws -> Self {
         let (stream, continuation) = AsyncThrowingStream<LoginCallback, Error>.makeStream(bufferingPolicy: .bufferingOldest(1))
+        let state = secureCallback ? UUID().uuidString + UUID().uuidString : nil
         let cors = ["Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS",
                     "Access-Control-Allow-Headers": "Content-Type"]
         let server = try LocalHTTPServer(bodyLimit: 16 * 1024) { request in
             guard request.path == "/callback" else { return .init(status: 404) }
+            if let state, request.components?.queryItems?.first(where: { $0.name == "state" })?.value != state {
+                return .init(status: 404)
+            }
             if request.method == "OPTIONS" { return .init(status: 204, headers: cors) }
             guard request.method == "POST" else { return .init(status: 405, headers: cors) }
             guard let callback = try? JSONDecoder().decode(LoginCallback.self, from: request.body), !callback.idToken.isEmpty else {
@@ -46,7 +52,7 @@ public struct LoginFlow: Sendable {
             await server.stop()
             throw URLError(.badURL)
         }
-        url.queryItems = [URLQueryItem(name: "redirect_uri", value: "http://localhost:\(port)/callback")]
+        url.queryItems = [URLQueryItem(name: "redirect_uri", value: "http://localhost:\(port)/callback" + (state.map { "?state=" + $0 } ?? ""))]
         guard let browserURL = url.url else { await server.stop(); throw URLError(.badURL) }
         let deadline = Task {
             do { try await Task.sleep(for: timeout) } catch { return }

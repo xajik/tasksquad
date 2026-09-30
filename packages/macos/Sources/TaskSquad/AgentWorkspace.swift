@@ -24,7 +24,14 @@ struct AgentWorkspace: View {
     private func snapshot(_ id: String) -> AgentSnapshot? { model.agentSnapshots.first { $0.id == id } }
     private func mode(_ id: String) -> String { model.engineRunning ? snapshot(id)?.mode.rawValue ?? "starting" : observed(id)?.mode ?? "offline" }
     private func color(_ mode: String) -> Color {
-        switch mode { case "running": .green; case "waiting_input": .orange; case "wrapping_up": .purple; case "idle": .blue; default: .secondary }
+        switch mode { case "running": Theme.live; case "waiting_input": Theme.amber; case "wrapping_up": .purple; case "idle": Theme.brand; default: Theme.mutedForeground }
+    }
+    private func badge(_ mode: String) -> Badge {
+        switch mode {
+        case "idle": Badge("Online", variant: .success)
+        case "offline", "starting": Badge(mode.capitalized)
+        default: Badge(status: mode)
+        }
     }
     private func taskID(_ id: String) -> String { model.engineRunning ? snapshot(id)?.taskID ?? "" : observed(id)?.taskID ?? "" }
     private func logURL(_ agent: DaemonConfiguration.Agent) -> URL? {
@@ -35,69 +42,74 @@ struct AgentWorkspace: View {
     var body: some View {
         HSplitView {
             VStack(spacing: 0) {
-                HStack { Image(systemName: "magnifyingglass").foregroundStyle(.secondary); TextField("Find an agent or folder", text: $query).textFieldStyle(.plain) }.padding(14)
-                Divider()
-                List(selection: $model.selectedAgentID) {
-                    ForEach(agentFolders, id: \.path) { folder in
-                        Label(folder.path.isEmpty ? "No working folder" : folder.path, systemImage: "folder")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(nil)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .help(folder.path)
-                            .padding(.top, 10)
-                            .padding(.bottom, 4)
-                        ForEach(folder.agents) { agent in
-                            HStack(spacing: 10) {
-                                Text(String(agent.name.prefix(2)).uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(Color.accentColor)
-                                    .frame(width: 34, height: 34).background(Color.accentColor.opacity(0.13), in: RoundedRectangle(cornerRadius: 8))
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(agent.name).fontWeight(.medium)
-                                    HStack(spacing: 5) { Circle().fill(color(mode(agent.id))).frame(width: 6, height: 6); Text(mode(agent.id).replacingOccurrences(of: "_", with: " ")) }.font(.caption).foregroundStyle(.secondary)
-                                }
-                            }.padding(.vertical, 6).tag(agent.id)
+                SearchField("Find an agent or folder", text: $query).padding(12)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(agentFolders, id: \.path) { folder in
+                            HStack(spacing: 6) {
+                                Icon(.folder, size: 12)
+                                Text(folder.path.isEmpty ? "No working folder" : (folder.path as NSString).abbreviatingWithTildeInPath)
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.head)
+                            }
+                            .foregroundStyle(Theme.mutedForeground).help(folder.path)
+                            .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 4)
+                            ForEach(folder.agents) { agent in
+                                Button { model.selectedAgentID = agent.id } label: {
+                                    HStack(spacing: 10) {
+                                        StatusDot(active: ["running", "idle"].contains(mode(agent.id)), color: color(mode(agent.id)))
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(agent.name).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.foreground)
+                                            Text(mode(agent.id).replacingOccurrences(of: "_", with: " ")).font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
+                                        }
+                                    }.rowBackground(selected: model.selectedAgentID == agent.id)
+                                }.buttonStyle(.plain)
+                            }
                         }
-                    }
-                }.listStyle(.sidebar)
-                Divider()
-                HStack { Circle().fill(model.engineRunning || model.observationDate != nil ? Color.green : Color.gray).frame(width: 6, height: 6); Text(model.engineRunning ? "Native engine · live" : model.observedAgents.isEmpty ? "Engine offline" : "Existing daemon · live").font(.caption).foregroundStyle(.secondary); Spacer() }.padding(12)
-            }.frame(minWidth: 200, idealWidth: 240, maxWidth: 300)
+                    }.padding(.horizontal, 8).padding(.bottom, 8)
+                }
+                HStack(spacing: 6) {
+                    StatusDot(active: model.engineRunning || model.observationDate != nil, size: 6)
+                    Text(model.engineRunning ? "Native engine · live" : model.observedAgents.isEmpty ? "Engine offline" : "Existing daemon · live")
+                    Spacer()
+                }.font(.system(size: 12)).foregroundStyle(Theme.mutedForeground).padding(12).edgeBorder(.top)
+            }.frame(minWidth: 220, idealWidth: 260, maxWidth: 320).edgeBorder(.trailing)
             if let agent = selected {
                 VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 14) {
-                            Text(agent.name).font(.title3.weight(.semibold))
-                            Label(mode(agent.id).replacingOccurrences(of: "_", with: " "), systemImage: "circle.fill").font(.caption).foregroundStyle(color(mode(agent.id)))
+                        HStack(spacing: 10) {
+                            Text(agent.name).font(.system(size: 20, weight: .bold)).foregroundStyle(Theme.foreground)
+                            badge(mode(agent.id))
                             Spacer()
-                            Button("Open Terminal") {
+                            if model.engineRunning, snapshot(agent.id)?.mode != .idle {
+                                Button("Stop Task") { cancelling = true }.buttonStyle(.tsq(.destructive, size: .default))
+                            }
+                            Button {
                                 Task {
                                     await model.terminals.refresh()
                                     let session = model.engineRunning ? snapshot(agent.id).map { "tsq-" + $0.sessionID } : observed(agent.id)?.session
                                     if let pane = model.terminals.panes.first(where: { $0.sessionName == session }) { attach(pane) }
                                     else { model.error = "No tmux session is currently associated with \(agent.name). Open Sessions to browse all terminals." }
                                 }
-                            }.disabled((model.engineRunning ? true : observed(agent.id)?.session.isEmpty ?? true))
-                            if model.engineRunning, snapshot(agent.id)?.mode != .idle {
-                                Button("Stop Task", role: .destructive) { cancelling = true }
-                            }
+                            } label: { Label("Open Terminal", icon: .terminal) }
+                            .buttonStyle(.tsq(.outline, size: .default))
+                            .disabled((model.engineRunning ? true : observed(agent.id)?.session.isEmpty ?? true))
                         }
-                        VStack(alignment: .leading, spacing: 5) {
-                            Label(agent.command, systemImage: "terminal")
-                                .help("Launch command: \(agent.command)")
-                            Label(model.paths.expandHome(agent.workDir), systemImage: "folder")
-                                .help("Working directory: \(model.paths.expandHome(agent.workDir))")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(agent.command, icon: .terminal).help("Launch command: \(agent.command)")
+                            Label(model.paths.expandHome(agent.workDir), icon: .folder).help("Working directory: \(model.paths.expandHome(agent.workDir))")
                         }
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .labelStyle(TSQLabelStyle(spacing: 6))
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Theme.mutedForeground)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
-                    }.padding(18)
+                    }.padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
                     HStack {
                         Picker("Agent detail", selection: $selectedTab) { Text("Activity").tag("Activity"); Text("Log").tag("Log"); Text("Details").tag("Details") }.pickerStyle(.segmented).labelsHidden().frame(width: 260)
                         Spacer()
-                        if let date = model.observationDate { Text("Updated \(date, style: .time)").font(.caption).foregroundStyle(.secondary) }
-                    }.padding(.horizontal, 18).padding(.bottom, 14)
-                    Divider()
+                        if let date = model.observationDate { Text("Updated \(date, style: .time)").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground) }
+                    }.padding(.horizontal, 20).padding(.bottom, 12)
+                    Rectangle().fill(Theme.border).frame(height: 1)
                     if selectedTab == "Log", let url = logURL(agent) { DocumentPreview(url: url).id(url) }
                     else if selectedTab == "Details" {
                         Form {
@@ -111,19 +123,16 @@ struct AgentWorkspace: View {
                                 LabeledContent("tmux session", value: observed.session.isEmpty ? "None" : observed.session)
                             }
                             Button("Open Working Directory") { NSWorkspace.shared.open(URL(fileURLWithPath: model.paths.expandHome(agent.workDir))) }
-                        }.formStyle(.grouped).textSelection(.enabled)
+                        }.formStyle(.grouped).scrollContentBackground(.hidden).textSelection(.enabled)
                     } else if !taskID(agent.id).isEmpty {
                         TaskActivityView(url: model.paths.tasks.appendingPathComponent(taskID(agent.id) + ".jsonl"))
                     } else {
-                        VStack(spacing: 12) {
-                            Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 34)).foregroundStyle(.tint)
-                            Text(mode(agent.id) == "offline" ? "Agent is offline" : "Ready for the next task").font(.title3.weight(.medium))
-                            Text("Task messages and lifecycle events will appear here as they arrive.").foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        EmptyState(icon: .messagesSquare, title: mode(agent.id) == "offline" ? "Agent is offline" : "Ready for the next task",
+                                   message: "Task messages and lifecycle events will appear here as they arrive.")
                     }
                 }.frame(minWidth: 460)
             } else {
-                VStack(spacing: 12) { Image(systemName: "person.3").font(.largeTitle).foregroundStyle(.tint); Text("Choose an agent").font(.title2); Text("Follow activity, inspect logs, and open its terminal.").foregroundStyle(.secondary) }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyState(icon: .bot, title: "Choose an agent", message: "Follow activity, inspect logs, and open its terminal.")
             }
         }
         .task {
@@ -154,9 +163,12 @@ private struct TaskActivityView: View {
                             let kind = fields.first { $0.label == "type" }?.value ?? "event"
                             let role = fields.first { $0.label == "role" }?.value ?? "TaskSquad"
                             let text = fields.first { ["body", "final_text", "subject", "summary"].contains($0.label) }?.value ?? fields.first { $0.label == "status" }?.value ?? record.raw
+                            // Task journals record the person as "user"; older ones used "human".
+                            let person = ["user", "human"].contains(role)
                             HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: kind == "message" ? (role == "human" ? "person.fill" : "sparkles") : "bolt.fill")
-                                    .font(.system(size: 14)).foregroundStyle(.tint).frame(width: 32, height: 32).background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                                Icon(kind == "message" ? (person ? .user : .sparkles) : .zap, size: 14)
+                                    .foregroundStyle(person ? Theme.primary : Theme.mutedForeground).frame(width: 30, height: 30)
+                                    .background(person ? Theme.primary.opacity(0.1) : Theme.muted, in: Circle())
                                 VStack(alignment: .leading, spacing: 7) {
                                     HStack { Text(kind == "message" ? role.capitalized : kind.replacingOccurrences(of: "_", with: " ").capitalized).fontWeight(.semibold); if let timestamp = fields.first(where: { ["ts", "timestamp"].contains($0.label) }) { Text(timestamp.value).font(.caption).foregroundStyle(.secondary) } }
                                     Text((try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)).lineSpacing(5).textSelection(.enabled)
@@ -167,11 +179,11 @@ private struct TaskActivityView: View {
                         if let error { Text(error).foregroundStyle(.secondary) }
                         Color.clear.frame(height: 1).id("end")
                     }.padding(24)
-                }.background(Color(nsColor: .textBackgroundColor))
+                }.background(Theme.background)
                 .onChange(of: records) { _ in if follow { proxy.scrollTo("end", anchor: .bottom) } }
             }
-            Divider()
-            HStack { Text("Task activity").font(.caption).foregroundStyle(.secondary); Spacer(); Toggle("Follow latest", isOn: $follow).toggleStyle(.checkbox) }.padding(12)
+            HStack { Text("Task activity").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground); Spacer(); Toggle("Follow latest", isOn: $follow).toggleStyle(.checkbox).font(.system(size: 12)) }
+                .padding(.horizontal, 16).padding(.vertical, 10).edgeBorder(.top)
         }.task(id: url) {
             records = []; error = nil
             while !Task.isCancelled {

@@ -48,10 +48,24 @@ public struct TaskSquadPaths: Sendable {
         let candidates = [URL(fileURLWithPath: executable).deletingLastPathComponent().path]
             + inherited.components(separatedBy: ":")
             + ["/opt/homebrew/bin", "/usr/local/bin", home.path + "/.local/bin",
-               home.path + "/.bun/bin", home.path + "/.cargo/bin",
-               "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+               home.path + "/.bun/bin", home.path + "/.cargo/bin"]
+            + nodeToolPaths()
+            + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         var seen = Set<String>()
         return candidates.filter { $0.hasPrefix("/") && seen.insert($0).inserted }.joined(separator: ":")
+    }
+
+    /// Global npm CLIs (pi, codex, gemini, opencode) commonly live under a Node
+    /// version manager that only an interactive shell puts on PATH. Finder
+    /// launches never run that shell, so list the managers' bin folders directly.
+    private func nodeToolPaths() -> [String] {
+        let versions = home.appendingPathComponent(".nvm/versions/node", isDirectory: true)
+        let installed = ((try? FileManager.default.contentsOfDirectory(atPath: versions.path)) ?? [])
+            .filter { $0.hasPrefix("v") }
+            .sorted { $0.compare($1, options: .numeric) == .orderedDescending } // newest first
+            .map { versions.path + "/" + $0 + "/bin" }
+        return installed + [home.path + "/.volta/bin", home.path + "/Library/pnpm",
+                            home.path + "/.npm-global/bin", home.path + "/.yarn/bin"]
     }
 }
 

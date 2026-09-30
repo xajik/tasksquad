@@ -41,6 +41,8 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(Set(entries).count, entries.count)
         XCTAssertTrue(entries.contains("/Users/test/.bun/bin"))
         XCTAssertFalse(entries.contains("relative"))
+        XCTAssertTrue(entries.contains("/Users/test/.volta/bin"))
+        XCTAssertLessThan(entries.firstIndex(of: "/Users/test/.volta/bin")!, entries.firstIndex(of: "/sbin")!)
         XCTAssertFalse(entries.contains(""))
     }
 

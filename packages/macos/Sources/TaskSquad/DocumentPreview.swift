@@ -14,7 +14,7 @@ struct DocumentPreview: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: document?.isMarkdown == true ? "doc.richtext" : "curlybraces").foregroundStyle(.tint)
+                Icon(document?.isMarkdown == true ? .fileText : .braces).foregroundStyle(Theme.mutedForeground)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(url.lastPathComponent).font(.headline)
                     Text(url.deletingLastPathComponent().path).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
@@ -24,8 +24,8 @@ struct DocumentPreview: View {
                     Picker("Display", selection: $source) { Text("Preview").tag(false); Text("Source").tag(true) }.pickerStyle(.segmented).labelsHidden().frame(width: 150)
                 }
                 Toggle("Live", isOn: $follow).toggleStyle(.checkbox).help("Refresh when this file changes")
-                Button { copyText(document?.text ?? "") } label: { Image(systemName: "doc.on.doc") }.help("Copy source")
-                Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: { Image(systemName: "folder") }.help("Reveal in Finder")
+                Button { copyText(document?.text ?? "") } label: { Icon(.copy) }.help("Copy source")
+                Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: { Icon(.folder) }.help("Reveal in Finder")
             }.padding(16)
             Divider()
             if let notice = document?.notice { banner(notice) }
@@ -73,7 +73,7 @@ struct DocumentPreview: View {
         } catch { if !Task.isCancelled { failure = error.localizedDescription } }
     }
     private func banner(_ text: String) -> some View {
-        Label(text, systemImage: "info.circle").font(.callout).foregroundStyle(.secondary).padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary)
+        Label(text, icon: .info).font(.callout).foregroundStyle(.secondary).padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary)
     }
 }
 
@@ -95,7 +95,7 @@ struct MarkdownBlockView: View {
         case .list(let marker, let indent):
             HStack(alignment: .firstTextBaseline, spacing: 10) { Text(marker).foregroundStyle(.secondary).frame(minWidth: 16, alignment: .trailing); inline(block.text).lineSpacing(4) }.padding(.leading, CGFloat(indent * 20))
         case .task(let checked, let indent):
-            HStack(alignment: .firstTextBaseline, spacing: 10) { Image(systemName: checked ? "checkmark.circle.fill" : "circle").foregroundStyle(checked ? Color.green : Color.secondary); inline(block.text).lineSpacing(4) }.padding(.leading, CGFloat(indent * 20))
+            HStack(alignment: .firstTextBaseline, spacing: 10) { Icon(checked ? .circleCheck : .circle, size: 14).foregroundStyle(checked ? Theme.green : Theme.mutedForeground).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }; inline(block.text).lineSpacing(4) }.padding(.leading, CGFloat(indent * 20))
         case .rule: Divider().padding(.vertical, 8)
         case .table:
             ScrollView(.horizontal) {
@@ -141,7 +141,7 @@ struct JSONTreeView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Icon(.search, size: 14).foregroundStyle(Theme.mutedForeground)
                 TextField("Find a key or value", text: $search).textFieldStyle(.plain)
                 Button("Collapse All") { expanded.removeAll() }.buttonStyle(.borderless)
             }.padding(14)
@@ -154,7 +154,7 @@ struct JSONTreeView: View {
                             if row.node.isContainer {
                                 Button { if !expanded.insert(row.id).inserted { expanded.remove(row.id) } } label: {
                                     HStack(spacing: 10) {
-                                        Image(systemName: expanded.contains(row.id) ? "chevron.down" : "chevron.right")
+                                        Icon(expanded.contains(row.id) ? .chevronDown : .chevronRight, size: 12)
                                             .font(.system(size: 10, weight: .semibold)).frame(width: 28, height: 32)
                                         Text(row.node.label).fontWeight(.medium).frame(width: 150, alignment: .leading).lineLimit(2)
                                     }.contentShape(Rectangle())
@@ -199,7 +199,7 @@ private struct LogPreview: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Icon(.search, size: 14).foregroundStyle(Theme.mutedForeground)
                 TextField("Filter log output", text: $query).textFieldStyle(.plain)
                 Text("\(lines.count) lines").font(.caption).foregroundStyle(.secondary)
             }.padding(14)

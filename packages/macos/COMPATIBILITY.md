@@ -48,7 +48,7 @@ Reference inspected: `fb06dad4bab233cb3b614ca036a420a2bcb0c115`. Tests build the
 - [ ] Qualify automatic engine startup/quit and menu/window lifetime through native UI tests; currently engine startup is explicit.
 - [ ] Broaden polling tests to cancellation/restart, forced-poll coalescing, retry failure, and real Worker behavior.
 - [ ] Complete agent state machine, task/session identity, stale hooks, duplicate notifications, replies, cancellation, reset and failure recovery.
-- [ ] Provider detection and exact command/argument/environment/config generation for Claude, Codex, Gemini, OpenCode, Pi, Claw and stdout.
+- [x] Provider detection and exact command/argument/environment/config generation for Claude, Codex, Gemini, OpenCode, Pi, Claw and stdout (`ProviderTests`; real-provider E2E still open below).
 - [ ] Native child-process orchestration; tmux sessions, FIFO lifecycle, output drain, Unicode/whitespace fidelity and crash behavior.
 - [ ] Hook routes and full CLI surface (`init`, sessions, attach, logs, pane, screenshot, send, report, send-image, skill, memory, kb, tags).
 - [ ] Terminal WebSocket output/input/resize, auth headers, input gating, reconnect behavior and slow-reader handling.

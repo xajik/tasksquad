@@ -141,60 +141,51 @@ struct TerminalWorkspace: View {
     var body: some View {
         HSplitView {
             VStack(spacing: 0) {
-                HStack { Image(systemName: "magnifyingglass").foregroundStyle(.secondary); TextField("Find a session", text: $model.query).textFieldStyle(.plain) }.padding(14)
-                Divider()
-                List(selection: $model.selectedID) {
-                    ForEach(model.filtered) { pane in
+                SearchField("Find a session", text: $model.query).padding(12)
+                TSQList(items: model.filtered, selection: $model.selectedID) { pane in
                         HStack(alignment: .top, spacing: 10) {
-                            RoundedRectangle(cornerRadius: 7).fill(pane.isAgent ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.12))
-                                .frame(width: 32, height: 32).overlay(Image(systemName: pane.isAgent ? "person.crop.square" : "terminal").foregroundStyle(pane.isAgent ? Color.accentColor : Color.secondary))
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(pane.sessionName).fontWeight(.medium).lineLimit(1)
-                                HStack(spacing: 5) { Circle().fill(pane.dead ? .gray : .green).frame(width: 6, height: 6); Text(pane.command); Text(pane.paneID).foregroundStyle(.tertiary) }.font(.caption).foregroundStyle(.secondary)
-                                Text(pane.directory).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                            Icon(pane.isAgent ? .bot : .terminal, size: 15).foregroundStyle(pane.isAgent ? Theme.foreground : Theme.mutedForeground)
+                                .frame(width: 30, height: 30).background(Theme.muted, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(pane.sessionName).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.foreground).lineLimit(1)
+                                HStack(spacing: 5) { StatusDot(active: !pane.dead, size: 6); Text(pane.command); Text(pane.paneID).opacity(0.7) }.font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
+                                Text(pane.directory).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.mutedForeground).lineLimit(1).truncationMode(.middle)
                             }
-                        }.padding(.vertical, 5).tag(pane.id)
-                    }
-                }.listStyle(.sidebar)
-                Divider()
-                HStack { Text("\(model.panes.count) panes").font(.caption).foregroundStyle(.secondary); Spacer(); Button { socketEditor.toggle() } label: { Image(systemName: "network") }.help("Choose tmux socket") }.padding(12)
-            }.frame(minWidth: 210, idealWidth: 260, maxWidth: 330)
+                        }
+                }
+                HStack { Text("\(model.panes.count) panes").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground); Spacer(); Button { socketEditor.toggle() } label: { Icon(.network, size: 14) }.buttonStyle(.tsqIcon).foregroundStyle(Theme.mutedForeground).help("Choose tmux socket") }
+                    .padding(.horizontal, 12).padding(.vertical, 6).edgeBorder(.top)
+            }.frame(minWidth: 220, idealWidth: 260, maxWidth: 330).edgeBorder(.trailing)
             VStack(spacing: 0) {
                 if let pane = model.selected {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(pane.sessionName).font(.headline)
-                            Text("\(pane.command) · \(pane.paneID)" + (model.screen.map { " · \($0.columns) × \($0.rows)" } ?? "")).font(.caption).foregroundStyle(.secondary)
+                            Text(pane.sessionName).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.foreground)
+                            Text("\(pane.command) · \(pane.paneID)" + (model.screen.map { " · \($0.columns) × \($0.rows)" } ?? "")).font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
                         }
                         Spacer()
                         if model.attached {
                             Toggle("History", isOn: $model.history).toggleStyle(.button).help("Read the last 2,000 lines; input is paused while viewing history")
                             Toggle("Fit", isOn: $model.fitWindow).toggleStyle(.button).help("Let this window influence tmux's terminal size")
-                            Button("Detach") { model.detach() }
-                        } else { Button("Attach") { model.attach(pane) } }
-                        Button(role: .destructive) { closing = true } label: { Image(systemName: "xmark.circle") }.help("Close this session and its processes")
-                    }.padding(16)
-                    Divider()
+                            Button("Detach") { model.detach() }.buttonStyle(.tsqOutline)
+                        } else { Button("Attach") { model.attach(pane) }.buttonStyle(.tsqPrimary) }
+                        Button { closing = true } label: { Icon(.circleX) }.buttonStyle(.tsqIcon).foregroundStyle(Theme.destructive).help("Close this session and its processes")
+                    }.padding(.horizontal, 16).padding(.vertical, 12).edgeBorder(.bottom)
                     if let screen = model.screen {
                         if model.history { SourceTextView(text: TerminalANSI.plain(screen.text)) }
                         else { NativeTerminal(screen: screen, enabled: model.attached, input: model.send, resize: model.resize) }
                     } else { ProgressView("Attaching…").frame(maxWidth: .infinity, maxHeight: .infinity) }
                     HStack(spacing: 7) {
-                        Circle().fill(model.attached ? Color.green : Color.gray).frame(width: 6, height: 6)
+                        StatusDot(active: model.attached, size: 6)
                         Text(model.history ? "History · input paused" : model.attached ? "Live · click the terminal to type" : "Detached · session keeps running")
                         Spacer(); Text("⌘C Copy · ⌘V Paste · Shift-drag to select")
-                    }.font(.caption).foregroundStyle(.secondary).padding(10)
+                    }.font(.system(size: 12)).foregroundStyle(Theme.mutedForeground).padding(10).edgeBorder(.top)
                 } else {
-                    VStack(spacing: 14) {
-                        Image(systemName: "terminal").font(.system(size: 40)).foregroundStyle(.tint)
-                        Text(model.panes.isEmpty ? "No tmux sessions" : "Open an agent session").font(.title2.weight(.semibold))
-                        Text("Select a session to see its live terminal and work with the agent here.")
-                            .foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 360)
-                        Text("Sessions started by either daemon appear automatically.").font(.caption).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    EmptyState(icon: .terminal, title: model.panes.isEmpty ? "No tmux sessions" : "Open an agent session",
+                               message: "Select a session to see its live terminal and work with the agent here. Sessions started by either daemon appear automatically.")
                 }
                 if let error = model.error {
-                    Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary)
+                    ErrorBanner(message: error) { model.error = nil }
                 }
             }.frame(minWidth: 420)
         }
