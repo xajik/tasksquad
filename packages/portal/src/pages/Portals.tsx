@@ -109,7 +109,7 @@ function PortalsList({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' })
       trackEvent('portal_created', { team_id: teamId, agent_id: agentId })
       setShowCompose(false)
       setAgentId('')
-      nav(`portals/${id}`)
+      nav(`/dashboard/portals/${id}`)
     } catch (e: any) {
       const code = e?.error
       if (code === 'plan_required') setCreateError('Portals require a Pro plan.')
@@ -191,7 +191,7 @@ function PortalsList({ teamId, plan }: { teamId: string; plan: 'free' | 'pro' })
             <Card
               key={p.id}
               className="cursor-pointer hover:bg-accent/50 transition-colors"
-              onClick={() => nav(`portals/${p.id}`)}
+              onClick={() => nav(`/dashboard/portals/${p.id}`)}
             >
               <CardContent className="p-3 sm:p-4 flex items-center gap-3">
                 <Monitor className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -430,6 +430,8 @@ export function Portals({ teamId, plan }: { teamId: string; plan: 'free' | 'pro'
   return (
     <Routes>
       <Route path="/" element={<PortalsList teamId={teamId} plan={plan} />} />
+      <Route path=":portalId" element={<PortalDetail teamId={teamId} plan={plan} />} />
+      {/* Legacy doubled path (/dashboard/portals/portals/:id) from older links. */}
       <Route path="portals/:portalId" element={<PortalDetail teamId={teamId} plan={plan} />} />
     </Routes>
   )

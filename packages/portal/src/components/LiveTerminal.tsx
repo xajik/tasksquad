@@ -32,10 +32,14 @@ export function LiveTerminal({ sessionId }: { sessionId: string }) {
     term.open(ref.current)
     fitAddon.fit()
 
-    // Forward keystrokes to the relay → daemon → tmux (binary frame so relay routes it)
+    // Forward keystrokes to the relay → daemon → tmux (binary frame so relay routes it).
+    // btoa() only accepts Latin-1: base64 the UTF-8 bytes, or "é" arrives as an
+    // invalid byte and any non-Latin-1 character ("猫") throws and is dropped.
     term.onData((data) => {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(new TextEncoder().encode(JSON.stringify({ t: 'i', d: btoa(data) })))
+        let binary = ''
+        for (const byte of new TextEncoder().encode(data)) binary += String.fromCharCode(byte)
+        ws.send(new TextEncoder().encode(JSON.stringify({ t: 'i', d: btoa(binary) })))
       }
     })
 

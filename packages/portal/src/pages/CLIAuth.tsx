@@ -25,7 +25,7 @@ async function sendTokens(user: User): Promise<void> {
   const res = await fetch(redirectUri, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id_token: idToken, refresh_token: user.refreshToken, email: user.email ?? '' }),
+    body: JSON.stringify({ id_token: idToken, refresh_token: user.refreshToken, email: user.email ?? '', firebase_api_key: import.meta.env.VITE_FIREBASE_API_KEY }),
   })
   if (!res.ok) throw new Error(`Daemon returned ${res.status}`)
 }
