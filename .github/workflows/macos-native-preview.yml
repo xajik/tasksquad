@@ -1,20 +1,28 @@
-name: Native macOS signed preview
+name: Native macOS release
 
-# Explicit preview workflow while feature parity is being implemented. It creates
-# a draft prerelease, never replaces the existing Go daemon's release assets.
+# Builds, signs (Developer ID + notarization when secrets exist, ad-hoc otherwise)
+# and publishes the DMG as a `macos-v*` GitHub release. The website links to
+# https://api.tasksquad.ai/download/macos, which redirects to the newest published
+# one. Releases are never marked "Latest": install.sh resolves the Go daemon via
+# /releases/latest and must keep pointing at a `v*` tag.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Native preview version (X.Y.Z-preview.N)'
+        description: 'Native version (X.Y.Z, or X.Y.Z-preview.N for a prerelease)'
         required: true
         type: string
+      draft:
+        description: 'Create as draft (not downloadable from the website until published)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
 concurrency:
-  group: macos-native-preview
+  group: macos-native-release
   cancel-in-progress: false
 
 jobs:
@@ -35,7 +43,7 @@ jobs:
         run: command -v tmux || brew install tmux
       - name: Validate version and test
         run: |
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]] || { echo 'Expected X.Y.Z-preview.N'; exit 1; }
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]] || { echo 'Expected X.Y.Z or X.Y.Z-preview.N'; exit 1; }
           make test-compatibility app-check
       - name: Check signing credentials
         id: signing
@@ -97,14 +105,18 @@ jobs:
         run: |
           make app package
           printf '\n> **Ad-hoc signed, not notarized.** macOS blocks it on first launch: right-click the app and choose **Open**, or run `xattr -d com.apple.quarantine "/Applications/TaskSquad Native.app"`.\n' >> PREVIEW.md
-      - name: Create draft prerelease
+      - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRAFT: ${{ inputs.draft }}
         run: |
           set -euo pipefail
           tag="macos-v$VERSION"
-          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --draft --prerelease --title "TaskSquad Native $VERSION" --notes-file PREVIEW.md \
+          flags=(--latest=false)
+          [[ "$VERSION" == *-* ]] && flags+=(--prerelease)
+          [[ "$DRAFT" == "true" ]] && flags+=(--draft)
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" "${flags[@]}" \
+            --title "TaskSquad Native $VERSION" --notes-file PREVIEW.md \
             "dist/TaskSquad-Native-$VERSION.dmg" "dist/TaskSquad-Native-$VERSION.dmg.sha256"
       - name: Remove signing material
         if: always()

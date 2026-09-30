@@ -4,6 +4,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import Header from '../components/Header'
 import { useRouteMeta } from '../lib/useRouteMeta'
+import { MACOS_DOWNLOAD_URL, MACOS_RELEASES_URL } from '../lib/downloads'
 
 export default function HowTo() {
   const meta = useRouteMeta('/howto')
@@ -50,6 +51,18 @@ export default function HowTo() {
                   <div className="bg-muted p-3 rounded-md overflow-x-auto">
                     <code className="text-sm whitespace-nowrap">curl -sSL install.tasksquad.ai | bash</code>
                   </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium mb-2">Native macOS app (macOS 13+, Apple Silicon and Intel):</p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <a href={MACOS_DOWNLOAD_URL} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                      Download .dmg
+                    </a>
+                    <a href={MACOS_RELEASES_URL} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground underline">
+                      All versions and checksums
+                    </a>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Open the DMG and drag <b>TaskSquad Native</b> to Applications.</p>
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-md p-3 flex gap-2 items-start">
                   <span className="text-amber-500 mt-0.5">⚠</span>

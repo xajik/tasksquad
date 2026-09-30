@@ -4,6 +4,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { trackEvent } from '../lib/analytics'
 import Header from '../components/Header'
 import { useRouteMeta } from '../lib/useRouteMeta'
+import { MACOS_DOWNLOAD_URL } from '../lib/downloads'
 
 const HOW_IT_WORKS = [
   'Create a team and add an agent — get a connection token.',
@@ -77,6 +78,18 @@ export default function Landing() {
             curl -sSL install.tasksquad.ai | bash
           </code>
         </div>
+
+        <div className="text-center text-xs text-muted-foreground font-medium">
+          or
+        </div>
+
+        <a
+          href={MACOS_DOWNLOAD_URL}
+          onClick={() => trackEvent('cta_clicked', { label: 'download_macos' })}
+          className={`${buttonVariants({ variant: 'outline' })} w-full sm:w-auto`}
+        >
+          Download the macOS app (.dmg)
+        </a>
       </div>
 
       <section className="mt-16 sm:mt-24">

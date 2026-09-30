@@ -18,6 +18,7 @@ import * as portals    from './routes/portals.js'
 import * as memory     from './routes/memory.js'
 import * as dream      from './routes/dream.js'
 import * as tags       from './routes/tags.js'
+import * as download   from './routes/download.js'
 import { runRollups }  from './cron/rollup.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 
@@ -56,6 +57,10 @@ function daemonRoute(handler: DaemonHandler) {
     return handler(req as Request, env, ctx, d)
   }
 }
+
+// ── Public downloads (no auth) ────────────────────────────────────────────────
+router.get('/download/macos', (req: IRequest, env: Env, ctx: ExecutionContext) => download.macos(req as Request, env, ctx))
+router.get('/download/macos/latest.json', (req: IRequest, env: Env, ctx: ExecutionContext) => download.macos(req as Request, env, ctx))
 
 // CORS preflight
 router.options('*', (req: IRequest, env: Env) => new Response(null, { status: 204, headers: getCorsHeaders(req as Request, env) }))
