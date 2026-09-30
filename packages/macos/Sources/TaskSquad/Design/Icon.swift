@@ -48,7 +48,8 @@ enum LucideIcon: String, CaseIterable {
 struct Icon: View {
     let icon: LucideIcon
     var size: CGFloat = 16
-    init(_ icon: LucideIcon, size: CGFloat = 16) { self.icon = icon; self.size = size }
+    /// Only stores values, so it is usable outside the main actor (e.g. `Label` builders).
+    nonisolated init(_ icon: LucideIcon, size: CGFloat = 16) { self.icon = icon; self.size = size }
     var body: some View {
         Image(nsImage: icon.image).renderingMode(.template).resizable().interpolation(.high)
             .frame(width: size, height: size).accessibilityHidden(true)
