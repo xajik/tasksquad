@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pickMacRelease } from './download.js'
+import { pickMacRelease, releasesFromAtom } from './download.js'
 
 const asset = (name: string) => ({ name, browser_download_url: `https://example.test/${name}` })
 
@@ -26,5 +26,20 @@ describe('pickMacRelease', () => {
 
   it('returns null when no published macOS release has a DMG', () => {
     expect(pickMacRelease(releases.slice(0, 2))).toBeNull()
+  })
+})
+
+describe('releasesFromAtom', () => {
+  const xml = `<feed><id>tag:github.com,2008:https://github.com/xajik/tasksquad/releases</id>
+    <entry><id>tag:github.com,2008:Repository/1161597712/v0.3.9</id></entry>
+    <entry><id>tag:github.com,2008:Repository/1161597712/macos-v0.4.0-preview.1</id></entry>
+    <entry><id>tag:github.com,2008:Repository/1161597712/macos-v0.3.0</id></entry></feed>`
+
+  it('derives DMG URLs and prerelease flags from tags', () => {
+    const r = pickMacRelease(releasesFromAtom(xml))
+    expect(r?.version).toBe('0.4.0-preview.1')
+    expect(r?.prerelease).toBe(true)
+    expect(r?.dmg).toBe('https://github.com/xajik/tasksquad/releases/download/macos-v0.4.0-preview.1/TaskSquad-Native-0.4.0-preview.1.dmg')
+    expect(pickMacRelease(releasesFromAtom(xml), false)?.version).toBe('0.3.0')
   })
 })
