@@ -32,6 +32,12 @@ checksum:
 snapshot:
   name_template: "{{ incpatch .Version }}-next"
 
+# Created as a draft: the repo has immutable releases, so the macOS app DMG
+# must be uploaded before the release is published. The workflow's publish job
+# un-drafts it and pushes the formula below once all assets are attached.
+release:
+  draft: true
+
 changelog:
   sort: asc
   filters:
@@ -48,5 +54,6 @@ brews:
     directory: Formula
     homepage: "https://tasksquad.ai"
     description: "TaskSquad Daemon"
+    skip_upload: true
     test: |
       system "#{bin}/tsq --version"

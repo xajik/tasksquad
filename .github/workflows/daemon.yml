@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing stable tag to retry the macOS app release (vX.Y.Z)'
+        description: 'Existing tag whose release is still a draft: re-attach the macOS app and publish (vX.Y.Z)'
         required: true
         type: string
 
@@ -39,6 +39,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+      # The release is a draft until `publish`; the formula is pushed only then
+      # so `brew upgrade` never sees URLs that 404.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-formula
+          path: packages/daemon/dist/homebrew/Formula/tsq.rb
+          if-no-files-found: error
 
   macos-app:
     needs: goreleaser
@@ -157,40 +164,70 @@ jobs:
 
       # The Homebrew cask is the default install path for most users, so an
       # ad-hoc/unnotarized build is deliberately kept out of it — it only goes
-      # up as a direct GitHub release download, for people who'll knowingly
-      # bypass Gatekeeper. Update the cask once real signing is configured.
-      - name: Check out Homebrew tap
+      # up as a direct GitHub release download. `publish` pushes the cask.
+      - uses: actions/upload-artifact@v4
         if: steps.validate.outputs.signing_available == 'true'
-        uses: actions/checkout@v4
         with:
-          repository: xajik/homebrew-tap
-          token: ${{ secrets.TAP_GITHUB_TOKEN }}
-          path: homebrew-tap
-
-      - name: Update app cask after asset publication
-        if: steps.validate.outputs.signing_available == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Retrying an older release must not downgrade the current cask.
-          LATEST_TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
-          if [[ "$LATEST_TAG" != "$RELEASE_TAG" ]]; then
-            echo "Published $RELEASE_TAG assets; leaving latest cask at $LATEST_TAG."
-            exit 0
-          fi
-          mkdir -p ../../homebrew-tap/Casks
-          cp dist/homebrew/Casks/tasksquad.rb ../../homebrew-tap/Casks/tasksquad.rb
-          cd ../../homebrew-tap
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Casks/tasksquad.rb
-          if ! git diff --cached --quiet; then
-            git commit -m "Update TaskSquad app to $RELEASE_TAG"
-            git push
-          fi
+          name: homebrew-cask
+          path: packages/daemon/dist/homebrew/Casks/tasksquad.rb
+          if-no-files-found: error
 
       - name: Clean up signing credentials
         if: always()
         run: |
           rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/AuthKey.p8"
           security delete-keychain "$RUNNER_TEMP/tasksquad-build.keychain-db" || true
+
+  # Releases are immutable once published, so GoReleaser creates a draft, the
+  # macOS job attaches the DMG, and this job publishes it. It also runs when
+  # the macOS job fails, so the CLI release is never held back by the app.
+  publish:
+    needs: [goreleaser, macos-app]
+    if: ${{ !cancelled() && (needs.goreleaser.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Publish release
+        run: |
+          set -euo pipefail
+          if [[ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" == "true" ]]; then
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          fi
+          if [[ "${{ needs.macos-app.result }}" != "success" ]]; then
+            echo "::warning::macOS app job did not succeed; $RELEASE_TAG was published without the DMG."
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: homebrew-*
+          path: homebrew
+          merge-multiple: true
+      - uses: actions/checkout@v4
+        with:
+          repository: xajik/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: homebrew-tap
+      - name: Update Homebrew tap
+        run: |
+          set -euo pipefail
+          # Retrying an older release must not downgrade the tap.
+          newest=$(git tag -l 'v*' --sort=-v:refname | head -1)
+          if [[ "$newest" != "$RELEASE_TAG" ]]; then
+            echo "Published $RELEASE_TAG; leaving the tap at $newest."
+            exit 0
+          fi
+          mkdir -p homebrew-tap/Formula homebrew-tap/Casks
+          [[ -f homebrew/tsq.rb ]] && cp homebrew/tsq.rb homebrew-tap/Formula/tsq.rb
+          [[ -f homebrew/tasksquad.rb ]] && cp homebrew/tasksquad.rb homebrew-tap/Casks/tasksquad.rb
+          cd homebrew-tap
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A Formula Casks
+          if ! git diff --cached --quiet; then
+            git commit -m "Update TaskSquad to $RELEASE_TAG"
+            git push
+          fi

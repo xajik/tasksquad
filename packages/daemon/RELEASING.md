@@ -81,20 +81,25 @@ signing is configured.
 
 Push a new stable `vX.Y.Z` tag containing the changes. The release workflow:
 
-1. Publishes CLI archives/checksums and updates `Formula/tsq.rb` via GoReleaser.
+1. GoReleaser builds CLI archives/checksums into a **draft** release (the repo
+   has immutable releases: assets can't be added once a release is published)
+   and generates `Formula/tsq.rb` without pushing it.
 2. Runs native tests, builds both macOS architectures, and checks the app bundle.
 3. If signing secrets are configured: signs, requires an Accepted notarization
    result, staples, and checks Gatekeeper. Otherwise: ad-hoc signs instead
    (see above) and skips straight to packaging.
 4. Packages a DMG and mounts/copies it into a temporary Applications directory
    to verify installation, executable version, and bundled `tsq` alias.
-5. Uploads the DMG and its SHA-256 file to the same GitHub release.
+5. Uploads the DMG and its SHA-256 file to the same draft release.
 6. If signed: generates and validates `Casks/tasksquad.rb` against the actual
-   DMG checksum, then pushes it to the tap. The CLI formula is preserved. An older release
-   retry does not downgrade the latest app cask.
+   DMG checksum.
+7. `publish` un-drafts the release (even if the app job failed, so the CLI is
+   never held back) and only then pushes the formula and, if signed, the cask
+   to the tap. A retry of an older tag does not downgrade the tap.
 
 Use **Release Daemon → Run workflow → tag** to retry the app portion for a
-tag that includes this workflow and its scripts, without rerunning GoReleaser.
+tag whose release is **still a draft**, without rerunning GoReleaser. Once
+published, a release is immutable — cut a new version instead.
 The selected tag's commit is always used. To fix a release whose code predates
 these changes, create a new version rather than relabelling modified binaries
 as an old tag. Runs are serialized so tap updates do not race each other.
