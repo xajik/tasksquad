@@ -37,7 +37,27 @@ jobs:
         run: |
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]] || { echo 'Expected X.Y.Z-preview.N'; exit 1; }
           make test-compatibility app-check
+      - name: Check signing credentials
+        id: signing
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          # Like the daemon release: without Apple credentials, publish an
+          # ad-hoc-signed, unnotarized draft instead of failing the preview.
+          if [[ -n "$MACOS_CERTIFICATE_P12_BASE64" && -n "$MACOS_CERTIFICATE_PASSWORD" && -n "$MACOS_SIGNING_IDENTITY" \
+                && -n "$APPLE_API_KEY_ID" && -n "$APPLE_API_ISSUER" && -n "$APPLE_API_KEY_P8" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Apple signing secrets are missing — publishing an ad-hoc-signed (unnotarized) preview. Users must right-click > Open on first launch."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Import Developer ID and notarization credentials
+        if: steps.signing.outputs.available == 'true'
         env:
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -66,11 +86,17 @@ jobs:
           xcrun notarytool store-credentials tasksquad-native-preview --keychain "$keychain" \
             --key "$RUNNER_TEMP/NativeAuthKey.p8" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
       - name: Sign, notarize, staple, and package
+        if: steps.signing.outputs.available == 'true'
         env:
           SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
           NOTARY_PROFILE: tasksquad-native-preview
           NOTARY_KEYCHAIN: ${{ runner.temp }}/tasksquad-native.keychain-db
         run: make app-signed package
+      - name: Package ad-hoc-signed preview
+        if: steps.signing.outputs.available != 'true'
+        run: |
+          make app package
+          printf '\n> **Ad-hoc signed, not notarized.** macOS blocks it on first launch: right-click the app and choose **Open**, or run `xattr -d com.apple.quarantine "/Applications/TaskSquad Native.app"`.\n' >> PREVIEW.md
       - name: Create draft prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
