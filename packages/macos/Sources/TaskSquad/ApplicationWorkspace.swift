@@ -16,7 +16,7 @@ struct MainWindow: View {
     @State private var projectEditor: CustomerEditorRequest?
     @Environment(\.openWindow) private var openWindow
     private let initialSection: CustomerSection?
-    static let sections: [CustomerSection] = [.inbox, .portals, .notes, .conveyors, .planners, .supervisor, .skills, .memory, .agents, .members, .settings]
+    static let sections: [CustomerSection] = [.inbox, .portals, .notes, .conveyors, .planners, .supervisor, .skills, .memory, .analytics, .agents, .members, .settings]
     private static let selectionKey = "section"
 
     init(control: ControlPanelModel, customer: CustomerWorkspaceModel, initialSection: CustomerSection? = nil) {

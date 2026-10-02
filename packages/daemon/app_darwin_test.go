@@ -50,7 +50,7 @@ func TestAppSearchPathFindsBundledCLIAndBrew(t *testing.T) {
 	if got, err := exec.LookPath("tsq"); err != nil || got != filepath.Join(bin, "tsq") {
 		t.Fatalf("bundled tsq not found: %q, %v", got, err)
 	}
-	for _, want := range []string{"/opt/homebrew/bin", "/usr/local/bin", filepath.Join(dir, ".local/bin")} {
+	for _, want := range []string{"/opt/homebrew/bin", "/usr/local/bin", filepath.Join(dir, ".local/bin"), filepath.Join(dir, ".opencode/bin")} {
 		if !strings.Contains(":"+path+":", ":"+want+":") {
 			t.Errorf("missing %s in %s", want, path)
 		}

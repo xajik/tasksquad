@@ -9,6 +9,7 @@ private actor WorkspaceTransport: HTTPTransport {
     var holdTasks = false
     var pending: CheckedContinuation<HTTPResult, Never>?
     let record = ###"{"id":"item-1","name":"Builder","title":"Architecture review","subject":"Review the native workspace","status":"waiting_input","role":"owner","agent_id":"agent-1","sender_id":"user-1","body":"## Ready for review\n\nThe native workspace shares the cloud backend.\n\n- [x] Task inbox\n- [x] Team switching\n- [ ] Release verification","content":"# Shared project knowledge\n\nKeep the customer UI independent from the local engine.","description":"Coordinate the next release","created_at":1800000000000,"tags":["native","release"],"phases":[{"phase_id":"phase-1","name":"Implementation","status":"completed","retry_count":0,"max_retries":3,"last_response":"Ready for review"}],"attachments":[],"auto_install":1,"category":"architecture"}"###
+    static let stats = ###"{"range":{"from":0,"to":1},"totals":{"created":42,"started":40,"done":31,"failed":5,"cancelled":2,"in_progress":4,"scheduled":1,"grades_up":7,"grades_down":1,"success_rate":0.861,"median_completion_ms":372000},"daily":[{"date":"2026-09-24","created":4,"done":3,"failed":1},{"date":"2026-09-25","created":7,"done":6,"failed":0},{"date":"2026-09-26","created":2,"done":2,"failed":0},{"date":"2026-09-27","created":9,"done":6,"failed":2},{"date":"2026-09-28","created":8,"done":7,"failed":1},{"date":"2026-09-29","created":6,"done":4,"failed":1},{"date":"2026-09-30","created":6,"done":3,"failed":0}],"usage":{"sessions_reported":38,"active_ms":15840000,"turns":112,"input_tokens":1840000,"output_tokens":232000,"cache_read_tokens":0,"cache_write_tokens":0,"tool_calls":1284,"tool_errors":17,"models":[{"name":"claude-opus","sessions":20}]},"tools":[{"name":"Bash","count":612},{"name":"Read","count":301},{"name":"Edit","count":190},{"name":"Write","count":88},{"name":"mcp__browser__batch","count":41}],"skills":[{"name":"tsq-end-session-learning","count":24},{"name":"tsq-end-session-memory","count":21},{"name":"tsq-cli-commands","count":6}],"agents":[{"agent_id":"agent-1","name":"Builder","tasks":30,"started":29,"done":24,"failed":3,"cancelled":1,"in_progress":2,"success_rate":0.889,"median_completion_ms":301000,"grades_up":6,"grades_down":0,"sessions_reported":28,"active_ms":11000000,"turns":80,"input_tokens":1500000,"output_tokens":190000,"tool_calls":1001,"tool_errors":9},{"agent_id":"agent-2","name":"Reviewer","tasks":12,"started":11,"done":7,"failed":2,"cancelled":1,"in_progress":2,"success_rate":0.778,"median_completion_ms":544000,"grades_up":1,"grades_down":1,"sessions_reported":10,"active_ms":4840000,"turns":32,"input_tokens":340000,"output_tokens":42000,"tool_calls":283,"tool_errors":8}]}"###
     func suspendTasks() { holdTasks = true }
     func releaseTasks() { pending?.resume(returning: response("{\"tasks\":[\(record)]}")); pending = nil; holdTasks = false }
     func isWaiting() -> Bool { pending != nil }
@@ -23,6 +24,7 @@ private actor WorkspaceTransport: HTTPTransport {
         let last = path.split(separator: "/").last.map(String.init) ?? ""
         if last == "item-1" { return response(record) }
         if last == "agents" { return response(#"{"agents":[{"id":"agent-1","name":"Builder","status":"online"}]}"#) }
+        if last == "stats" { return response(Self.stats) }
         let envelope = last == "sub-agents" ? "sub_agents" : last
         if last == "notes" {
             let offset = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "offset" })?.value ?? "0"
@@ -49,7 +51,7 @@ private actor WorkspaceTransport: HTTPTransport {
             model.section = section
             await model.refresh()
             XCTAssertNil(model.error, section.rawValue)
-            if section != .settings { XCTAssertFalse(model.records.isEmpty, section.rawValue) }
+            if ![.settings, .analytics].contains(section) { XCTAssertFalse(model.records.isEmpty, section.rawValue) }
         }
         let requests = await transport.requests
         XCTAssertTrue(requests.allSatisfy { $0.value(forHTTPHeaderField: "X-TSQ-Agent") == nil })
@@ -160,16 +162,22 @@ private actor WorkspaceTransport: HTTPTransport {
         try render(MainWindow(control: control, customer: model, initialSection: .inbox), name: "window-inbox-light", appearance: .aqua)
         try render(MainWindow(control: control, customer: model, initialSection: .inbox), name: "window-inbox-dark", appearance: .darkAqua)
         try render(SettingsView(), name: "settings-appearance", appearance: .aqua)
+        model.section = .analytics; await model.refresh()
+        XCTAssertNil(model.error)
+        let stats = CustomerRecord(try await model.api().request(["teams", model.teamID, "stats"]))
+        XCTAssertEqual(stats.records("agents").count, 2)
+        try render(CustomerAnalytics(model: model, initialStats: stats), name: "analytics-light", appearance: .aqua, settle: 0.3)
+        try render(CustomerAnalytics(model: model, initialStats: stats), name: "analytics-dark", appearance: .darkAqua, settle: 0.3)
     }
 
-    private func render<V: View>(_ value: V, name: String, appearance: NSAppearance.Name) throws {
+    private func render<V: View>(_ value: V, name: String, appearance: NSAppearance.Name, settle: TimeInterval = 0.08) throws {
         let view = NSHostingView(rootView: value.background(Color(nsColor: .windowBackgroundColor)))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820), styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = view; defer { window.contentView = nil }
         view.appearance = NSAppearance(named: appearance)
         view.frame = NSRect(x: 0, y: 0, width: 1200, height: 820)
         view.layoutSubtreeIfNeeded()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.08))
+        RunLoop.current.run(until: Date().addingTimeInterval(settle))
         view.layoutSubtreeIfNeeded()
         let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: bitmap)

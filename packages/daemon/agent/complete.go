@@ -216,6 +216,7 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 		logContent = tmuxCapture
 	}
 	a.uploadTaskArtifacts(cfg, sessionID, msgID, logContent, tmuxCapture, transcriptPath)
+	a.postSessionReport(cfg, sessionID, startedAt, transcriptPath)
 
 	a.st.mu.Lock()
 	tlog := a.st.taskLog

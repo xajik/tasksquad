@@ -37,7 +37,7 @@ func (a *Agent) extractFinalText(hookMsg, transcriptPath, tmuxCapture string, ou
 		return ""
 	}
 
-	finalText := hookMsg
+	finalText := strings.TrimSpace(hookMsg)
 	if finalText != "" {
 		logger.Info(fmt.Sprintf("[%s] Final text from hook message (%d chars)", a.Config.Name, len(finalText)))
 	}

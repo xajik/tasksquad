@@ -102,6 +102,11 @@ type AgentState struct {
 	// or "provider doesn't report session_id" (check is skipped).
 	cliSessionID string
 
+	// Session report inputs (see metrics.go): turns the daemon typed and the
+	// TaskSquad skill tokens they contained.
+	typedTurns  int
+	typedSkills []string
+
 	// Prompt tracking
 	lastPrompt string // the initial prompt or latest reply sent to the process
 

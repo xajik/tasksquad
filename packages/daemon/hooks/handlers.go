@@ -90,7 +90,16 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 		case agentmode.ModeRunning, agentmode.ModeWaitingInput:
 			if ev.IsFailure {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(crashed) to agent %s", a.Name()))
+				// Carry the provider's error text (e.g. PI's "API key not valid")
+				// into the thread instead of closing the task with an empty reply.
+				a.SetHookMessage(ev.HookMessage)
 				go a.Complete(s.cfg, string(agentmode.StatusCrashed), ev.TranscriptPath)
+			} else if provider == "pi" && ev.HookMessage == "" {
+				// PI fires agent_end even when the model call failed (e.g. invalid
+				// API key) — with no assistant text. Completing here as "closed"
+				// would beat the pipe-exit path and hide the non-zero exit code, so
+				// let the exit path pick closed vs crashed instead.
+				logger.Debug(fmt.Sprintf("[hooks] PI stop with no message for agent %s — deferring to process exit", a.Name()))
 			} else if provider == "pi" {
 				// PI's process exits immediately after agent_end fires. If we use
 				// StopAndPause the pipe-exit path calls complete() a second time
@@ -250,15 +259,24 @@ func (s *hookServer) handleCodex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		Type     string `json:"type"`
-		ThreadID string `json:"thread-id"`
-		TurnID   string `json:"turn-id"`
+		Type          string   `json:"type"`
+		ThreadID      string   `json:"thread-id"`
+		TurnID        string   `json:"turn-id"`
+		InputMessages []string `json:"input-messages"`
 	}
 	if json.Unmarshal(body, &payload) != nil || payload.ThreadID == "" {
 		http.Error(w, "invalid payload", http.StatusBadRequest)
 		return
 	}
 	if payload.Type != "agent-turn-complete" {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ignored"})
+		return
+	}
+	// Codex generates the thread title in a separate auxiliary thread that also
+	// fires agent-turn-complete. Letting it through would pin the wrong thread and
+	// post {"title":...} as the agent's reply while the real turn is dropped.
+	if isCodexTitleTurn(payload.InputMessages) {
+		logger.Debug(fmt.Sprintf("[hooks] Ignoring codex title-generation turn (thread=%s)", payload.ThreadID))
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ignored"})
 		return
 	}
@@ -298,6 +316,14 @@ func (s *hookServer) handleCodex(w http.ResponseWriter, r *http.Request) {
 	clone.URL.RawQuery = q.Encode()
 	clone.Body = io.NopCloser(strings.NewReader(string(body)))
 	s.handleStop(w, clone)
+}
+
+// codexTitlePromptPrefix is the start of the prompt Codex sends to its internal
+// thread-title generator (observed in codex-tui 0.159).
+const codexTitlePromptPrefix = "Generate a concise, single-line task title"
+
+func isCodexTitleTurn(inputMessages []string) bool {
+	return len(inputMessages) == 1 && strings.HasPrefix(inputMessages[0], codexTitlePromptPrefix)
 }
 
 // handleSkill handles POST /hooks/skill.

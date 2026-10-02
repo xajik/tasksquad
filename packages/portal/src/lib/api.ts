@@ -59,8 +59,41 @@ async function requestFormData<T>(path: string, form: FormData): Promise<T> {
   return res.json() as Promise<T>
 }
 
+export interface NameCount { name: string; count: number }
+export interface AgentStats {
+  agent_id: string; name: string
+  tasks: number; started: number; done: number; failed: number; cancelled: number; in_progress: number
+  success_rate: number | null; median_completion_ms: number | null
+  grades_up: number; grades_down: number
+  sessions_reported: number; active_ms: number; turns: number
+  input_tokens: number; output_tokens: number; tool_calls: number; tool_errors: number
+}
+export interface TeamStats {
+  range: { from: number; to: number }
+  totals: {
+    created: number; started: number; done: number; failed: number; cancelled: number; in_progress: number; scheduled: number
+    grades_up: number; grades_down: number; success_rate: number | null; median_completion_ms: number | null
+  }
+  daily: { date: string; created: number; done: number; failed: number }[]
+  usage: {
+    sessions_reported: number; active_ms: number; turns: number; input_tokens: number; output_tokens: number
+    cache_read_tokens: number; cache_write_tokens: number; tool_calls: number; tool_errors: number
+    models: { name: string; sessions: number }[]
+  }
+  tools: NameCount[]
+  skills: NameCount[]
+  agents: AgentStats[]
+}
+
 export const api = {
   me: () => request<UserProfile>('/me'),
+  stats: {
+    team: (teamId: string, params: { from: number; to: number; agentId?: string }) => {
+      const query = new URLSearchParams({ from: String(params.from), to: String(params.to), tz: String(new Date().getTimezoneOffset()) })
+      if (params.agentId) query.set('agent_id', params.agentId)
+      return request<TeamStats>(`/teams/${teamId}/stats?${query}`)
+    },
+  },
   teams: {
     list: () => request<{ teams: Team[] }>('/teams'),
     create: (name: string) =>

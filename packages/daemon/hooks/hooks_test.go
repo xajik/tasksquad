@@ -205,3 +205,36 @@ func TestWriteJSON_ValidBody(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 }
+
+// PI fires agent_end with no assistant text when the model call fails. The hook
+// must not complete the task as "closed" — the pipe-exit path decides from the
+// exit code (non-zero → crashed).
+func TestStopHook_PiEmptyMessageDefersToProcessExit(t *testing.T) {
+	a := &fakeAgent{id: "a", name: "pi", taskID: "t", mode: "running"}
+	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil)
+	body := `{"stop_reason":"idle","message":"","transcript_path":""}`
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("POST", "/hooks/stop?agent=a&task_id=t&provider=pi", strings.NewReader(body)))
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if a.completeCalled || a.stopAndPauseCalled || a.setHookMessageCalled {
+		t.Fatalf("empty PI stop must defer to process exit: complete=%v pause=%v", a.completeCalled, a.stopAndPauseCalled)
+	}
+}
+
+// When PI's model call fails, its extension reports stop_reason "error" with the
+// provider's error text; that text must become the task's final reply.
+func TestStopHook_PiErrorCarriesMessage(t *testing.T) {
+	a := &fakeAgent{id: "a", name: "pi", taskID: "t", mode: "running"}
+	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil)
+	body := `{"stop_reason":"error","message":"Pi model call failed (google/gemini): API key not valid.","transcript_path":""}`
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("POST", "/hooks/stop?agent=a&task_id=t&provider=pi", strings.NewReader(body)))
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if a.hookMsg != "Pi model call failed (google/gemini): API key not valid." {
+		t.Fatalf("hook message = %q, want the PI error text", a.hookMsg)
+	}
+}

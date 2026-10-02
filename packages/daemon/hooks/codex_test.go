@@ -45,6 +45,10 @@ func TestCodexHookRouting(t *testing.T) {
 			t.Fatal("missing dispatch", want)
 		}
 	}
+	// Codex's auxiliary title-generation thread finishes first; it must neither
+	// dispatch nor pin its thread, or the real turn below would be dropped.
+	title := `{"type":"agent-turn-complete","thread-id":"title-thread","turn-id":"t1","input-messages":["Generate a concise, single-line task title of at most 36 characters."],"last-assistant-message":"{\"title\":\"x\"}"}`
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/hooks/codex?agent=a&task_id=t", strings.NewReader(title)))
 	send("a", "t", "thread-a", "1", "agent-turn-complete")
 	expect(a.events, "pause:OK")
 	send("a", "t", "thread-a", "1", "agent-turn-complete") // duplicate

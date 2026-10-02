@@ -11,6 +11,7 @@ import (
 	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/metrics"
 	"github.com/tasksquad/daemon/provider"
 	"github.com/tasksquad/daemon/tasklog"
 	"github.com/tasksquad/daemon/tmux"
@@ -98,7 +99,7 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 
 	// Extract final response text.
 	// Priority: hookMessage → transcript → tmux scrollback → outputLines.
-	finalText := hookMessage
+	finalText := strings.TrimSpace(hookMessage)
 	if finalText == "" && transcriptPath != "" {
 		retryDeadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(retryDeadline) {
@@ -497,6 +498,7 @@ func (a *Agent) injectNextStep(sess string) {
 // sendTmuxPrompt uses a tmux buffer for Codex because send-keys can lose
 // spaces/newlines while the TUI is switching from its completed-turn view.
 func (a *Agent) sendTmuxPrompt(sess, prompt string) error {
+	a.recordTyped(prompt)
 	if a.prov.Name() != "codex" {
 		return tmux.SendKeys(sess, prompt)
 	}
@@ -513,5 +515,14 @@ func (a *Agent) sendTmuxPrompt(sess, prompt string) error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return tmux.PastePromptFile(sess, "tsq-codex-reply", path)
+	if err = tmux.PastePromptFile(sess, "tsq-codex-reply", path); err != nil {
+		return err
+	}
+	// A $tsq-… skill token opens Codex's skill picker: the first Enter only
+	// selects the skill, so submit again. Enter on an empty composer is a no-op.
+	if len(metrics.Skills(prompt)) > 0 {
+		time.Sleep(tmux.SubmitWait)
+		return exec.Command(tmuxBin, "send-keys", "-t", sess, "C-m").Run()
+	}
+	return nil
 }

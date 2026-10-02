@@ -19,6 +19,7 @@ import * as memory     from './routes/memory.js'
 import * as dream      from './routes/dream.js'
 import * as tags       from './routes/tags.js'
 import * as download   from './routes/download.js'
+import * as stats      from './routes/stats.js'
 import { runRollups }  from './cron/rollup.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
 
@@ -89,6 +90,7 @@ router.get ('/teams/:teamId/members',              firebaseRoute(teams.listMembe
 router.post('/teams/:teamId/members',              firebaseRoute(teams.addMember))
 router.delete('/teams/:teamId/members/:userId',    firebaseRoute(teams.removeMember))
 router.get ('/teams/:teamId/agents',     firebaseRoute(agents.list))
+router.get ('/teams/:teamId/stats',      firebaseRoute(stats.teamStats))
 router.post('/teams/:teamId/agents',     firebaseRoute(agents.create))
 router.post('/teams/:teamId/tokens',     firebaseRoute(agents.createToken))
 router.patch('/teams/:teamId/agents/:agentId',       firebaseRoute(agents.updateAgent))
@@ -174,6 +176,7 @@ router.post('/daemon/heartbeat/batch',   (req: IRequest, env: Env, ctx: Executio
 router.post('/daemon/complete',          daemonRoute(daemon.complete))
 router.post('/daemon/session/open',      daemonRoute(daemon.sessionOpen))
 router.post('/daemon/session/close',     daemonRoute(daemon.sessionClose))
+router.post('/daemon/session/metrics',   daemonRoute(stats.reportSessionMetrics))
 router.post('/daemon/session/notify',    daemonRoute(daemon.sessionNotify))
 router.post('/daemon/session/message',  daemonRoute(daemon.sessionMessage))
 router.post('/daemon/session/state',    (req: IRequest, env: Env, ctx: ExecutionContext) => daemon.sessionState(req as Request, env, ctx))

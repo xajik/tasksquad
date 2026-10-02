@@ -29,6 +29,10 @@ public actor DaemonEngine {
         var lastPrompt = ""
         var codexThread = ""
         var codexTurns: Set<String> = []
+        /// Session report inputs: when the session opened, and what the engine typed.
+        var sessionOpenedAt: Date?
+        var typedTurns = 0
+        var typedSkills: [String] = []
         /// Last bytes a pipe provider wrote to stderr; explains a failed exit.
         var stderrTail = Data()
         init(configuration: DaemonConfiguration.Agent) {
@@ -229,6 +233,9 @@ public actor DaemonEngine {
             agents[agentID]?.lastPrompt = ""
             agents[agentID]?.codexThread = ""
             agents[agentID]?.codexTurns = []
+            agents[agentID]?.sessionOpenedAt = nil
+            agents[agentID]?.typedTurns = 0
+            agents[agentID]?.typedSkills = []
             agents[agentID]?.stderrTail = Data()
             tasks[agentID] = Task { await self.execute(agentID: agentID, task: task, memoryRollup: memoryRollup, generation: generation) }
         } catch { report(error) }
@@ -246,6 +253,7 @@ public actor DaemonEngine {
             let opened = try await post(agentID: agentID, path: "/daemon/session/open", body: .object(["task_id": .string(taskID)]))
             guard let sessionID = opened["session_id"]?.string, !sessionID.isEmpty else { throw ConfigurationError("Session open response missing session_id") }
             guard agents[agentID]?.state.openedSession(sessionID, generation: generation) == true else { throw CancellationError() }
+            agents[agentID]?.sessionOpenedAt = Date()
             try await artifacts?.event(["type": .string("task_start"), "task_id": .string(taskID), "agent": .string(agent.configuration.name),
                 "agent_id": .string(agentID), "session_id": .string(sessionID), "subject": .string(subject), "log_path": .string(artifacts?.logURL.path ?? "")])
             let messages = task["messages"]?.array ?? []
@@ -260,6 +268,7 @@ public actor DaemonEngine {
             let prompt = Self.injectKBNote(TaskPrompt.build(subject: subject, messages: messages, memoryRollup: memoryRollup),
                                            workDir: agent.configuration.workDir)
             agents[agentID]?.lastPrompt = prompt
+            recordTyped(agentID: agentID, prompt)
             let parts = agent.configuration.command.split(whereSeparator: \.isWhitespace).map(String.init)
             guard let executable = parts.first else { throw ConfigurationError("Agent command is empty") }
             let arguments = Array(parts.dropFirst()) + provider.extraArguments
@@ -356,6 +365,7 @@ public actor DaemonEngine {
 
     private func complete(agentID: String, generation: UInt64, status: CompletionStatus) async {
         guard agents[agentID]?.state.generation == generation else { return }
+        let reportedSession = agents[agentID]?.state.sessionID ?? ""
         let tail = agents[agentID]?.output.finish() ?? []
         try? await agents[agentID]?.artifacts?.writeLines(tail)
         if agents[agentID]?.serverClosed == true || agents[agentID]?.autoClosed == true {
@@ -367,6 +377,7 @@ public actor DaemonEngine {
             }
             try? await agents[agentID]?.artifacts?.close()
             agents[agentID]?.artifacts = nil
+            await postSessionReport(agentID: agentID, sessionID: reportedSession)
             tasks[agentID] = nil
             if reset { agents[agentID]?.state.reset() }
             else { agents[agentID]?.state.finishCompletion(generation: generation) }
@@ -407,7 +418,40 @@ public actor DaemonEngine {
         await attachTranscript(uploader: uploader, sessionID: sessionID, messageID: messageID,
                                transcriptPath: agent.transcriptPath, capture: capture)
         try? await agent.artifacts?.event(["type": .string("task_end"), "status": .string(status.rawValue), "final_text": .string(finalText)])
+        await postSessionReport(agentID: agentID, sessionID: sessionID)
         agents[agentID]?.state.finishCompletion(generation: generation)
+    }
+
+    // MARK: Session report (POST /daemon/session/metrics)
+
+    private func recordTyped(agentID: String, _ text: String) {
+        agents[agentID]?.typedTurns += 1
+        agents[agentID]?.typedSkills += SessionReportParser.skills(in: text)
+    }
+
+    /// Aggregate usage for the analytics dashboard: counts only, never content.
+    /// Best-effort — a failure (e.g. an older worker) must not affect the task.
+    private func postSessionReport(agentID: String, sessionID: String) async {
+        guard !sessionID.isEmpty, let agent = agents[agentID] else { return }
+        let opened = agent.sessionOpenedAt ?? Date()
+        var report = SessionReport()
+        report.provider = agent.provider.rawValue
+        report.durationMs = max(Int(Date().timeIntervalSince(opened) * 1000), 0)
+        report.turns = agent.typedTurns
+        for skill in agent.typedSkills { report.addSkill(skill) }
+        let provider = agent.provider, workDir = agent.configuration.workDir, hookTranscript = agent.transcriptPath, thread = agent.codexThread
+        let parsed = await Task.detached(priority: .utility) { () -> SessionReport in
+            var full = report
+            if let url = SessionReportParser.transcript(provider: provider, workDir: workDir, hookTranscript: hookTranscript,
+                                                        codexThread: thread, since: opened) {
+                SessionReportParser.read(url, provider: provider, into: &full)
+            }
+            return full
+        }.value
+        var body = parsed.json.object ?? [:]
+        body["session_id"] = .string(sessionID)
+        do { _ = try await post(agentID: agentID, path: "/daemon/session/metrics", body: .object(body)) }
+        catch { NSLog("[metrics] session report for %@ not accepted: %@", sessionID, error.localizedDescription) }
     }
 
     // MARK: Hook-driven lifecycle (agent/session.go)
@@ -505,6 +549,7 @@ public actor DaemonEngine {
         // Transition before typing so a repeated heartbeat cannot deliver it twice.
         do { try agents[agentID]?.state.userReplied() } catch { report(error); return }
         agents[agentID]?.lastPrompt = reply
+        recordTyped(agentID: agentID, reply)
         let provider = agent.provider, timing = timing, artifacts = agent.artifacts
         Task {
             try? await artifacts?.event(["type": .string("user_reply"), "body": .string(reply)])
@@ -537,6 +582,7 @@ public actor DaemonEngine {
 
     private func injectNextStep(agentID: String) {
         guard let agent = agents[agentID], let step = agent.state.pendingSteps.first, let session = agent.tmux else { return }
+        recordTyped(agentID: agentID, step)
         let provider = agent.provider
         Task {
             do {

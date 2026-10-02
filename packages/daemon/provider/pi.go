@@ -43,16 +43,37 @@ export default function(pi) {
   const extractText = (content) =>
     (content || []).filter(c => c.type === "text").map(c => c.text || "").join("")
 
+  // Provider errors arrive as JSON nested inside JSON strings; unwrap to the
+  // innermost human-readable message.
+  const describeError = (raw) => {
+    let s = String(raw || "")
+    for (let i = 0; i < 4; i++) {
+      try {
+        const m = JSON.parse(s)?.error?.message ?? JSON.parse(s)?.message
+        if (typeof m !== "string") break
+        s = m
+      } catch { break }
+    }
+    return s.trim()
+  }
+
   let lastAssistantMessage = ""
+  let lastError = ""
 
   pi.on("before_agent_start", async (_event, _ctx) => {
     lastAssistantMessage = ""
+    lastError = ""
   })
 
   pi.on("message_end", async (event, _ctx) => {
     if (event.message?.role === "assistant") {
       const text = extractText(event.message.content)
       if (text) lastAssistantMessage = text
+      if (event.message.stopReason === "error") {
+        const where = [event.message.provider, event.message.model].filter(Boolean).join("/")
+        lastError = "Pi model call failed" + (where ? " (" + where + ")" : "") + ": " +
+          (describeError(event.message.errorMessage) || "unknown error")
+      }
     }
   })
 
@@ -65,9 +86,14 @@ export default function(pi) {
       }
     }
     const transcriptPath = ctx.sessionManager?.getSessionFile?.() ?? ""
+    const failed = !lastAssistantMessage && lastError
     await post(
       "/hooks/stop?agent=%s&task_id=%s&provider=pi",
-      { stop_reason: "idle", message: lastAssistantMessage, transcript_path: transcriptPath },
+      {
+        stop_reason: failed ? "error" : "idle",
+        message: failed ? lastError : lastAssistantMessage,
+        transcript_path: transcriptPath,
+      },
       ctx.signal
     )
   })

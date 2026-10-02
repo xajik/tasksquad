@@ -94,6 +94,7 @@ struct CustomerWorkspace: View {
                     Button { editor = .newProject(model: model) } label: { Label("New project", icon: .plus) }.buttonStyle(.tsqPrimary)
                 }
             } else if model.section == .settings { settings }
+            else if model.section == .analytics { CustomerAnalytics(model: model).edgeBorder(.top) }
             else {
                 HSplitView {
                     recordList.frame(minWidth: 260, idealWidth: 320, maxWidth: 440).edgeBorder(.trailing)
@@ -111,8 +112,10 @@ struct CustomerWorkspace: View {
                     Text("Skills").tag(CustomerSection.skills); Text("Sub-agents").tag(CustomerSection.subAgents); Text("Commands").tag(CustomerSection.commands)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 260)
             }
-            Button { Task { await model.connect(); await model.refresh() } } label: { Icon(.refreshCw) }
-                .buttonStyle(.tsqIcon).foregroundStyle(Theme.mutedForeground).help("Refresh")
+            if model.section != .analytics { // Analytics has its own refresh beside its filters.
+                Button { Task { await model.connect(); await model.refresh() } } label: { Icon(.refreshCw) }
+                    .buttonStyle(.tsqIcon).foregroundStyle(Theme.mutedForeground).help("Refresh")
+            }
             Button { model.openInBrowser() } label: { Label("Open in Web", icon: .externalLink) }.buttonStyle(.tsq(.outline, size: .default))
             if canCreate {
                 Button { createRecord() } label: { Label(model.section == .inbox ? "New Task" : "New", icon: .plus) }
@@ -123,7 +126,7 @@ struct CustomerWorkspace: View {
     private var canCreate: Bool {
         guard !model.teamID.isEmpty else { return false }
         switch model.section {
-        case .supervisor, .memory, .settings: return false
+        case .supervisor, .memory, .settings, .analytics: return false
         case .agents: return model.isMaintainer
         case .members: return model.isOwner
         case .portals: return model.isPro

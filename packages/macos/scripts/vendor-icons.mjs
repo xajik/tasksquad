@@ -14,7 +14,7 @@ const names = [
   'list-checks', 'scroll-text', 'file-cog', 'wrench', 'circle-alert', 'external-link', 'copy', 'check', 'paperclip',
   'message-square', 'messages-square', 'user', 'sparkles', 'zap', 'circle-check', 'circle', 'ellipsis', 'download',
   'clock', 'info', 'chevron-down', 'chevron-right', 'braces', 'network', 'circle-x', 'folder-plus', 'square-terminal',
-  'triangle-alert', 'file-code', 'thumbs-up', 'thumbs-down', 'pencil', 'trash-2', 'send', 'laptop', 'sun', 'moon', 'sun-moon',
+  'triangle-alert', 'file-code', 'thumbs-up', 'thumbs-down', 'pencil', 'trash-2', 'send', 'laptop', 'sun', 'moon', 'sun-moon', 'chart-column',
 ]
 
 const attributes = value => Object.entries(value).filter(([key]) => key !== 'key').map(([key, v]) => `${key}="${v}"`).join(' ')

@@ -33,7 +33,7 @@ func appSearchPath(executable, home, inherited string) string {
 	paths = append(paths, filepath.SplitList(inherited)...)
 	paths = append(paths, "/opt/homebrew/bin", "/usr/local/bin",
 		filepath.Join(home, ".local", "bin"), filepath.Join(home, ".bun", "bin"),
-		filepath.Join(home, ".cargo", "bin"), "/usr/bin", "/bin", "/usr/sbin", "/sbin")
+		filepath.Join(home, ".cargo", "bin"), filepath.Join(home, ".opencode", "bin"), "/usr/bin", "/bin", "/usr/sbin", "/sbin")
 	seen := map[string]bool{}
 	var result []string
 	for _, path := range paths {
@@ -47,7 +47,10 @@ func appSearchPath(executable, home, inherited string) string {
 
 func prepareAppEnvironment() {
 	executable, _ := os.Executable()
-	if appBundle(executable) == "" {
+	// The app bundle, and the plain CLI binary when started by launchd autostart
+	// (parent is launchd, PID 1), both get launchd's bare /usr/bin:/bin PATH —
+	// agent CLIs in ~/.local/bin or Homebrew would fail with "not found in $PATH".
+	if appBundle(executable) == "" && os.Getppid() != 1 {
 		return
 	}
 	home, _ := os.UserHomeDir()

@@ -12,7 +12,7 @@ enum LucideIcon: String, CaseIterable {
     case circle, ellipsis, download, clock, info, chevronDown = "chevron-down", chevronRight = "chevron-right", braces
     case network, circleX = "circle-x", folderPlus = "folder-plus", squareTerminal = "square-terminal"
     case triangleAlert = "triangle-alert", fileCode = "file-code", thumbsUp = "thumbs-up", thumbsDown = "thumbs-down"
-    case pencil, trash = "trash-2", send, laptop, sun, moon, sunMoon = "sun-moon"
+    case pencil, trash = "trash-2", send, laptop, sun, moon, sunMoon = "sun-moon", chartColumn = "chart-column"
 
     @MainActor private static var cache: [String: NSImage] = [:]
     @MainActor var image: NSImage { Self.load("Icons/" + rawValue) }

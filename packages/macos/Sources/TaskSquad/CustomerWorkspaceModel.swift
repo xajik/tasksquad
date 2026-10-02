@@ -7,13 +7,13 @@ import UserNotifications
 enum CustomerSection: String, CaseIterable, Identifiable {
     case inbox = "Inbox", notes = "Notes", portals = "Portals", conveyors = "Conveyors", planners = "Planners"
     case supervisor = "Supervisor", skills = "Skills", subAgents = "Sub-agents", commands = "Commands"
-    case memory = "Memory", agents = "Agents", members = "Members", settings = "Settings"
+    case memory = "Memory", analytics = "Analytics", agents = "Agents", members = "Members", settings = "Settings"
     var id: String { rawValue }
     var icon: LucideIcon {
         switch self {
         case .inbox: .inbox; case .notes: .fileText; case .portals: .monitor; case .conveyors: .repeat
         case .planners: .layers; case .supervisor: .shieldAlert; case .skills: .bookOpen; case .subAgents: .bot
-        case .commands: .squareTerminal; case .memory: .database; case .agents: .bot; case .members: .users
+        case .commands: .squareTerminal; case .memory: .database; case .analytics: .chartColumn; case .agents: .bot; case .members: .users
         case .settings: .settings
         }
     }
@@ -206,7 +206,7 @@ enum CustomerSection: String, CaseIterable, Identifiable {
             if [.inbox, .supervisor, .portals].contains(section) { query["team_id"] = team }
             if section == .notes { query = ["archived": archived ? "true" : "false", "limit": String(loadMore ? 100 : max(records.count, 100)), "offset": loadMore ? String(records.count) : "0"] }
             if section == .memory, memoryCategory != "all" { query["category"] = memoryCategory }
-            var response: JSONValue = section == .settings ? .null : try await api.request(path(for: section, team: team), query: query)
+            var response: JSONValue = [.settings, .analytics].contains(section) ? .null : try await api.request(path(for: section, team: team), query: query)
             let agentList = try await agentResponse
             var values = CustomerRecord(response).records(section.envelope)
             // Notes are capped at 100 per response. Refresh every already-loaded

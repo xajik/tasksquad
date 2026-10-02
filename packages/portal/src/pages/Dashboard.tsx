@@ -92,6 +92,7 @@ import {
   Layers,
   Monitor,
   Database,
+  BarChart3,
   Image as ImageIcon,
   Paperclip,
 } from 'lucide-react'
@@ -101,6 +102,7 @@ import { NoteDetail } from './NoteDetail'
 import { Conveyors } from './Conveyors'
 import { Skills } from './Skills'
 import { Memory } from './Memory'
+import { Analytics } from './Analytics'
 import { Supervisor } from './Supervisor'
 import { Planners } from './Planners'
 import { Portals } from './Portals'
@@ -2693,6 +2695,7 @@ export default function Dashboard() {
   const isPlanner = location.pathname.startsWith('/dashboard/planner')
   const isSupervisor = location.pathname.startsWith('/dashboard/supervisor')
   const isPortals = location.pathname.startsWith('/dashboard/portals')
+  const isAnalytics = location.pathname.startsWith('/dashboard/analytics')
   if (isLoadingTeams) return (
     <div className="flex h-screen items-center justify-center">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -2776,7 +2779,7 @@ export default function Dashboard() {
         </div>
         <nav className="flex-1 px-2">
           <Button
-            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills && !isMemory && !isPlanner && !isSupervisor && !isPortals ? 'secondary' : 'ghost'}
+            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills && !isMemory && !isPlanner && !isSupervisor && !isPortals && !isAnalytics ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
             onClick={() => handleNav('/dashboard')}
           >
@@ -2838,6 +2841,14 @@ export default function Dashboard() {
             >
             <Database className="mr-2 h-4 w-4" />
             Memory
+            </Button>
+            <Button
+            variant={isAnalytics ? 'secondary' : 'ghost'}
+            className="w-full justify-start mb-1"
+            onClick={() => handleNav('/dashboard/analytics')}
+            >
+            <BarChart3 className="mr-2 h-4 w-4" />
+            Analytics
             </Button>
 <Button
             variant={isAgents ? 'secondary' : 'ghost'}            className="w-full justify-start mb-1"
@@ -2953,6 +2964,7 @@ export default function Dashboard() {
           <Route path="/supervisor" element={<Supervisor teamId={teamId} />} />
           <Route path="/skills" element={<Skills teamId={teamId} />} />
           <Route path="/memory" element={<Memory teamId={teamId} currentTeam={currentTeam} />} />
+          <Route path="/analytics" element={<Analytics teamId={teamId} />} />
           <Route path="/agents" element={<AgentsView teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />          <Route path="/members" element={<MembersView teamId={teamId} currentTeam={currentTeam} plan={plan} internalUserId={internalUserId} />} />
           <Route path="/settings" element={<SettingsView teamName={teamName} currentTeam={currentTeam} onDelete={handleDeleteProject} onLeave={handleLeaveProject} plan={plan} isOwner={isOwner} isMaintainer={isMaintainer} onRefresh={refreshTeams} />} />
         </Routes>

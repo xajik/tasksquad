@@ -111,6 +111,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	a.st.lastTmuxCapturePath = ""
 	a.st.cliSessionID = ""
 	a.st.tuiBlocked = false
+	a.st.typedTurns = 0
+	a.st.typedSkills = nil
 	a.st.mu.Unlock()
 
 	logger.Lifecycle(fmt.Sprintf("[%s] event=started task_id=%s subject=%q", a.Config.Name, taskID, subject))
@@ -207,6 +209,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	a.st.mu.Lock()
 	a.st.lastPrompt = prompt
 	a.st.mu.Unlock()
+	a.recordTyped(prompt)
 
 	// Spawn the command.
 	parts := strings.Fields(a.Config.Command)
@@ -253,6 +256,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	if stdinData != "" {
 		if _, err := exec.LookPath(tmuxBin); err != nil {
 			logger.Error(fmt.Sprintf("[%s] tmux is required but not found — cannot start task", a.Config.Name))
+			a.SetHookMessage("Task could not start: tmux is required but was not found in the daemon's PATH.")
 			close(outputDone)
 			a.complete(cfg, string(agentmode.StatusCrashed))
 			return
@@ -354,6 +358,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 		stderr, _ := cmd.StderrPipe()
 		if serr = cmd.Start(); serr != nil {
 			logger.Error(fmt.Sprintf("[%s] Spawn failed: %v", a.Config.Name, serr))
+			// Surface the reason in the thread — otherwise the task just fails
+			// with an empty reply (e.g. the CLI isn't in launchd's PATH).
+			a.SetHookMessage(fmt.Sprintf("Task could not start: %v", serr))
 			close(outputDone)
 			a.complete(cfg, string(agentmode.StatusCrashed))
 			return
