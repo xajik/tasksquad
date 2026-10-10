@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
 import { buttonVariants } from '@/components/ui/button'
@@ -5,36 +6,108 @@ import { trackEvent } from '../lib/analytics'
 import Header from '../components/Header'
 import { useRouteMeta } from '../lib/useRouteMeta'
 import { MACOS_DOWNLOAD_URL } from '../lib/downloads'
+import { PH_LAUNCH_ACTIVE, PH_OFFER, PH_POST_URL } from '../lib/launch'
+
+const PH_BANNER_DISMISSED_KEY = 'tsq_ph_banner_dismissed'
 
 const HOW_IT_WORKS = [
-  'Create a team and add an agent — get a connection token.',
-  'Install the tsq daemon locally and point it at your favorite AI CLI.',
-  'Assign a task from the shared inbox — the daemon picks it up on its next poll.',
-  'Watch the agent execute in real time, streamed live to your browser.',
+  'Create a team and a project for each codebase — add agents and invite teammates.',
+  'Install the tsq daemon on any machine — laptop, workstation, or server — and point it at your favorite AI CLI.',
+  'Assign a task from the shared inbox — the right agent picks it up on its next poll.',
+  'Watch it execute in real time, reply mid-task, and review the full transcript.',
 ]
 
 const KEY_FEATURES = [
   {
+    title: 'Many projects, one inbox',
+    description: 'Every project, agent, and teammate in a single email-style task inbox.',
+  },
+  {
+    title: 'Agents on any machine',
+    description: 'Run agents on laptops, workstations, or servers — the daemon connects them all.',
+  },
+  {
     title: 'Bring your own agent',
-    description: 'Claude Code, Codex, Gemini, OpenCode, or any stdout-based CLI tool.',
+    description: 'Claude Code, Codex, Gemini, OpenCode, Pi, or any stdout-based CLI tool.',
   },
   {
-    title: 'Your code stays local',
-    description: "Agents run as a daemon on your machine, not on TaskSquad's servers.",
+    title: 'Live terminals & supervision',
+    description: 'Stream agent output live, open a browser terminal, and let the Supervisor unstick quiet tasks.',
   },
   {
-    title: 'Real-time visibility',
-    description: 'Task progress and live terminal output stream to the portal as agents work.',
-  },
-  {
-    title: 'Team collaboration',
-    description: 'Humans and agents share one email-style task inbox.',
+    title: 'Shared memory & skills',
+    description: 'Agents learn from finished tasks and share what they learn across the team.',
   },
   {
     title: 'Cross-platform',
-    description: 'macOS, Windows, and Linux.',
+    description: 'macOS, Windows, and Linux — CLI daemon or native macOS app.',
   },
 ]
+
+const SECURITY_FEATURES = [
+  {
+    title: 'Your repo is never uploaded',
+    description: 'Agents execute locally inside a work directory you choose, and model API keys stay on your machine. Only task messages and encrypted transcripts reach the cloud.',
+  },
+  {
+    title: 'Encrypted transcripts',
+    description: 'Agent transcripts are encrypted with AES-256-GCM by the daemon before upload.',
+  },
+  {
+    title: 'Hashed, expiring daemon tokens',
+    description: 'Daemon tokens are stored only as hashes, expire after 90 days, and live in your OS keychain. Every request is checked against your team membership.',
+  },
+  {
+    title: 'Role-based team access',
+    description: 'Owners, maintainers, and members — plus single-use tickets for every live terminal connection.',
+  },
+]
+
+function readBannerDismissed(): boolean {
+  try {
+    return localStorage.getItem(PH_BANNER_DISMISSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function ProductHuntBanner() {
+  const [dismissed, setDismissed] = useState(readBannerDismissed)
+  if (!PH_LAUNCH_ACTIVE || dismissed) return null
+
+  const dismiss = () => {
+    setDismissed(true)
+    try {
+      localStorage.setItem(PH_BANNER_DISMISSED_KEY, '1')
+    } catch {
+      // Storage may be unavailable (private mode) — dismissal just won't persist.
+    }
+  }
+
+  return (
+    <div className="bg-[#DA552F] text-white text-sm">
+      <div className="max-w-[800px] mx-auto px-4 sm:px-6 py-2 flex items-center gap-3">
+        <a
+          href={PH_POST_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => trackEvent('cta_clicked', { label: 'producthunt_banner' })}
+          className="flex-1 min-w-0 hover:underline"
+        >
+          🚀 We're live on Product Hunt — {PH_OFFER}.
+        </a>
+        <button
+          type="button"
+          onClick={dismiss}
+          aria-label="Dismiss Product Hunt banner"
+          className="shrink-0 px-2 leading-none text-lg opacity-80 hover:opacity-100"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function Landing() {
   const meta = useRouteMeta('/')
@@ -45,13 +118,14 @@ export default function Landing() {
         <meta name="description" content={meta.description} />
         <link rel="canonical" href="https://tasksquad.ai/" />
       </Helmet>
+      <ProductHuntBanner />
       <Header source="landing_nav" />
       <main className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] sm:pb-16">
         <h1 className="text-3xl sm:text-5xl font-bold leading-tight mb-6">
-          Where AI agents and people work together.
+          One secure place to run all your AI agents, with your team.
         </h1>
       <p className="text-base sm:text-lg text-muted-foreground mb-8 sm:mb-10 max-w-xl">
-        Coordinate distributed agents with shared memory, delegation, supervision, and real-time collaboration. Bring your own models, tools, and agent harnesses.
+        Manage every AI project from one inbox. Your agents — Claude Code, Codex, Gemini, and more — run on your own machines, where your code lives, while your team delegates, supervises, and reviews together.
       </p>
 
       <Link
@@ -116,6 +190,24 @@ export default function Landing() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="mt-16 sm:mt-24">
+        <h2 className="text-2xl font-bold mb-2">Secure by design</h2>
+        <p className="text-muted-foreground mb-6">
+          TaskSquad coordinates the work. Your machines do it.
+        </p>
+        <ul className="grid sm:grid-cols-2 gap-6">
+          {SECURITY_FEATURES.map((feature) => (
+            <li key={feature.title}>
+              <h3 className="font-semibold mb-1">{feature.title}</h3>
+              <p className="text-muted-foreground text-sm">{feature.description}</p>
+            </li>
+          ))}
+        </ul>
+        <Link to="/docs/concepts/security" className="inline-block mt-6 text-sm underline">
+          Read how TaskSquad handles security →
+        </Link>
       </section>
 
       <footer className="border-t mt-16 sm:mt-24 pt-10 text-muted-foreground text-sm flex flex-wrap gap-x-4 gap-y-2">

@@ -9,6 +9,13 @@ order: 3
 
 Skills are modular, reusable pieces of agent knowledge. They allow agents to learn from their experiences and share that knowledge with other agents in the same team.
 
+```screenshot
+src: /docs/screenshots/skills.webp
+alt: Team skills, sub-agents and commands
+width: 1309
+height: 688
+```
+
 ## How Skills Work
 
 In TaskSquad, skills are defined using a simple Markdown format with YAML frontmatter. This format allows for both human-readable descriptions and machine-executable instructions.

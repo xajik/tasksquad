@@ -4,6 +4,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { trackEvent } from '../lib/analytics'
 import Header from '../components/Header'
 import { useRouteMeta } from '../lib/useRouteMeta'
+import { PH_LAUNCH_ACTIVE, PH_PROMO_CODE } from '../lib/launch'
 import {
   Card,
   CardContent,
@@ -23,6 +24,8 @@ const FREE_FEATURES = [
   'Integrate with Gemini, Claude, OpenCode, Codex',
   'Support for Mac, Windows, Linux',
   'PWA push notifications',
+  'Encrypted task transcripts',
+  'Role-based team access',
 ]
 
 const PRO_FEATURES = [
@@ -104,6 +107,12 @@ export default function Pricing() {
                 <a href="mailto:contact@tasksquad.ai" onClick={() => trackEvent('contact_email_clicked', { source: 'pricing_pro' })} className="underline">contact@tasksquad.ai</a>
                 {' '} to activate
               </p>
+              {PH_LAUNCH_ACTIVE && (
+                <p className="text-xs font-medium text-center w-full rounded-md bg-[#DA552F]/10 text-[#DA552F] px-3 py-2">
+                  Product Hunt launch: 3 months of Pro free — mention code{' '}
+                  <span className="font-mono">{PH_PROMO_CODE}</span>
+                </p>
+              )}
             </CardFooter>
           </Card>
         </div>

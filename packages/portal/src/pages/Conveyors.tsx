@@ -720,7 +720,7 @@ function openEdit(c: Conveyor) {
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate flex items-center gap-2">
                     {c.subject}
-                    {c.paused && (
+                    {!!c.paused && (
                       <span className="text-xs font-normal px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                         Paused
                       </span>

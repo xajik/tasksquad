@@ -88,3 +88,5 @@ logs
 # Generated at build time by packages/portal/scripts/generate-seo-manifest.ts
 packages/portal/generated/
 packages/portal/public/sitemap.xml
+# Product Hunt launch media build output (teasers, 2x web renders) — regenerate with launch/media/render.sh
+launch/media/out/

@@ -1,0 +1,347 @@
+<!doctype html>
+<!--
+  TaskSquad launch posters. One page, many scenes: render.sh opens scenes.html#<scene> at the target size
+  and screenshots it with headless Chrome. Styled with the product design system (light UI, DM Sans).
+  Screenshots come from ../shots/crop/ (captured from the sample "orbit-web" workspace).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,800&family=JetBrains+Mono:wght@400;600&display=block" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0F1117; --muted: #5B6475; --faint: #8A93A6; --surface: #FFFFFF; --surface-alt: #F6F7F9;
+    --border: #E2E4EA; --accent: #2563EB; --accent-soft: #EAF1FE; --green: #16A34A; --green-soft: #E8F6EE;
+    --amber: #D97706; --red: #DC2626; --ph: #DA552F;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100vw; height: 100vh; overflow: hidden; }
+  body { font-family: 'DM Sans', sans-serif; color: var(--ink); background: var(--surface-alt); }
+  .scene { display: none; position: absolute; inset: 0; overflow: hidden; }
+  .scene.on { display: flex; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .bg {
+    background:
+      radial-gradient(ellipse 55% 60% at 100% 0%, rgba(37,99,235,.13), transparent 65%),
+      radial-gradient(ellipse 45% 50% at 0% 100%, rgba(37,99,235,.07), transparent 65%),
+      var(--surface-alt);
+  }
+  .bg::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(rgba(15,17,23,.07) 1px, transparent 1px);
+    background-size: 22px 22px;
+    mask-image: linear-gradient(180deg, #000 0%, transparent 55%);
+  }
+  .brand { display: flex; align-items: center; gap: 11px; font-weight: 700; font-size: 21px; letter-spacing: -.01em; }
+  .brand img { width: 36px; height: 36px; border-radius: 22%; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; color: var(--accent); background: var(--accent-soft);
+             font-weight: 700; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; padding: 6px 12px; border-radius: 999px; }
+  h1 { font-weight: 800; letter-spacing: -.03em; line-height: 1.06; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .sub { color: var(--muted); line-height: 1.45; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px;
+          border: 1px solid var(--border); background: var(--surface); font-size: 14px; color: var(--ink); font-weight: 500; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .window { border-radius: 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--border);
+            box-shadow: 0 1px 2px rgba(15,17,23,.04), 0 24px 60px -12px rgba(15,17,23,.18); }
+  .window .bar { height: 30px; background: var(--surface-alt); border-bottom: 1px solid var(--border);
+                 display: flex; align-items: center; gap: 6px; padding: 0 12px; }
+  .window .bar i { width: 10px; height: 10px; border-radius: 50%; background: #D5D9E0; }
+  .window .bar i:nth-child(1) { background: #FF5F57; } .window .bar i:nth-child(2) { background: #FEBC2E; } .window .bar i:nth-child(3) { background: #28C840; }
+  .window .bar span { margin-left: 12px; font-size: 12px; color: var(--faint); }
+  .window img { display: block; width: 100%; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .sample { position: absolute; right: 20px; bottom: 12px; font-size: 11px; color: var(--faint); letter-spacing: .04em;
+            background: rgba(255,255,255,.85); padding: 3px 8px; border-radius: 6px; z-index: 5; }
+  ul.checks { list-style: none; display: flex; flex-direction: column; gap: 13px; }
+  ul.checks li { display: flex; gap: 11px; font-size: 18px; line-height: 1.4; color: var(--ink); }
+  ul.checks li::before { content: '✓'; flex: 0 0 24px; height: 24px; border-radius: 50%; background: var(--green-soft);
+                         color: var(--green); font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+
+  /* Layout: wide — headline on top, screenshot bleeding off the bottom edge */
+  .wide { flex-direction: column; padding: 44px 56px 0; }
+  .wide .top { display: flex; justify-content: space-between; align-items: center; position: relative; }
+  .wide h1 { font-size: 46px; margin-top: 26px; max-width: 1060px; position: relative; }
+  .wide .sub { font-size: 19px; margin-top: 12px; max-width: 980px; position: relative; }
+  .wide .shot { margin-top: 28px; flex: 1; position: relative; }
+  .wide .shot .window { position: absolute; left: 0; right: 0; top: 0; }
+
+  /* Layout: split — copy left, screenshot right */
+  .split { padding: 48px 0 0 56px; gap: 44px; }
+  .split .copy { flex: 0 0 430px; display: flex; flex-direction: column; position: relative; }
+  .split h1 { font-size: 44px; margin: 22px 0 16px; }
+  .split .sub { font-size: 18px; margin-bottom: 26px; }
+  .split .shot { flex: 1; position: relative; }
+  .split .shot .window { position: absolute; left: 0; top: 8px; width: 720px; }
+
+
+  /* Overview posters (b1–b3): real screenshots in app windows, same system as p01–p10 */
+  .quad { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 18px; margin: 24px 0 40px; min-height: 0; position: relative; }
+  .quad .window { display: flex; flex-direction: column; min-height: 0; }
+  .quad .window .bar span { color: var(--ink); font-weight: 600; font-size: 12.5px; }
+  .quad .window .shot-img { flex: 1; min-height: 0; background: #fff; }
+  .quad .window .shot-img img { width: 100%; height: 100%; object-fit: contain; object-position: left top; }
+  svg text { font-family: 'DM Sans', sans-serif; }
+  svg .mono { font-family: 'JetBrains Mono', monospace; }
+</style>
+</head>
+<body>
+
+<!-- ===================== 01 · Feature graphic / hero ===================== -->
+<section class="scene bg" id="p01" style="flex-direction:column;padding:44px 56px 0;">
+  <div style="display:flex;justify-content:space-between;align-items:center;position:relative;z-index:2">
+    <div class="brand"><img src="logo.svg">TaskSquad</div>
+    <div style="display:flex;gap:8px"><span class="chip"><span class="dot"></span>Claude Code</span><span class="chip">Codex</span><span class="chip">Gemini</span><span class="chip">OpenCode</span><span class="chip">Pi</span></div>
+  </div>
+  <h1 style="font-size:58px;margin-top:30px;max-width:1120px;position:relative;z-index:2">One creative workspace for <em>teams and agents.</em></h1>
+  <p class="sub" style="font-size:20px;margin-top:14px;max-width:900px;position:relative;z-index:2">Bring any harness and your own servers. See every agent at work, learn together, and track every run.</p>
+  <div style="position:relative;flex:1;margin-top:30px">
+    <div class="window" style="position:absolute;left:470px;top:-6px;width:700px;transform:rotate(1.4deg);transform-origin:top left"><div class="bar"><i></i><i></i><i></i><span>Thread</span></div><img src="../shots/crop/thread.jpg"></div>
+    <div class="window" style="position:absolute;left:0;top:26px;width:640px"><div class="bar"><i></i><i></i><i></i><span>Inbox</span></div><img src="../shots/crop/inbox.jpg"></div>
+    <div class="card" style="position:absolute;right:20px;top:190px;padding:16px 18px;width:300px;box-shadow:0 18px 40px -10px rgba(15,17,23,.22);z-index:3">
+      <div style="font-weight:700;font-size:15px;margin-bottom:10px;display:flex;gap:8px;align-items:center">🔐 Secure, open, observable</div>
+      <ul class="checks" style="gap:8px"><li style="font-size:14px">Any harness, even your own</li><li style="font-size:14px">Runs on your servers</li><li style="font-size:14px">Governed and observable</li></ul>
+    </div>
+  </div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== 02 · Inbox & threads ===================== -->
+<section class="scene bg wide" id="p02">
+  <div class="top"><span class="eyebrow">📥 Shared inbox</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>Delegate like email. <em>Agents reply in the thread.</em></h1>
+  <p class="sub">Send a task to any agent, follow every tool call, reply mid-task to steer, and close the session when it's done.</p>
+  <div class="shot"><div class="window"><div class="bar"><i></i><i></i><i></i><span>tasksquad.ai · Inbox</span></div><img src="../shots/crop/thread.jpg"></div></div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== 03 · Distributed ===================== -->
+<section class="scene bg wide" id="p03">
+  <div class="top"><span class="eyebrow">🧩 Bring your own harness</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>Your harness. Your servers. <em>One workspace.</em></h1>
+  <p class="sub">Claude Code, Codex, Gemini, OpenCode, Pi, or the agent you built yourself. If it runs in a terminal, it can join the squad.</p>
+  <div class="shot">
+    <svg viewBox="0 0 1158 380" width="100%" height="100%">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker></defs>
+      <rect x="404" y="18" width="350" height="104" rx="14" fill="#fff" stroke="#2563EB" stroke-width="2"/>
+      <text x="579" y="62" text-anchor="middle" fill="#0F1117" font-size="23" font-weight="700">TaskSquad inbox</text>
+      <text x="579" y="94" text-anchor="middle" fill="#5B6475" font-size="15">projects · tasks · team · live output</text>
+      <g stroke="#2563EB" stroke-width="2" stroke-dasharray="6 6" fill="none" marker-end="url(#ar)">
+        <path d="M160,222 C160,160 430,160 470,126"/><path d="M579,222 L579,128"/><path d="M998,222 C998,160 728,160 688,126"/>
+      </g>
+      <text x="300" y="172" fill="#5B6475" font-size="13" class="mono">HTTPS · authenticated</text>
+      <g>
+        <rect x="20" y="222" width="280" height="130" rx="14" fill="#fff" stroke="#E2E4EA"/>
+        <text x="42" y="258" fill="#0F1117" font-size="20" font-weight="700">💻 MacBook Pro</text>
+        <text x="42" y="290" fill="#8A93A6" class="mono" font-size="14">tsq daemon</text>
+        <text x="42" y="324" fill="#0F1117" font-size="16">Claude Code · Pi</text>
+        <rect x="439" y="222" width="280" height="130" rx="14" fill="#fff" stroke="#E2E4EA"/>
+        <text x="461" y="258" fill="#0F1117" font-size="20" font-weight="700">🖥 Linux server</text>
+        <text x="461" y="290" fill="#8A93A6" class="mono" font-size="14">tsq daemon</text>
+        <text x="461" y="324" fill="#0F1117" font-size="16">Codex · OpenCode</text>
+        <rect x="858" y="222" width="280" height="130" rx="14" fill="#fff" stroke="#E2E4EA"/>
+        <text x="880" y="258" fill="#0F1117" font-size="20" font-weight="700">🪟 Windows (WSL)</text>
+        <text x="880" y="290" fill="#8A93A6" class="mono" font-size="14">tsq daemon</text>
+        <text x="880" y="324" fill="#0F1117" font-size="16">Gemini · your own agent</text>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<!-- ===================== 04 · Security ===================== -->
+<section class="scene bg wide" id="p04">
+  <div class="top"><span class="eyebrow">🔐 Secure by design</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>Your agents run on <em>your</em> machines.</h1>
+  <p class="sub">TaskSquad coordinates the work. Your machines do it.</p>
+  <div class="shot">
+    <svg viewBox="0 0 1158 420" width="100%" height="100%">
+      <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker></defs>
+      <rect x="6" y="14" width="530" height="370" rx="18" fill="#F3FBF6" stroke="#16A34A" stroke-width="2" stroke-dasharray="8 6"/>
+      <text x="34" y="54" fill="#16A34A" font-size="14" font-weight="700" letter-spacing="1.5">YOUR MACHINE</text>
+      <g font-size="18" fill="#0F1117">
+        <rect x="34" y="74" width="474" height="60" rx="10" fill="#fff" stroke="#E2E4EA"/><text x="56" y="111">📁 Your repo, never uploaded (work_dir you choose)</text>
+        <rect x="34" y="146" width="474" height="60" rx="10" fill="#fff" stroke="#E2E4EA"/><text x="56" y="183">🔑 Model API keys (Anthropic, OpenAI…)</text>
+        <rect x="34" y="218" width="474" height="60" rx="10" fill="#fff" stroke="#E2E4EA"/><text x="56" y="255">🤖 Agent process, one tmux session per task</text>
+        <rect x="34" y="290" width="474" height="60" rx="10" fill="#fff" stroke="#E2E4EA"/><text x="56" y="327">🔐 tsq credentials in the OS keychain</text>
+      </g>
+      <path d="M546,199 L650,199" stroke="#16A34A" stroke-width="3" marker-end="url(#ar2)"/>
+      <text x="598" y="184" text-anchor="middle" fill="#16A34A" font-size="14" class="mono">TLS</text>
+      <rect x="662" y="14" width="490" height="370" rx="18" fill="#fff" stroke="#2563EB" stroke-width="2"/>
+      <text x="690" y="54" fill="#2563EB" font-size="14" font-weight="700" letter-spacing="1.5">TASKSQUAD CLOUD</text>
+      <g font-size="17" fill="#0F1117">
+        <text x="690" y="104">✓ Task metadata and thread messages</text>
+        <text x="690" y="148">✓ Transcripts, AES-256-GCM encrypted</text>
+        <text x="712" y="172" fill="#5B6475" font-size="14">encrypted by the daemon before upload</text>
+        <text x="690" y="216">✓ Daemon tokens stored only as hashes</text>
+        <text x="712" y="240" fill="#5B6475" font-size="14">expire after 90 days · team-checked per request</text>
+        <text x="690" y="284">✓ Owner / Maintainer / Member roles</text>
+        <text x="690" y="328">✓ Single-use tickets for live terminals</text>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<!-- ===================== 05 · Planner ===================== -->
+<section class="scene bg split" id="p05">
+  <div class="copy">
+    <div class="brand"><img src="logo.svg">TaskSquad</div>
+    <div style="margin-top:34px"><span class="eyebrow">🧭 Planner</span></div>
+    <h1>Big goals, <em>split into phases.</em></h1>
+    <p class="sub">Each phase goes to the right agent. You approve before the next one starts.</p>
+    <ul class="checks">
+      <li>A harness agent and sub-agent per phase</li>
+      <li>Optional Supervisor check after each phase</li>
+      <li>👍 to proceed, 👎 to retry, up to your limit</li>
+    </ul>
+  </div>
+  <div class="shot"><div class="window"><div class="bar"><i></i><i></i><i></i><span>Planner</span></div><img src="../shots/crop/planner.jpg"></div></div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== 06 · Supervisor ===================== -->
+<section class="scene bg split" id="p06">
+  <div class="copy">
+    <div class="brand"><img src="logo.svg">TaskSquad</div>
+    <div style="margin-top:34px"><span class="eyebrow">🛡 Supervisor</span></div>
+    <h1>Stuck agents <em>get unstuck.</em></h1>
+    <p class="sub">When a task goes quiet, a second session inspects the terminal and acts.</p>
+    <ul class="checks">
+      <li>Finds the cause: prompts, errors, hung processes</li>
+      <li>Resolves it, or escalates with a clear verdict</li>
+      <li>Every verdict posted to the task thread</li>
+    </ul>
+  </div>
+  <div class="shot"><div class="window" style="width:760px"><div class="bar"><i></i><i></i><i></i><span>Supervisor</span></div><img src="../shots/crop/supervisor.jpg"></div></div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== 07 · Notes ===================== -->
+<section class="scene bg wide" id="p07">
+  <div class="top"><span class="eyebrow">📝 Notes</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>Write the spec together. <em>Ship it to an agent.</em></h1>
+  <p class="sub">Teammates comment, an agent critiques, and "To Inbox" turns the note into a task with full context.</p>
+  <div class="shot"><div class="window"><div class="bar"><i></i><i></i><i></i><span>Notes</span></div><img src="../shots/crop/notes.jpg"></div></div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== 08 · Memory & skills ===================== -->
+<section class="scene bg wide" id="p08">
+  <div class="top"><span class="eyebrow">🧠 Memory & Skills</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>Agents that remember <em>how your team works.</em></h1>
+  <p class="sub">Decisions, conventions and architecture are saved as shared memory. Reusable skills sync to every agent.</p>
+  <div class="shot"><div class="window"><div class="bar"><i></i><i></i><i></i><span>Memory</span></div><img src="../shots/crop/memory.jpg"></div></div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== 09 · Analytics ===================== -->
+<section class="scene bg wide" id="p09">
+  <div class="top"><span class="eyebrow">📊 Observability</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>Observe, govern and <em>track every run.</em></h1>
+  <p class="sub">Outcomes, time to done, tool calls, tokens and feedback, per agent and per day, across every harness.</p>
+  <div class="shot"><div class="window"><div class="bar"><i></i><i></i><i></i><span>Analytics</span></div><img src="../shots/crop/analytics.jpg"></div></div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== 10 · Get started ===================== -->
+<section class="scene bg" id="p10" style="flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+  <div class="brand" style="font-size:28px;position:relative"><img src="logo.svg" style="width:54px;height:54px">TaskSquad</div>
+  <h1 style="font-size:56px;margin-top:26px;position:relative">Get started in two minutes.</h1>
+  <div class="card mono" style="margin-top:30px;padding:20px 28px;font-size:19px;text-align:left;line-height:1.9;position:relative">
+    <div><span style="color:var(--accent)">$</span> brew tap xajik/tap &amp;&amp; brew install tsq</div>
+    <div><span style="color:var(--accent)">$</span> tsq login &amp;&amp; tsq</div>
+  </div>
+  <div style="display:flex;gap:16px;margin-top:24px;position:relative">
+    <div class="card" style="padding:16px 20px;text-align:left;width:250px"><div style="font-size:13px;font-weight:700;color:var(--accent)">STEP 1</div><div style="font-size:18px;font-weight:700;margin-top:4px">Create a team</div><div style="font-size:14px;color:var(--muted);margin-top:4px">Add agents and invite teammates</div></div>
+    <div class="card" style="padding:16px 20px;text-align:left;width:250px"><div style="font-size:13px;font-weight:700;color:var(--accent)">STEP 2</div><div style="font-size:18px;font-weight:700;margin-top:4px">Connect machines</div><div style="font-size:14px;color:var(--muted);margin-top:4px">Run tsq where your code lives</div></div>
+    <div class="card" style="padding:16px 20px;text-align:left;width:250px"><div style="font-size:13px;font-weight:700;color:var(--accent)">STEP 3</div><div style="font-size:18px;font-weight:700;margin-top:4px">Send a task</div><div style="font-size:14px;color:var(--muted);margin-top:4px">Watch it work, reply, close</div></div>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:22px;position:relative"><span class="chip"><span class="dot"></span>Claude Code</span><span class="chip">Codex</span><span class="chip">Gemini</span><span class="chip">OpenCode</span><span class="chip">Pi</span><span class="chip">any CLI</span></div>
+  <div style="margin-top:16px;color:var(--muted);font-size:16px;position:relative">tasksquad.ai · macOS · Linux · Windows (WSL)</div>
+</section>
+
+<!-- ===================== Overview 1 · Run the work ===================== -->
+<section class="scene bg wide" id="b1">
+  <div class="top"><span class="eyebrow">⚡ Run the work</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>Delegate, watch, unblock, <em>repeat.</em></h1>
+  <p class="sub">Inbox for every task, a Supervisor for stuck ones, live Portals into any machine, and Conveyors that run on schedule.</p>
+  <div class="quad">
+    <div class="window"><div class="bar"><i></i><i></i><i></i><span>Inbox</span></div><div class="shot-img"><img src="../shots/tiles/inbox.jpg"></div></div><div class="window"><div class="bar"><i></i><i></i><i></i><span>Supervisor</span></div><div class="shot-img"><img src="../shots/tiles/verdict.jpg"></div></div>
+    <div class="window"><div class="bar"><i></i><i></i><i></i><span>Portals</span></div><div class="shot-img"><img src="../shots/tiles/portals.jpg"></div></div><div class="window"><div class="bar"><i></i><i></i><i></i><span>Conveyor</span></div><div class="shot-img"><img src="../shots/tiles/conveyor.jpg"></div></div>
+  </div>
+  <div class="sample">Sample workspace</div>
+</section>
+<!-- ===================== Overview 2 · Grow the squad ===================== -->
+<section class="scene bg wide" id="b2">
+  <div class="top"><span class="eyebrow">🧠 Grow the squad</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>Agents that learn <em>how your team works.</em></h1>
+  <p class="sub">A roster of agents with roles, specs written together in Notes, and memory and skills every agent shares.</p>
+  <div class="quad">
+    <div class="window"><div class="bar"><i></i><i></i><i></i><span>Agents</span></div><div class="shot-img"><img src="../shots/tiles/agents.jpg"></div></div><div class="window"><div class="bar"><i></i><i></i><i></i><span>Notes</span></div><div class="shot-img"><img src="../shots/tiles/notes.jpg"></div></div>
+    <div class="window"><div class="bar"><i></i><i></i><i></i><span>Memory</span></div><div class="shot-img"><img src="../shots/tiles/memory.jpg"></div></div><div class="window"><div class="bar"><i></i><i></i><i></i><span>Skills</span></div><div class="shot-img"><img src="../shots/tiles/skills.jpg"></div></div>
+  </div>
+  <div class="sample">Sample workspace</div>
+</section>
+<!-- ===================== Overview 3 · Run it your way ===================== -->
+<section class="scene bg wide" id="b3">
+  <div class="top"><span class="eyebrow">🧩 Run it your way</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>Your agents. Your machines. <em>Fully governed.</em></h1>
+  <p class="sub">Bring any harness on your own machines, work on it together, and see every run, with security built in.</p>
+  <div class="quad" style="grid-template-columns:1.05fr 1fr">
+    <div class="window" style="grid-row:span 2"><div class="bar"><i></i><i></i><i></i><span>Your infrastructure</span></div><div class="shot-img" style="padding:14px 16px">
+      <svg viewBox="0 0 560 470" width="100%" height="100%">
+        <defs><marker id="arb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker></defs>
+        <rect x="4" y="6" width="552" height="214" rx="14" fill="#F3FBF6" stroke="#16A34A" stroke-width="2" stroke-dasharray="7 6"/>
+        <text x="24" y="38" fill="#16A34A" font-size="13" font-weight="700" letter-spacing="1.4">YOUR MACHINES · BRING YOUR OWN</text>
+        <g font-size="15" fill="#0F1117">
+          <rect x="24" y="54" width="512" height="40" rx="9" fill="#fff" stroke="#E2E4EA"/><text x="40" y="79">💻 MacBook Pro</text><text x="520" y="79" text-anchor="end" fill="#5B6475">Claude Code · Pi</text>
+          <rect x="24" y="102" width="512" height="40" rx="9" fill="#fff" stroke="#E2E4EA"/><text x="40" y="127">🖥 Linux server</text><text x="520" y="127" text-anchor="end" fill="#5B6475">Codex · OpenCode</text>
+          <rect x="24" y="150" width="512" height="40" rx="9" fill="#fff" stroke="#E2E4EA"/><text x="40" y="175">🧪 Your own harness</text><text x="520" y="175" text-anchor="end" fill="#5B6475">any terminal agent</text>
+        </g>
+        <text x="24" y="212" fill="#16A34A" font-size="12.5">Repo never uploaded · API keys stay local · tmux session per task</text>
+        <path d="M280,226 L280,262" stroke="#16A34A" stroke-width="3" marker-end="url(#arb)"/>
+        <text x="292" y="250" fill="#16A34A" font-size="13" class="mono">TLS · tsq daemon</text>
+        <rect x="4" y="270" width="552" height="194" rx="14" fill="#fff" stroke="#2563EB" stroke-width="2"/>
+        <text x="24" y="302" fill="#2563EB" font-size="13" font-weight="700" letter-spacing="1.4">TASKSQUAD CLOUD · GOVERNED</text>
+        <g font-size="15" fill="#0F1117">
+          <text x="24" y="334">✓ Transcripts AES-256-GCM encrypted before upload</text>
+          <text x="24" y="364">✓ Daemon tokens hashed, expire after 90 days</text>
+          <text x="24" y="394">✓ Owner · Maintainer · Member roles</text>
+          <text x="24" y="424">✓ Every request checked against team membership</text>
+          <text x="24" y="454">✓ Single-use tickets for live terminals</text>
+        </g>
+      </svg></div></div>
+    <div class="window"><div class="bar"><i></i><i></i><i></i><span>Collaboration · people and agents in one thread</span></div><div class="shot-img"><img src="../shots/tiles/collab.jpg"></div></div>
+    <div class="window"><div class="bar"><i></i><i></i><i></i><span>Analytics</span></div><div class="shot-img"><img src="../shots/tiles/analytics.jpg"></div></div>
+  </div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== Thumbnail 240×240 ===================== -->
+<section class="scene" id="thumb" style="background:linear-gradient(135deg,#2563EB,#1D4ED8);align-items:center;justify-content:center;">
+  <img src="logo.svg" style="width:176px;height:176px;border-radius:22%;box-shadow:0 10px 26px rgba(15,17,23,.35)">
+</section>
+
+<!-- ===================== OG image 1200×630 ===================== -->
+<section class="scene bg" id="og" style="padding:60px 70px 0;flex-direction:column;">
+  <div class="brand" style="font-size:26px;position:relative;z-index:2"><img src="logo.svg" style="width:48px;height:48px">TaskSquad</div>
+  <h1 style="font-size:58px;margin-top:28px;max-width:740px;position:relative;z-index:2">One secure place to run all your <em>AI agents</em>, with your team.</h1>
+  <p class="sub" style="font-size:21px;margin-top:16px;max-width:600px;position:relative;z-index:2">Agents run on your machines. Your repo is never uploaded. Transcripts are encrypted.</p>
+  <div class="window" style="position:absolute;left:770px;top:130px;width:620px;transform:rotate(-2deg)"><div class="bar"><i></i><i></i><i></i><span>Inbox</span></div><img src="../shots/crop/inbox.jpg"></div>
+  <span class="chip" style="position:absolute;left:70px;bottom:46px;border-color:var(--accent);color:var(--accent)">tasksquad.ai</span>
+</section>
+
+<!-- ===================== Teaser (1600×900 and 1080×1080) ===================== -->
+<section class="scene bg" id="teaser" style="padding:7vh 6vw;flex-direction:column;justify-content:center;gap:3.2vh;">
+  <div class="brand" style="font-size:3vh;position:relative"><img src="logo.svg" style="width:5.5vh;height:5.5vh">TaskSquad</div>
+  <div style="position:relative"><span class="eyebrow" style="color:var(--ph);background:#FDEDE8;font-size:2.1vh">🚀 Launching on Product Hunt</span></div>
+  <h1 style="font-size:8.6vh;max-width:92%;position:relative">One creative workspace for <em>teams and agents.</em></h1>
+  <p class="sub" style="font-size:2.9vh;max-width:85%;position:relative">Bring any harness and your own servers. Observe, govern and learn together.</p>
+  <div style="font-size:2.6vh;font-weight:700;position:relative">tasksquad.ai <span style="color:var(--muted);font-weight:400">· Claude Code · Codex · Gemini · OpenCode · Pi</span></div>
+</section>
+
+<script>
+  const id = location.hash.slice(1) || 'p01';
+  document.getElementById(id)?.classList.add('on');
+</script>
+</body>
+</html>

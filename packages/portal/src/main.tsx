@@ -8,6 +8,7 @@ import { auth } from './lib/firebase'
 import { identifyUser, initAnalytics } from './lib/analytics'
 import Landing from './pages/Landing'
 import HowTo from './pages/HowTo'
+import Demo from './pages/Demo'
 import Login from './pages/Login'
 import CLIAuth from './pages/CLIAuth'
 import Dashboard from './pages/Dashboard'
@@ -47,6 +48,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/howto" element={<HowTo />} />
+        <Route path="/demo" element={<Demo />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/policy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />

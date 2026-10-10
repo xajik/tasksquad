@@ -12,6 +12,13 @@ streamed byte-for-byte to the browser and rendered with [`xterm.js`](https://xte
 not a log tail: you can type into it, run a REPL, answer an interactive prompt, or just watch an
 agent work, exactly as if you'd SSH'd into the machine yourself.
 
+```screenshot
+src: /docs/screenshots/portals.webp
+alt: Portal session history
+width: 1309
+height: 688
+```
+
 Portals are separate from [Tasks](../intro#tasks) — a Portal has no subject, no prompt, and no
 message thread. It just opens the configured agent command interactively and connects you to it.
 

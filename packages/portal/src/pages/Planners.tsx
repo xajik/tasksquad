@@ -64,7 +64,7 @@ function PlannerStatusBadge({ status }: { status: PlannerStatus }) {
     completed: { variant: 'default' },
     failed:    { variant: 'destructive' },
   }
-  const { variant, className } = map[status]
+  const { variant, className } = map[status] ?? map.pending
   return <Badge variant={variant} className={className}>{status}</Badge>
 }
 
@@ -76,7 +76,7 @@ function PhaseStatusBadge({ status }: { status: PhaseStatus }) {
     failed:      { variant: 'destructive' },
     reverted:    { variant: 'secondary', className: 'bg-amber-100 text-amber-800 border-transparent hover:bg-amber-100' },
   }
-  const { variant, className } = map[status]
+  const { variant, className } = map[status] ?? map.pending
   const label = status === 'in_progress' ? 'in progress' : status
   return <Badge variant={variant} className={className}>{label}</Badge>
 }
@@ -383,7 +383,7 @@ export function Planners({ teamId }: { teamId: string }) {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{planner.name}</span>
                         <PlannerStatusBadge status={planner.status} />
-                        {planner.paused && (
+                        {!!planner.paused && (
                           <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-transparent">
                             <Pause className="h-3 w-3 mr-1" />paused
                           </Badge>
@@ -685,7 +685,7 @@ export function Planners({ teamId }: { teamId: string }) {
             <span className="text-xs text-muted-foreground bg-secondary rounded-full px-2.5 py-1">
               Max retries: {selected.max_retries}
             </span>
-            {selected.paused && (
+            {!!selected.paused && (
               <span className="text-xs bg-amber-100 text-amber-800 rounded-full px-2.5 py-1 flex items-center gap-1">
                 <Pause className="h-3 w-3" /> Paused — next phase won't start until resumed
               </span>
@@ -773,7 +773,7 @@ export function Planners({ teamId }: { teamId: string }) {
                       {phase.harness_agent_id && (
                         <span>Harness: <span className="text-foreground font-medium">{agentName(phase.harness_agent_id)}</span></span>
                       )}
-                      {phase.auto_close && (
+                      {!!phase.auto_close && (
                         <Badge variant="secondary" className="text-xs py-0">auto-close</Badge>
                       )}
                     </div>
@@ -830,7 +830,7 @@ export function Planners({ teamId }: { teamId: string }) {
                             )}
                           </p>
                         )}
-                        {phase.user_verdict === 'approved' && selected.paused && idx + 1 < (selected.phases ?? []).length && (selected.phases ?? [])[idx + 1].status === 'pending' && (
+                        {phase.user_verdict === 'approved' && !!selected.paused && idx + 1 < (selected.phases ?? []).length && (selected.phases ?? [])[idx + 1].status === 'pending' && (
                           <p className="text-xs text-amber-700 flex items-center gap-1">
                             <Pause className="h-3 w-3" /> Paused — resume planner to start next phase
                           </p>

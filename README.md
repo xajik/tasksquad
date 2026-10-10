@@ -1,8 +1,12 @@
 <div align="center">
   <img src="icon/tasksquad-icon-dark.svg" width="96" height="96" alt="TaskSquad" />
   <h1>TaskSquad</h1>
-  <p><strong>Where AI agents and people work together.</strong></p>
-  <p>Coordinate distributed agents with shared memory, delegation, supervision, and real-time collaboration. Bring your own models, tools, and agent harnesses.</p>
+  <p><strong>One secure place to run all your AI agents, with your team.</strong></p>
+  <p>Manage every AI project from one inbox. Agents run on your own machines — your repo is never uploaded, transcripts are encrypted, access is role-based.</p>
+
+  <!-- Uncomment once the Product Hunt post is live (replace POST_ID / slug):
+  <a href="https://www.producthunt.com/posts/tasksquad"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=POST_ID&theme=light" alt="TaskSquad on Product Hunt" width="250" height="54" /></a>
+  -->
 
   [![Latest Release](https://img.shields.io/github/v/release/xajik/tasksquad?include_prereleases&style=flat-square&color=blue)](https://github.com/xajik/tasksquad/releases)
   [![Daemon CI](https://img.shields.io/github/actions/workflow/status/xajik/tasksquad/daemon.yml?branch=main&label=daemon&style=flat-square)](https://github.com/xajik/tasksquad/actions)
@@ -13,10 +17,12 @@
 
 ---
 
-TaskSquad is a coordination layer for teams of humans and AI agents. Agents run on your machines — connected via a lightweight daemon — and receive tasks through a shared, email-style inbox. You delegate work, supervise execution in real-time, and collaborate with teammates, all from one place.
+TaskSquad is a coordination layer for teams of humans and AI agents. Agents run on your machines — laptops, workstations, servers — connected via a lightweight daemon, and receive tasks through a shared, email-style inbox. You manage every project, delegate work, supervise execution in real time, and collaborate with teammates, all from one place.
 
-* **Bring your own stack** — works with Claude Code, Codex, Gemini, OpenCode, and any other CLI-based agent harness
+* **Many projects, one inbox** — every project, agent, and teammate in a single place
+* **Bring your own stack** — works with Claude Code, Codex, Gemini, OpenCode, Pi, and any other CLI-based agent harness
 * **Distributed by design** — agents run on any machine; the daemon bridges local execution to the cloud
+* **Secure by design** — agents run on your machines, your repo and model API keys are never uploaded, and only task messages and AES-256-GCM-encrypted transcripts reach the cloud; agent tokens are hashed and expire, every request is checked against your team membership, and access is role-based. See [Security & Encryption](packages/portal/src/docs/concepts/security.md)
 * **Delegate and supervise** — assign tasks to agents or teammates, follow live output, and steer mid-execution
 * **Real-time collaboration** — threaded conversations keep humans and agents in sync as work progresses
 * **Shared memory** — Notes and Conveyor give your team a common surface for specs, schedules, and context
@@ -148,8 +154,6 @@ An automated health-check that detects when an agent task has gone quiet for too
 ### Skills & Learning
 Agents learn from every task they complete. After a session ends, the daemon asks the agent to extract non-trivial, reusable patterns as **Skills** — structured knowledge files that are uploaded to the portal. Skills can be auto-installed across every agent on the team, so the whole squad gets smarter together without anyone lifting a finger.
 
-### Voice to Markdown
-Speak your thoughts; get structured markdown. Audio is captured in the browser, transcribed locally via Whisper, and fed in real time to a running agent session that rewrites or appends to a markdown document. Use **Append** mode to dictate freely or **Edit** mode to issue precise revision instructions. The result streams back to the portal as you talk.
 
 ### Portals
 Open a live, interactive terminal to any agent's machine straight from the browser — a real tmux session streamed byte-for-byte via `xterm.js`, not a log tail. Useful for driving a REPL, running one-off commands, or watching an agent work in real time without leaving the portal. Portals are Pro-only, capped at 3 concurrent sessions per team, and close automatically when you're done — no credentials ever leave your machine; the browser connects through a short-lived, one-time ticket.

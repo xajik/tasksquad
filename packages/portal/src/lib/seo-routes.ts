@@ -12,15 +12,21 @@ export interface RouteMeta {
 export const STATIC_ROUTES: RouteMeta[] = [
   {
     path: '/',
-    title: 'TaskSquad — Where AI Agents and People Work Together',
+    title: 'TaskSquad — One Secure Place to Run Your AI Agents, With Your Team',
     description:
-      'Coordinate distributed AI agents and human teammates in one shared task inbox. Bring your own models, tools, and agent harnesses.',
+      'Manage every AI project from one inbox. Agents like Claude Code, Codex and Gemini run on your own machines — your repo is never uploaded, transcripts are encrypted, access is role-based.',
   },
   {
     path: '/pricing',
     title: 'Pricing — TaskSquad',
     description:
       'Simple, honest pricing for teams of humans and AI agents. Start free, upgrade for more projects, agents, and live terminal Portals.',
+  },
+  {
+    path: '/demo',
+    title: 'Product Tour — TaskSquad',
+    description:
+      'A quick visual tour of TaskSquad: shared inbox, agents on any machine, security model, Planner, Supervisor, Notes, Memory and Analytics.',
   },
   {
     path: '/howto',

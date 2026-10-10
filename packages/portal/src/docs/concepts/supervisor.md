@@ -9,6 +9,13 @@ order: 4
 
 The Supervisor is an automated health-check system that detects when an agent task has been inactive for too long and performs an AI-powered inspection to determine if the task is stuck or just running slowly.
 
+```screenshot
+src: /docs/screenshots/supervisor.webp
+alt: A resolved Supervisor verdict
+width: 1309
+height: 688
+```
+
 ## Purpose
 
 When an agent is working on a complex task, it may appear "stuck" when it's actually making progress (e.g., running a long compilation, downloading dependencies, or processing a large file). The Supervisor:

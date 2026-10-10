@@ -12,6 +12,13 @@ structure, and notable events — separate from [Skills](./skills), which captur
 *procedures*. Where a skill says "here's how to do X," a memory entry says "here's something
 true about this project."
 
+```screenshot
+src: /docs/screenshots/memory.webp
+alt: Team memory by category and tag
+width: 1309
+height: 688
+```
+
 Every memory entry belongs to one of 5 categories and one of 2 scopes:
 
 | Category | What it captures |
