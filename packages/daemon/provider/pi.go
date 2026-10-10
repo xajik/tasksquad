@@ -11,7 +11,8 @@ import (
 // Pi uses TypeScript extensions (`.ts` files in `.pi/extensions/`).
 // Setup() writes an extension using pi's native ExtensionAPI (default export function)
 // that captures the final assistant message via message_end and fires the stop
-// hook on agent_end, POSTing to /hooks/stop with the full text.
+// hook on agent_end, POSTing to /hooks/stop with the full text. It also
+// reports session analytics (tools, usage, turns, compactions) to /hooks/event.
 type Pi struct{}
 
 func (p *Pi) Name() string    { return "pi" }
@@ -31,7 +32,7 @@ func (p *Pi) Setup(workDir string, hooksPort int, agentID string, taskID string)
 export default function(pi) {
   const post = async (path, body, signal) => {
     try {
-      await fetch("http://localhost:%d" + path, {
+      await fetch("http://localhost:%[1]d" + path, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body), signal,
       })
@@ -60,13 +61,41 @@ export default function(pi) {
   let lastAssistantMessage = ""
   let lastError = ""
 
+  // Session analytics (metrics.Lifecycle): Claude-shaped lifecycle events in
+  // order through one promise chain. Names and counts only — no prompt, tool
+  // args or output leave the machine.
+  const lifecycleURL = "/hooks/event?agent=%[2]s&task_id=%[3]s&provider=pi"
+  let lifecycleQueue = Promise.resolve()
+  const emit = (name, body) => {
+    lifecycleQueue = lifecycleQueue.then(() => post(lifecycleURL, { hook_event_name: name, ...body }))
+  }
+  let usageSeq = 0
+
+  pi.on("session_start", async (event) => emit("SessionStart", { source: event.reason }))
+  pi.on("session_compact", async (event) => emit("PreCompact", { compact_reason: event.reason }))
+  pi.on("session_shutdown", async (event) => emit("SessionEnd", { reason: event.reason }))
+  pi.on("tool_execution_start", async (event) =>
+    emit("PreToolUse", { tool_name: event.toolName, tool_use_id: event.toolCallId }))
+  pi.on("tool_execution_end", async (event) =>
+    emit(event.isError ? "PostToolUseFailure" : "PostToolUse", { tool_name: event.toolName, tool_use_id: event.toolCallId }))
+
   pi.on("before_agent_start", async (_event, _ctx) => {
     lastAssistantMessage = ""
     lastError = ""
+    emit("UserPromptSubmit", {})
   })
 
   pi.on("message_end", async (event, _ctx) => {
     if (event.message?.role === "assistant") {
+      const m = event.message, u = m.usage || {}
+      emit("Usage", {
+        message_id: m.responseId || "pi-" + (++usageSeq) + "-" + (m.timestamp || Date.now()),
+        model: [m.provider, m.model].filter(Boolean).join("/"),
+        input_tokens: u.input || 0, output_tokens: u.output || 0,
+        cache_read_tokens: u.cacheRead || 0, cache_write_tokens: u.cacheWrite || 0,
+        cost: typeof u.cost?.total === "number" ? u.cost.total : undefined,
+      })
+      if (m.stopReason === "error") emit("StopFailure", { error: "model_error" })
       const text = extractText(event.message.content)
       if (text) lastAssistantMessage = text
       if (event.message.stopReason === "error") {
@@ -87,8 +116,12 @@ export default function(pi) {
     }
     const transcriptPath = ctx.sessionManager?.getSessionFile?.() ?? ""
     const failed = !lastAssistantMessage && lastError
+    // The stop hook completes the task and the daemon collects analytics
+    // then, so everything queued must land first.
+    emit("Stop", {})
+    await lifecycleQueue
     await post(
-      "/hooks/stop?agent=%s&task_id=%s&provider=pi",
+      "/hooks/stop?agent=%[2]s&task_id=%[3]s&provider=pi",
       {
         stop_reason: failed ? "error" : "idle",
         message: failed ? lastError : lastAssistantMessage,
