@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import Header from '../components/Header'
 import { useRouteMeta } from '../lib/useRouteMeta'
 import { MACOS_DOWNLOAD_URL, MACOS_RELEASES_URL } from '../lib/downloads'
+import { trackEvent } from '../lib/analytics'
 
 export default function HowTo() {
   const meta = useRouteMeta('/howto')
@@ -35,48 +36,56 @@ export default function HowTo() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-bold mb-4">2. Install the CLI</h2>
-          <p className="text-muted-foreground mb-4">The TaskSquad daemon (<code>tsq</code>) connects your local agents to the cloud.</p>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium mb-2">Using Homebrew (macOS/Linux):</p>
-                  <div className="bg-muted p-3 rounded-md overflow-x-auto">
-                    <code className="text-sm whitespace-nowrap">brew tap xajik/tap && brew install tsq</code>
-                  </div>
+          <h2 className="text-2xl font-bold mb-4">2. Install TaskSquad</h2>
+          <p className="text-muted-foreground mb-4">
+            Run your agents with the native macOS app or the <code>tsq</code> command-line daemon. Both connect the agents on your machine to your team.
+          </p>
+          <div className="grid gap-4">
+            <Card>
+              <CardContent className="pt-6 space-y-3">
+                <p className="font-semibold">macOS app</p>
+                <p className="text-sm text-muted-foreground">
+                  A native app for macOS 13+ (Apple Silicon and Intel). Sign in, manage your agents, and watch sessions without the terminal.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <a
+                    href={MACOS_DOWNLOAD_URL}
+                    onClick={() => trackEvent('cta_clicked', { label: 'download_macos', source: 'howto' })}
+                    className={buttonVariants({ size: 'sm' })}
+                  >
+                    Download for macOS (.dmg)
+                  </a>
+                  <a href={MACOS_RELEASES_URL} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground underline">
+                    All versions and checksums
+                  </a>
                 </div>
-                <div>
-                  <p className="text-sm font-medium mb-2">Using installation script (macOS/Linux/Windows):</p>
-                  <div className="bg-muted p-3 rounded-md overflow-x-auto">
-                    <code className="text-sm whitespace-nowrap">curl -sSL install.tasksquad.ai | bash</code>
-                  </div>
+                <p className="text-xs text-muted-foreground">Open the DMG and drag <b>TaskSquad Native</b> to Applications.</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6 space-y-3">
+                <p className="font-semibold">Command line</p>
+                <p className="text-sm text-muted-foreground">macOS and Linux with Homebrew:</p>
+                <div className="bg-muted p-3 rounded-md overflow-x-auto">
+                  <code className="text-sm whitespace-nowrap">brew tap xajik/tap && brew install tsq</code>
                 </div>
-                <div>
-                  <p className="text-sm font-medium mb-2">Native macOS app (macOS 13+, Apple Silicon and Intel):</p>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <a href={MACOS_DOWNLOAD_URL} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-                      Download .dmg
-                    </a>
-                    <a href={MACOS_RELEASES_URL} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground underline">
-                      All versions and checksums
-                    </a>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">Open the DMG and drag <b>TaskSquad Native</b> to Applications.</p>
+                <p className="text-sm text-muted-foreground">Or the install script (macOS, Linux, Windows via WSL):</p>
+                <div className="bg-muted p-3 rounded-md overflow-x-auto">
+                  <code className="text-sm whitespace-nowrap">curl -sSL install.tasksquad.ai | bash</code>
                 </div>
-                <div className="bg-amber-50 border border-amber-200 rounded-md p-3 flex gap-2 items-start">
-                  <span className="text-amber-500 mt-0.5">⚠</span>
-                  <div>
-                    <p className="text-sm font-medium text-amber-800">Prerequisite: tmux</p>
-                    <p className="text-sm text-amber-700 mb-2">TaskSquad requires <a href="https://github.com/tmux/tmux/wiki" target="_blank" rel="noopener noreferrer" className="underline">tmux</a> to manage agent sessions on your machine.</p>
-                    <div className="bg-amber-100 p-2 rounded overflow-x-auto">
-                      <code className="text-sm whitespace-nowrap text-amber-900">brew install tmux</code>
-                    </div>
-                  </div>
-                </div>
+              </CardContent>
+            </Card>
+          </div>
+          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-md p-3 flex gap-2 items-start">
+            <span className="text-amber-500 mt-0.5">⚠</span>
+            <div>
+              <p className="text-sm font-medium text-amber-800">Prerequisite: tmux</p>
+              <p className="text-sm text-amber-700 mb-2">TaskSquad requires <a href="https://github.com/tmux/tmux/wiki" target="_blank" rel="noopener noreferrer" className="underline">tmux</a> to manage agent sessions on your machine, with either option.</p>
+              <div className="bg-amber-100 p-2 rounded overflow-x-auto">
+                <code className="text-sm whitespace-nowrap text-amber-900">brew install tmux</code>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </section>
 
         <section>
@@ -96,6 +105,7 @@ work_dir = "~/Projects/my-tasksquad-project"`}
               </div>
             </CardContent>
           </Card>
+          <p className="text-sm text-muted-foreground mt-3"><b>macOS app:</b> add and edit agents in the app. It uses the same <code>~/.tasksquad/config.toml</code> and picks up changes automatically.</p>
         </section>
 
         <section>
@@ -108,6 +118,7 @@ work_dir = "~/Projects/my-tasksquad-project"`}
               </div>
             </CardContent>
           </Card>
+          <p className="text-sm text-muted-foreground mt-3"><b>macOS app:</b> sign in from the app with your browser. The CLI and the app share the same login.</p>
         </section>
 
         <section>
@@ -120,6 +131,7 @@ work_dir = "~/Projects/my-tasksquad-project"`}
               </div>
             </CardContent>
           </Card>
+          <p className="text-sm text-muted-foreground mt-3"><b>macOS app:</b> keep the app open. It runs your agents itself, so there is no separate <code>tsq</code> process to start. Run either the app or the CLI daemon, not both.</p>
         </section>
 
         <section>

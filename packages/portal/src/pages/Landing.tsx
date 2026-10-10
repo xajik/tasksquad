@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
 import { buttonVariants } from '@/components/ui/button'
@@ -6,9 +5,6 @@ import { trackEvent } from '../lib/analytics'
 import Header from '../components/Header'
 import { useRouteMeta } from '../lib/useRouteMeta'
 import { MACOS_DOWNLOAD_URL } from '../lib/downloads'
-import { PH_LAUNCH_ACTIVE, PH_OFFER, PH_POST_URL } from '../lib/launch'
-
-const PH_BANNER_DISMISSED_KEY = 'tsq_ph_banner_dismissed'
 
 const HOW_IT_WORKS = [
   'Create a team and a project for each codebase — add agents and invite teammates.',
@@ -63,52 +59,6 @@ const SECURITY_FEATURES = [
   },
 ]
 
-function readBannerDismissed(): boolean {
-  try {
-    return localStorage.getItem(PH_BANNER_DISMISSED_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-function ProductHuntBanner() {
-  const [dismissed, setDismissed] = useState(readBannerDismissed)
-  if (!PH_LAUNCH_ACTIVE || dismissed) return null
-
-  const dismiss = () => {
-    setDismissed(true)
-    try {
-      localStorage.setItem(PH_BANNER_DISMISSED_KEY, '1')
-    } catch {
-      // Storage may be unavailable (private mode) — dismissal just won't persist.
-    }
-  }
-
-  return (
-    <div className="bg-[#DA552F] text-white text-sm">
-      <div className="max-w-[800px] mx-auto px-4 sm:px-6 py-2 flex items-center gap-3">
-        <a
-          href={PH_POST_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => trackEvent('cta_clicked', { label: 'producthunt_banner' })}
-          className="flex-1 min-w-0 hover:underline"
-        >
-          🚀 We're live on Product Hunt — {PH_OFFER}.
-        </a>
-        <button
-          type="button"
-          onClick={dismiss}
-          aria-label="Dismiss Product Hunt banner"
-          className="shrink-0 px-2 leading-none text-lg opacity-80 hover:opacity-100"
-        >
-          ×
-        </button>
-      </div>
-    </div>
-  )
-}
-
 export default function Landing() {
   const meta = useRouteMeta('/')
   return (
@@ -118,7 +68,6 @@ export default function Landing() {
         <meta name="description" content={meta.description} />
         <link rel="canonical" href="https://tasksquad.ai/" />
       </Helmet>
-      <ProductHuntBanner />
       <Header source="landing_nav" />
       <main className="max-w-[800px] mx-auto px-4 sm:px-6 pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))] sm:pb-16">
         <h1 className="text-3xl sm:text-5xl font-bold leading-tight mb-6">
@@ -178,6 +127,13 @@ export default function Landing() {
             </li>
           ))}
         </ol>
+        <Link
+          to="/demo"
+          onClick={() => trackEvent('cta_clicked', { label: 'product_tour' })}
+          className="inline-block mt-6 text-sm underline"
+        >
+          Take the product tour →
+        </Link>
       </section>
 
       <section className="mt-16 sm:mt-24">

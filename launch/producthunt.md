@@ -148,7 +148,7 @@ Free covers up to 3 projects × 3 agents × 5 members. Pro is $29/mo for 10 proj
 - [ ] Line up supporters with a personal message, not a mass DM. Ask for honest feedback, never upvotes. Asking for upvotes violates PH rules.
 
 ### T-1 day
-- [ ] Merge and deploy the portal changes. Confirm https://tasksquad.ai shows the new hero, the "Secure by design" section, and the PH banner.
+- [ ] Merge and deploy the portal changes. Confirm https://tasksquad.ai shows the new hero, the "Secure by design" section, and the "Take the product tour" link to /demo.
 - [ ] Check https://tasksquad.ai/og-image.png loads, and test the preview card with opengraph.xyz or the X card validator.
 - [ ] Check https://tasksquad.ai/pricing shows the PH offer under Pro.
 - [ ] Run a fresh-machine install: `brew tap xajik/tap && brew install tsq`, `curl -sSL install.tasksquad.ai | bash`, and the macOS DMG download.
@@ -156,11 +156,10 @@ Free covers up to 3 projects × 3 agents × 5 members. Pro is $29/mo for 10 proj
 
 ### Launch day (posts go live at 12:01 AM PT)
 - [ ] Publish, then immediately post the **maker's first comment** (§2).
-- [ ] Set `PH_POST_URL` in `packages/portal/src/lib/launch.ts` to the real post URL and deploy.
 - [ ] Uncomment the PH badge in `README.md`.
 - [ ] Share on X, LinkedIn and relevant communities, with the teaser images or posters 1, 4 and 5.
 - [ ] Reply to **every** comment within about 30 minutes, using §4 as a base and personalizing each reply.
-- [ ] Watch the `cta_clicked` analytics events: `producthunt_banner`, `get_started_free`, `download_macos`.
+- [ ] Watch the `cta_clicked` analytics events: `get_started_free`, `product_tour`, `download_macos`.
 
 ### T+1 to T+7
 - [ ] Thank-you post with results and learnings.
