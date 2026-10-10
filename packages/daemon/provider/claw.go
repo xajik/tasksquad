@@ -15,6 +15,7 @@ import (
 // Completion is signalled via a stop hook written to
 // <workDir>/.agent/settings.local.toml:
 //   - stop hook → POST /hooks/stop (task finished)
+//   - lifecycle + per-tool hooks → POST /hooks/event (session analytics)
 //
 // agent-code reads TOML only (.agent/settings.toml, then the gitignored
 // settings.local.toml); an .agent/settings.json is never loaded, so hooks
@@ -35,6 +36,26 @@ func (p *Claw) Stdin(prompt string) string { return prompt }
 func (p *Claw) ExtraArgs() []string                   { return nil }
 func (p *Claw) SetupArgs(_ int, _, _ string) []string { return nil }
 
+// clawLifecycleEvents map agent-code hook events onto the names
+// metrics.Lifecycle reads. Its hooks carry no payload, so the event (and
+// tool) travel in the /hooks/event URL.
+var clawLifecycleEvents = []struct{ native, canonical string }{
+	{"session_start", "SessionStart"}, {"user_prompt_submit", "UserPromptSubmit"},
+	{"stop", "Stop"}, {"pre_compact", "PreCompact"}, {"session_stop", "SessionEnd"},
+}
+
+// clawTools are agent-code 0.21's built-in tools. A body-less hook can only
+// name its tool through the tool_name filter, so each gets its own pre/post
+// pair; MCP and newer tools still appear via the session transcript.
+var clawTools = []string{
+	"Agent", "AskUserQuestion", "Bash", "Brief", "Config", "CronCreate", "CronDelete", "CronList",
+	"EnterPlanMode", "EnterWorktree", "ExitPlanMode", "ExitWorktree", "FileEdit", "FileRead", "FileWrite",
+	"Glob", "Grep", "ListMcpResources", "LSP", "McpAuth", "Monitor", "MultiEdit", "NotebookEdit",
+	"PowerShell", "ReadMcpResource", "RemoteTrigger", "REPL", "SendMessage", "Skill", "Sleep",
+	"TaskCreate", "TaskGet", "TaskList", "TaskOutput", "TaskStop", "TaskUpdate", "TodoWrite",
+	"ToolSearch", "WebFetch", "WebSearch",
+}
+
 const (
 	clawManagedStart = "# >>> TaskSquad hooks (managed by tsq; replaced on every task) >>>"
 	clawManagedEnd   = "# <<< TaskSquad hooks <<<"
@@ -49,6 +70,14 @@ func (p *Claw) Setup(workDir string, hooksPort int, agentID string, taskID strin
 	var b strings.Builder
 	b.WriteString(clawManagedStart + "\n")
 	clawHook(&b, "stop", "", fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s", hooksPort, agentID, taskID))
+	eventURL := fmt.Sprintf("http://localhost:%d/hooks/event?agent=%s&task_id=%s&provider=claw", hooksPort, agentID, taskID)
+	for _, e := range clawLifecycleEvents {
+		clawHook(&b, e.native, "", eventURL+"&event="+e.canonical)
+	}
+	for _, tool := range clawTools {
+		clawHook(&b, "pre_tool_use", tool, eventURL+"&event=PreToolUse&tool="+tool)
+		clawHook(&b, "post_tool_use", tool, eventURL+"&event=PostToolUse&tool="+tool)
+	}
 	b.WriteString(clawManagedEnd + "\n")
 	if err := writeManagedBlock(settingsPath, b.String()); err != nil {
 		return err

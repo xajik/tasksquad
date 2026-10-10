@@ -251,11 +251,16 @@ func Transcript(provider, workDir, hookTranscript, codexThread string, since tim
 			return hookTranscript
 		}
 	}
-	newest := func(dir string, recursive bool, match func(string) bool) string {
+	newest := func(dir string, recursive bool, match func(string) bool, accept ...func(string) bool) string {
 		best, bestTime := "", since.Add(-5*time.Second)
 		walk := func(path string, info os.FileInfo) {
 			if info.IsDir() || !match(filepath.Base(path)) || info.ModTime().Before(bestTime) {
 				return
+			}
+			for _, ok := range accept {
+				if !ok(path) {
+					return
+				}
 			}
 			best, bestTime = path, info.ModTime()
 		}
@@ -288,6 +293,16 @@ func Transcript(provider, workDir, hookTranscript, codexThread string, since tim
 		return newest(filepath.Join(home, ".pi", "agent", "sessions", folder), false, func(name string) bool {
 			return strings.HasSuffix(name, ".jsonl")
 		})
+	case "claw":
+		// agent-code keeps one JSON file per session under its config dir;
+		// only the one recorded for this work dir belongs to the task.
+		dir := os.Getenv("XDG_CONFIG_HOME")
+		if dir == "" {
+			dir, _ = os.UserConfigDir()
+		}
+		return newest(filepath.Join(dir, "agent-code", "sessions"), false, func(name string) bool {
+			return strings.HasSuffix(name, ".json")
+		}, func(path string) bool { return clawSessionCwd(path) == filepath.Clean(workDir) })
 	case "gemini":
 		sum := sha256.Sum256([]byte(workDir))
 		return newest(filepath.Join(home, ".gemini", "tmp", hex.EncodeToString(sum[:])), true, func(name string) bool {
@@ -295,6 +310,21 @@ func Transcript(provider, workDir, hookTranscript, codexThread string, since tim
 		})
 	}
 	return ""
+}
+
+// clawSessionCwd returns the cwd an agent-code session file records.
+func clawSessionCwd(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var s struct {
+		Cwd string `json:"cwd"`
+	}
+	if json.Unmarshal(data, &s) != nil || s.Cwd == "" {
+		return ""
+	}
+	return filepath.Clean(s.Cwd)
 }
 
 // Read parses the transcript at path for provider into r. Oversized files are skipped.

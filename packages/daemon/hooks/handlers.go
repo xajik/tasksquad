@@ -242,6 +242,10 @@ func (s *hookServer) handleEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	agentID, taskID := r.URL.Query().Get("agent"), r.URL.Query().Get("task_id")
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<20))
+	// Harnesses whose hooks POST no body (Claw) name the event in the URL.
+	if event := r.URL.Query().Get("event"); event != "" && len(strings.TrimSpace(string(body))) == 0 {
+		body, _ = json.Marshal(map[string]string{"hook_event_name": event, "tool_name": r.URL.Query().Get("tool")})
+	}
 	if err == nil && agentID != "" && taskID != "" && s.isCurrentTask(agentID, taskID) {
 		metrics.Live(agentID, taskID).Hook(body, time.Now())
 	}

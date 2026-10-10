@@ -36,3 +36,16 @@ func TestEventHookFeedsCurrentTaskOnly(t *testing.T) {
 		t.Error("hook for a stale task was recorded")
 	}
 }
+
+func TestEventHookBuildsBodylessEventFromURL(t *testing.T) {
+	a := &fakeAgent{id: "claw-agent", taskID: "cur", mode: "running"}
+	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil)
+	for _, q := range []string{"event=PreToolUse&tool=Bash", "event=PostToolUse&tool=Bash"} {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST",
+			"/hooks/event?agent=claw-agent&task_id=cur&provider=claw&"+q, strings.NewReader("")))
+	}
+	l := metrics.Take("claw-agent", "cur")
+	if l == nil || l.Tools["Bash"] == nil || l.Tools["Bash"].Calls != 1 {
+		t.Fatalf("body-less events not recorded: %+v", l)
+	}
+}

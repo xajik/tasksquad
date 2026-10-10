@@ -408,10 +408,12 @@ func (l *Lifecycle) Merge(r *Report) {
 	defer l.mu.Unlock()
 
 	if l.ownsTools || l.Events["PreToolUse"] > 0 {
-		r.Tools = map[string]int{}
+		// Hooks also see subagent calls, so they usually count more; the
+		// transcript still wins for tools no hook covered (Claw has one hook
+		// per built-in tool, so MCP tools only show up in its transcript).
 		errors := 0
 		for name, st := range l.Tools {
-			r.Tools[name] = st.Calls
+			r.Tools[name] = max(r.Tools[name], st.Calls)
 			errors += st.Errors
 		}
 		// A transcript-built lifecycle has no per-tool errors; keep the parser's.

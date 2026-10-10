@@ -180,3 +180,19 @@ func TestLifecycleUsageNeverOverridesTranscriptTokens(t *testing.T) {
 		t.Errorf("input = %d, transcript totals must win", r.InputTokens)
 	}
 }
+
+func TestTranscriptPicksClawSessionForWorkDir(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	dir := filepath.Join(cfg, "agent-code", "sessions")
+	os.MkdirAll(dir, 0o755) //nolint:errcheck
+	write := func(name, cwd string) {
+		os.WriteFile(filepath.Join(dir, name), []byte(fmt.Sprintf(`{"cwd":%q,"messages":[]}`, cwd)), 0o644) //nolint:errcheck
+	}
+	write("mine.json", "/work/task")
+	write("other.json", "/work/elsewhere") // newer, but another project
+	got := Transcript("claw", "/work/task/", "", "", time.Now().Add(-time.Minute), cfg)
+	if filepath.Base(got) != "mine.json" {
+		t.Errorf("transcript = %q, want mine.json", got)
+	}
+}

@@ -40,10 +40,13 @@ func TestClawSetupWritesTOMLStopHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, _ := readClawSettings(t, dir)
-	var stops []string
+	var stops, events []string
 	for _, h := range s.Hooks {
-		if h.Event == "stop" {
+		if h.Event == "stop" && strings.Contains(h.Action.URL, "/hooks/stop") {
 			stops = append(stops, h.Action.URL)
+		}
+		if strings.Contains(h.Action.URL, "/hooks/event") {
+			events = append(events, h.Event+" "+h.ToolName+" "+h.Action.URL)
 		}
 		if h.Action.Type != "http" {
 			t.Errorf("hook %s has action type %q", h.Event, h.Action.Type)
@@ -51,6 +54,21 @@ func TestClawSetupWritesTOMLStopHook(t *testing.T) {
 	}
 	if len(stops) != 1 || stops[0] != "http://localhost:7374/hooks/stop?agent=agent-123&task_id=task-456" {
 		t.Errorf("stop hooks = %v", stops)
+	}
+	const base = "http://localhost:7374/hooks/event?agent=agent-123&task_id=task-456&provider=claw"
+	for _, want := range []string{
+		"session_start  " + base + "&event=SessionStart",
+		"stop  " + base + "&event=Stop",
+		"pre_tool_use Bash " + base + "&event=PreToolUse&tool=Bash",
+		"post_tool_use FileRead " + base + "&event=PostToolUse&tool=FileRead",
+	} {
+		found := false
+		for _, e := range events {
+			found = found || e == want
+		}
+		if !found {
+			t.Errorf("missing analytics hook %q", want)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".agent", "settings.json")); err == nil {
 		t.Error("settings.json is never read by agent-code and must not be written")
