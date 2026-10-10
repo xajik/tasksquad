@@ -243,7 +243,7 @@ func (s *hookServer) handleEvent(w http.ResponseWriter, r *http.Request) {
 	agentID, taskID := r.URL.Query().Get("agent"), r.URL.Query().Get("task_id")
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<20))
 	if err == nil && agentID != "" && taskID != "" && s.isCurrentTask(agentID, taskID) {
-		metrics.Live(agentID, taskID).ClaudeHook(body, time.Now())
+		metrics.Live(agentID, taskID).Hook(body, time.Now())
 	}
 	writeJSON(w, http.StatusOK, map[string]any{})
 }

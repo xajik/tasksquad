@@ -12,6 +12,7 @@ import (
 //
 // Completion is signalled via AfterAgent hook written to <workDir>/.gemini/settings.json:
 //   - AfterAgent hook → POST /hooks/stop (task finished)
+//   - geminiLifecycleEvents → POST /hooks/event (session analytics)
 //
 // The daemon hook server (hooks/server.go) receives this and calls
 // agent.StopAndPause() which posts the final message and moves to waiting_input.
@@ -39,7 +40,7 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentID string, taskID str
 	stopURL := fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
 	// AfterAgent triggers on every model turn. We use it as the completion signal
 	// to align with Claude Code's Stop hook behavior.
-	err := writeHooks(settingsPath, map[string]any{
+	hooks := map[string]any{
 		"AfterAgent": []any{
 			map[string]any{
 				"matcher": "*",
@@ -53,12 +54,31 @@ func (p *Gemini) Setup(workDir string, hooksPort int, agentID string, taskID str
 				},
 			},
 		},
-	})
-	if err != nil {
+	}
+	eventURL := fmt.Sprintf("http://localhost:%d/hooks/event?agent=%s&task_id=%s&provider=gemini", hooksPort, agentID, taskID)
+	for _, event := range geminiLifecycleEvents {
+		existing, _ := hooks[event].([]any)
+		hooks[event] = append(existing, map[string]any{
+			"matcher": "*",
+			"hooks": []any{map[string]any{
+				"name": "tasksquad-analytics", "type": "command", "command": geminiHookCmd(eventURL), "timeout": 5000,
+			}},
+		})
+	}
+	if err := writeHooks(settingsPath, hooks); err != nil {
 		return err
 	}
 	logger.Debug(fmt.Sprintf("[provider/gemini] Wrote hooks to %s (port %d)", settingsPath, hooksPort))
 	return nil
+}
+
+// geminiLifecycleEvents feed session analytics (metrics.Lifecycle) through
+// /hooks/event. AfterModel is left out on purpose: it fires per streamed
+// chunk, and each hook is a process spawn; BeforeModel fires once per model
+// request. Token totals still come from the session file.
+var geminiLifecycleEvents = []string{
+	"SessionStart", "BeforeAgent", "AfterAgent", "BeforeModel", "BeforeTool", "AfterTool",
+	"Notification", "PreCompress", "SessionEnd",
 }
 
 // geminiHookCmd returns a shell command that POSTs stdin to url and outputs {}

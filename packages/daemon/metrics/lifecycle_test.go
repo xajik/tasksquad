@@ -9,7 +9,7 @@ import (
 )
 
 func hook(l *Lifecycle, at time.Time, format string, args ...any) {
-	l.ClaudeHook([]byte(fmt.Sprintf(format, args...)), at)
+	l.Hook([]byte(fmt.Sprintf(format, args...)), at)
 }
 
 func TestLifecycleClaudeSession(t *testing.T) {
@@ -87,7 +87,7 @@ func TestLifecycleWithoutToolHooksKeepsTranscriptTools(t *testing.T) {
 }
 
 func TestRegistryTakeDropsAgentsStaleTasks(t *testing.T) {
-	Live("agentA", "old").ClaudeHook([]byte(`{"hook_event_name":"Stop"}`), time.Now())
+	Live("agentA", "old").Hook([]byte(`{"hook_event_name":"Stop"}`), time.Now())
 	cur := Live("agentA", "cur")
 	other := Live("agentB", "x")
 	if Take("agentA", "cur") != cur {
@@ -98,5 +98,39 @@ func TestRegistryTakeDropsAgentsStaleTasks(t *testing.T) {
 	}
 	if Take("agentB", "x") != other {
 		t.Error("Take for agentA removed agentB's lifecycle")
+	}
+}
+
+func TestLifecycleGeminiHooks(t *testing.T) {
+	t0 := time.Unix(2_000, 0)
+	at := func(ms int) time.Time { return t0.Add(time.Duration(ms) * time.Millisecond) }
+	l := newLifecycle()
+	hook(l, at(0), `{"hook_event_name":"SessionStart","source":"startup","transcript_path":"/g/chat.json"}`)
+	hook(l, at(10), `{"hook_event_name":"BeforeAgent","prompt":"secret"}`)
+	hook(l, at(20), `{"hook_event_name":"BeforeModel","llm_request":{"model":"gemini-3-pro","messages":[]}}`)
+	// Two overlapping read_file calls without ids pair oldest-first.
+	hook(l, at(100), `{"hook_event_name":"BeforeTool","tool_name":"read_file","tool_input":{"path":"a"}}`)
+	hook(l, at(150), `{"hook_event_name":"BeforeTool","tool_name":"read_file","tool_input":{"path":"b"}}`)
+	hook(l, at(300), `{"hook_event_name":"AfterTool","tool_name":"read_file","tool_response":{"llmContent":"x","error":null}}`)
+	hook(l, at(400), `{"hook_event_name":"AfterTool","tool_name":"read_file","tool_response":{"llmContent":"","error":"ENOENT"}}`)
+	hook(l, at(500), `{"hook_event_name":"BeforeTool","tool_name":"run_shell_command"}`)
+	hook(l, at(600), `{"hook_event_name":"PreCompress","trigger":"auto"}`)
+	hook(l, at(1010), `{"hook_event_name":"AfterAgent","prompt_response":"secret"}`)
+	hook(l, at(1100), `{"hook_event_name":"SessionEnd","reason":"exit"}`)
+
+	r := New("gemini")
+	l.Merge(r)
+	rf := l.Tools["read_file"]
+	if rf.Calls != 2 || rf.Errors != 1 || rf.TotalMs != 200+250 || rf.MaxMs != 250 {
+		t.Errorf("read_file = %+v", rf)
+	}
+	if l.Tools["run_shell_command"].Unfinished != 1 {
+		t.Errorf("run_shell_command = %+v", l.Tools["run_shell_command"])
+	}
+	if r.Tools["read_file"] != 2 || r.ToolErrors != 1 || r.Model != "gemini-3-pro" || r.Turns != 1 {
+		t.Errorf("report tools=%v errors=%d model=%q turns=%d", r.Tools, r.ToolErrors, r.Model, r.Turns)
+	}
+	if l.ActiveMs != 1000 || l.Compactions["auto"] != 1 || l.EndReason != "exit" || l.Events["ModelRequest"] != 1 {
+		t.Errorf("active=%d compactions=%v end=%q events=%v", l.ActiveMs, l.Compactions, l.EndReason, l.Events)
 	}
 }

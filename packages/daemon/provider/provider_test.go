@@ -224,12 +224,25 @@ func TestProvider_Gemini_SetsUpAfterAgentHook(t *testing.T) {
 		t.Fatal("settings.json missing 'hooks' key")
 	}
 
-	// Should only have AfterAgent hook (no SessionEnd, no Notification)
-	if _, hasSessionEnd := hooks["SessionEnd"]; hasSessionEnd {
-		t.Error("不应该有 SessionEnd hook")
+	// Only AfterAgent may drive task state; every other hook is analytics-only.
+	for event, groups := range hooks {
+		for _, g := range groups.([]any) {
+			for _, h := range g.(map[string]any)["hooks"].([]any) {
+				cmd := h.(map[string]any)["command"].(string)
+				stateful := strings.Contains(cmd, "/hooks/stop") || strings.Contains(cmd, "/hooks/notification")
+				if stateful && event != "AfterAgent" {
+					t.Errorf("%s hook drives task state: %s", event, cmd)
+				}
+				if !stateful && !strings.Contains(cmd, "/hooks/event?agent=agent-123&task_id=task-456&provider=gemini") {
+					t.Errorf("%s hook is neither the stop hook nor analytics: %s", event, cmd)
+				}
+			}
+		}
 	}
-	if _, hasNotif := hooks["Notification"]; hasNotif {
-		t.Error("不应该有 Notification hook")
+	for _, event := range []string{"BeforeTool", "AfterTool", "BeforeAgent", "SessionEnd"} {
+		if _, ok := hooks[event]; !ok {
+			t.Errorf("missing %s analytics hook", event)
+		}
 	}
 
 	afterAgent, ok := hooks["AfterAgent"].([]any)

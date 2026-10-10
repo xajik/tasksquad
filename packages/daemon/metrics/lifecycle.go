@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -38,6 +39,9 @@ type Lifecycle struct {
 	subagentRuns  map[string]string      // agent_id → agent_type, for token attribution
 	subagentPaths map[string]string      // agent_id → its transcript (SubagentStop agent_transcript_path)
 	turnStart     time.Time
+
+	anonCalls map[string][]string // tool_name → open synthetic ids, oldest first (harnesses without tool_use_id)
+	anonSeq   int
 
 	source         string    // "hooks", or "transcript" when rebuilt from a rollout (Codex)
 	ownsTools      bool      // Tools covers every call, subagents included, so it replaces transcript counts
@@ -85,7 +89,7 @@ func newLifecycle() *Lifecycle {
 		Events: map[string]int{}, Sources: map[string]int{}, Tools: map[string]*ToolStat{},
 		Subagents: map[string]*SubagentStat{}, Compactions: map[string]int{}, Notifications: map[string]int{},
 		StopFailures: map[string]int{}, Models: map[string]bool{},
-		pendingTools: map[string]pendingCall{}, pendingAgents: map[string]pendingCall{}, subagentRuns: map[string]string{}, subagentPaths: map[string]string{},
+		pendingTools: map[string]pendingCall{}, pendingAgents: map[string]pendingCall{}, anonCalls: map[string][]string{}, subagentRuns: map[string]string{}, subagentPaths: map[string]string{},
 	}
 }
 
@@ -134,36 +138,51 @@ func Take(agentID, taskID string) *Lifecycle {
 	return l
 }
 
-// hookInput is the subset of Claude Code's hook payload the collector reads.
+// geminiEvents maps Gemini CLI hook names onto the Claude Code vocabulary the
+// collector speaks. AfterTool becomes PostToolUseFailure when its
+// tool_response carries an error.
+var geminiEvents = map[string]string{
+	"BeforeTool": "PreToolUse", "AfterTool": "PostToolUse", "BeforeAgent": "UserPromptSubmit",
+	"AfterAgent": "Stop", "PreCompress": "PreCompact", "BeforeModel": "ModelRequest",
+}
+
+// hookInput is the subset of a harness hook payload the collector reads.
 // Content-bearing fields (prompt, tool_input, tool_response,
 // last_assistant_message …) are deliberately not decoded.
 type hookInput struct {
-	Event            string `json:"hook_event_name"`
-	TranscriptPath   string `json:"transcript_path"`
-	AgentID          string `json:"agent_id"`
-	AgentType        string `json:"agent_type"`
-	Source           string `json:"source"`
-	Model            string `json:"model"`
-	ToolName         string `json:"tool_name"`
-	ToolUseID        string `json:"tool_use_id"`
-	NotificationType string `json:"notification_type"`
-	Error            string `json:"error"`
-	Reason           string `json:"reason"`
-	CompactReason    string `json:"compact_reason"`
-	Trigger          string `json:"trigger"` // older PreCompact payloads
-	ToModel          string `json:"to_model"`
-	DurationMs       *int64 `json:"duration_ms"`           // PostToolUse: the harness's own tool timing
-	AgentTranscript  string `json:"agent_transcript_path"` // SubagentStop
-	ToolInput        struct {
-		Skill string `json:"skill"`
-	} `json:"tool_input"`
+	Event            string          `json:"hook_event_name"`
+	TranscriptPath   string          `json:"transcript_path"`
+	AgentID          string          `json:"agent_id"`
+	AgentType        string          `json:"agent_type"`
+	Source           string          `json:"source"`
+	Model            string          `json:"model"`
+	ToolName         string          `json:"tool_name"`
+	ToolUseID        string          `json:"tool_use_id"`
+	NotificationType string          `json:"notification_type"`
+	Error            string          `json:"error"`
+	Reason           string          `json:"reason"`
+	CompactReason    string          `json:"compact_reason"`
+	Trigger          string          `json:"trigger"` // older PreCompact payloads
+	ToModel          string          `json:"to_model"`
+	DurationMs       *int64          `json:"duration_ms"`           // PostToolUse: the harness's own tool timing
+	AgentTranscript  string          `json:"agent_transcript_path"` // SubagentStop
+	ToolResponse     json.RawMessage `json:"tool_response"`         // only its "error" is read (Gemini)
+	LLMRequest       struct {
+		Model string `json:"model"`
+	} `json:"llm_request"` // Gemini BeforeModel
 }
 
-// ClaudeHook ingests one Claude Code hook payload received at now.
-func (l *Lifecycle) ClaudeHook(body []byte, now time.Time) {
+// Hook ingests one Claude Code or Gemini CLI hook payload received at now.
+func (l *Lifecycle) Hook(body []byte, now time.Time) {
 	var in hookInput
 	if json.Unmarshal(body, &in) != nil || in.Event == "" {
 		return
+	}
+	if canonical, ok := geminiEvents[in.Event]; ok {
+		in.Event = canonical
+		if in.Event == "PostToolUse" && toolResponseFailed(in.ToolResponse) {
+			in.Event = "PostToolUseFailure"
+		}
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -183,6 +202,10 @@ func (l *Lifecycle) ClaudeHook(body []byte, now time.Time) {
 		bump(l.Sources, in.Source)
 		if in.Model != "" {
 			l.Models[in.Model] = true
+		}
+	case "ModelRequest":
+		if in.LLMRequest.Model != "" {
+			l.Models[in.LLMRequest.Model] = true
 		}
 	case "UserPromptSubmit":
 		l.Prompts++
@@ -209,10 +232,20 @@ func (l *Lifecycle) ClaudeHook(body []byte, now time.Time) {
 				l.subagent(run).ToolCalls++
 			}
 		}
-		if in.ToolUseID != "" {
-			l.pendingTools[in.ToolUseID] = pendingCall{in.ToolName, now}
+		id := in.ToolUseID
+		if id == "" {
+			l.anonSeq++
+			id = fmt.Sprintf("anon-%d", l.anonSeq)
+			l.anonCalls[in.ToolName] = append(l.anonCalls[in.ToolName], id)
 		}
+		l.pendingTools[id] = pendingCall{in.ToolName, now}
 	case "PostToolUse", "PostToolUseFailure":
+		if in.ToolUseID == "" {
+			// No call id: pair with the oldest open call of the same tool.
+			if q := l.anonCalls[in.ToolName]; len(q) > 0 {
+				in.ToolUseID, l.anonCalls[in.ToolName] = q[0], q[1:]
+			}
+		}
 		p, ok := l.pendingTools[in.ToolUseID]
 		if ok {
 			delete(l.pendingTools, in.ToolUseID)
@@ -398,4 +431,19 @@ func (l *Lifecycle) Merge(r *Report) {
 		"prompts": l.Prompts, "active_ms": l.ActiveMs, "max_turn_ms": l.MaxTurnMs,
 		"hook_span_ms": span, "end_reason": l.EndReason,
 	}
+}
+
+// toolResponseFailed reports whether a Gemini AfterTool tool_response object
+// carries a non-empty error. Claude's string responses never match.
+func toolResponseFailed(raw json.RawMessage) bool {
+	var resp struct {
+		Error any `json:"error"`
+	}
+	if json.Unmarshal(raw, &resp) != nil || resp.Error == nil {
+		return false
+	}
+	if s, ok := resp.Error.(string); ok {
+		return s != ""
+	}
+	return true
 }
