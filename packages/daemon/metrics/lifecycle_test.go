@@ -134,3 +134,49 @@ func TestLifecycleGeminiHooks(t *testing.T) {
 		t.Errorf("active=%d compactions=%v end=%q events=%v", l.ActiveMs, l.Compactions, l.EndReason, l.Events)
 	}
 }
+
+func TestLifecycleOpenCodeUsageAndDuplicates(t *testing.T) {
+	now := time.Unix(3_000, 0)
+	l := newLifecycle()
+	hook(l, now, `{"hook_event_name":"SessionStart","source":"startup"}`)
+	// The plugin can be loaded twice; repeated prompts and calls count once.
+	for i := 0; i < 2; i++ {
+		hook(l, now, `{"hook_event_name":"UserPromptSubmit","message_id":"u1"}`)
+		hook(l, now, `{"hook_event_name":"PreToolUse","tool_name":"task","tool_use_id":"c1"}`)
+	}
+	hook(l, now, `{"hook_event_name":"SubagentStart","agent_id":"ses_child","agent_type":"general"}`)
+	hook(l, now, `{"hook_event_name":"PreToolUse","tool_name":"bash","tool_use_id":"c2","agent_id":"ses_child"}`)
+	hook(l, now, `{"hook_event_name":"PostToolUse","tool_name":"bash","tool_use_id":"c2","agent_id":"ses_child","duration_ms":38}`)
+	hook(l, now, `{"hook_event_name":"Usage","message_id":"m2","agent_id":"ses_child","model":"opencode/free","input_tokens":100,"output_tokens":5,"cache_read_tokens":50,"cost":0.25}`)
+	hook(l, now, `{"hook_event_name":"SubagentStop","agent_id":"ses_child"}`)
+	hook(l, now, `{"hook_event_name":"PostToolUse","tool_name":"task","tool_use_id":"c1","duration_ms":5611}`)
+	hook(l, now, `{"hook_event_name":"Usage","message_id":"m1","model":"opencode/free","input_tokens":1000,"output_tokens":20,"cost":0.5}`)
+	hook(l, now, `{"hook_event_name":"Usage","message_id":"m1","model":"opencode/free","input_tokens":1000,"output_tokens":20,"cost":0.5}`)
+
+	r := New("opencode")
+	l.Merge(r)
+	if r.Turns != 1 || r.Tools["task"] != 1 || r.Tools["bash"] != 1 {
+		t.Errorf("turns=%d tools=%v", r.Turns, r.Tools)
+	}
+	if r.InputTokens != 1100 || r.OutputTokens != 25 || r.CacheReadTokens != 50 || l.CostUSD != 0.75 {
+		t.Errorf("tokens in=%d out=%d cache=%d cost=%v", r.InputTokens, r.OutputTokens, r.CacheReadTokens, l.CostUSD)
+	}
+	sub := l.Subagents["general"]
+	if sub.InputTokens != 100 || sub.ToolCalls != 1 || sub.Model != "opencode/free" {
+		t.Errorf("general = %+v", sub)
+	}
+	if l.Tools["task"].TotalMs != 5611 || l.Tools["task"].Unfinished != 0 {
+		t.Errorf("task = %+v", l.Tools["task"])
+	}
+}
+
+func TestLifecycleUsageNeverOverridesTranscriptTokens(t *testing.T) {
+	l := newLifecycle()
+	hook(l, time.Now(), `{"hook_event_name":"Usage","message_id":"m","input_tokens":5}`)
+	r := New("claude-code")
+	r.InputTokens = 900
+	l.Merge(r)
+	if r.InputTokens != 900 {
+		t.Errorf("input = %d, transcript totals must win", r.InputTokens)
+	}
+}

@@ -40,6 +40,12 @@ type Lifecycle struct {
 	subagentPaths map[string]string      // agent_id → its transcript (SubagentStop agent_transcript_path)
 	turnStart     time.Time
 
+	// Usage events (harnesses whose plugin sees per-message tokens, e.g.
+	// OpenCode) — totals across main session and subagents, once per message.
+	usage     Report
+	usageSeen map[string]bool // "<message_id>", "prompt:<id>", "tool:<tool_use_id>" already counted
+	CostUSD   float64
+
 	anonCalls map[string][]string // tool_name → open synthetic ids, oldest first (harnesses without tool_use_id)
 	anonSeq   int
 
@@ -89,7 +95,7 @@ func newLifecycle() *Lifecycle {
 		Events: map[string]int{}, Sources: map[string]int{}, Tools: map[string]*ToolStat{},
 		Subagents: map[string]*SubagentStat{}, Compactions: map[string]int{}, Notifications: map[string]int{},
 		StopFailures: map[string]int{}, Models: map[string]bool{},
-		pendingTools: map[string]pendingCall{}, pendingAgents: map[string]pendingCall{}, anonCalls: map[string][]string{}, subagentRuns: map[string]string{}, subagentPaths: map[string]string{},
+		pendingTools: map[string]pendingCall{}, pendingAgents: map[string]pendingCall{}, anonCalls: map[string][]string{}, usageSeen: map[string]bool{}, subagentRuns: map[string]string{}, subagentPaths: map[string]string{},
 	}
 }
 
@@ -167,6 +173,12 @@ type hookInput struct {
 	DurationMs       *int64          `json:"duration_ms"`           // PostToolUse: the harness's own tool timing
 	AgentTranscript  string          `json:"agent_transcript_path"` // SubagentStop
 	ToolResponse     json.RawMessage `json:"tool_response"`         // only its "error" is read (Gemini)
+	MessageID        string          `json:"message_id"`            // Usage
+	InputTokens      int64           `json:"input_tokens"`
+	OutputTokens     int64           `json:"output_tokens"`
+	CacheReadTokens  int64           `json:"cache_read_tokens"`
+	CacheWriteTokens int64           `json:"cache_write_tokens"`
+	Cost             *float64        `json:"cost"`
 	LLMRequest       struct {
 		Model string `json:"model"`
 	} `json:"llm_request"` // Gemini BeforeModel
@@ -203,11 +215,43 @@ func (l *Lifecycle) Hook(body []byte, now time.Time) {
 		if in.Model != "" {
 			l.Models[in.Model] = true
 		}
+	case "Usage":
+		if in.MessageID == "" || l.usageSeen[in.MessageID] {
+			break
+		}
+		l.usageSeen[in.MessageID] = true
+		l.usage.InputTokens += in.InputTokens
+		l.usage.OutputTokens += in.OutputTokens
+		l.usage.CacheReadTokens += in.CacheReadTokens
+		l.usage.CacheWriteTokens += in.CacheWriteTokens
+		if in.Cost != nil {
+			l.CostUSD += *in.Cost
+		}
+		if in.Model != "" {
+			l.Models[in.Model] = true
+		}
+		if typ := l.subagentRuns[in.AgentID]; in.AgentID != "" && typ != "" {
+			if st := l.subagent(typ); st != nil {
+				st.InputTokens += in.InputTokens
+				st.OutputTokens += in.OutputTokens
+				st.CacheReadTokens += in.CacheReadTokens
+				st.CacheWriteTokens += in.CacheWriteTokens
+				if in.Model != "" {
+					st.Model = in.Model
+				}
+			}
+		}
 	case "ModelRequest":
 		if in.LLMRequest.Model != "" {
 			l.Models[in.LLMRequest.Model] = true
 		}
 	case "UserPromptSubmit":
+		if in.MessageID != "" {
+			if l.usageSeen["prompt:"+in.MessageID] {
+				break
+			}
+			l.usageSeen["prompt:"+in.MessageID] = true
+		}
 		l.Prompts++
 		l.turnStart = now
 	case "Stop":
@@ -221,6 +265,13 @@ func (l *Lifecycle) Hook(body []byte, now time.Time) {
 		bump(l.StopFailures, in.Error)
 		l.turnStart = time.Time{}
 	case "PreToolUse":
+		// A plugin loaded twice (seen with OpenCode) reports each call twice.
+		if in.ToolUseID != "" {
+			if l.usageSeen["tool:"+in.ToolUseID] {
+				break
+			}
+			l.usageSeen["tool:"+in.ToolUseID] = true
+		}
 		st := l.tool(in.ToolName)
 		if st == nil {
 			break
@@ -368,6 +419,11 @@ func (l *Lifecycle) Merge(r *Report) {
 			r.ToolErrors = errors
 		}
 	}
+	// Hook-reported usage stands in when there's no transcript to parse.
+	if r.InputTokens+r.OutputTokens+r.CacheReadTokens == 0 {
+		r.InputTokens, r.OutputTokens = l.usage.InputTokens, l.usage.OutputTokens
+		r.CacheReadTokens, r.CacheWriteTokens = l.usage.CacheReadTokens, l.usage.CacheWriteTokens
+	}
 	for _, sub := range l.subagentTokens {
 		r.InputTokens += sub.InputTokens
 		r.OutputTokens += sub.OutputTokens
@@ -429,7 +485,7 @@ func (l *Lifecycle) Merge(r *Report) {
 		"tools": l.Tools, "subagents": l.Subagents, "compactions": l.Compactions,
 		"notifications": l.Notifications, "stop_failures": l.StopFailures, "models": models,
 		"prompts": l.Prompts, "active_ms": l.ActiveMs, "max_turn_ms": l.MaxTurnMs,
-		"hook_span_ms": span, "end_reason": l.EndReason,
+		"hook_span_ms": span, "end_reason": l.EndReason, "cost_usd": l.CostUSD,
 	}
 }
 

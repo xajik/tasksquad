@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // OpenCode is the provider for sst/opencode CLI.
@@ -12,7 +13,82 @@ import (
 // Setup() writes a plugin that accumulates assistant message text parts via
 // message.part.updated events, marks them complete via message.updated, then
 // on session.idle combines all parts and POSTs to /hooks/stop with the full text.
+// Separately, openCodeAnalyticsJS translates bus events into lifecycle hooks
+// for session analytics (POST /hooks/event).
 type OpenCode struct{}
+
+// openCodeAnalyticsJS turns OpenCode bus events into the Claude-shaped hook
+// payloads metrics.Lifecycle reads: tool parts → PreToolUse/PostToolUse with
+// the part's own start/end time, completed assistant messages → Usage
+// (tokens, cost, model — OpenCode keeps no transcript the daemon can parse),
+// child sessions → SubagentStart/Stop. Posts go through one promise chain so
+// they arrive in order without blocking the event handler. Names and counts
+// only: no prompt, tool input or output is sent.
+const openCodeAnalyticsJS = `const lifecycleURL = "/hooks/event?agent=%s&task_id=%s&provider=opencode"
+  let lifecycleQueue = Promise.resolve()
+  const emit = (name, body) => {
+    lifecycleQueue = lifecycleQueue.then(() => post(lifecycleURL, { hook_event_name: name, ...body }))
+  }
+  let mainSession = null
+  const children = new Map() // child sessionID → agent type
+  const toolState = new Map() // callID → "started" | "done"
+  const seenMessages = new Set()
+  const analytics = (event) => {
+    const p = event.properties || {}
+    const agentOf = (sid) => (sid && children.has(sid) ? sid : undefined)
+    if (event.type === "session.created" && p.info) {
+      if (p.info.parentID) {
+        const m = /\(@([\w.-]+) subagent\)/.exec(p.info.title || "")
+        const type = m ? m[1] : "subagent"
+        children.set(p.info.id, type)
+        emit("SubagentStart", { agent_id: p.info.id, agent_type: type })
+      } else if (!mainSession) {
+        mainSession = p.info.id
+        emit("SessionStart", { source: "startup" })
+      }
+    }
+    if (event.type === "message.updated" && p.info && !seenMessages.has(p.info.id)) {
+      const info = p.info
+      if (info.role === "user" && !mainSession && !children.has(info.sessionID)) mainSession = info.sessionID
+      if (info.role === "user" && info.sessionID === mainSession) {
+        seenMessages.add(info.id)
+        emit("UserPromptSubmit", { session_id: info.sessionID, message_id: info.id })
+      }
+      if (info.role === "assistant" && info.time?.completed) {
+        seenMessages.add(info.id)
+        const t = info.tokens || {}
+        emit("Usage", {
+          message_id: info.id, agent_id: agentOf(info.sessionID),
+          model: info.modelID ? (info.providerID ? info.providerID + "/" : "") + info.modelID : "",
+          input_tokens: t.input || 0, output_tokens: (t.output || 0) + (t.reasoning || 0),
+          cache_read_tokens: t.cache?.read || 0, cache_write_tokens: t.cache?.write || 0,
+          cost: typeof info.cost === "number" ? info.cost : undefined,
+        })
+        if (info.error && !children.has(info.sessionID)) emit("StopFailure", { error: info.error.name || "error" })
+      }
+    }
+    if (event.type === "message.part.updated" && p.part?.type === "tool" && p.part.callID) {
+      const part = p.part, status = part.state?.status, seen = toolState.get(part.callID)
+      if (!seen && status) {
+        toolState.set(part.callID, "started")
+        emit("PreToolUse", { tool_name: part.tool, tool_use_id: part.callID, agent_id: agentOf(part.sessionID) })
+      }
+      if (seen !== "done" && (status === "completed" || status === "error")) {
+        toolState.set(part.callID, "done")
+        const tm = part.state.time || {}
+        emit(status === "error" ? "PostToolUseFailure" : "PostToolUse", {
+          tool_name: part.tool, tool_use_id: part.callID, agent_id: agentOf(part.sessionID),
+          duration_ms: tm.start && tm.end ? tm.end - tm.start : undefined,
+        })
+      }
+    }
+    if (event.type === "session.status" && p.status?.type === "idle") {
+      if (children.has(p.sessionID)) emit("SubagentStop", { agent_id: p.sessionID, agent_type: children.get(p.sessionID) })
+      else if (p.sessionID === mainSession) emit("Stop", {})
+    }
+    if (event.type === "session.compacted" && !children.has(p.sessionID)) emit("PreCompact", { compact_reason: "auto" })
+    if (event.type === "session.error" && !children.has(p.sessionID)) emit("StopFailure", { error: p.error?.name || "error" })
+  }`
 
 func (p *OpenCode) Name() string    { return "opencode" }
 func (p *OpenCode) CLIName() string { return "opencode" }
@@ -45,6 +121,8 @@ export const TaskSquadPlugin = async ({ client }) => {
     }
   }
 
+  // @analytics
+
   const messageCache = new Map()
   let pendingToolCount = 0
   let sessionIdleSent = false
@@ -52,6 +130,7 @@ export const TaskSquadPlugin = async ({ client }) => {
   return {
     "event": async (input) => {
       const { event } = input
+      analytics(event)
 
       if (event.type === "message.part.updated" && event.properties?.part) {
         const part = event.properties.part
@@ -124,6 +203,7 @@ export const TaskSquadPlugin = async ({ client }) => {
   }
 }
 `, hooksPort, agentID, taskID, agentID, taskID, agentID, taskID)
+	plugin = strings.Replace(plugin, "// @analytics", fmt.Sprintf(openCodeAnalyticsJS, agentID, taskID), 1)
 	return os.WriteFile(filepath.Join(pluginDir, "tasksquad.ts"), []byte(plugin), 0644)
 }
 
