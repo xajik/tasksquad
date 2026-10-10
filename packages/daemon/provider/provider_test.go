@@ -163,16 +163,22 @@ func TestProvider_ClaudeCode_SetupArgsPreToolUseMatchesAskUserQuestion(t *testin
 		t.Fatalf("Failed to parse %s: %v", settingsPath, err)
 	}
 
-	if len(settings.Hooks.PreToolUse) != 1 || settings.Hooks.PreToolUse[0].Matcher != "AskUserQuestion" {
-		t.Fatalf("PreToolUse = %+v, want one entry matching AskUserQuestion", settings.Hooks.PreToolUse)
+	if len(settings.Hooks.PreToolUse) != 2 || settings.Hooks.PreToolUse[0].Matcher != "AskUserQuestion" {
+		t.Fatalf("PreToolUse = %+v, want the AskUserQuestion entry then the analytics entry", settings.Hooks.PreToolUse)
+	}
+	if analytics := settings.Hooks.PreToolUse[1]; analytics.Matcher != "*" || !strings.Contains(analytics.Hooks[0].URL, "/hooks/event?agent=agent-123&task_id=task-456") {
+		t.Errorf("PreToolUse[1] = %+v, want * → /hooks/event", analytics)
 	}
 	if !strings.Contains(settings.Hooks.PreToolUse[0].Hooks[0].URL, "/hooks/tui-blocked") ||
 		!strings.Contains(settings.Hooks.PreToolUse[0].Hooks[0].URL, "state=on") {
 		t.Errorf("PreToolUse URL = %q, want /hooks/tui-blocked?...state=on", settings.Hooks.PreToolUse[0].Hooks[0].URL)
 	}
 
-	if len(settings.Hooks.PostToolUse) != 1 || settings.Hooks.PostToolUse[0].Matcher != "AskUserQuestion" {
-		t.Fatalf("PostToolUse = %+v, want one entry matching AskUserQuestion", settings.Hooks.PostToolUse)
+	if len(settings.Hooks.PostToolUse) != 2 || settings.Hooks.PostToolUse[0].Matcher != "AskUserQuestion" {
+		t.Fatalf("PostToolUse = %+v, want the AskUserQuestion entry then the analytics entry", settings.Hooks.PostToolUse)
+	}
+	if analytics := settings.Hooks.PostToolUse[1]; analytics.Matcher != "*" || !strings.Contains(analytics.Hooks[0].URL, "/hooks/event?agent=agent-123&task_id=task-456") {
+		t.Errorf("PostToolUse[1] = %+v, want * → /hooks/event", analytics)
 	}
 	if !strings.Contains(settings.Hooks.PostToolUse[0].Hooks[0].URL, "/hooks/tui-blocked") ||
 		!strings.Contains(settings.Hooks.PostToolUse[0].Hooks[0].URL, "state=off") {

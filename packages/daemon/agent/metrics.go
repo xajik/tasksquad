@@ -23,7 +23,9 @@ func (a *Agent) recordTyped(text string) {
 // content) for the analytics dashboard. Best-effort and asynchronous: parsing
 // a large transcript or an older worker without the endpoint never affects
 // the task.
-func (a *Agent) postSessionReport(cfg *config.Config, sessionID string, startedAt time.Time, transcriptPath string) {
+func (a *Agent) postSessionReport(cfg *config.Config, sessionID, taskID string, startedAt time.Time, transcriptPath string) {
+	// Taken even without a session so a lifecycle never outlives its task.
+	life := metrics.Take(a.Config.ID, taskID)
 	if sessionID == "" {
 		return
 	}
@@ -43,10 +45,16 @@ func (a *Agent) postSessionReport(cfg *config.Config, sessionID string, startedA
 		for _, s := range skills {
 			r.AddSkill(s)
 		}
+		if transcriptPath == "" && life != nil {
+			transcriptPath = life.TranscriptPath()
+		}
 		if home, err := os.UserHomeDir(); err == nil {
 			if path := metrics.Transcript(provider, workDir, transcriptPath, thread, startedAt, home); path != "" {
 				metrics.Read(path, provider, r)
 			}
+		}
+		if life != nil {
+			life.Merge(r)
 		}
 		if _, err := a.post(cfg, "/daemon/session/metrics", r.Body(sessionID)); err != nil {
 			logger.Debug(fmt.Sprintf("[%s] session report not accepted: %v", a.Config.Name, err))

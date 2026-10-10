@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	hookadapter "github.com/tasksquad/daemon/adapter"
 	"github.com/tasksquad/daemon/agentmode"
@@ -16,6 +17,7 @@ import (
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/metrics"
 )
 
 // unsafeCharsRe matches non-printable and control characters (except tab, LF, CR).
@@ -228,6 +230,35 @@ func (s *hookServer) handleTUIBlocked(w http.ResponseWriter, r *http.Request) {
 
 // handleOpenCode handles POST /hooks/opencode.
 // Receives generic lifecycle events from the OpenCode plugin (currently log-only).
+// handleEvent feeds a lifecycle hook into the task's analytics collector.
+// It's observational only: it never changes agent state, and it answers
+// with an empty JSON object so blocking events (PreToolUse,
+// UserPromptSubmit) proceed untouched. Payloads aren't logged — they carry
+// prompts and tool output.
+func (s *hookServer) handleEvent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	agentID, taskID := r.URL.Query().Get("agent"), r.URL.Query().Get("task_id")
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<20))
+	if err == nil && agentID != "" && taskID != "" && s.isCurrentTask(agentID, taskID) {
+		metrics.Live(agentID, taskID).ClaudeHook(body, time.Now())
+	}
+	writeJSON(w, http.StatusOK, map[string]any{})
+}
+
+// isCurrentTask reports whether agentID is working on taskID, so a hook
+// arriving after the task closed can't start a collector nobody takes.
+func (s *hookServer) isCurrentTask(agentID, taskID string) bool {
+	for _, a := range s.agents {
+		if a.ID() == agentID {
+			return a.GetTaskID() == taskID
+		}
+	}
+	return false
+}
+
 func (s *hookServer) handleOpenCode(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	agentName := r.URL.Query().Get("agent")

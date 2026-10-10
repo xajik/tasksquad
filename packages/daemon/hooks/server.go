@@ -112,6 +112,7 @@ type Poller interface {
 //	POST /hooks/opencode           — OpenCode lifecycle events
 //	POST /hooks/codex              — Codex turn completion
 //	POST /hooks/tui-blocked        — PreToolUse/PostToolUse hook for interactive TUI prompts
+//	POST /hooks/event              — lifecycle hooks feeding session analytics (metrics.Lifecycle)
 //	POST /hooks/skill              — agent pushes a learned skill
 //	POST /hooks/supervisor         — supervisor verdict
 //	POST /hooks/trigger-supervisor — manual supervisor trigger from portal
@@ -130,6 +131,7 @@ func NewHandler(cfg *config.Config, agents []Agent, reporter SupervisorReporter,
 	mux.HandleFunc("/hooks/notification", srv.handleNotification)
 	mux.HandleFunc("/hooks/after_agent", srv.handleAfterAgent)
 	mux.HandleFunc("/hooks/tui-blocked", srv.handleTUIBlocked)
+	mux.HandleFunc("/hooks/event", srv.handleEvent)
 	mux.HandleFunc("/hooks/opencode", srv.handleOpenCode)
 	mux.HandleFunc("/hooks/codex", srv.handleCodex)
 	mux.HandleFunc("/hooks/terminal/input", srv.handleTerminal)

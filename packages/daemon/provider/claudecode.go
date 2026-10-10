@@ -48,7 +48,25 @@ func (p *ClaudeCode) Setup(_ string, _ int, _ string, _ string) error {
 // similar case, but isn't confirmed yet).
 var tuiBlockMatchers = []string{"AskUserQuestion"}
 
-// hooksJSON builds the Stop/StopFailure/PreToolUse/PostToolUse hook config
+// lifecycleEvents are the Claude Code hooks forwarded to /hooks/event for
+// session analytics (metrics.Lifecycle): tool latency and failures,
+// permission denials, subagent runs, compactions, turn timing and why the
+// session ended. Claude Code ignores event names it doesn't know, so an
+// older CLI just reports less. SessionStart doesn't deliver to http hooks
+// (verified against 2.1.296), so it goes through a curl command hook instead.
+var lifecycleEvents = []string{
+	"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+	"PermissionDenied", "Notification", "SubagentStart", "SubagentStop", "PreCompact",
+	"PostModelSwitch", "Stop", "StopFailure", "SessionEnd",
+}
+
+// lifecycleHookTimeout (seconds) caps each analytics hook. PreToolUse and
+// UserPromptSubmit block until answered, so a wedged daemon must never stall
+// the session for the 600s default.
+const lifecycleHookTimeout = 5
+
+// hooksJSON builds the Stop/StopFailure/PreToolUse/PostToolUse hook config,
+// plus the analytics hooks in lifecycleEvents,
 // pointing at the daemon's local hook server, with agentID/taskID embedded
 // as query params so the hook server can route to the correct agent and
 // reject stale events. PreToolUse/PostToolUse are scoped to
@@ -78,34 +96,47 @@ func hooksJSON(hooksPort int, agentID, taskID string) ([]byte, error) {
 			},
 		})
 	}
-	return json.Marshal(map[string]any{
-		"hooks": map[string]any{
-			"Stop": []any{
-				map[string]any{
-					"matcher": "*",
-					"hooks": []any{
-						map[string]any{
-							"type": "http",
-							"url":  fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s", hooksPort, agentID, taskID),
-						},
+	hooks := map[string]any{
+		"Stop": []any{
+			map[string]any{
+				"matcher": "*",
+				"hooks": []any{
+					map[string]any{
+						"type": "http",
+						"url":  fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s", hooksPort, agentID, taskID),
 					},
 				},
 			},
-			"StopFailure": []any{
-				map[string]any{
-					"matcher": "*",
-					"hooks": []any{
-						map[string]any{
-							"type": "http",
-							"url":  fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s&failure=true", hooksPort, agentID, taskID),
-						},
-					},
-				},
-			},
-			"PreToolUse":  preToolUse,
-			"PostToolUse": postToolUse,
 		},
-	})
+		"StopFailure": []any{
+			map[string]any{
+				"matcher": "*",
+				"hooks": []any{
+					map[string]any{
+						"type": "http",
+						"url":  fmt.Sprintf("http://localhost:%d/hooks/stop?agent=%s&task_id=%s&failure=true", hooksPort, agentID, taskID),
+					},
+				},
+			},
+		},
+		"PreToolUse":  preToolUse,
+		"PostToolUse": postToolUse,
+	}
+	eventURL := fmt.Sprintf("http://localhost:%d/hooks/event?agent=%s&task_id=%s", hooksPort, agentID, taskID)
+	for _, event := range lifecycleEvents {
+		hook := map[string]any{"type": "http", "url": eventURL, "timeout": lifecycleHookTimeout}
+		if event == "SessionStart" {
+			// A SessionStart command hook's stdout is injected into the model's
+			// context, so curl's output must go nowhere.
+			hook = map[string]any{"type": "command", "timeout": lifecycleHookTimeout, "command": fmt.Sprintf(
+				"curl -s -m %d -X POST -H 'Content-Type: application/json' --data-binary @- '%s' >/dev/null 2>&1 || true",
+				lifecycleHookTimeout, eventURL)}
+		}
+		group := map[string]any{"matcher": "*", "hooks": []any{hook}}
+		existing, _ := hooks[event].([]any)
+		hooks[event] = append(existing, group)
+	}
+	return json.Marshal(map[string]any{"hooks": hooks})
 }
 
 // SetupArgs writes this task's Stop/StopFailure/PreToolUse/PostToolUse hook

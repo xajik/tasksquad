@@ -30,6 +30,9 @@ type Report struct {
 	ToolErrors       int
 	Tools            map[string]int
 	Skills           map[string]int
+	// Lifecycle is the hook-observed breakdown (see Lifecycle.Merge), or nil
+	// when the harness reported no lifecycle hooks.
+	Lifecycle map[string]any
 }
 
 // New returns an empty report for provider.
@@ -61,7 +64,7 @@ func (r *Report) ToolCalls() int {
 
 // Body is the JSON payload for /daemon/session/metrics.
 func (r *Report) Body(sessionID string) map[string]any {
-	return map[string]any{
+	body := map[string]any{
 		"session_id": sessionID, "provider": r.Provider, "model": r.Model,
 		"duration_ms": r.DurationMs, "turns": r.Turns,
 		"tokens": map[string]any{"input": r.InputTokens, "output": r.OutputTokens,
@@ -69,6 +72,10 @@ func (r *Report) Body(sessionID string) map[string]any {
 		"tool_calls": r.ToolCalls(), "tool_errors": r.ToolErrors,
 		"tools": r.Tools, "skills": r.Skills,
 	}
+	if r.Lifecycle != nil {
+		body["lifecycle"] = r.Lifecycle
+	}
+	return body
 }
 
 var skillToken = regexp.MustCompile(`(?:^|\s)[/$](tsq-[A-Za-z0-9_-]+)`)
