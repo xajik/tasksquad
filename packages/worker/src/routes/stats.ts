@@ -24,6 +24,30 @@ export interface SessionMetrics {
   tool_errors: number
   tools: Record<string, number>
   skills: Record<string, number>
+  lifecycle: SessionLifecycle | null
+}
+
+export interface ToolLifecycle {
+  calls: number; errors: number; denied: number; unfinished: number
+  total_ms: number; max_ms: number; subagent_calls: number
+}
+export interface SubagentLifecycle {
+  runs: number; total_ms: number; tool_calls: number; model: string
+  input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number
+}
+/** What the daemon saw through the harness's lifecycle hooks (see daemon metrics/lifecycle.go). */
+export interface SessionLifecycle {
+  source: string
+  events: Record<string, number>
+  session_sources: Record<string, number>
+  compactions: Record<string, number>
+  notifications: Record<string, number>
+  stop_failures: Record<string, number>
+  tools: Record<string, ToolLifecycle>
+  subagents: Record<string, SubagentLifecycle>
+  models: string[]
+  prompts: number; active_ms: number; max_turn_ms: number; hook_span_ms: number
+  end_reason: string
 }
 
 function count(value: unknown): number {
@@ -48,6 +72,47 @@ export function sanitizeCounts(value: unknown): Record<string, number> {
   return out
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+/** Rebuilds `value`'s entries through `pick`, keeping the `MAX_NAMES` largest by `rank`. */
+function sanitizeNamed<T>(value: unknown, pick: (v: Record<string, unknown>) => T, rank: (t: T) => number): Record<string, T> {
+  const entries = Object.entries(record(value) ?? {})
+    .map(([name, v]) => [label(name), pick(record(v) ?? {})] as const)
+    .filter(([name]) => name.length > 0)
+    .sort((a, b) => rank(b[1]) - rank(a[1]))
+    .slice(0, MAX_NAMES)
+  return Object.fromEntries(entries)
+}
+
+/** Whitelists the lifecycle block field by field; null when absent. */
+export function sanitizeLifecycle(value: unknown): SessionLifecycle | null {
+  const v = record(value)
+  if (!v) return null
+  return {
+    source: label(v.source, 20),
+    events: sanitizeCounts(v.events),
+    session_sources: sanitizeCounts(v.session_sources),
+    compactions: sanitizeCounts(v.compactions),
+    notifications: sanitizeCounts(v.notifications),
+    stop_failures: sanitizeCounts(v.stop_failures),
+    tools: sanitizeNamed(v.tools, t => ({
+      calls: count(t.calls), errors: count(t.errors), denied: count(t.denied), unfinished: count(t.unfinished),
+      total_ms: count(t.total_ms), max_ms: count(t.max_ms), subagent_calls: count(t.subagent_calls),
+    }), t => t.calls),
+    subagents: sanitizeNamed(v.subagents, a => ({
+      runs: count(a.runs), total_ms: count(a.total_ms), tool_calls: count(a.tool_calls), model: label(a.model),
+      input_tokens: count(a.input_tokens), output_tokens: count(a.output_tokens),
+      cache_read_tokens: count(a.cache_read_tokens), cache_write_tokens: count(a.cache_write_tokens),
+    }), a => a.runs),
+    models: (Array.isArray(v.models) ? v.models : []).map(m => label(m)).filter(Boolean).slice(0, 10),
+    prompts: count(v.prompts), active_ms: count(v.active_ms), max_turn_ms: count(v.max_turn_ms),
+    hook_span_ms: count(v.hook_span_ms),
+    end_reason: label(v.end_reason, 40),
+  }
+}
+
 export function sanitizeMetrics(body: Record<string, unknown>): SessionMetrics {
   const tokens = (body.tokens && typeof body.tokens === 'object' ? body.tokens : {}) as Record<string, unknown>
   const tools = sanitizeCounts(body.tools)
@@ -65,6 +130,7 @@ export function sanitizeMetrics(body: Record<string, unknown>): SessionMetrics {
     tool_errors: count(body.tool_errors),
     tools,
     skills: sanitizeCounts(body.skills),
+    lifecycle: sanitizeLifecycle(body.lifecycle),
   }
 }
 
@@ -82,16 +148,17 @@ export async function reportSessionMetrics(req: Request, env: Env, _ctx: unknown
   const m = sanitizeMetrics(body)
   await env.DB.prepare(`
     INSERT INTO session_metrics (session_id, task_id, agent_id, team_id, provider, model, duration_ms, turns,
-      input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, tool_calls, tool_errors, tools, skills, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, tool_calls, tool_errors, tools, skills, lifecycle, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(session_id) DO UPDATE SET
       provider = excluded.provider, model = excluded.model, duration_ms = excluded.duration_ms, turns = excluded.turns,
       input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
       cache_read_tokens = excluded.cache_read_tokens, cache_write_tokens = excluded.cache_write_tokens,
-      tool_calls = excluded.tool_calls, tool_errors = excluded.tool_errors, tools = excluded.tools, skills = excluded.skills`)
+      tool_calls = excluded.tool_calls, tool_errors = excluded.tool_errors, tools = excluded.tools, skills = excluded.skills,
+      lifecycle = excluded.lifecycle`)
     .bind(sessionId, session.task_id, daemon.agentId, session.team_id, m.provider, m.model, m.duration_ms, m.turns,
       m.input_tokens, m.output_tokens, m.cache_read_tokens, m.cache_write_tokens, m.tool_calls, m.tool_errors,
-      JSON.stringify(m.tools), JSON.stringify(m.skills), Date.now())
+      JSON.stringify(m.tools), JSON.stringify(m.skills), JSON.stringify(m.lifecycle ?? {}), Date.now())
     .run()
   return json({ ok: true })
 }

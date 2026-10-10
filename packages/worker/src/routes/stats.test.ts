@@ -39,6 +39,24 @@ describe('sanitizeMetrics', () => {
   it('trusts a reported tool_calls total', () => {
     expect(sanitizeMetrics({ tool_calls: 42, tools: { Bash: 1 } }).tool_calls).toBe(42)
   })
+
+  it('whitelists the lifecycle block', () => {
+    expect(sanitizeMetrics({}).lifecycle).toBeNull()
+    const l = sanitizeMetrics({ lifecycle: {
+      source: 'hooks', prompt: 'secret', prompts: 2, active_ms: -1, end_reason: 'other', models: ['m', 7],
+      tools: { Bash: { calls: 3, total_ms: 900, tool_input: 'rm -rf /' }, '': { calls: 1 } },
+      subagents: { Explore: { runs: 1, input_tokens: 10, model: 'haiku', initial_prompt: 'secret' } },
+      events: { Stop: 1 },
+    } }).lifecycle!
+    expect(l).not.toHaveProperty('prompt')
+    expect(l.prompts).toBe(2)
+    expect(l.active_ms).toBe(0)
+    expect(l.models).toEqual(['m'])
+    expect(l.tools).toEqual({ Bash: { calls: 3, errors: 0, denied: 0, unfinished: 0, total_ms: 900, max_ms: 0, subagent_calls: 0 } })
+    expect(l.subagents.Explore).toEqual({ runs: 1, total_ms: 0, tool_calls: 0, model: 'haiku',
+      input_tokens: 10, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 })
+    expect(l.events).toEqual({ Stop: 1 })
+  })
 })
 
 describe('aggregateStats', () => {
