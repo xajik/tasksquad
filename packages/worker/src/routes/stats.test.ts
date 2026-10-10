@@ -56,6 +56,9 @@ describe('sanitizeMetrics', () => {
     expect(l.subagents.Explore).toEqual({ runs: 1, total_ms: 0, tool_calls: 0, model: 'haiku',
       input_tokens: 10, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 })
     expect(l.events).toEqual({ Stop: 1 })
+    expect(l.cost_usd).toBe(0)
+    expect(sanitizeMetrics({ lifecycle: { cost_usd: 0.1234567891 } }).lifecycle!.cost_usd).toBe(0.123457)
+    expect(sanitizeMetrics({ lifecycle: { cost_usd: -3 } }).lifecycle!.cost_usd).toBe(0)
   })
 })
 

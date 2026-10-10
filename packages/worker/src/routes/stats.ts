@@ -48,6 +48,7 @@ export interface SessionLifecycle {
   models: string[]
   prompts: number; active_ms: number; max_turn_ms: number; hook_span_ms: number
   end_reason: string
+  cost_usd: number
 }
 
 function count(value: unknown): number {
@@ -70,6 +71,12 @@ export function sanitizeCounts(value: unknown): Record<string, number> {
   const out: Record<string, number> = {}
   for (const [name, n] of entries) out[name] = (out[name] ?? 0) + n
   return out
+}
+
+/** Non-negative dollars, capped like counts, kept to micro-dollar precision. */
+function usd(value: unknown): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : 0
+  return Math.round(Math.min(Math.max(n, 0), MAX_COUNT) * 1e6) / 1e6
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -110,6 +117,7 @@ export function sanitizeLifecycle(value: unknown): SessionLifecycle | null {
     prompts: count(v.prompts), active_ms: count(v.active_ms), max_turn_ms: count(v.max_turn_ms),
     hook_span_ms: count(v.hook_span_ms),
     end_reason: label(v.end_reason, 40),
+    cost_usd: usd(v.cost_usd),
   }
 }
 
