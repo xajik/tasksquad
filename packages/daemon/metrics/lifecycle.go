@@ -38,6 +38,10 @@ type Lifecycle struct {
 	subagentRuns  map[string]string      // agent_id → agent_type, for token attribution
 	subagentPaths map[string]string      // agent_id → its transcript (SubagentStop agent_transcript_path)
 	turnStart     time.Time
+
+	source         string    // "hooks", or "transcript" when rebuilt from a rollout (Codex)
+	ownsTools      bool      // Tools covers every call, subagents included, so it replaces transcript counts
+	subagentTokens []*Report // subagent usage already parsed by the builder, added to totals in Merge
 }
 
 // ToolStat is one tool's hook-observed usage. Ms is PreToolUse→PostToolUse
@@ -77,6 +81,7 @@ const maxKeys = 200
 
 func newLifecycle() *Lifecycle {
 	return &Lifecycle{
+		source: "hooks",
 		Events: map[string]int{}, Sources: map[string]int{}, Tools: map[string]*ToolStat{},
 		Subagents: map[string]*SubagentStat{}, Compactions: map[string]int{}, Notifications: map[string]int{},
 		StopFailures: map[string]int{}, Models: map[string]bool{},
@@ -318,12 +323,24 @@ func (l *Lifecycle) Merge(r *Report) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if l.Events["PreToolUse"] > 0 {
-		r.Tools, r.ToolErrors = map[string]int{}, 0
+	if l.ownsTools || l.Events["PreToolUse"] > 0 {
+		r.Tools = map[string]int{}
+		errors := 0
 		for name, st := range l.Tools {
 			r.Tools[name] = st.Calls
-			r.ToolErrors += st.Errors
+			errors += st.Errors
 		}
+		// A transcript-built lifecycle has no per-tool errors; keep the parser's.
+		if l.source == "hooks" {
+			r.ToolErrors = errors
+		}
+	}
+	for _, sub := range l.subagentTokens {
+		r.InputTokens += sub.InputTokens
+		r.OutputTokens += sub.OutputTokens
+		r.CacheReadTokens += sub.CacheReadTokens
+		r.CacheWriteTokens += sub.CacheWriteTokens
+		r.ToolErrors += sub.ToolErrors
 	}
 	for id, p := range l.pendingTools {
 		if st := l.Tools[p.name]; st != nil {
@@ -375,7 +392,7 @@ func (l *Lifecycle) Merge(r *Report) {
 		span = l.lastEvent.Sub(l.firstEvent).Milliseconds()
 	}
 	r.Lifecycle = map[string]any{
-		"source": "hooks", "events": l.Events, "session_sources": l.Sources,
+		"source": l.source, "events": l.Events, "session_sources": l.Sources,
 		"tools": l.Tools, "subagents": l.Subagents, "compactions": l.Compactions,
 		"notifications": l.Notifications, "stop_failures": l.StopFailures, "models": models,
 		"prompts": l.Prompts, "active_ms": l.ActiveMs, "max_turn_ms": l.MaxTurnMs,

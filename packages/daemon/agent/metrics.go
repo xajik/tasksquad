@@ -51,6 +51,10 @@ func (a *Agent) postSessionReport(cfg *config.Config, sessionID, taskID string, 
 		if home, err := os.UserHomeDir(); err == nil {
 			if path := metrics.Transcript(provider, workDir, transcriptPath, thread, startedAt, home); path != "" {
 				metrics.Read(path, provider, r)
+				// Codex hooks need per-user trust, so its lifecycle comes from the rollout.
+				if life == nil && provider == "codex" {
+					life = metrics.CodexLifecycle(path, home, startedAt)
+				}
 			}
 		}
 		if life != nil {
