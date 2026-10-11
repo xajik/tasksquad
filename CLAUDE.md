@@ -26,6 +26,7 @@ contract between them changes.
 
 ```bash
 make test                              # from repo root: daemon + portal + worker always, macos too on Darwin
+make bump [minor|major]                # bump every product's version (patch by default); see scripts/bump.py
 
 cd packages/daemon && make dev         # air hot-reload — rebuilds+restarts tsq on save
 cd packages/daemon && make build       # go build -o tsq .

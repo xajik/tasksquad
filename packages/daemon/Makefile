@@ -3,7 +3,8 @@
 -include .env
 export
 
-VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+# Bumped by `make bump` at the repo root; releases pass VERSION from the v* tag.
+VERSION ?= 0.3.10
 LDFLAGS := -ldflags "-X main.version=$(VERSION)"
 GORELEASER ?= goreleaser
 ACTIONLINT ?= actionlint
