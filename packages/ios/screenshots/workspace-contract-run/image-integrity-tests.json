@@ -1,0 +1,74 @@
+{
+  "devices": [
+    {
+      "architecture": "arm64",
+      "deviceId": "3D5E8AF0-85BC-4141-8E00-1A18AA2162F9",
+      "deviceName": "iPhone 17 Pro",
+      "modelName": "iPhone 17 Pro",
+      "osBuildNumber": "23B86",
+      "osVersion": "26.1",
+      "platform": "iOS Simulator"
+    }
+  ],
+  "testNodes": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "name": "Invalid frame dimension (negative or non-finite).",
+                      "nodeType": "Runtime Warning"
+                    }
+                  ],
+                  "duration": "22s",
+                  "durationInSeconds": 22.448884963989258,
+                  "name": "test04CreateUnicodeTaskAndInitialImage()",
+                  "nodeIdentifier": "PortalFlowTests/test04CreateUnicodeTaskAndInitialImage()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test04CreateUnicodeTaskAndInitialImage",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Invalid frame dimension (negative or non-finite).",
+                      "nodeType": "Runtime Warning"
+                    }
+                  ],
+                  "duration": "18s",
+                  "durationInSeconds": 18.440656065940857,
+                  "name": "test05ReplyAndImageRoundTrip()",
+                  "nodeIdentifier": "PortalFlowTests/test05ReplyAndImageRoundTrip()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test05ReplyAndImageRoundTrip",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                }
+              ],
+              "name": "PortalFlowTests",
+              "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests",
+              "nodeType": "Test Suite",
+              "result": "Passed"
+            }
+          ],
+          "name": "TaskSquadUITests",
+          "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests",
+          "nodeType": "UI test bundle",
+          "result": "Passed"
+        }
+      ],
+      "name": "TaskSquad",
+      "nodeType": "Test Plan",
+      "result": "Passed"
+    }
+  ],
+  "testPlanConfigurations": [
+    {
+      "configurationId": "1",
+      "configurationName": "Test Scheme Action"
+    }
+  ]
+}

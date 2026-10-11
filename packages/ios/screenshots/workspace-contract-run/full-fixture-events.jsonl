@@ -1,0 +1,652 @@
+{"kind": "request", "time": 1791695593.669445, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.670121, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.670392, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.670905, "method": "GET", "path": "/portals/60459251db3347c3a165056636e13590", "query": {}}
+{"kind": "request", "time": 1791695593.671384, "method": "POST", "path": "/portals/60459251db3347c3a165056636e13590/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.671463, "method": "POST", "path": "/portals/60459251db3347c3a165056636e13590/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.671956, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.672411, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.6728342, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.67291, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.6733189, "method": "GET", "path": "/portals/ca90f7d8014a4a588d6e0e332dafadd8", "query": {}}
+{"kind": "request", "time": 1791695593.673725, "method": "POST", "path": "/portals/ca90f7d8014a4a588d6e0e332dafadd8/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.673834, "method": "POST", "path": "/portals/ca90f7d8014a4a588d6e0e332dafadd8/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.674203, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.674575, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.675023, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.6751192, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.675493, "method": "GET", "path": "/portals/a6f014de33594da79a3aae991aab3eaa", "query": {}}
+{"kind": "request", "time": 1791695593.6759229, "method": "POST", "path": "/portals/a6f014de33594da79a3aae991aab3eaa/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.676021, "method": "POST", "path": "/portals/a6f014de33594da79a3aae991aab3eaa/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.676481, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.6768692, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.677289, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.6773918, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.677808, "method": "GET", "path": "/portals/2bd7b598fe654656b1d2c27770151212", "query": {}}
+{"kind": "request", "time": 1791695593.678147, "method": "POST", "path": "/portals/2bd7b598fe654656b1d2c27770151212/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.678226, "method": "POST", "path": "/portals/2bd7b598fe654656b1d2c27770151212/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.678591, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.678972, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.679432, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.679512, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.6798878, "method": "GET", "path": "/portals/da07bc60a5ca45d691551d6e8baf3a2b", "query": {}}
+{"kind": "request", "time": 1791695593.680248, "method": "POST", "path": "/portals/da07bc60a5ca45d691551d6e8baf3a2b/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.6803288, "method": "POST", "path": "/portals/da07bc60a5ca45d691551d6e8baf3a2b/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.680653, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.6809769, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.6813061, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.681372, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.6816902, "method": "GET", "path": "/portals/6b32ac4c3dfc4c5bb5dacaf73c52228f", "query": {}}
+{"kind": "request", "time": 1791695593.681982, "method": "POST", "path": "/portals/6b32ac4c3dfc4c5bb5dacaf73c52228f/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.6820428, "method": "POST", "path": "/portals/6b32ac4c3dfc4c5bb5dacaf73c52228f/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.682333, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.6826549, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.682977, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.683037, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.683313, "method": "GET", "path": "/portals/9e763776db4d452583a77c6a0af94bde", "query": {}}
+{"kind": "request", "time": 1791695593.683607, "method": "POST", "path": "/portals/9e763776db4d452583a77c6a0af94bde/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.683667, "method": "POST", "path": "/portals/9e763776db4d452583a77c6a0af94bde/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.683937, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.684237, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.684574, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.6846452, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.684944, "method": "GET", "path": "/portals/a71f8dba197b49d19007175cb9e07811", "query": {}}
+{"kind": "request", "time": 1791695593.6852322, "method": "POST", "path": "/portals/a71f8dba197b49d19007175cb9e07811/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.685317, "method": "POST", "path": "/portals/a71f8dba197b49d19007175cb9e07811/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.685626, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.6859589, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.686304, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.686377, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.686669, "method": "GET", "path": "/portals/661e2832f0bd49aaa4dc2657899dc168", "query": {}}
+{"kind": "request", "time": 1791695593.686954, "method": "POST", "path": "/portals/661e2832f0bd49aaa4dc2657899dc168/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.68702, "method": "POST", "path": "/portals/661e2832f0bd49aaa4dc2657899dc168/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.6873128, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.6876218, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.687972, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.6880388, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.6883352, "method": "GET", "path": "/portals/acea0833c7c94a1c8ff05ab8c83cf075", "query": {}}
+{"kind": "request", "time": 1791695593.688618, "method": "POST", "path": "/portals/acea0833c7c94a1c8ff05ab8c83cf075/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.688688, "method": "POST", "path": "/portals/acea0833c7c94a1c8ff05ab8c83cf075/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.689003, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.689347, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.689711, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.689779, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.690093, "method": "GET", "path": "/portals/c4cdebec5c8c4550bfaf113fe1d1cc6c", "query": {}}
+{"kind": "request", "time": 1791695593.6904058, "method": "POST", "path": "/portals/c4cdebec5c8c4550bfaf113fe1d1cc6c/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.690479, "method": "POST", "path": "/portals/c4cdebec5c8c4550bfaf113fe1d1cc6c/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.690772, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.691097, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.69144, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.691514, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.6918, "method": "GET", "path": "/portals/973456df66b04c5d9fca43df752ca128", "query": {}}
+{"kind": "request", "time": 1791695593.6920881, "method": "POST", "path": "/portals/973456df66b04c5d9fca43df752ca128/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.692149, "method": "POST", "path": "/portals/973456df66b04c5d9fca43df752ca128/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.6924338, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.692749, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.693074, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.69314, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.693423, "method": "GET", "path": "/portals/04c35f37f3c04f8ea6e75cee40e643e6", "query": {}}
+{"kind": "request", "time": 1791695593.693727, "method": "POST", "path": "/portals/04c35f37f3c04f8ea6e75cee40e643e6/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.693803, "method": "POST", "path": "/portals/04c35f37f3c04f8ea6e75cee40e643e6/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.694106, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.6944551, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.694846, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.6949298, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.695245, "method": "GET", "path": "/portals/4b91fdc325984bc0bf315413f8c84a3f", "query": {}}
+{"kind": "request", "time": 1791695593.6955972, "method": "POST", "path": "/portals/4b91fdc325984bc0bf315413f8c84a3f/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.6957161, "method": "POST", "path": "/portals/4b91fdc325984bc0bf315413f8c84a3f/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.6960409, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.6964018, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695593.696766, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695593.696846, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695593.697171, "method": "GET", "path": "/portals/c27dd7613fce47fdbad7e27443442a44", "query": {}}
+{"kind": "request", "time": 1791695593.697501, "method": "POST", "path": "/portals/c27dd7613fce47fdbad7e27443442a44/close", "query": {}}
+{"kind": "mutation", "time": 1791695593.6975749, "method": "POST", "path": "/portals/c27dd7613fce47fdbad7e27443442a44/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695593.697886, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.0292459, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.032319, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.0324879, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.033965, "method": "GET", "path": "/portals/2a25ba625f4c467a8de7967e1e6f4735", "query": {}}
+{"kind": "request", "time": 1791695600.03467, "method": "POST", "path": "/portals/2a25ba625f4c467a8de7967e1e6f4735/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.034793, "method": "POST", "path": "/portals/2a25ba625f4c467a8de7967e1e6f4735/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.036132, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.036813, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.037631, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.037729, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.0384011, "method": "GET", "path": "/portals/1068111c64724646aac22a439ff8e9cb", "query": {}}
+{"kind": "request", "time": 1791695600.038999, "method": "POST", "path": "/portals/1068111c64724646aac22a439ff8e9cb/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.0390909, "method": "POST", "path": "/portals/1068111c64724646aac22a439ff8e9cb/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.03964, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.040315, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.0409632, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.0410821, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.041657, "method": "GET", "path": "/portals/df1d85da8003465fbf3af85e563b9912", "query": {}}
+{"kind": "request", "time": 1791695600.04225, "method": "POST", "path": "/portals/df1d85da8003465fbf3af85e563b9912/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.0423522, "method": "POST", "path": "/portals/df1d85da8003465fbf3af85e563b9912/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.043096, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.043663, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.04421, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.0443132, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.044797, "method": "GET", "path": "/portals/8ea32c371c7848d5861d54f54ec9e414", "query": {}}
+{"kind": "request", "time": 1791695600.04528, "method": "POST", "path": "/portals/8ea32c371c7848d5861d54f54ec9e414/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.045363, "method": "POST", "path": "/portals/8ea32c371c7848d5861d54f54ec9e414/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.04581, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.046344, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.046825, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.046898, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.047563, "method": "GET", "path": "/portals/cd0af7eac9254809bb7867eefcaff8a6", "query": {}}
+{"kind": "request", "time": 1791695600.048413, "method": "POST", "path": "/portals/cd0af7eac9254809bb7867eefcaff8a6/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.048668, "method": "POST", "path": "/portals/cd0af7eac9254809bb7867eefcaff8a6/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.049259, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.0500212, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.050794, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.0510342, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.051763, "method": "GET", "path": "/portals/512eac09319547f9ab2be182e4e60745", "query": {}}
+{"kind": "request", "time": 1791695600.052541, "method": "POST", "path": "/portals/512eac09319547f9ab2be182e4e60745/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.05283, "method": "POST", "path": "/portals/512eac09319547f9ab2be182e4e60745/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.053691, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.054708, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.055695, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.055843, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.0568929, "method": "GET", "path": "/portals/dfb10c497c2142a788f157596c9d97b6", "query": {}}
+{"kind": "request", "time": 1791695600.0576692, "method": "POST", "path": "/portals/dfb10c497c2142a788f157596c9d97b6/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.057823, "method": "POST", "path": "/portals/dfb10c497c2142a788f157596c9d97b6/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.058462, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.059241, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.059992, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.060162, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.060708, "method": "GET", "path": "/portals/82e6f62f7a2c4693b41f09660f85e2e5", "query": {}}
+{"kind": "request", "time": 1791695600.061208, "method": "POST", "path": "/portals/82e6f62f7a2c4693b41f09660f85e2e5/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.061389, "method": "POST", "path": "/portals/82e6f62f7a2c4693b41f09660f85e2e5/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.061881, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.0625532, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.0633442, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.063547, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.064142, "method": "GET", "path": "/portals/f4114e672492442d8b434fa0a7d4842b", "query": {}}
+{"kind": "request", "time": 1791695600.064739, "method": "POST", "path": "/portals/f4114e672492442d8b434fa0a7d4842b/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.064916, "method": "POST", "path": "/portals/f4114e672492442d8b434fa0a7d4842b/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.0655308, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.066242, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.066896, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.067046, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.067554, "method": "GET", "path": "/portals/1e74a5e4e8d94c22847e4e429e480dca", "query": {}}
+{"kind": "request", "time": 1791695600.068081, "method": "POST", "path": "/portals/1e74a5e4e8d94c22847e4e429e480dca/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.068212, "method": "POST", "path": "/portals/1e74a5e4e8d94c22847e4e429e480dca/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.068704, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.0693061, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.06992, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.070103, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.070747, "method": "GET", "path": "/portals/d94e0f201a2b4f8187146baedd675993", "query": {}}
+{"kind": "request", "time": 1791695600.071302, "method": "POST", "path": "/portals/d94e0f201a2b4f8187146baedd675993/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.071458, "method": "POST", "path": "/portals/d94e0f201a2b4f8187146baedd675993/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.0720031, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.073809, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.075109, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.075465, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.0763662, "method": "GET", "path": "/portals/89233dfe7c774e0895196b4507d8864a", "query": {}}
+{"kind": "request", "time": 1791695600.077135, "method": "POST", "path": "/portals/89233dfe7c774e0895196b4507d8864a/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.077324, "method": "POST", "path": "/portals/89233dfe7c774e0895196b4507d8864a/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.07812, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.079113, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.0800362, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.0802612, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.080815, "method": "GET", "path": "/portals/69507bed41404ce9b37d4d900a65eab1", "query": {}}
+{"kind": "request", "time": 1791695600.0813599, "method": "POST", "path": "/portals/69507bed41404ce9b37d4d900a65eab1/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.081553, "method": "POST", "path": "/portals/69507bed41404ce9b37d4d900a65eab1/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.0821161, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.0827641, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.08344, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.0836532, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.084208, "method": "GET", "path": "/portals/594ee9bd571249deaf81c59b423a0800", "query": {}}
+{"kind": "request", "time": 1791695600.084738, "method": "POST", "path": "/portals/594ee9bd571249deaf81c59b423a0800/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.084895, "method": "POST", "path": "/portals/594ee9bd571249deaf81c59b423a0800/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.085484, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.0861251, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695600.086838, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695600.087014, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695600.087539, "method": "GET", "path": "/portals/2635aa24827b4f288bd906bff7bbd10b", "query": {}}
+{"kind": "request", "time": 1791695600.0880551, "method": "POST", "path": "/portals/2635aa24827b4f288bd906bff7bbd10b/close", "query": {}}
+{"kind": "mutation", "time": 1791695600.0881972, "method": "POST", "path": "/portals/2635aa24827b4f288bd906bff7bbd10b/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695600.088746, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "reset", "time": 1791695601.292408}
+{"kind": "request", "time": 1791695602.2435641, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695602.244735, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695602.255567, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695602.2559009, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695602.2567198, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695602.257323, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695602.2642791, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695602.264927, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695606.965698, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695606.966027, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "reset", "time": 1791695609.3605068}
+{"kind": "request", "time": 1791695611.327687, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695611.328614, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695611.339668, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695611.339998, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695611.340908, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695611.341237, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695611.376547, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695611.377045, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695614.878752, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695614.879256, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695618.301362, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695618.3020658, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695621.7362728, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695621.736972, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "reset", "time": 1791695624.057939}
+{"kind": "request", "time": 1791695626.033352, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695626.033834, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695626.036609, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695626.037031, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695626.080829, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695626.081154, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695629.496036, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695629.496356, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695634.743037, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695634.744125, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "reset", "time": 1791695637.588053}
+{"kind": "request", "time": 1791695639.515667, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695639.516164, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695639.518946, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695639.519528, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695639.564735, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695639.565429, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695642.99724, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695642.997826, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695648.111956, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695648.112788, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695653.1958761, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695653.197015, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695656.9254699, "method": "POST", "path": "/tasks", "query": {}}
+{"kind": "mutation", "time": 1791695656.933693, "method": "POST", "path": "/tasks", "body": {"agent_id": "agent", "auto_close": "false", "body": "Review 🚀", "close_steps": "[]", "save_tokens": "{\"level\":\"full\",\"enabled\":false}", "subject": "Unicode 猫 café", "team_id": "demo"}, "attachments": 1}
+{"kind": "request", "time": 1791695656.938765, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695656.9390259, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695657.1007428, "method": "GET", "path": "/tasks/d1417e8c08dd4c309e666756a2437890", "query": {}}
+{"kind": "request", "time": 1791695657.1019158, "method": "GET", "path": "/tasks/d1417e8c08dd4c309e666756a2437890/messages", "query": {}}
+{"kind": "request", "time": 1791695657.12185, "method": "GET", "path": "/tasks/d1417e8c08dd4c309e666756a2437890/messages/7df8ba4b070e4fe5a1f34fa50a387c69/attachments/image-35a7b2", "query": {}}
+{"kind": "request", "time": 1791695659.149431, "method": "GET", "path": "/tasks/d1417e8c08dd4c309e666756a2437890", "query": {}}
+{"kind": "request", "time": 1791695659.1508071, "method": "GET", "path": "/tasks/d1417e8c08dd4c309e666756a2437890/messages", "query": {}}
+{"kind": "reset", "time": 1791695659.498134}
+{"kind": "request", "time": 1791695661.462841, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695661.463539, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695661.4743612, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695661.474725, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695661.4753668, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695661.47575, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695661.5111098, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695661.511585, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695665.029304, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695665.029801, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695667.331428, "method": "GET", "path": "/tasks/task", "query": {}}
+{"kind": "request", "time": 1791695667.33285, "method": "GET", "path": "/tasks/task/messages", "query": {}}
+{"kind": "request", "time": 1791695669.399647, "method": "GET", "path": "/tasks/task", "query": {}}
+{"kind": "request", "time": 1791695669.400793, "method": "GET", "path": "/tasks/task/messages", "query": {}}
+{"kind": "request", "time": 1791695671.475195, "method": "GET", "path": "/tasks/task", "query": {}}
+{"kind": "request", "time": 1791695671.4760818, "method": "GET", "path": "/tasks/task/messages", "query": {}}
+{"kind": "request", "time": 1791695673.495404, "method": "GET", "path": "/tasks/task", "query": {}}
+{"kind": "request", "time": 1791695673.502675, "method": "GET", "path": "/tasks/task/messages", "query": {}}
+{"kind": "request", "time": 1791695674.392368, "method": "POST", "path": "/tasks/task/messages", "query": {}}
+{"kind": "mutation", "time": 1791695674.394562, "method": "POST", "path": "/tasks/task/messages", "body": {"body": "Reply café 猫"}, "attachments": 1}
+{"kind": "request", "time": 1791695674.4053812, "method": "GET", "path": "/tasks/task", "query": {}}
+{"kind": "request", "time": 1791695674.417127, "method": "GET", "path": "/tasks/task/messages", "query": {}}
+{"kind": "request", "time": 1791695674.47705, "method": "GET", "path": "/tasks/task/messages/5c7ec973e81b4b009703e2256f3d8ea0/attachments/image-db4791", "query": {}}
+{"kind": "request", "time": 1791695675.5394711, "method": "GET", "path": "/tasks/task", "query": {}}
+{"kind": "request", "time": 1791695675.541735, "method": "GET", "path": "/tasks/task/messages", "query": {}}
+{"kind": "reset", "time": 1791695676.678829}
+{"kind": "request", "time": 1791695678.600275, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695678.600768, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695678.603325, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695678.6035688, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695678.6486862, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695678.649764, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695682.077922, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695682.078478, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695687.144215, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695687.144861, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695691.626131, "method": "POST", "path": "/tasks", "query": {}}
+{"kind": "request", "time": 1791695692.2274308, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695692.228065, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695693.9091241, "method": "POST", "path": "/tasks", "query": {}}
+{"kind": "mutation", "time": 1791695693.909544, "method": "POST", "path": "/tasks", "body": {"body": "", "auto_close": false, "scheduled_at": null, "team_id": "demo", "close_steps": [], "subject": "Retry this task", "save_tokens": {"enabled": false, "level": "full"}, "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695693.921071, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695693.921512, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695694.0715652, "method": "GET", "path": "/tasks/66a9fd9740744978952ff5cab22845be", "query": {}}
+{"kind": "request", "time": 1791695694.072957, "method": "GET", "path": "/tasks/66a9fd9740744978952ff5cab22845be/messages", "query": {}}
+{"kind": "request", "time": 1791695696.102344, "method": "GET", "path": "/tasks/66a9fd9740744978952ff5cab22845be", "query": {}}
+{"kind": "request", "time": 1791695696.1040761, "method": "GET", "path": "/tasks/66a9fd9740744978952ff5cab22845be/messages", "query": {}}
+{"kind": "reset", "time": 1791695696.37243}
+{"kind": "request", "time": 1791695698.3322492, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695698.332762, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695698.341046, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695698.341372, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695698.3765419, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695698.377436, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695701.898548, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695701.899227, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695705.654628, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695705.655317, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695710.903139, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695710.9039721, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695712.99237, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695712.9928892, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695712.998773, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695712.9994528, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695713.1052601, "method": "GET", "path": "/portals/f5862a31ea7b4bf8b18762eb52342243", "query": {}}
+{"kind": "request", "time": 1791695715.1680372, "method": "GET", "path": "/portals/f5862a31ea7b4bf8b18762eb52342243", "query": {}}
+{"kind": "request", "time": 1791695715.241421, "method": "POST", "path": "/terminal/ticket", "query": {}}
+{"kind": "mutation", "time": 1791695715.242045, "method": "POST", "path": "/terminal/ticket", "body": {"session_id": "session-f5862a31ea7b4bf8b18762eb52342243"}, "attachments": 0}
+{"kind": "socket_open", "time": 1791695715.248823, "session": "session-f5862a31ea7b4bf8b18762eb52342243", "replay": "1"}
+{"kind": "resize", "time": 1791695715.249386, "cols": 50, "rows": 37}
+{"kind": "request", "time": 1791695717.21199, "method": "GET", "path": "/portals/f5862a31ea7b4bf8b18762eb52342243", "query": {}}
+{"kind": "reset", "time": 1791695717.5827289}
+{"kind": "socket_close", "time": 1791695717.5961359, "session": "session-f5862a31ea7b4bf8b18762eb52342243"}
+{"kind": "request", "time": 1791695719.509747, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695719.510514, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695719.521974, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695719.52236, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695719.523229, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695719.523678, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695719.53107, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695719.531758, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695722.9626298, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695722.963139, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695726.737801, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695726.73842, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695731.983794, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695731.9847832, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695734.109589, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695734.110168, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695734.115979, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695734.1164658, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695734.221622, "method": "GET", "path": "/portals/f02bf081cb0b429f9495a0b96ccbd015", "query": {}}
+{"kind": "request", "time": 1791695736.307765, "method": "GET", "path": "/portals/f02bf081cb0b429f9495a0b96ccbd015", "query": {}}
+{"kind": "request", "time": 1791695736.374333, "method": "POST", "path": "/terminal/ticket", "query": {}}
+{"kind": "mutation", "time": 1791695736.374686, "method": "POST", "path": "/terminal/ticket", "body": {"session_id": "session-f02bf081cb0b429f9495a0b96ccbd015"}, "attachments": 0}
+{"kind": "socket_open", "time": 1791695736.381891, "session": "session-f02bf081cb0b429f9495a0b96ccbd015", "replay": "1"}
+{"kind": "resize", "time": 1791695736.382333, "cols": 50, "rows": 37}
+{"kind": "request", "time": 1791695738.354332, "method": "GET", "path": "/portals/f02bf081cb0b429f9495a0b96ccbd015", "query": {}}
+{"kind": "resize", "time": 1791695738.7344482, "cols": 50, "rows": 17}
+{"kind": "input", "time": 1791695739.285323, "text": "echo café\r"}
+{"kind": "input", "time": 1791695739.631158, "text": "\t"}
+{"kind": "input", "time": 1791695739.992098, "text": "\u0003"}
+{"kind": "request", "time": 1791695740.400417, "method": "GET", "path": "/portals/f02bf081cb0b429f9495a0b96ccbd015", "query": {}}
+{"kind": "resize", "time": 1791695740.402866, "cols": 50, "rows": 37}
+{"kind": "resize", "time": 1791695740.843879, "cols": 93, "rows": 10}
+{"kind": "resize", "time": 1791695742.1831522, "cols": 50, "rows": 37}
+{"kind": "request", "time": 1791695742.408747, "method": "GET", "path": "/portals/f02bf081cb0b429f9495a0b96ccbd015", "query": {}}
+{"kind": "reset", "time": 1791695743.6366138}
+{"kind": "socket_close", "time": 1791695743.655036, "session": "session-f02bf081cb0b429f9495a0b96ccbd015"}
+{"kind": "request", "time": 1791695745.63771, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695745.638509, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695745.653732, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695745.654073, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695745.654788, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695745.655191, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695745.690161, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695745.690582, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695749.0807412, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695749.081307, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695752.8876328, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695752.888045, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695758.130273, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695758.131325, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695760.2598999, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695760.260544, "method": "POST", "path": "/portals", "body": {"agent_id": "agent", "team_id": "demo"}, "attachments": 0}
+{"kind": "request", "time": 1791695760.266581, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695760.26702, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695760.373018, "method": "GET", "path": "/portals/cad7ed28868e4af7860a7eb7f1b075c4", "query": {}}
+{"kind": "request", "time": 1791695762.4581492, "method": "GET", "path": "/portals/cad7ed28868e4af7860a7eb7f1b075c4", "query": {}}
+{"kind": "request", "time": 1791695762.529044, "method": "POST", "path": "/terminal/ticket", "query": {}}
+{"kind": "mutation", "time": 1791695762.5293598, "method": "POST", "path": "/terminal/ticket", "body": {"session_id": "session-cad7ed28868e4af7860a7eb7f1b075c4"}, "attachments": 0}
+{"kind": "socket_open", "time": 1791695762.532279, "session": "session-cad7ed28868e4af7860a7eb7f1b075c4", "replay": "1"}
+{"kind": "resize", "time": 1791695762.532925, "cols": 50, "rows": 37}
+{"kind": "socket_close", "time": 1791695764.5298991, "session": "session-cad7ed28868e4af7860a7eb7f1b075c4"}
+{"kind": "request", "time": 1791695764.530841, "method": "GET", "path": "/portals/cad7ed28868e4af7860a7eb7f1b075c4", "query": {}}
+{"kind": "request", "time": 1791695764.5314271, "method": "POST", "path": "/terminal/ticket", "query": {}}
+{"kind": "mutation", "time": 1791695764.531614, "method": "POST", "path": "/terminal/ticket", "body": {"session_id": "session-cad7ed28868e4af7860a7eb7f1b075c4"}, "attachments": 0}
+{"kind": "socket_open", "time": 1791695764.533494, "session": "session-cad7ed28868e4af7860a7eb7f1b075c4", "replay": "0"}
+{"kind": "resize", "time": 1791695764.533918, "cols": 50, "rows": 37}
+{"kind": "socket_close", "time": 1791695766.108701, "session": "session-cad7ed28868e4af7860a7eb7f1b075c4"}
+{"kind": "request", "time": 1791695767.06054, "method": "GET", "path": "/portals/cad7ed28868e4af7860a7eb7f1b075c4", "query": {}}
+{"kind": "request", "time": 1791695767.0629451, "method": "POST", "path": "/terminal/ticket", "query": {}}
+{"kind": "mutation", "time": 1791695767.063371, "method": "POST", "path": "/terminal/ticket", "body": {"session_id": "session-cad7ed28868e4af7860a7eb7f1b075c4"}, "attachments": 0}
+{"kind": "socket_open", "time": 1791695767.065728, "session": "session-cad7ed28868e4af7860a7eb7f1b075c4", "replay": "0"}
+{"kind": "resize", "time": 1791695767.066375, "cols": 50, "rows": 37}
+{"kind": "request", "time": 1791695769.154806, "method": "GET", "path": "/portals/cad7ed28868e4af7860a7eb7f1b075c4", "query": {}}
+{"kind": "reset", "time": 1791695769.224344}
+{"kind": "socket_close", "time": 1791695769.243715, "session": "session-cad7ed28868e4af7860a7eb7f1b075c4"}
+{"kind": "request", "time": 1791695771.212246, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695771.212812, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695771.221202, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695771.221542, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695771.229833, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695771.2304718, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695774.682326, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695774.6830132, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695778.471179, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695778.47171, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695783.711935, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695783.712491, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695785.759517, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695785.760043, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695785.765791, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695785.766304, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695785.86851, "method": "GET", "path": "/portals/5dc4eaf28fe3460f9cf2ba383e88d16c", "query": {}}
+{"kind": "request", "time": 1791695788.004261, "method": "GET", "path": "/portals/5dc4eaf28fe3460f9cf2ba383e88d16c", "query": {}}
+{"kind": "request", "time": 1791695788.084218, "method": "POST", "path": "/terminal/ticket", "query": {}}
+{"kind": "mutation", "time": 1791695788.0845408, "method": "POST", "path": "/terminal/ticket", "body": {"session_id": "session-5dc4eaf28fe3460f9cf2ba383e88d16c"}, "attachments": 0}
+{"kind": "socket_open", "time": 1791695788.087818, "session": "session-5dc4eaf28fe3460f9cf2ba383e88d16c", "replay": "1"}
+{"kind": "resize", "time": 1791695788.088591, "cols": 50, "rows": 37}
+{"kind": "request", "time": 1791695790.050412, "method": "GET", "path": "/portals/5dc4eaf28fe3460f9cf2ba383e88d16c", "query": {}}
+{"kind": "reset", "time": 1791695791.905252}
+{"kind": "socket_close", "time": 1791695791.923649, "session": "session-5dc4eaf28fe3460f9cf2ba383e88d16c"}
+{"kind": "request", "time": 1791695793.8381581, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695793.8386629, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695793.8553898, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695793.8558028, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695793.856537, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695793.856971, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695793.892908, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695793.89323, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695797.314774, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695797.315089, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695801.0693812, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695801.0698571, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695806.313065, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695806.313558, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695808.4262452, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695808.4267662, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695808.4320378, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695808.432668, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695808.538063, "method": "GET", "path": "/portals/6694a844722249618f735216ca1de0d7", "query": {}}
+{"kind": "request", "time": 1791695810.586308, "method": "GET", "path": "/portals/6694a844722249618f735216ca1de0d7", "query": {}}
+{"kind": "request", "time": 1791695810.649594, "method": "POST", "path": "/terminal/ticket", "query": {}}
+{"kind": "mutation", "time": 1791695810.6499689, "method": "POST", "path": "/terminal/ticket", "body": {"session_id": "session-6694a844722249618f735216ca1de0d7"}, "attachments": 0}
+{"kind": "socket_open", "time": 1791695810.652865, "session": "session-6694a844722249618f735216ca1de0d7", "replay": "1"}
+{"kind": "resize", "time": 1791695810.6532888, "cols": 50, "rows": 37}
+{"kind": "request", "time": 1791695812.610753, "method": "GET", "path": "/portals/6694a844722249618f735216ca1de0d7", "query": {}}
+{"kind": "request", "time": 1791695813.2216792, "method": "POST", "path": "/portals/6694a844722249618f735216ca1de0d7/close", "query": {}}
+{"kind": "resize", "time": 1791695813.266846, "cols": 50, "rows": 33}
+{"kind": "reset", "time": 1791695814.638803}
+{"kind": "socket_close", "time": 1791695814.6590898, "session": "session-6694a844722249618f735216ca1de0d7"}
+{"kind": "request", "time": 1791695816.6260512, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695816.626747, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695816.6394072, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695816.639901, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695816.6410172, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695816.6415842, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695816.676264, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695816.676776, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695820.047572, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695820.048078, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695823.81757, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695823.818141, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695828.849508, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695828.850091, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695830.926393, "method": "POST", "path": "/portals", "query": {}}
+{"kind": "mutation", "time": 1791695830.926922, "method": "POST", "path": "/portals", "body": {"team_id": "demo", "agent_id": "agent"}, "attachments": 0}
+{"kind": "request", "time": 1791695830.9327319, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695830.9333959, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695831.038353, "method": "GET", "path": "/portals/cb858ca434b8458fbbaf6feefd650d3f", "query": {}}
+{"kind": "request", "time": 1791695833.111995, "method": "GET", "path": "/portals/cb858ca434b8458fbbaf6feefd650d3f", "query": {}}
+{"kind": "request", "time": 1791695833.180473, "method": "POST", "path": "/terminal/ticket", "query": {}}
+{"kind": "mutation", "time": 1791695833.1808782, "method": "POST", "path": "/terminal/ticket", "body": {"session_id": "session-cb858ca434b8458fbbaf6feefd650d3f"}, "attachments": 0}
+{"kind": "socket_open", "time": 1791695833.183827, "session": "session-cb858ca434b8458fbbaf6feefd650d3f", "replay": "1"}
+{"kind": "resize", "time": 1791695833.1842802, "cols": 50, "rows": 37}
+{"kind": "request", "time": 1791695835.142087, "method": "GET", "path": "/portals/cb858ca434b8458fbbaf6feefd650d3f", "query": {}}
+{"kind": "request", "time": 1791695835.6883872, "method": "POST", "path": "/portals/cb858ca434b8458fbbaf6feefd650d3f/close", "query": {}}
+{"kind": "mutation", "time": 1791695835.688863, "method": "POST", "path": "/portals/cb858ca434b8458fbbaf6feefd650d3f/close", "body": {}, "attachments": 0}
+{"kind": "request", "time": 1791695835.707925, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695835.708512, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695835.722049, "method": "GET", "path": "/portals/cb858ca434b8458fbbaf6feefd650d3f", "query": {}}
+{"kind": "socket_close", "time": 1791695835.741141, "session": "session-cb858ca434b8458fbbaf6feefd650d3f"}
+{"kind": "request", "time": 1791695836.954744, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695836.955075, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695836.955224, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695836.955318, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695836.963257, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695836.963528, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695837.146921, "method": "GET", "path": "/portals/cb858ca434b8458fbbaf6feefd650d3f", "query": {}}
+{"kind": "reset", "time": 1791695839.354518}
+{"kind": "request", "time": 1791695841.306377, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695841.307114, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695841.318939, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695841.3193989, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695841.319961, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695841.3204758, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695841.355562, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695841.3559659, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695844.797899, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695844.798549, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695848.565794, "method": "GET", "path": "/teams/demo/notes", "query": {"archived": "false", "limit": "100"}}
+{"kind": "request", "time": 1791695848.566302, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695853.786636, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695853.787562, "method": "GET", "path": "/teams/demo/notes", "query": {"archived": "false", "limit": "100"}}
+{"kind": "request", "time": 1791695858.926402, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695858.926948, "method": "GET", "path": "/teams/demo/notes", "query": {"archived": "false", "limit": "100"}}
+{"kind": "request", "time": 1791695859.743604, "method": "POST", "path": "/teams/demo/notes", "query": {}}
+{"kind": "mutation", "time": 1791695859.7440221, "method": "POST", "path": "/teams/demo/notes", "body": {"content": "Note content", "tags": [], "title": "Test note"}, "attachments": 0}
+{"kind": "request", "time": 1791695859.754636, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695859.755031, "method": "GET", "path": "/teams/demo/notes", "query": {"archived": "false", "limit": "100"}}
+{"kind": "request", "time": 1791695859.87636, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de", "query": {}}
+{"kind": "request", "time": 1791695859.9125419, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/comments", "query": {}}
+{"kind": "request", "time": 1791695859.9137049, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/tasks", "query": {}}
+{"kind": "request", "time": 1791695861.941844, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de", "query": {}}
+{"kind": "request", "time": 1791695861.9428391, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/comments", "query": {}}
+{"kind": "request", "time": 1791695861.943648, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/tasks", "query": {}}
+{"kind": "request", "time": 1791695863.9890492, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de", "query": {}}
+{"kind": "request", "time": 1791695863.989932, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/comments", "query": {}}
+{"kind": "request", "time": 1791695863.990578, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/tasks", "query": {}}
+{"kind": "request", "time": 1791695866.019642, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de", "query": {}}
+{"kind": "request", "time": 1791695866.0206678, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/comments", "query": {}}
+{"kind": "request", "time": 1791695866.021416, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/tasks", "query": {}}
+{"kind": "request", "time": 1791695866.0766258, "method": "POST", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/comments", "query": {}}
+{"kind": "mutation", "time": 1791695866.0770729, "method": "POST", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/comments", "body": {"content": "Review comment"}, "attachments": 0}
+{"kind": "request", "time": 1791695866.088681, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de", "query": {}}
+{"kind": "request", "time": 1791695866.105427, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/comments", "query": {}}
+{"kind": "request", "time": 1791695866.10689, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/tasks", "query": {}}
+{"kind": "request", "time": 1791695868.123154, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de", "query": {}}
+{"kind": "request", "time": 1791695868.125393, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/comments", "query": {}}
+{"kind": "request", "time": 1791695868.126894, "method": "GET", "path": "/teams/demo/notes/722c8d6665544122bd58dcbb3b97e1de/tasks", "query": {}}
+{"kind": "reset", "time": 1791695868.472307}
+{"kind": "request", "time": 1791695870.3765602, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695870.377003, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695870.3978739, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695870.398262, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695870.398867, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695870.399463, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695870.43722, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695870.4377348, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695873.9518049, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695873.952328, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695877.738397, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695877.7389839, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695882.520174, "method": "GET", "path": "/teams/demo/members", "query": {}}
+{"kind": "request", "time": 1791695882.520849, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695887.3199492, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695887.320491, "method": "GET", "path": "/teams/demo/skills", "query": {}}
+{"kind": "request", "time": 1791695892.104265, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695892.104723, "method": "GET", "path": "/teams/demo/sub-agents", "query": {}}
+{"kind": "request", "time": 1791695896.853085, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695896.853884, "method": "GET", "path": "/teams/demo/commands", "query": {}}
+{"kind": "request", "time": 1791695901.629639, "method": "GET", "path": "/teams/demo/memory", "query": {}}
+{"kind": "request", "time": 1791695901.6299572, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695901.642163, "method": "GET", "path": "/teams/demo/rollups", "query": {"period": "daily"}}
+{"kind": "request", "time": 1791695906.4346728, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695906.4350998, "method": "GET", "path": "/teams/demo/stats", "query": {"from": "1789103906433", "to": "1791695906433", "tz": "0"}}
+{"kind": "request", "time": 1791695911.277762, "method": "GET", "path": "/teams/demo/conveyors", "query": {}}
+{"kind": "request", "time": 1791695911.278498, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695916.070663, "method": "GET", "path": "/teams/demo/planners", "query": {}}
+{"kind": "request", "time": 1791695916.0711098, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695920.855874, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695920.8564029, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695925.7240489, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "reset", "time": 1791695928.153762}
+{"kind": "request", "time": 1791695930.1873732, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791695930.1879091, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791695930.1908622, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695930.1913679, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695930.238536, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791695930.2389, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791695933.667142, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695933.667626, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695937.438721, "method": "GET", "path": "/teams/demo/skills", "query": {}}
+{"kind": "request", "time": 1791695937.4393432, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695942.257389, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695942.258115, "method": "GET", "path": "/teams/demo/stats", "query": {"from": "1789103942255", "to": "1791695942255", "tz": "0"}}
+{"kind": "request", "time": 1791695947.128025, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695947.1287491, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695951.971835, "method": "GET", "path": "/teams/demo/skills", "query": {}}
+{"kind": "request", "time": 1791695951.972129, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695956.8387132, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695956.8394492, "method": "GET", "path": "/teams/demo/stats", "query": {"from": "1789103956837", "to": "1791695956837", "tz": "0"}}
+{"kind": "request", "time": 1791695961.71044, "method": "GET", "path": "/teams/demo/skills", "query": {}}
+{"kind": "request", "time": 1791695961.71077, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695966.500503, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695966.500758, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695971.318656, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695971.319295, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695976.3633852, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695976.364236, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695981.054106, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695981.054642, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695985.870303, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695985.87099, "method": "GET", "path": "/teams/demo/stats", "query": {"from": "1789103985869", "to": "1791695985869", "tz": "0"}}
+{"kind": "request", "time": 1791695990.793252, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695990.793738, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791695995.638295, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791695995.638818, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791696000.489372, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791696000.4896781, "method": "GET", "path": "/teams/demo/stats", "query": {"from": "1789104000488", "to": "1791696000488", "tz": "0"}}
+{"kind": "request", "time": 1791696005.358916, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791696005.3594801, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791696008.698356, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791696008.69909, "method": "GET", "path": "/portals", "query": {"team_id": "demo"}}
+{"kind": "reset", "time": 1791696009.8602839}
+{"kind": "authorization_started", "time": 1791696017.737592}
+{"kind": "pkce_exchange", "time": 1791696019.029459, "verified": true}
+{"kind": "request", "time": 1791696019.2168279, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791696019.2175648, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791696019.262676, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791696019.263372, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791696019.271959, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791696019.27279, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791696023.5245771, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791696025.713154, "method": "DELETE", "path": "/auth/cli-token", "query": {}}
+{"kind": "token_revoked", "time": 1791696025.713547}
+{"kind": "reset", "time": 1791696031.126194}
+{"kind": "request", "time": 1791696033.030934, "method": "GET", "path": "/me", "query": {}}
+{"kind": "request", "time": 1791696033.031244, "method": "GET", "path": "/teams", "query": {}}
+{"kind": "request", "time": 1791696033.044128, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791696033.044412, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791696033.04532, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791696033.045577, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791696033.083033, "method": "GET", "path": "/tasks", "query": {"team_id": "empty"}}
+{"kind": "request", "time": 1791696033.083402, "method": "GET", "path": "/teams/empty/agents", "query": {}}
+{"kind": "request", "time": 1791696036.6127071, "method": "GET", "path": "/tasks", "query": {"team_id": "demo"}}
+{"kind": "request", "time": 1791696036.613439, "method": "GET", "path": "/teams/demo/agents", "query": {}}
+{"kind": "request", "time": 1791696040.002833, "method": "GET", "path": "/tasks/task", "query": {}}
+{"kind": "request", "time": 1791696040.004027, "method": "GET", "path": "/tasks/task/messages", "query": {}}
+{"kind": "request", "time": 1791696042.025558, "method": "GET", "path": "/tasks/task", "query": {}}
+{"kind": "request", "time": 1791696042.026838, "method": "GET", "path": "/tasks/task/messages", "query": {}}

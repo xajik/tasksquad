@@ -1,0 +1,20 @@
+[
+  {
+    "file": "03-created-task.png",
+    "test": "PortalFlowTests/test04CreateUnicodeTaskAndInitialImage()",
+    "timestamp": 1791696085.564,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "13-reply-image.png",
+    "test": "PortalFlowTests/test05ReplyAndImageRoundTrip()",
+    "timestamp": 1791696103.996,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "04-conversation.png",
+    "test": "PortalFlowTests/test05ReplyAndImageRoundTrip()",
+    "timestamp": 1791696095.693,
+    "device": "iPhone 17 Pro"
+  }
+]

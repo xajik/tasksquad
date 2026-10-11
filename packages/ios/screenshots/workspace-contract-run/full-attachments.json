@@ -1,0 +1,86 @@
+[
+  {
+    "file": "ios-api-metrics.json",
+    "test": "HTTPWorkflowBenchmarkTests/testMatchedPortalAPIWorkflow15Samples()",
+    "timestamp": 1791695600.09,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "02-inbox.png",
+    "test": "PortalFlowTests/test01EmptyProjectKeepsPickerAndNativeLayout()",
+    "timestamp": 1791695609.115,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "01-empty-project.png",
+    "test": "PortalFlowTests/test01EmptyProjectKeepsPickerAndNativeLayout()",
+    "timestamp": 1791695605.614,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "03-created-task.png",
+    "test": "PortalFlowTests/test04CreateUnicodeTaskAndInitialImage()",
+    "timestamp": 1791695659.232,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "04-conversation.png",
+    "test": "PortalFlowTests/test05ReplyAndImageRoundTrip()",
+    "timestamp": 1791695669.475,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "05-live-terminal.png",
+    "test": "PortalFlowTests/test07PendingPortalStartsRealTerminal()",
+    "timestamp": 1791695717.341,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "06-terminal-landscape.png",
+    "test": "PortalFlowTests/test08TerminalControlInputAndResize()",
+    "timestamp": 1791695742.153,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "07-portal-history.png",
+    "test": "PortalFlowTests/test12CloseRetainsCompletedHistory()",
+    "timestamp": 1791695839.067,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "08-note.png",
+    "test": "PortalFlowTests/test13NotesCreateEditAndComment()",
+    "timestamp": 1791695868.21,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "09-settings.png",
+    "test": "PortalFlowTests/test14AllWorkspaceSectionsLoad()",
+    "timestamp": 1791695927.855,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "10-authenticated-workspace.png",
+    "test": "PortalFlowTests/test16BrowserPKCEKeychainAndLogout()",
+    "timestamp": 1791696020.695,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "00-sign-in.png",
+    "test": "PortalFlowTests/test16BrowserPKCEKeychainAndLogout()",
+    "timestamp": 1791696013.876,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "12-dark-large-conversation.png",
+    "test": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+    "timestamp": 1791696042.133,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "11-dark-large-inbox.png",
+    "test": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+    "timestamp": 1791696037.673,
+    "device": "iPhone 17 Pro"
+  }
+]

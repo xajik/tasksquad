@@ -1,0 +1,114 @@
+[
+  {
+    "file": "02-inbox.png",
+    "test": "PortalFlowTests/test01EmptyProjectKeepsPickerAndNativeLayout()",
+    "timestamp": 1791695609.115,
+    "device": "iPhone 17 Pro",
+    "run": "full",
+    "sha256": "cfe2c9a503bc7a947cead5d1a8f85511a046674e4ea264935230804485f42ae6"
+  },
+  {
+    "file": "01-empty-project.png",
+    "test": "PortalFlowTests/test01EmptyProjectKeepsPickerAndNativeLayout()",
+    "timestamp": 1791695605.614,
+    "device": "iPhone 17 Pro",
+    "run": "full",
+    "sha256": "6102fa15b734ee001d758471dbf6dfd0ae4225a163d7cfad202ecb97d599cc64"
+  },
+  {
+    "file": "03-created-task.png",
+    "test": "PortalFlowTests/test04CreateUnicodeTaskAndInitialImage()",
+    "timestamp": 1791696085.564,
+    "device": "iPhone 17 Pro",
+    "run": "image-integrity",
+    "sha256": "1985a5320f4a3f6d09bc9883a16959e56d09ac6c0728e86032bce49f312ccbd8"
+  },
+  {
+    "file": "04-conversation.png",
+    "test": "PortalFlowTests/test05ReplyAndImageRoundTrip()",
+    "timestamp": 1791696095.693,
+    "device": "iPhone 17 Pro",
+    "run": "image-integrity",
+    "sha256": "5a79b106cd73d9b5416591d87b3406701d69c06800c8aee7c980da8d1f55e662"
+  },
+  {
+    "file": "05-live-terminal.png",
+    "test": "PortalFlowTests/test07PendingPortalStartsRealTerminal()",
+    "timestamp": 1791695717.341,
+    "device": "iPhone 17 Pro",
+    "run": "full",
+    "sha256": "bc65d82178002df2c819075b265f08daa3e823e127773e0390edb1d2830a4c04"
+  },
+  {
+    "file": "06-terminal-landscape.png",
+    "test": "PortalFlowTests/test08TerminalControlInputAndResize()",
+    "timestamp": 1791696257.122,
+    "device": "iPhone 17 Pro",
+    "run": "landscape",
+    "sha256": "520d0aceb3c564852c35bb1312cceb0df56054712a41e5802b30bbbaaf2001ee"
+  },
+  {
+    "file": "07-portal-history.png",
+    "test": "PortalFlowTests/test12CloseRetainsCompletedHistory()",
+    "timestamp": 1791695839.067,
+    "device": "iPhone 17 Pro",
+    "run": "full",
+    "sha256": "9847096d9823b77764eee402399da8de1b6ced5ba380b1361083bc0c5912f76e"
+  },
+  {
+    "file": "08-note.png",
+    "test": "PortalFlowTests/test13NotesCreateEditAndComment()",
+    "timestamp": 1791695868.21,
+    "device": "iPhone 17 Pro",
+    "run": "full",
+    "sha256": "cf4e2cae35b9a7ba64ee53b703b410bce0302f99afddaf3987281353e09e3e35"
+  },
+  {
+    "file": "09-settings.png",
+    "test": "PortalFlowTests/test14AllWorkspaceSectionsLoad()",
+    "timestamp": 1791695927.855,
+    "device": "iPhone 17 Pro",
+    "run": "full",
+    "sha256": "f29902b3d155772ec1f8f81ee7a16bf50a80172967d59f394a65c78e3cad3a5a"
+  },
+  {
+    "file": "10-authenticated-workspace.png",
+    "test": "PortalFlowTests/test16BrowserPKCEKeychainAndLogout()",
+    "timestamp": 1791696020.695,
+    "device": "iPhone 17 Pro",
+    "run": "full",
+    "sha256": "8c309252dcabe99df9b5fa82fc5ff7eab30e4333a3a037bedb52e750fa842c06"
+  },
+  {
+    "file": "00-sign-in.png",
+    "test": "PortalFlowTests/test16BrowserPKCEKeychainAndLogout()",
+    "timestamp": 1791696013.876,
+    "device": "iPhone 17 Pro",
+    "run": "full",
+    "sha256": "62a08a719fb16104062b3d63db8b65acd6a0c0d4e0c96eb127bb44866b9d0659"
+  },
+  {
+    "file": "12-dark-large-conversation.png",
+    "test": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+    "timestamp": 1791696042.133,
+    "device": "iPhone 17 Pro",
+    "run": "full",
+    "sha256": "bd6028b2f78cfcbc29cea7b7b6f5aba3ecf7deb6b416939de451950d0b12181f"
+  },
+  {
+    "file": "11-dark-large-inbox.png",
+    "test": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+    "timestamp": 1791696037.673,
+    "device": "iPhone 17 Pro",
+    "run": "full",
+    "sha256": "dbb525e7039534ae432f2f9c4a6754079e19c9a2cb30d7ebf9aca3ff4e1decc7"
+  },
+  {
+    "file": "13-reply-image.png",
+    "test": "PortalFlowTests/test05ReplyAndImageRoundTrip()",
+    "timestamp": 1791696103.996,
+    "device": "iPhone 17 Pro",
+    "run": "image-integrity",
+    "sha256": "32cacb9d8027ecef3ed2a5ffb4a1054aa4b5b5714c1169310239f6303ce4649a"
+  }
+]

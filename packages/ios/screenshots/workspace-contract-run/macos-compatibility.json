@@ -1,0 +1,6 @@
+{
+  "command": "make test-compatibility",
+  "result": "Passed",
+  "test_summary": "Executed 91 tests, with 1 test skipped and 0 failures (0 unexpected) in 6.370 (6.379) seconds",
+  "source_commit": "2141e3a65d2843d1a6a134e15261c2b28166b71a"
+}

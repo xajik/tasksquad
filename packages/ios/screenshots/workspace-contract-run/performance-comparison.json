@@ -1,0 +1,64 @@
+{
+  "boundary": "Native PortalAPI over loopback HTTP: list, create, get pending, close, list retained done",
+  "samples_per_platform": 15,
+  "limitations": [
+    "Same host and fixture; simulator and macOS native client",
+    "No UI rendering, daemon/provider execution, production latency or terminal throughput measured"
+  ],
+  "platforms": {
+    "macos": {
+      "list_ms": {
+        "median": 0.3349781036376953,
+        "min": 0.2919435501098633,
+        "max": 1.2319087982177734
+      },
+      "create_ms": {
+        "median": 0.4000663757324219,
+        "min": 0.35500526428222656,
+        "max": 0.8310079574584961
+      },
+      "get_ms": {
+        "median": 0.31197071075439453,
+        "min": 0.2740621566772461,
+        "max": 0.5030632019042969
+      },
+      "close_and_list_ms": {
+        "median": 0.7289648056030273,
+        "min": 0.6519556045532227,
+        "max": 1.0440349578857422
+      },
+      "total_ms": {
+        "median": 1.746058464050293,
+        "min": 1.5980005264282227,
+        "max": 3.6100149154663086
+      }
+    },
+    "ios": {
+      "list_ms": {
+        "median": 0.6771087646484375,
+        "min": 0.4909038543701172,
+        "max": 3.1960010528564453
+      },
+      "create_ms": {
+        "median": 0.8150339126586914,
+        "min": 0.5060434341430664,
+        "max": 2.178072929382324
+      },
+      "get_ms": {
+        "median": 0.5909204483032227,
+        "min": 0.48100948333740234,
+        "max": 0.9660720825195312
+      },
+      "close_and_list_ms": {
+        "median": 1.4688968658447266,
+        "min": 1.0880231857299805,
+        "max": 2.2780895233154297
+      },
+      "total_ms": {
+        "median": 3.5189390182495117,
+        "min": 2.7070045471191406,
+        "max": 8.427023887634277
+      }
+    }
+  }
+}
