@@ -17,6 +17,7 @@
 		8EF7527A40FA26206736633A /* MobileAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B560839AB82BAC6A1E9EBAF9 /* MobileAuthTests.swift */; };
 		92EBC351345F794E119FF4DF /* TaskSquadPortalUI in Frameworks */ = {isa = PBXBuildFile; productRef = 35E29CAAA0FE9E179E7287E2 /* TaskSquadPortalUI */; };
 		A3081A9FB955E187348AB96E /* TaskSquadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1756F65F3A291F9D9547D06 /* TaskSquadApp.swift */; };
+		B8C04E0CD4BD3B798474CF84 /* PromoScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E22DDCD212F28BB70FD928C /* PromoScreenshotTests.swift */; };
 		C377783D45D1AA5E610332E0 /* TaskSquadPortal in Frameworks */ = {isa = PBXBuildFile; productRef = 05923C9AD5D3F2A79B7BD7C8 /* TaskSquadPortal */; };
 		C689009D9255D34FD761F0C1 /* PortalFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D799CB7685A475963E63111 /* PortalFlowTests.swift */; };
 		CA47F52DC71791B5BC0FC5E1 /* MobileRecordDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 050DA99DEA779DFB9A29BA1E /* MobileRecordDetail.swift */; };
@@ -45,6 +46,7 @@
 
 /* Begin PBXFileReference section */
 		050DA99DEA779DFB9A29BA1E /* MobileRecordDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileRecordDetail.swift; sourceTree = "<group>"; };
+		0E22DDCD212F28BB70FD928C /* PromoScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromoScreenshotTests.swift; sourceTree = "<group>"; };
 		2BCC62A613A83F8C03BD4FA2 /* TaskSquad.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TaskSquad.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3D799CB7685A475963E63111 /* PortalFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalFlowTests.swift; sourceTree = "<group>"; };
 		5EB4A702FA864462F5E6FE52 /* MobileDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDraftStore.swift; sourceTree = "<group>"; };
@@ -98,6 +100,7 @@
 			isa = PBXGroup;
 			children = (
 				3D799CB7685A475963E63111 /* PortalFlowTests.swift */,
+				0E22DDCD212F28BB70FD928C /* PromoScreenshotTests.swift */,
 			);
 			path = TaskSquadUITests;
 			sourceTree = "<group>";
@@ -276,6 +279,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C689009D9255D34FD761F0C1 /* PortalFlowTests.swift in Sources */,
+				B8C04E0CD4BD3B798474CF84 /* PromoScreenshotTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
