@@ -65,7 +65,7 @@ struct CustomerEditor: View {
         .onChange(of: values) { value in if let key = request.draftKey { model.drafts.save(value, key: key) } }
         .task {
             guard request.phases else { return }
-            do { subAgents = CustomerRecord(try await model.api().request(model.teamPath("sub-agents"))).records("sub_agents") }
+            do { subAgents = CustomerRecord(try await model.api().request(WorkspacePolicy.path(.subAgents, project: model.teamID))).records("sub_agents") }
             catch { validation = error.localizedDescription }
         }
     }

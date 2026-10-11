@@ -73,21 +73,14 @@ extension WorkspaceSection {
         configureWorkspace()
     }
 
-    var currentTeam: CustomerRecord? { teams.first { $0.id == teamID } }
-    var isOwner: Bool { currentTeam?.text("role") == "owner" }
-    var isMaintainer: Bool { isOwner || currentTeam?.text("role") == "maintainer" }
-    var isPro: Bool { profile?.text("plan") == "pro" }
+    var currentTeam: CustomerRecord? { workspace.currentProject }
+    var isOwner: Bool { workspace.isOwner }
+    var isMaintainer: Bool { workspace.canManage }
+    var isPro: Bool { workspace.isPro }
     var selectionKey: String { "\(generation):\(workspace.context):\(teamID):\(section):\(selectedID ?? ""):\(archived):\(memoryCategory):\(rollupPeriod)" }
     var selected: CustomerRecord? { detail ?? records.first { $0.id == selectedID } }
     var visibleRecords: [CustomerRecord] { workspace.visibleRecords }
-    func agentName(_ id: String) -> String { agents.first { $0.id == id }?.title ?? id }
-    func teamPath(_ resource: String, id: String? = nil) -> [String] {
-        ["teams", teamID, resource] + (id.map { [$0] } ?? [])
-    }
-    func path(for section: CustomerSection, id: String? = nil, team: String? = nil) -> [String] {
-        let base = [.inbox, .supervisor, .portals].contains(section) ? [section.resource] : ["teams", team ?? teamID, section.resource]
-        return base + (id.map { [$0] } ?? [])
-    }
+    func agentName(_ id: String) -> String { workspace.agentName(id) }
     private var store: KeychainCredentialStore {
         let scope = SHA256.hash(data: Data(apiURL.utf8)).map { String(format: "%02x", $0) }.joined()
         return KeychainCredentialStore(service: "tasksquad-customer-" + scope)
