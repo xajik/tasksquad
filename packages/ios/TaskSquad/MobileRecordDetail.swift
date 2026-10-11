@@ -28,7 +28,7 @@ struct MobileRecordDetail: View {
                 if let record {
                     Section {
                         Text(record.title).font(.title3.bold()).textSelection(.enabled)
-                        if !record.status.isEmpty { Text(record.status.replacingOccurrences(of: "_", with: " ").capitalized).foregroundStyle(.secondary).accessibilityIdentifier("record-status") }
+                        if !record.status.isEmpty { Text(record.status.replacingOccurrences(of: "_", with: " ").capitalized).foregroundStyle(MobileTheme.mutedForeground).accessibilityIdentifier("record-status") }
                         if !record.text("agent_id").isEmpty { Text(model.agentName(record.text("agent_id"))).font(.caption) }
                     }
                     if taskSection { conversation }
@@ -39,7 +39,7 @@ struct MobileRecordDetail: View {
             } }
         }
         .safeAreaInset(edge: .bottom) {
-            if model.section != .portals, let error = mutationError ?? error ?? model.error { Text(error).font(.footnote).foregroundStyle(.red).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("detail-error") }
+            if model.section != .portals, let error = mutationError ?? error ?? model.error { Text(error).font(.footnote).foregroundStyle(MobileTheme.destructive).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("detail-error") }
         }
         .navigationTitle(model.section == .portals ? model.agentName(record?.text("agent_id") ?? "") : model.section.rawValue)
         .navigationBarTitleDisplayMode(.inline)
@@ -55,7 +55,7 @@ struct MobileRecordDetail: View {
                     Button("Delete task", role: .destructive) { ask("Delete item") }
                     if !(record?.text("session_id") ?? "").isEmpty { Button("Terminal") { terminalPresented = true } }
                     Button("Close task", role: .destructive) { ask("Close task") }
-                } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("Task actions") }
+                } label: { MobileIcon(name: "ellipsis") }.accessibilityLabel("Task actions") }
                 else if model.section == .portals, live { Button("Close", role: .destructive) { ask("Close Portal") }.accessibilityIdentifier("close-portal").disabled(model.busy) }
             }
         }
@@ -91,7 +91,7 @@ struct MobileRecordDetail: View {
                 ContentUnavailableView(record.status == "pending" ? "Waiting for agent" : record.status == "running" ? "Starting terminal" : record.status == "failed" ? "Portal failed" : "Portal completed", systemImage: "terminal", description: Text(live ? "The terminal will connect when the agent starts the session." : "This session has ended."))
                 Text(record.status.capitalized).accessibilityIdentifier("portal-status")
             }
-            if let error = mutationError ?? error ?? model.error { Text(error).foregroundStyle(.red).padding().accessibilityIdentifier("detail-error") }
+            if let error = mutationError ?? error ?? model.error { Text(error).foregroundStyle(MobileTheme.destructive).padding().accessibilityIdentifier("detail-error") }
         }
     }
     private var conversation: some View {
@@ -99,10 +99,10 @@ struct MobileRecordDetail: View {
             Section("Conversation") {
                 ForEach(messages) { message in
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack { Text(message.text("role").capitalized).font(.caption.bold()); Spacer(); Text(message.date, style: .time).font(.caption).foregroundStyle(.secondary) }
+                        HStack { Text(message.text("role").capitalized).font(.caption.bold()); Spacer(); Text(message.date, style: .time).font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
                         Text(.init(message.text("body"))).textSelection(.enabled).accessibilityIdentifier("message-" + message.id)
-                        if !message.text("type").isEmpty { Text(message.text("type").replacingOccurrences(of: "_", with: " ")).font(.caption).foregroundStyle(.secondary) }
-                        if message.number("scheduled_at") > Date().timeIntervalSince1970*1000 { Text("Scheduled reply").font(.caption).foregroundStyle(.orange) }
+                        if !message.text("type").isEmpty { Text(message.text("type").replacingOccurrences(of: "_", with: " ")).font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
+                        if message.number("scheduled_at") > Date().timeIntervalSince1970*1000 { Text("Scheduled reply").font(.caption).foregroundStyle(MobileTheme.warning) }
                         if !message.text("transcript_key").isEmpty { Button("View transcript") { Task {
                             do { transcript = String(decoding: try await model.api.data(["tasks", id, "messages", message.id, "transcript"]), as: UTF8.self) } catch { self.error = error.localizedDescription }
                         } } }
@@ -240,7 +240,7 @@ private struct MobileAttachment: View {
         VStack(alignment: .leading) {
             if let image { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 250).accessibilityLabel(name) }
             else { Label(name, systemImage: "photo") }
-            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            if let error { Text(error).font(.caption).foregroundStyle(MobileTheme.destructive) }
         }.task { do { image = UIImage(data: try await api.data(path)) } catch { self.error = error.localizedDescription } }
     }
 }

@@ -16,7 +16,7 @@ targets:
     platform: iOS
     sources:
       - path: TaskSquad
-        excludes: [Info.plist]
+        excludes: [Info.plist, TaskSquad.entitlements]
     dependencies:
       - package: TaskSquadPortal
       - package: SwiftTerm
@@ -24,7 +24,21 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.tasksquad.portal
         INFOPLIST_FILE: TaskSquad/Info.plist
+        CODE_SIGN_ENTITLEMENTS: TaskSquad/TaskSquad.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
+  TaskSquadTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: TaskSquadTests
+      - path: ../mobile/TaskSquadPortal/Tests/TaskSquadPortalTests/HTTPWorkflowBenchmarkTests.swift
+    dependencies:
+      - target: TaskSquad
+      - package: TaskSquadPortal
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.tasksquad.portal.tests
+        GENERATE_INFOPLIST_FILE: YES
   TaskSquadUITests:
     type: bundle.ui-testing
     platform: iOS

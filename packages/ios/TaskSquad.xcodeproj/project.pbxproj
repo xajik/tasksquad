@@ -7,20 +7,32 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		02372E4F4DAA304F0B345C90 /* TaskSquadPortal in Frameworks */ = {isa = PBXBuildFile; productRef = 4EE6F3CE0DA282A10A29DD08 /* TaskSquadPortal */; };
 		14FBF6994DB867F459886C06 /* PortalHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C2060585F24003A06B8E88A /* PortalHomeView.swift */; };
 		35C95D01C813ED2EF6C26CA1 /* MobileAuthFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */; };
 		41C90D7A2E7A4985C7B458C8 /* MobileEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A30AA7DDE6D278F84DDE19 /* MobileEditor.swift */; };
 		60CB3BFF7EF9CCAA1C7F89AE /* PortalTerminalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A24DFD7CDB332FEB0BFA475 /* PortalTerminalScreen.swift */; };
+		7F46BC20BF5BCE0D56C2CA47 /* MobileTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65F7AFFE10DF3D195DA20DF /* MobileTheme.swift */; };
 		84CB2C312440586E11EDA45A /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 55F351BEB49BF4FC2D89436E /* SwiftTerm */; };
+		8EF7527A40FA26206736633A /* MobileAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B560839AB82BAC6A1E9EBAF9 /* MobileAuthTests.swift */; };
 		A3081A9FB955E187348AB96E /* TaskSquadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1756F65F3A291F9D9547D06 /* TaskSquadApp.swift */; };
 		C377783D45D1AA5E610332E0 /* TaskSquadPortal in Frameworks */ = {isa = PBXBuildFile; productRef = 05923C9AD5D3F2A79B7BD7C8 /* TaskSquadPortal */; };
 		C689009D9255D34FD761F0C1 /* PortalFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D799CB7685A475963E63111 /* PortalFlowTests.swift */; };
 		CA47F52DC71791B5BC0FC5E1 /* MobileRecordDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 050DA99DEA779DFB9A29BA1E /* MobileRecordDetail.swift */; };
 		DD1759BF6E9091CD96AE1639 /* MobileDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EB4A702FA864462F5E6FE52 /* MobileDraftStore.swift */; };
+		EB2FAADDABF1837AA0734CAD /* HTTPWorkflowBenchmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 672FC64D549067B18CE586FD /* HTTPWorkflowBenchmarkTests.swift */; };
+		F25664F1A0A1D0135E9DC0D9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EB207D857A43491B4B23528D /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		11CAB20E9202E1654A419B8D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0A5C99B51911152B352B6A70 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BD53E6EBB01F95472F1128E3;
+			remoteInfo = TaskSquad;
+		};
+		E840A6EEB63ACFF358721E87 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 0A5C99B51911152B352B6A70 /* Project object */;
 			proxyType = 1;
@@ -34,12 +46,17 @@
 		2BCC62A613A83F8C03BD4FA2 /* TaskSquad.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TaskSquad.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3D799CB7685A475963E63111 /* PortalFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalFlowTests.swift; sourceTree = "<group>"; };
 		5EB4A702FA864462F5E6FE52 /* MobileDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDraftStore.swift; sourceTree = "<group>"; };
+		672FC64D549067B18CE586FD /* HTTPWorkflowBenchmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPWorkflowBenchmarkTests.swift; sourceTree = "<group>"; };
+		72D2CC658D102F9EDD1B81E3 /* TaskSquadTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TaskSquadTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7FE0916A7F339476E58B09DB /* TaskSquadPortal */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TaskSquadPortal; path = ../mobile/TaskSquadPortal; sourceTree = SOURCE_ROOT; };
 		8A24DFD7CDB332FEB0BFA475 /* PortalTerminalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalTerminalScreen.swift; sourceTree = "<group>"; };
 		98A30AA7DDE6D278F84DDE19 /* MobileEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileEditor.swift; sourceTree = "<group>"; };
 		9C2060585F24003A06B8E88A /* PortalHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalHomeView.swift; sourceTree = "<group>"; };
 		AF431F3FA8AA7300FDE4DE83 /* TaskSquadUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TaskSquadUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B560839AB82BAC6A1E9EBAF9 /* MobileAuthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAuthTests.swift; sourceTree = "<group>"; };
+		C65F7AFFE10DF3D195DA20DF /* MobileTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTheme.swift; sourceTree = "<group>"; };
 		D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAuthFlow.swift; sourceTree = "<group>"; };
+		EB207D857A43491B4B23528D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F1756F65F3A291F9D9547D06 /* TaskSquadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskSquadApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -53,9 +70,26 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AE8BC91BC03C3BCC82FA5D8A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				02372E4F4DAA304F0B345C90 /* TaskSquadPortal in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		2E4C6F2D36E069ADF9DB7EBE /* TaskSquadPortalTests */ = {
+			isa = PBXGroup;
+			children = (
+				672FC64D549067B18CE586FD /* HTTPWorkflowBenchmarkTests.swift */,
+			);
+			name = TaskSquadPortalTests;
+			path = ../mobile/TaskSquadPortal/Tests/TaskSquadPortalTests;
+			sourceTree = "<group>";
+		};
 		2E7007C108EDC9306302DA7C /* TaskSquadUITests */ = {
 			isa = PBXGroup;
 			children = (
@@ -64,11 +98,21 @@
 			path = TaskSquadUITests;
 			sourceTree = "<group>";
 		};
+		384DA38FC08364CF842CB6F2 /* TaskSquadTests */ = {
+			isa = PBXGroup;
+			children = (
+				B560839AB82BAC6A1E9EBAF9 /* MobileAuthTests.swift */,
+			);
+			path = TaskSquadTests;
+			sourceTree = "<group>";
+		};
 		86B5879F4D6A031FFDB26923 = {
 			isa = PBXGroup;
 			children = (
 				F5ECD87333E3C4CD9BD17DCF /* Packages */,
 				F5142DA14E144B21DC26BB64 /* TaskSquad */,
+				2E4C6F2D36E069ADF9DB7EBE /* TaskSquadPortalTests */,
+				384DA38FC08364CF842CB6F2 /* TaskSquadTests */,
 				2E7007C108EDC9306302DA7C /* TaskSquadUITests */,
 				A28748E4DC99113992B70991 /* Products */,
 			);
@@ -78,6 +122,7 @@
 			isa = PBXGroup;
 			children = (
 				2BCC62A613A83F8C03BD4FA2 /* TaskSquad.app */,
+				72D2CC658D102F9EDD1B81E3 /* TaskSquadTests.xctest */,
 				AF431F3FA8AA7300FDE4DE83 /* TaskSquadUITests.xctest */,
 			);
 			name = Products;
@@ -86,10 +131,12 @@
 		F5142DA14E144B21DC26BB64 /* TaskSquad */ = {
 			isa = PBXGroup;
 			children = (
+				EB207D857A43491B4B23528D /* Assets.xcassets */,
 				D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */,
 				5EB4A702FA864462F5E6FE52 /* MobileDraftStore.swift */,
 				98A30AA7DDE6D278F84DDE19 /* MobileEditor.swift */,
 				050DA99DEA779DFB9A29BA1E /* MobileRecordDetail.swift */,
+				C65F7AFFE10DF3D195DA20DF /* MobileTheme.swift */,
 				9C2060585F24003A06B8E88A /* PortalHomeView.swift */,
 				8A24DFD7CDB332FEB0BFA475 /* PortalTerminalScreen.swift */,
 				F1756F65F3A291F9D9547D06 /* TaskSquadApp.swift */,
@@ -108,11 +155,32 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		6948EBC2A90DFF4CB48B6D98 /* TaskSquadTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FE8B0E9039A87F95DBC01FE7 /* Build configuration list for PBXNativeTarget "TaskSquadTests" */;
+			buildPhases = (
+				5DDA4A9B78E5931434CE97E0 /* Sources */,
+				AE8BC91BC03C3BCC82FA5D8A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9C1F3368B64A27DD12C752D1 /* PBXTargetDependency */,
+			);
+			name = TaskSquadTests;
+			packageProductDependencies = (
+				4EE6F3CE0DA282A10A29DD08 /* TaskSquadPortal */,
+			);
+			productName = TaskSquadTests;
+			productReference = 72D2CC658D102F9EDD1B81E3 /* TaskSquadTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		BD53E6EBB01F95472F1128E3 /* TaskSquad */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 341170187629420654C1A2F5 /* Build configuration list for PBXNativeTarget "TaskSquad" */;
 			buildPhases = (
 				5E3D5B6434DA558C9A2AE53E /* Sources */,
+				02D5CB6EC461F06A043F60DE /* Resources */,
 				0432533C6B50C970FCC16AE6 /* Frameworks */,
 			);
 			buildRules = (
@@ -179,10 +247,22 @@
 			projectRoot = "";
 			targets = (
 				BD53E6EBB01F95472F1128E3 /* TaskSquad */,
+				6948EBC2A90DFF4CB48B6D98 /* TaskSquadTests */,
 				CED5F74F3FB44649AB99B8D4 /* TaskSquadUITests */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		02D5CB6EC461F06A043F60DE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F25664F1A0A1D0135E9DC0D9 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		57EE1B7FBD4B264237BC4C0B /* Sources */ = {
@@ -190,6 +270,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				C689009D9255D34FD761F0C1 /* PortalFlowTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5DDA4A9B78E5931434CE97E0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EB2FAADDABF1837AA0734CAD /* HTTPWorkflowBenchmarkTests.swift in Sources */,
+				8EF7527A40FA26206736633A /* MobileAuthTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -201,6 +290,7 @@
 				DD1759BF6E9091CD96AE1639 /* MobileDraftStore.swift in Sources */,
 				41C90D7A2E7A4985C7B458C8 /* MobileEditor.swift in Sources */,
 				CA47F52DC71791B5BC0FC5E1 /* MobileRecordDetail.swift in Sources */,
+				7F46BC20BF5BCE0D56C2CA47 /* MobileTheme.swift in Sources */,
 				14FBF6994DB867F459886C06 /* PortalHomeView.swift in Sources */,
 				60CB3BFF7EF9CCAA1C7F89AE /* PortalTerminalScreen.swift in Sources */,
 				A3081A9FB955E187348AB96E /* TaskSquadApp.swift in Sources */,
@@ -215,6 +305,11 @@
 			target = BD53E6EBB01F95472F1128E3 /* TaskSquad */;
 			targetProxy = 11CAB20E9202E1654A419B8D /* PBXContainerItemProxy */;
 		};
+		9C1F3368B64A27DD12C752D1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BD53E6EBB01F95472F1128E3 /* TaskSquad */;
+			targetProxy = E840A6EEB63ACFF358721E87 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -222,6 +317,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = TaskSquad/TaskSquad.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = TaskSquad/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -238,6 +334,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = TaskSquad/TaskSquad.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = TaskSquad/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -351,6 +448,40 @@
 			};
 			name = Debug;
 		};
+		BB19D01456AE29B271CBAEE2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.tasksquad.portal.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TaskSquad.app/TaskSquad";
+			};
+			name = Release;
+		};
+		EB0139E08994C95EF203D7D4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.tasksquad.portal.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TaskSquad.app/TaskSquad";
+			};
+			name = Debug;
+		};
 		FFF06127741DD5C2F72422BF /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -441,6 +572,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		FE8B0E9039A87F95DBC01FE7 /* Build configuration list for PBXNativeTarget "TaskSquadTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EB0139E08994C95EF203D7D4 /* Debug */,
+				BB19D01456AE29B271CBAEE2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -463,6 +603,10 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		05923C9AD5D3F2A79B7BD7C8 /* TaskSquadPortal */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TaskSquadPortal;
+		};
+		4EE6F3CE0DA282A10A29DD08 /* TaskSquadPortal */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TaskSquadPortal;
 		};

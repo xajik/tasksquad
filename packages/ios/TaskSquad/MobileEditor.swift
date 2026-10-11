@@ -65,9 +65,10 @@ struct MobileEditor: View {
                 }
                 if request.attachments { ForEach(request.fields.filter { !["subject", "agent_id", "body"].contains($0.id) }) { field in fieldView(field) } }
             }
+            .scrollContentBackground(.hidden).background(MobileTheme.background)
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom) {
-                if let message = validation ?? model.error { Text(message).font(.footnote).foregroundStyle(.red).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("editor-error") }
+                if let message = validation ?? model.error { Text(message).font(.footnote).foregroundStyle(MobileTheme.destructive).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("editor-error") }
             }
             .navigationTitle(request.title).navigationBarTitleDisplayMode(.inline)
             .toolbar {

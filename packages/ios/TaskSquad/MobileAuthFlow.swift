@@ -176,13 +176,13 @@ struct MobileSignInView: View {
     @StateObject private var presenter = MobileAuthPresenter()
     var body: some View {
         VStack(spacing: 18) {
-            Image(systemName: "terminal.fill").font(.system(size: 42)).foregroundStyle(.tint)
+            MobileIcon(name: "terminal", size: 42).foregroundStyle(MobileTheme.primary)
             Text("TaskSquad").font(.largeTitle.bold())
-            Text("Manage tasks, projects and remote agent sessions.").foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text("Manage tasks, projects and remote agent sessions.").foregroundStyle(MobileTheme.mutedForeground).multilineTextAlignment(.center)
             Button { Task { await auth.signIn(presentation: presenter) } } label: {
-                Label("Continue to sign in", systemImage: "person.crop.circle").frame(maxWidth: .infinity)
-            }.buttonStyle(.borderedProminent).controlSize(.large).disabled(auth.signingIn)
-            if let error = auth.error { Text(error).font(.footnote).foregroundStyle(.red).accessibilityIdentifier("auth-error") }
-        }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity)
+                Label { Text("Continue to sign in") } icon: { MobileIcon(name: "user") }.frame(maxWidth: .infinity)
+            }.buttonStyle(MobilePrimaryButtonStyle()).disabled(auth.signingIn)
+            if let error = auth.error { Text(error).font(.footnote).foregroundStyle(MobileTheme.destructive).accessibilityIdentifier("auth-error") }
+        }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(MobileTheme.background)
     }
 }

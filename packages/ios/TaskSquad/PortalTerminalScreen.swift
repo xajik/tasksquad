@@ -19,14 +19,14 @@ struct PortalTerminalScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Circle().fill(terminal.connected ? .green : .orange).frame(width: 7, height: 7)
+                Circle().fill(terminal.connected ? MobileTheme.live : MobileTheme.warning).frame(width: 7, height: 7)
                 Text(terminal.status).font(.caption).accessibilityIdentifier("terminal-status")
                 Spacer()
                 Button(showKeyboard || inputFocused ? "Hide keyboard" : "Show keyboard", systemImage: "keyboard") {
                     if showKeyboard || inputFocused { showKeyboard = false; inputFocused = false; UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
                     else { showKeyboard = true }
                 }.labelStyle(.iconOnly)
-                Button("Reconnect", systemImage: "arrow.clockwise") { reconnectID = UUID() }.labelStyle(.iconOnly).accessibilityLabel("Reconnect terminal")
+                Button { reconnectID = UUID() } label: { MobileIcon(name: "refresh-cw") }.accessibilityLabel("Reconnect terminal")
             }.padding(12)
             IOSNativeTerminalView(model: terminal, keyboardRequested: showKeyboard).accessibilityIdentifier("live-terminal")
             HStack {
@@ -66,7 +66,7 @@ private struct IOSNativeTerminalView: UIViewRepresentable {
             view?.accessibilityValue = String(decoding: data.suffix(65536), as: UTF8.self).replacingOccurrences(of: "\u{1b}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
         }
         model.resize(cols: view.getTerminal().cols, rows: view.getTerminal().rows)
-        view.backgroundColor = .black
+        view.backgroundColor = MobileTheme.ink
         return view
     }
     func updateUIView(_ uiView: SwiftTerm.TerminalView, context: Context) {

@@ -3,6 +3,7 @@ import TaskSquadPortal
 
 @main
 struct TaskSquadApp: App {
+    @AppStorage("mobile.appearance") private var appearance = "system"
     @StateObject private var auth = MobileAuthStore()
 
     private static var fixtureAPI: CustomerAPI? {
@@ -15,6 +16,13 @@ struct TaskSquadApp: App {
         #endif
         return nil
     }
+    private var colorScheme: ColorScheme? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let index = args.firstIndex(of: "--ui-test-appearance"), args.count > index + 1 { return args[index + 1] == "dark" ? .dark : .light }
+        #endif
+        return appearance == "dark" ? .dark : appearance == "light" ? .light : nil
+    }
     var body: some Scene {
         WindowGroup {
             Group {
@@ -26,6 +34,10 @@ struct TaskSquadApp: App {
                     MobileSignInView(auth: auth)
                 }
             }
+            .modifier(MobileFixtureTypeSize())
+            .tint(MobileTheme.primary)
+            .foregroundStyle(MobileTheme.foreground)
+            .preferredColorScheme(colorScheme)
             .task { auth.restore() }
         }
     }
