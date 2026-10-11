@@ -1,0 +1,36 @@
+idle|task_started|running|
+idle|spawn_failed|error|invalid transition: idle -[spawn_failed]-> ? (no rule defined)
+idle|user_replied|error|invalid transition: idle -[user_replied]-> ? (no rule defined)
+idle|hook_stop|error|invalid transition: idle -[hook_stop]-> ? (no rule defined)
+idle|hook_notification|error|invalid transition: idle -[hook_notification]-> ? (no rule defined)
+idle|learn_start|error|invalid transition: idle -[learn_start]-> ? (no rule defined)
+idle|completed|error|invalid transition: idle -[completed]-> ? (no rule defined)
+idle|reset|idle|
+idle|user_closed|error|invalid transition: idle -[user_closed]-> ? (no rule defined)
+running|task_started|error|invalid transition: running -[task_started]-> ? (no rule defined)
+running|spawn_failed|idle|
+running|user_replied|error|invalid transition: running -[user_replied]-> ? (no rule defined)
+running|hook_stop|waiting_input|
+running|hook_notification|waiting_input|
+running|learn_start|error|invalid transition: running -[learn_start]-> ? (no rule defined)
+running|completed|idle|
+running|reset|idle|
+running|user_closed|error|invalid transition: running -[user_closed]-> ? (no rule defined)
+waiting_input|task_started|error|invalid transition: waiting_input -[task_started]-> ? (no rule defined)
+waiting_input|spawn_failed|error|invalid transition: waiting_input -[spawn_failed]-> ? (no rule defined)
+waiting_input|user_replied|running|
+waiting_input|hook_stop|error|invalid transition: waiting_input -[hook_stop]-> ? (no rule defined)
+waiting_input|hook_notification|error|invalid transition: waiting_input -[hook_notification]-> ? (no rule defined)
+waiting_input|learn_start|wrapping_up|
+waiting_input|completed|idle|
+waiting_input|reset|idle|
+waiting_input|user_closed|idle|
+wrapping_up|task_started|error|invalid transition: wrapping_up -[task_started]-> ? (no rule defined)
+wrapping_up|spawn_failed|error|invalid transition: wrapping_up -[spawn_failed]-> ? (no rule defined)
+wrapping_up|user_replied|error|invalid transition: wrapping_up -[user_replied]-> ? (no rule defined)
+wrapping_up|hook_stop|error|invalid transition: wrapping_up -[hook_stop]-> ? (no rule defined)
+wrapping_up|hook_notification|error|invalid transition: wrapping_up -[hook_notification]-> ? (no rule defined)
+wrapping_up|learn_start|error|invalid transition: wrapping_up -[learn_start]-> ? (no rule defined)
+wrapping_up|completed|idle|
+wrapping_up|reset|idle|
+wrapping_up|user_closed|error|invalid transition: wrapping_up -[user_closed]-> ? (no rule defined)

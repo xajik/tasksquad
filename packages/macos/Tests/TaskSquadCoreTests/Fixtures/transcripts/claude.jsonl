@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"q"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"first"}]}}
+not json
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use"},{"type":"text","text":"last é猫"},{"type":"text","text":"line"}]}}

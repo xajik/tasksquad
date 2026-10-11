@@ -1040,10 +1040,9 @@ public actor DaemonEngine {
 
     // MARK: Text extraction
 
-    private static func injectKBNote(_ prompt: String, workDir: String) -> String {
-        let root = URL(fileURLWithPath: workDir).appendingPathComponent("tsq/kb", isDirectory: true)
-        let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
-        guard files?.contains(where: { ($0 as? URL)?.pathExtension == "md" }) == true else { return prompt }
+    static func injectKBNote(_ prompt: String, workDir: String) -> String {
+        // Go's kb.Exists: at least one regular .md file under tsq/kb.
+        guard Dreamer.kbExists(workDir: workDir) else { return prompt }
         return prompt + "\n\n## Knowledge base available\n"
             + "This project has a knowledge base at tsq/kb/. Run `tsq kb search <query>` "
             + "to look up package/API details before exploring the codebase from scratch."
