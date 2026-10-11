@@ -71,8 +71,16 @@ final class ProviderTests: XCTestCase {
         XCTAssertTrue(plugin.contains(#"post("/hooks/stop?agent=A1&task_id=T1&provider=opencode", { stop_reason: "idle", message })"#))
         let pi = try String(contentsOf: root.appendingPathComponent(".pi/extensions/tasksquad.ts"), encoding: .utf8)
         XCTAssertTrue(pi.contains(#""/hooks/stop?agent=A1&task_id=T1&provider=pi","#))
-        let claw = try String(contentsOf: root.appendingPathComponent(".agent/settings.json"), encoding: .utf8)
-        XCTAssertTrue(claw.contains("/hooks/stop?agent=A1&task_id=T1&failure=true"))
+        // agent-code loads TOML only; the managed block is replaced and the user's settings kept.
+        let clawURL = root.appendingPathComponent(".agent/settings.local.toml")
+        try Data("model = \"x\"\n".utf8).write(to: clawURL)
+        try ProviderKind.claw.setup(workDir: root.path, hooksPort: 7374, agentID: "A1", taskID: "T2")
+        try ProviderKind.claw.setup(workDir: root.path, hooksPort: 7374, agentID: "A1", taskID: "T3")
+        let claw = try String(contentsOf: clawURL, encoding: .utf8)
+        XCTAssertTrue(claw.hasPrefix("model = \"x\"\n" + ProviderKind.clawManagedStart))
+        XCTAssertEqual(claw.components(separatedBy: ProviderKind.clawManagedStart).count, 2)
+        XCTAssertTrue(claw.contains(#"url = "http://localhost:7374/hooks/stop?agent=A1&task_id=T3""#))
+        XCTAssertFalse(claw.contains("task_id=T2"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(".claude").path))
     }
 

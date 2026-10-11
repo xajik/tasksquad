@@ -57,6 +57,8 @@ public actor DaemonEngine {
     private var portalTasks: [String: Task<Void, Never>] = [:]
     private var resourceSync: ResourceSync?
     private var orphanSweep: OrphanSweep?
+    /// Live session analytics keyed "agent/task" (Go: metrics registry).
+    private var lifecycles: [String: SessionLifecycle] = [:]
     private var hookServer: LocalHTTPServer?
     private var startedAt = ContinuousClock.now
     private var running = false
@@ -460,6 +462,7 @@ public actor DaemonEngine {
     /// Aggregate usage for the analytics dashboard: counts only, never content.
     /// Best-effort — a failure (e.g. an older worker) must not affect the task.
     private func postSessionReport(agentID: String, sessionID: String) async {
+        let taken = takeLifecycle(agentID: agentID, taskID: agents[agentID]?.state.taskID ?? "")
         guard !sessionID.isEmpty, let agent = agents[agentID] else { return }
         let opened = agent.sessionOpenedAt ?? Date()
         var report = SessionReport()
@@ -470,10 +473,15 @@ public actor DaemonEngine {
         let provider = agent.provider, workDir = agent.configuration.workDir, hookTranscript = agent.transcriptPath, thread = agent.codexThread
         let parsed = await Task.detached(priority: .utility) { () -> SessionReport in
             var full = report
-            if let url = SessionReportParser.transcript(provider: provider, workDir: workDir, hookTranscript: hookTranscript,
-                                                        codexThread: thread, since: opened) {
+            var lifecycle = taken
+            let transcript = hookTranscript.isEmpty ? (lifecycle?.transcriptPath ?? "") : hookTranscript
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            if let url = SessionReportParser.transcript(provider: provider, workDir: workDir, hookTranscript: transcript,
+                                                        codexThread: thread, since: opened, home: home) {
                 SessionReportParser.read(url, provider: provider, into: &full)
+                if lifecycle == nil, provider == .codex { lifecycle = SessionLifecycle.codex(path: url, home: home, since: opened) }
             }
+            lifecycle?.merge(into: &full, provider: provider)
             return full
         }.value
         var body = parsed.json.object ?? [:]
@@ -694,6 +702,8 @@ public actor DaemonEngine {
             return await handleSkill(request, agentParam: agentParam)
         case "/hooks/attach":
             return await handleAttach(request)
+        case "/hooks/event":
+            return handleEvent(request, agentParam: agentParam, taskParam: taskParam, query: query)
         default:
             return .init(status: 404)
         }
@@ -714,6 +724,32 @@ public actor DaemonEngine {
                 "name": .string(name), "description": .string(payload["description"]?.string ?? ""), "content": .string(content)]))
             return .json(response)
         } catch { return .init(status: 502, body: Data("upstream error: \(error.localizedDescription)".utf8)) }
+    }
+
+    /// POST /hooks/event feeds the task's analytics collector. Observational only:
+    /// it answers `{}` so blocking events (PreToolUse, UserPromptSubmit) proceed (Go: handleEvent).
+    private func handleEvent(_ request: LocalHTTPRequest, agentParam: String, taskParam: String, query: [String: String]) -> LocalHTTPResponse {
+        guard request.method == "POST" else { return .init(status: 405) }
+        var body = request.body
+        // Harnesses whose hooks POST no body (Claw) name the event in the URL.
+        if let event = query["event"], !event.isEmpty, String(decoding: body, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body = (try? JSONEncoder().encode(JSONValue.object(["hook_event_name": .string(event), "tool_name": .string(query["tool"] ?? "")]))) ?? Data()
+        }
+        // Only the agent's current task: a hook after close must not start an orphan collector.
+        if !agentParam.isEmpty, !taskParam.isEmpty, body.count <= 4 << 20, agents[agentParam]?.state.taskID == taskParam {
+            let key = agentParam + "/" + taskParam
+            let lifecycle = lifecycles[key] ?? SessionLifecycle()
+            lifecycles[key] = lifecycle
+            lifecycle.hook(body, now: Date())
+        }
+        return .json(.object([:]))
+    }
+
+    /// Removes every collector for the agent, returning the task's (Go: metrics.Take).
+    func takeLifecycle(agentID: String, taskID: String) -> SessionLifecycle? {
+        let taken = lifecycles[agentID + "/" + taskID]
+        lifecycles = lifecycles.filter { !$0.key.hasPrefix(agentID + "/") }
+        return taken
     }
 
     /// POST /hooks/attach: `tsq send-image --task <id> <path>` sends an image back

@@ -15,6 +15,7 @@ private actor InteractiveWorker {
     var uploads = 0
     var imageMessages: [JSONValue] = []
     var imageAttaches: [JSONValue] = []
+    var metrics: [JSONValue] = []
     var base = ""
     func setBase(_ value: String) { base = value }
     func handle(_ request: LocalHTTPRequest) -> LocalHTTPResponse {
@@ -47,6 +48,9 @@ private actor InteractiveWorker {
         case "/upload":
             uploads += 1
             return .init()
+        case "/daemon/session/metrics":
+            metrics.append(body)
+            return .json(.object(["ok": .bool(true)]))
         case "/daemon/session/message":
             imageMessages.append(body)
             return .json(.object(["message_id": .string("img-msg")]))
@@ -270,6 +274,47 @@ private actor InteractiveWorker {
         XCTAssertNil(attaches.first?["transcript_key"])
         XCTAssertEqual(DaemonEngine.imageMIMEType(forExtension: "JPEG"), "image/jpeg")
         XCTAssertNil(DaemonEngine.imageMIMEType(forExtension: "bmp"))
+    }
+
+
+    /// Ported from hooks/event_test.go: /hooks/event feeds only the current task's
+    /// collector (body-less Claw events too) and its lifecycle reaches the session report.
+    func testEventHookFeedsCurrentTaskLifecycleIntoSessionReport() async throws {
+        let tmux = try tmuxConnection()
+        defer { Task { _ = try? await tmux.run(["kill-server"]) } }
+        let script = """
+        #!/bin/sh
+        settings=""
+        while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
+        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed 's/localhost/127.0.0.1/')
+        event=$(grep -o 'http://localhost:[0-9]*/hooks/event?agent=[^"]*' "$settings" | head -1 | sed 's/localhost/127.0.0.1/')
+        stale=$(printf '%s' "$event" | sed 's/task_id=[^&]*/task_id=stale/')
+        printf 'READY\\n'
+        IFS= read -r line
+        curl -s -X POST "$event" --data-binary '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"x"}' > reply
+        curl -s -X POST "$stale" --data-binary '{"hook_event_name":"PreToolUse","tool_name":"Read","tool_use_id":"y"}' >/dev/null
+        curl -s -X POST "$event&event=PreToolUse&tool=Glob" >/dev/null
+        curl -s -X POST "$event&event=PostToolUse&tool=Glob" >/dev/null
+        curl -s -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"done"}' >/dev/null
+        # The server auto-closes the second paused reply, which posts the session report.
+        while IFS= read -r line; do
+          curl -s -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"again"}' >/dev/null
+        done
+        """
+        let worker = InteractiveWorker()
+        let (engine, server, home) = try await makeEngine(script: script, worker: worker, tmux: tmux, errors: { _ in })
+        defer { try? FileManager.default.removeItem(at: home) }
+        try await engine.start()
+        try await wait { await worker.notifies.count >= 1 }
+        try await wait { await !worker.metrics.isEmpty }
+        await engine.stop()
+        await server.stop()
+        XCTAssertEqual(try String(contentsOf: home.appendingPathComponent("reply"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), "{}")
+        let lifecycle = await worker.metrics.first?["lifecycle"]
+        XCTAssertEqual(lifecycle?["tools"]?["Bash"]?["calls"]?.number, 1)
+        XCTAssertEqual(lifecycle?["tools"]?["Glob"]?["calls"]?.number, 1)
+        XCTAssertNil(lifecycle?["tools"]?["Read"], "a hook for a stale task was recorded")
+        XCTAssertEqual(lifecycle?["source"]?.string, "hooks")
     }
 
 }

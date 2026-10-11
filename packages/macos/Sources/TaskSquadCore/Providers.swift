@@ -88,28 +88,27 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         let fileManager = FileManager.default
         switch self {
         case .gemini:
+            // AfterAgent fires on every model turn: the completion signal, like Claude's Stop.
             let stop = "http://localhost:\(hooksPort)/hooks/stop?agent=\(agentID)&task_id=\(taskID)&provider=gemini"
-            try Self.writeHooks(root.appendingPathComponent(".gemini/settings.json"), hooks: [
-                "AfterAgent": [["matcher": "*", "hooks": [[
-                    "name": "tasksquad-stop", "type": "command", "timeout": 5000,
-                    "command": "curl -sS -X POST \"\(stop)\" -H \"Content-Type: application/json\" -d @- > /dev/null 2>&1; printf '{}'",
-                ]]]],
-            ])
+            var hooks: [String: [[String: Any]]] = ["AfterAgent": [Self.geminiGroup(name: "tasksquad-stop", url: stop)]]
+            let event = "http://localhost:\(hooksPort)/hooks/event?agent=\(agentID)&task_id=\(taskID)&provider=gemini"
+            for name in Self.geminiLifecycleEvents { hooks[name, default: []].append(Self.geminiGroup(name: "tasksquad-analytics", url: event)) }
+            try Self.writeHooks(root.appendingPathComponent(".gemini/settings.json"), hooks: hooks)
         case .claw:
-            try Self.writeHooks(root.appendingPathComponent(".agent/settings.json"), hooks: [
-                "Stop": [Self.httpHook("http://localhost:\(hooksPort)/hooks/stop?agent=\(agentID)&task_id=\(taskID)")],
-                "StopFailure": [Self.httpHook("http://localhost:\(hooksPort)/hooks/stop?agent=\(agentID)&task_id=\(taskID)&failure=true")],
-            ])
+            try Self.writeManagedBlock(root.appendingPathComponent(".agent/settings.local.toml"),
+                                       block: Self.clawHooks(port: hooksPort, agentID: agentID, taskID: taskID))
         case .opencode:
             let folder = root.appendingPathComponent(".opencode/plugins", isDirectory: true)
             try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
             try? fileManager.removeItem(at: folder.appendingPathComponent("tasksquad.mjs"))
-            try Data(Self.openCodePlugin(port: hooksPort, agentID: agentID, taskID: taskID).utf8)
-                .write(to: folder.appendingPathComponent("tasksquad.ts"))
+            let analytics = ProviderTemplates.render(ProviderTemplates.openCodeAnalytics, port: hooksPort, agentID: agentID, taskID: taskID)
+            var plugin = ProviderTemplates.render(ProviderTemplates.openCodePlugin, port: hooksPort, agentID: agentID, taskID: taskID)
+            if let marker = plugin.range(of: "// @analytics") { plugin.replaceSubrange(marker, with: analytics) }
+            try Data(plugin.utf8).write(to: folder.appendingPathComponent("tasksquad.ts"))
         case .pi:
             let folder = root.appendingPathComponent(".pi/extensions", isDirectory: true)
             try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
-            try Data(Self.piExtension(port: hooksPort, agentID: agentID, taskID: taskID).utf8)
+            try Data(ProviderTemplates.render(ProviderTemplates.piExtension, port: hooksPort, agentID: agentID, taskID: taskID).utf8)
                 .write(to: folder.appendingPathComponent("tasksquad.ts"))
         case .claudeCode, .codex, .stdout:
             break
@@ -122,18 +121,107 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     /// raw keystroke forwarding while the menu is on screen.
     static let tuiBlockMatchers = ["AskUserQuestion"]
 
+    /// Claude Code hooks forwarded to /hooks/event for session analytics
+    /// (Go: provider/claudecode.go lifecycleEvents).
+    static let claudeLifecycleEvents = [
+        "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+        "PermissionDenied", "Notification", "SubagentStart", "SubagentStop", "PreCompact",
+        "PostModelSwitch", "Stop", "StopFailure", "SessionEnd",
+    ]
+    /// Seconds. PreToolUse and UserPromptSubmit block until answered, so a wedged
+    /// daemon must never stall the session for Claude's 600s default.
+    static let lifecycleHookTimeout = 5
+
     static func claudeHooks(port: Int, agentID: String, taskID: String) -> [String: Any] {
         let base = "http://localhost:\(port)/hooks"
         let query = "agent=\(agentID)&task_id=\(taskID)"
         func tui(_ state: String) -> [[String: Any]] {
             tuiBlockMatchers.map { ["matcher": $0, "hooks": [["type": "http", "url": "\(base)/tui-blocked?\(query)&state=\(state)"]]] }
         }
-        return ["hooks": [
+        var hooks: [String: [[String: Any]]] = [
             "Stop": [httpHook("\(base)/stop?\(query)")],
             "StopFailure": [httpHook("\(base)/stop?\(query)&failure=true")],
             "PreToolUse": tui("on"),
             "PostToolUse": tui("off"),
-        ]]
+        ]
+        let eventURL = "\(base)/event?\(query)"
+        for event in claudeLifecycleEvents {
+            var hook: [String: Any] = ["type": "http", "url": eventURL, "timeout": lifecycleHookTimeout]
+            if event == "SessionStart" {
+                // SessionStart doesn't deliver to http hooks, and a command hook's
+                // stdout is injected into the model's context: discard curl's output.
+                hook = ["type": "command", "timeout": lifecycleHookTimeout, "command":
+                    "curl -s -m \(lifecycleHookTimeout) -X POST -H 'Content-Type: application/json' --data-binary @- '\(eventURL)' >/dev/null 2>&1 || true"]
+            }
+            hooks[event, default: []].append(["matcher": "*", "hooks": [hook]])
+        }
+        return ["hooks": hooks]
+    }
+
+    /// Gemini analytics events; AfterModel is left out as it fires per streamed chunk.
+    static let geminiLifecycleEvents = ["SessionStart", "BeforeAgent", "AfterAgent", "BeforeModel", "BeforeTool", "AfterTool",
+                                        "Notification", "PreCompress", "SessionEnd"]
+
+    /// POSTs the hook payload and answers `{}`, as Gemini's command-hook contract requires.
+    private static func geminiGroup(name: String, url: String) -> [String: Any] {
+        ["matcher": "*", "hooks": [[
+            "name": name, "type": "command", "timeout": 5000,
+            "command": "curl -sS -X POST \"\(url)\" -H \"Content-Type: application/json\" -d @- > /dev/null 2>&1; printf '{}'",
+        ]]]
+    }
+
+    /// agent-code's events mapped to the names the lifecycle collector reads.
+    static let clawLifecycleEvents = [("session_start", "SessionStart"), ("user_prompt_submit", "UserPromptSubmit"),
+                                      ("stop", "Stop"), ("pre_compact", "PreCompact"), ("session_stop", "SessionEnd")]
+    /// agent-code 0.21 built-in tools. Its hooks POST no body, so each tool needs
+    /// its own pre/post pair to be named in the URL.
+    static let clawTools = [
+        "Agent", "AskUserQuestion", "Bash", "Brief", "Config", "CronCreate", "CronDelete", "CronList",
+        "EnterPlanMode", "EnterWorktree", "ExitPlanMode", "ExitWorktree", "FileEdit", "FileRead", "FileWrite",
+        "Glob", "Grep", "ListMcpResources", "LSP", "McpAuth", "Monitor", "MultiEdit", "NotebookEdit",
+        "PowerShell", "ReadMcpResource", "RemoteTrigger", "REPL", "SendMessage", "Skill", "Sleep",
+        "TaskCreate", "TaskGet", "TaskList", "TaskOutput", "TaskStop", "TaskUpdate", "TodoWrite",
+        "ToolSearch", "WebFetch", "WebSearch",
+    ]
+    static let clawManagedStart = "# >>> TaskSquad hooks (managed by tsq; replaced on every task) >>>"
+    static let clawManagedEnd = "# <<< TaskSquad hooks <<<"
+
+    /// agent-code loads TOML only (settings.toml, then settings.local.toml).
+    static func clawHooks(port: Int, agentID: String, taskID: String) -> String {
+        var block = clawManagedStart + "\n"
+        func hook(_ event: String, _ tool: String, _ url: String) {
+            block += "[[hooks]]\nevent = \(goQuote(event))\n"
+            if !tool.isEmpty { block += "tool_name = \(goQuote(tool))\n" }
+            block += "action = { type = \"http\", url = \(goQuote(url)) }\n\n"
+        }
+        hook("stop", "", "http://localhost:\(port)/hooks/stop?agent=\(agentID)&task_id=\(taskID)")
+        let event = "http://localhost:\(port)/hooks/event?agent=\(agentID)&task_id=\(taskID)&provider=claw"
+        for (native, canonical) in clawLifecycleEvents { hook(native, "", event + "&event=" + canonical) }
+        for tool in clawTools {
+            hook("pre_tool_use", tool, event + "&event=PreToolUse&tool=" + tool)
+            hook("post_tool_use", tool, event + "&event=PostToolUse&tool=" + tool)
+        }
+        return block + clawManagedEnd + "\n"
+    }
+
+    /// Go's %q for the ASCII values used here (quotes and backslashes escaped).
+    private static func goQuote(_ value: String) -> String {
+        "\"" + value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    }
+
+    /// Replaces the TaskSquad block (appending when absent), keeping the rest of the file.
+    static func writeManagedBlock(_ url: URL, block: String) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var rest = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        if let start = rest.range(of: clawManagedStart) {
+            if let end = rest.range(of: clawManagedEnd, range: start.lowerBound..<rest.endIndex) {
+                var tail = String(rest[end.upperBound...])
+                if tail.hasPrefix("\n") { tail.removeFirst() }
+                rest = String(rest[..<start.lowerBound]) + tail
+            } else { rest = String(rest[..<start.lowerBound]) }
+        }
+        if !rest.isEmpty && !rest.hasSuffix("\n") { rest += "\n" }
+        try Data((rest + block).utf8).write(to: url)
     }
 
     private static func httpHook(_ url: String) -> [String: Any] {
@@ -154,159 +242,6 @@ public enum ProviderKind: String, CaseIterable, Sendable {
            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { existing = object }
         existing["hooks"] = hooks
         try json(existing, pretty: true).write(to: url)
-    }
-
-    static func openCodePlugin(port: Int, agentID: String, taskID: String) -> String {
-        let stop = "/hooks/stop?agent=\(agentID)&task_id=\(taskID)&provider=opencode"
-        return """
-        // Auto-generated by tsq daemon — do not edit
-
-        export const TaskSquadPlugin = async ({ client }) => {
-          await client.app.log({ body: { service: "tasksquad", level: "info", message: "Plugin initialized" } })
-
-          const post = async (path, body) => {
-            try {
-              await fetch("http://localhost:\(port)" + path, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body)
-              })
-            } catch (e) {
-              await client.app.log({ body: { service: "tasksquad", level: "error", message: "hook error: " + e.message } })
-            }
-          }
-
-          const messageCache = new Map()
-          let pendingToolCount = 0
-          let sessionIdleSent = false
-
-          return {
-            "event": async (input) => {
-              const { event } = input
-
-              if (event.type === "message.part.updated" && event.properties?.part) {
-                const part = event.properties.part
-                if (part.type === "text" && part.messageID) {
-                  if (!messageCache.has(part.messageID)) {
-                    messageCache.set(part.messageID, { sessionID: part.sessionID, textParts: [], completed: false })
-                  }
-                  const cached = messageCache.get(part.messageID)
-                  const existing = cached.textParts.find(p => p.id === part.id)
-                  if (existing) {
-                    existing.text = part.text || ""
-                  } else {
-                    cached.textParts.push({ id: part.id, text: part.text || "" })
-                  }
-                }
-              }
-
-              if (event.type === "message.updated" && event.properties?.info) {
-                const info = event.properties.info
-                if (info.role === "assistant" && info.time?.completed && messageCache.has(info.id)) {
-                  messageCache.get(info.id).completed = true
-                }
-              }
-
-              if (event.type === "tool.execute.before") {
-                pendingToolCount++
-                await client.app.log({ body: { service: "tasksquad", level: "info", message: "tool.execute.before: " + pendingToolCount } })
-              }
-
-              if (event.type === "tool.execute.after") {
-                pendingToolCount = Math.max(0, pendingToolCount - 1)
-                await client.app.log({ body: { service: "tasksquad", level: "info", message: "tool.execute.after: pending=" + pendingToolCount } })
-                // When tools complete and session goes idle, send stop hook
-                if (pendingToolCount === 0 && !sessionIdleSent) {
-                  let lastCompleted = null
-                  for (const [, cached] of messageCache.entries()) {
-                    if (cached.completed) lastCompleted = cached
-                  }
-                  const message = lastCompleted ? lastCompleted.textParts.map(p => p.text).join("") : ""
-                  await post("\(stop)", { stop_reason: "idle", message })
-                  sessionIdleSent = true
-                }
-              }
-
-              if (event.type === "session.idle") {
-                await client.app.log({ body: { service: "tasksquad", level: "info", message: "session.idle pending=" + pendingToolCount } })
-                if (pendingToolCount === 0 && !sessionIdleSent) {
-                  let lastCompleted = null
-                  for (const [, cached] of messageCache.entries()) {
-                    if (cached.completed) lastCompleted = cached
-                  }
-                  const message = lastCompleted ? lastCompleted.textParts.map(p => p.text).join("") : ""
-                  await post("\(stop)", { stop_reason: "idle", message })
-                  sessionIdleSent = true
-                }
-              }
-
-              if (event.type === "session.error") {
-                await client.app.log({ body: { service: "tasksquad", level: "error", message: "session.error" } })
-                await post("\(stop)", { stop_reason: "error", message: event.properties?.error?.message || "Unknown error" })
-              }
-
-              // Reset on new user message to handle multiple turns
-              if (event.type === "session.updated" && event.properties?.info?.role === "user") {
-                sessionIdleSent = false
-                messageCache.clear()
-                pendingToolCount = 0
-              }
-            },
-          }
-        }
-
-        """
-    }
-
-    static func piExtension(port: Int, agentID: String, taskID: String) -> String {
-        """
-        // Auto-generated by tsq daemon — do not edit
-
-        export default function(pi) {
-          const post = async (path, body, signal) => {
-            try {
-              await fetch("http://localhost:\(port)" + path, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body), signal,
-              })
-            } catch (e) {
-              console.error("[tasksquad] hook error:", e?.message)
-            }
-          }
-
-          const extractText = (content) =>
-            (content || []).filter(c => c.type === "text").map(c => c.text || "").join("")
-
-          let lastAssistantMessage = ""
-
-          pi.on("before_agent_start", async (_event, _ctx) => {
-            lastAssistantMessage = ""
-          })
-
-          pi.on("message_end", async (event, _ctx) => {
-            if (event.message?.role === "assistant") {
-              const text = extractText(event.message.content)
-              if (text) lastAssistantMessage = text
-            }
-          })
-
-          pi.on("agent_end", async (event, ctx) => {
-            const msgs = event.messages || []
-            for (let i = msgs.length - 1; i >= 0; i--) {
-              if (msgs[i].role === "assistant") {
-                const text = extractText(msgs[i].content)
-                if (text) { lastAssistantMessage = text; break }
-              }
-            }
-            const transcriptPath = ctx.sessionManager?.getSessionFile?.() ?? ""
-            await post(
-              "/hooks/stop?agent=\(agentID)&task_id=\(taskID)&provider=pi",
-              { stop_reason: "idle", message: lastAssistantMessage, transcript_path: transcriptPath },
-              ctx.signal
-            )
-          })
-        }
-
-        """
     }
 }
 

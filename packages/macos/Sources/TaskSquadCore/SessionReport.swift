@@ -16,18 +16,22 @@ public struct SessionReport: Equatable, Sendable {
     public var toolErrors = 0
     public var tools: [String: Int] = [:]
     public var skills: [String: Int] = [:]
+    /// Hook-observed breakdown (SessionLifecycle.merge), or nil when the harness reported none.
+    public var lifecycle: JSONValue?
     public var toolCalls: Int { tools.values.reduce(0, +) }
 
     public var json: JSONValue {
         func counts(_ map: [String: Int]) -> JSONValue { .object(map.mapValues { .number(Double($0)) }) }
-        return .object([
+        var body: [String: JSONValue] = [
             "provider": .string(provider), "model": .string(model),
             "duration_ms": .number(Double(durationMs)), "turns": .number(Double(turns)),
             "tokens": .object(["input": .number(Double(inputTokens)), "output": .number(Double(outputTokens)),
                                "cache_read": .number(Double(cacheReadTokens)), "cache_write": .number(Double(cacheWriteTokens))]),
             "tool_calls": .number(Double(toolCalls)), "tool_errors": .number(Double(toolErrors)),
             "tools": counts(tools), "skills": counts(skills),
-        ])
+        ]
+        if let lifecycle { body["lifecycle"] = lifecycle }
+        return .object(body)
     }
 
     mutating func addTool(_ name: String) { if !name.isEmpty { tools[name, default: 0] += 1 } }
@@ -116,8 +120,8 @@ public enum SessionReportParser {
             }
             if let call = object["functionCall"] ?? object["toolCall"], let name = call["name"]?.string { report.addTool(name) }
             if let model = object["model"]?.string ?? object["modelId"]?.string, !model.isEmpty, report.model.isEmpty { report.model = model }
-            let tokenish = object["usage"] ?? object["usageMetadata"] ?? object["tokens"]
-            if let usage = tokenish, case .object = usage {
+            for key in ["usage", "usageMetadata", "tokens"] {
+                guard let usage = object[key], case .object = usage else { continue }
                 report.inputTokens += int(usage["input_tokens"]) + int(usage["input"]) + int(usage["promptTokenCount"]) + int(usage["prompt_tokens"])
                 report.outputTokens += int(usage["output_tokens"]) + int(usage["output"]) + int(usage["candidatesTokenCount"]) + int(usage["completion_tokens"])
                 report.cacheReadTokens += int(usage["cache_read_input_tokens"]) + int(usage["cacheRead"]) + int(usage["cachedContentTokenCount"])
@@ -154,6 +158,16 @@ public enum SessionReportParser {
         case .pi:
             let folder = "--" + workDir.trimmingCharacters(in: CharacterSet(charactersIn: "/")).replacingOccurrences(of: "/", with: "-") + "--"
             return newest(in: home.appendingPathComponent(".pi/agent/sessions/\(folder)")) { $0.pathExtension == "jsonl" }
+        case .claw:
+            // agent-code keeps one JSON file per session; only the one recorded for this work dir belongs to the task.
+            let config = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"].map { URL(fileURLWithPath: $0) }
+                ?? home.appendingPathComponent("Library/Application Support")
+            let want = URL(fileURLWithPath: workDir).standardizedFileURL.path
+            return newest(in: config.appendingPathComponent("agent-code/sessions")) { url in
+                guard url.pathExtension == "json", let data = try? Data(contentsOf: url),
+                      let cwd = (try? JSONDecoder().decode(JSONValue.self, from: data))?["cwd"]?.string, !cwd.isEmpty else { return false }
+                return URL(fileURLWithPath: cwd).standardizedFileURL.path == want
+            }
         case .gemini:
             let hash = SHA256.hash(data: Data(workDir.utf8)).map { String(format: "%02x", $0) }.joined()
             return newest(in: home.appendingPathComponent(".gemini/tmp/\(hash)"), recursive: true) { ["json", "jsonl"].contains($0.pathExtension) }

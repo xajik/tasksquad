@@ -14,6 +14,7 @@ import (
 
     "github.com/tasksquad/daemon/api"
     "github.com/tasksquad/daemon/config"
+    "github.com/tasksquad/daemon/provider"
     "github.com/zalando/go-keyring"
 )
 
@@ -66,6 +67,23 @@ func run() error {
         value, err := base64.StdEncoding.DecodeString(os.Args[4])
         if err != nil { return err }
         return keyring.Set(os.Args[2], os.Args[3], string(value))
+    case "provider":
+        // provider <command> <override> <workDir> <hooksPort> <agentID> <taskID> <prompt>
+        // Setup writes into workDir; SetupArgs writes into $TMPDIR.
+        var port int
+        fmt.Sscanf(os.Args[5], "%d", &port)
+        p := provider.Detect(os.Args[2], os.Args[3])
+        if err := p.Setup(os.Args[4], port, os.Args[6], os.Args[7]); err != nil { return err }
+        prompt := provider.FormatPrompt(p, os.Args[8])
+        out := map[string]any{
+            "name": p.Name(), "cli_name": p.CLIName(), "uses_hooks": p.UsesHooks(),
+            "setup_args": p.SetupArgs(port, os.Args[6], os.Args[7]), "env": p.Env(port),
+            "extra_args": p.ExtraArgs(), "formatted_prompt": prompt, "stdin": p.Stdin(prompt),
+        }
+        if initial, ok := p.(interface{ InitialPromptArgs(string) []string }); ok {
+            out["initial_prompt_args"] = initial.InitialPromptArgs(prompt)
+        }
+        return json.NewEncoder(os.Stdout).Encode(out)
     default:
         return fmt.Errorf("unknown oracle command")
     }
