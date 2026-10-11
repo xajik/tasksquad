@@ -62,7 +62,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] `TaskSquadPortalUI` render smoke tests (`Tests/TaskSquadPortalUITests`, macOS `ImageRenderer`): icons must draw non-blank pixels, and components render in light and dark
 
 ### E. Remove compatibility layers
-- [ ] iOS uses `CustomerAPI` directly; delete `PortalAPI`
+- [x] `PortalAPI` deleted. `CustomerAPI` (in `CustomerSession.swift`) provides `terminalSession`, the PKCE exchange and token revocation, and both terminals use it. `PortalTerminalSession`'s auth-stop now recognizes `CustomerAPIError`; macOS tickets never matched the old `PortalAPIError` check.
 - [ ] Drop the `Theme`/`MobileTheme`/`MobilePrimaryButtonStyle` typealiases (optional, mechanical)
 
 ### F. CI and evidence

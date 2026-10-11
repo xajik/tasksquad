@@ -73,7 +73,7 @@ struct MobileRecordDetail: View {
         }
         .sheet(isPresented: $showLogs) { NavigationStack { List(logs) { Text($0.text("body")).font(.system(.caption, design: .monospaced)).textSelection(.enabled) }.navigationTitle("Task logs").toolbar { Button("Done") { showLogs = false } } } }
         .sheet(isPresented: $terminalPresented) { NavigationStack {
-            if let session = record?.text("session_id"), !session.isEmpty { PortalTerminalScreen(sessionID: session, api: terminalAPI).navigationTitle("Task terminal").toolbar { Button("Done") { terminalPresented = false } } }
+            if let session = record?.text("session_id"), !session.isEmpty { PortalTerminalScreen(sessionID: session, api: model.api).navigationTitle("Task terminal").toolbar { Button("Done") { terminalPresented = false } } }
         } }
         .alert(confirm, isPresented: $showConfirmation) {
             Button(confirm, role: .destructive) { let action = confirm; Task { await confirmed(action) } }
@@ -82,12 +82,11 @@ struct MobileRecordDetail: View {
     }
     private func ask(_ action: String) { confirm = action; showConfirmation = true }
 
-    private var terminalAPI: PortalAPI { PortalAPI(baseURL: model.api.baseURL) { force in try await model.api.accessToken(forceRefresh: force) } }
     @ViewBuilder private func portal(_ record: CustomerRecord) -> some View {
         VStack(spacing: 0) {
             let lifecycle = PortalLifecycle(record)
             if let session = lifecycle.sessionID {
-                PortalTerminalScreen(sessionID: session, api: terminalAPI).id(session)
+                PortalTerminalScreen(sessionID: session, api: model.api).id(session)
             } else {
                 TSQEmptyState(icon: "monitor", title: lifecycle.title, message: lifecycle.message)
                 Text(record.status.capitalized).accessibilityIdentifier("portal-status")

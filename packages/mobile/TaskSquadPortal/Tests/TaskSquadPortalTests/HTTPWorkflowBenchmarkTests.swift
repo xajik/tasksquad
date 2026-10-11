@@ -4,24 +4,27 @@ import TaskSquadPortal
 final class HTTPWorkflowBenchmarkTests: XCTestCase {
     /// Identical boundaries and native transport on macOS and the iOS simulator.
     /// Measures the customer API pipeline; it does not measure UI rendering.
-    func testMatchedPortalAPIWorkflow15Samples() async throws {
+    @MainActor func testMatchedPortalAPIWorkflow15Samples() async throws {
         let base = URL(string: "http://127.0.0.1:18743")!
         do { _ = try await URLSession.shared.data(from: base.appendingPathComponent("__test/state")) }
         catch { throw XCTSkip("Run with the isolated contract fixture to collect network timings.") }
-        let api = PortalAPI(baseURL: base) { _ in "fixture-token" }
+        let api = CustomerAPI(baseURL: base) { _ in "fixture-token" }
+        let store = WorkspaceStore(api: api); store.projectID = "demo"
         var samples: [[String: Double]] = []
         for index in 0..<15 {
             let start = Date()
-            _ = try await api.portals(projectID: "demo")
+            _ = try await api.request(["portals"], query: ["team_id": "demo"])
             let listed = Date()
-            let result = try await api.createPortal(projectID: "demo", agentID: "agent")
+            let portal = await store.perform(.create(.portals, project: "demo", values: ["agent_id": .string("agent")]))
+            let id = try XCTUnwrap(portal?["id"]?.string)
             let created = Date()
-            let detail = try await api.portal(id: result.id)
+            let detail = CustomerRecord(try await api.request(["portals", id]))
             XCTAssertEqual(detail.status, "pending")
             let opened = Date()
-            try await api.closePortal(id: result.id)
-            let records = try await api.portals(projectID: "demo")
-            XCTAssertEqual(records.first { $0.id == result.id }?.status, "done")
+            let closed = await store.perform(.closePortal(id))
+            XCTAssertNotNil(closed)
+            let records = CustomerRecord(try await api.request(["portals"], query: ["team_id": "demo"])).records("portals")
+            XCTAssertEqual(records.first { $0.id == id }?.status, "done")
             samples.append(["sample": Double(index+1), "list_ms": listed.timeIntervalSince(start)*1000, "create_ms": created.timeIntervalSince(listed)*1000, "get_ms": opened.timeIntervalSince(created)*1000, "close_and_list_ms": Date().timeIntervalSince(opened)*1000])
         }
         let data = try JSONSerialization.data(withJSONObject: samples, options: [.prettyPrinted, .sortedKeys])

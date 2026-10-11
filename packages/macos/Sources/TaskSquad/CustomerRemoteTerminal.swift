@@ -15,18 +15,8 @@ struct CustomerRemoteTerminal: View {
     init(api: CustomerAPI?, sessionID: String) {
         self.api = api
         self.sessionID = sessionID
-        _model = StateObject(wrappedValue: PortalTerminalSession(sessionID: sessionID, ticketProvider: { id in
-            guard let api else { throw URLError(.userAuthenticationRequired) }
-            let value = try await api.request(["terminal", "ticket"], method: "POST", body: .object(["session_id": .string(id)]))
-            guard let ticket = value["ticket"]?.string else { throw URLError(.badServerResponse) }
-            return ticket
-        }, socketURLProvider: { id, ticket, replay in
-            guard let api else { throw URLError(.userAuthenticationRequired) }
-            var parts = URLComponents(url: try api.url(["terminal", id], query: ["ticket": ticket, "replay": replay ? "1" : "0"]), resolvingAgainstBaseURL: false)!
-            parts.scheme = parts.scheme == "https" ? "wss" : "ws"
-            guard let url = parts.url else { throw URLError(.badURL) }
-            return url
-        }))
+        _model = StateObject(wrappedValue: api?.terminalSession(sessionID: sessionID) ?? PortalTerminalSession(sessionID: sessionID,
+            ticketProvider: { _ in throw URLError(.userAuthenticationRequired) }, socketURLProvider: { _, _, _ in throw URLError(.userAuthenticationRequired) }))
     }
 
     var body: some View {

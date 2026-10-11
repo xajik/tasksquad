@@ -5,14 +5,14 @@ import SwiftTerm
 
 struct PortalTerminalScreen: View {
     let sessionID: String
-    let api: PortalAPI
+    let api: CustomerAPI
     @StateObject private var terminal: PortalTerminalSession
     @State private var reconnectID = UUID()
     @State private var showKeyboard = false
     @State private var input = ""
     @FocusState private var inputFocused: Bool
     @Environment(\.scenePhase) private var phase
-    init(sessionID: String, api: PortalAPI) {
+    init(sessionID: String, api: CustomerAPI) {
         self.sessionID = sessionID; self.api = api
         _terminal = StateObject(wrappedValue: api.terminalSession(sessionID: sessionID))
     }

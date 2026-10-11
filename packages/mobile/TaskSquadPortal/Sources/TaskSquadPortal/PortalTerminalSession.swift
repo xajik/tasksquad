@@ -65,7 +65,7 @@ public final class PortalTerminalSession: ObservableObject {
                 connected = false
                 socket?.cancel(with: .goingAway, reason: nil)
                 socket = nil
-                if let apiError = error as? PortalAPIError, [401, 403, 404].contains(apiError.status) {
+                if let apiError = error as? CustomerAPIError, [401, 403, 404].contains(apiError.status) {
                     status = apiError.message
                     return
                 }

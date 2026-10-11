@@ -33,14 +33,14 @@ final class MobileAuthStore: ObservableObject {
 
     func accessToken(forceRefresh: Bool) throws -> String {
         guard let credential, credential.expiresAt > Date().timeIntervalSince1970 * 1000, !forceRefresh else {
-            invalidate(); throw PortalAPIError(status: 401, message: "Your session expired. Please sign in again.")
+            invalidate(); throw CustomerAPIError(status: 401, message: "Your session expired. Please sign in again.")
         }
         return credential.token
     }
 
     func acceptToken(_ value: String, expiresAt: Double) throws {
         guard expiresAt > Date().timeIntervalSince1970 * 1000 else {
-            throw PortalAPIError(status: 401, message: "Your session expired. Please sign in again.")
+            throw CustomerAPIError(status: 401, message: "Your session expired. Please sign in again.")
         }
         let saved = SavedMobileToken(token: value, expiresAt: expiresAt)
         try keychain.save(saved); credential = saved; token = value
@@ -81,7 +81,7 @@ final class MobileAuthStore: ObservableObject {
                         self.error = "Sign-in response could not be verified."; return
                     }
                     do {
-                        let api = PortalAPI(baseURL: Self.apiURL, token: { _ in throw URLError(.userAuthenticationRequired) })
+                        let api = CustomerAPI(baseURL: Self.apiURL, token: { _ in throw URLError(.userAuthenticationRequired) })
                         let result = try await api.exchangeAuthorizationCode(code, verifier: verifier)
                         guard self.generation == attempt else { return }
                         try self.acceptToken(result.token, expiresAt: result.expiresAt)
@@ -99,7 +99,7 @@ final class MobileAuthStore: ObservableObject {
         let previous = token
         invalidate()
         if let previous {
-            let api = PortalAPI(baseURL: Self.apiURL, token: { _ in previous })
+            let api = CustomerAPI(baseURL: Self.apiURL, token: { _ in previous })
             try? await api.revokeCurrentToken()
         }
     }
