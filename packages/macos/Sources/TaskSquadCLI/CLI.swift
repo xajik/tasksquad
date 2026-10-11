@@ -15,6 +15,10 @@ public struct CLIContext: Sendable {
     /// nil signs in like the daemon (shared Keychain credentials); tests inject one.
     public var tokens: (any TokenProvider)?
     public var transport: any HTTPTransport
+    /// Browser sign-in; returns the email (Go: auth.Login). Tests substitute it.
+    public var login: @Sendable (_ context: CLIContext, _ dashboardURL: String, _ apiURL: String, _ firebaseAPIKey: String) async throws -> String
+    /// Deletes stored credentials (Go: auth.Logout). Tests substitute it.
+    public var logout: @Sendable () async throws -> Void
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment,
                 stdout: @escaping @Sendable (String) -> Void = { FileHandle.standardOutput.write(Data($0.utf8)) },
@@ -23,9 +27,30 @@ public struct CLIContext: Sendable {
                 now: @escaping @Sendable () -> Date = { Date() },
                 interactive: @escaping @Sendable (String, [String], [String: String]) -> Int32 = CLIContext.runInheritingTerminal,
                 workingDirectory: String = FileManager.default.currentDirectoryPath, tokens: (any TokenProvider)? = nil,
-                transport: any HTTPTransport = NativeHTTPTransport()) {
+                transport: any HTTPTransport = NativeHTTPTransport(),
+                login: @escaping @Sendable (CLIContext, String, String, String) async throws -> String = CLIContext.browserLogin,
+                logout: @escaping @Sendable () async throws -> Void = { try await Authentication(apiURL: "", firebaseAPIKey: "").logout() }) {
         self.environment = environment; self.stdout = stdout; self.stderr = stderr; self.stdin = stdin; self.now = now; self.interactive = interactive
         self.workingDirectory = workingDirectory; self.tokens = tokens; self.transport = transport
+        self.login = login; self.logout = logout
+    }
+
+    public static func browserLogin(_ c: CLIContext, dashboardURL: String, apiURL: String, firebaseAPIKey: String) async throws -> String {
+        let flow = try await LoginFlow.begin(dashboardURL: dashboardURL)
+        c.print("Opening browser for login...")
+        c.print("If the browser doesn't open, visit:\n  \(flow.browserURL.absoluteString)\n")
+        _ = c.interactive("/usr/bin/open", [flow.browserURL.absoluteString], c.environment)
+        let callback = try await flow.result()
+        try await Authentication(transport: c.transport, apiURL: apiURL, firebaseAPIKey: firebaseAPIKey)
+            .acceptLogin(idToken: callback.idToken, refreshToken: callback.refreshToken, email: callback.email)
+        return callback.email
+    }
+
+    /// Go's dashboardURL: TSQ_DASHBOARD_URL, else the API host mapped to the portal.
+    func dashboardURL(_ serverURL: String) -> String {
+        if let override = environment["TSQ_DASHBOARD_URL"], !override.isEmpty { return override }
+        if serverURL.hasSuffix(".api.tasksquad.ai") || serverURL == "https://api.tasksquad.ai" { return "https://tasksquad.ai" }
+        return serverURL.hasSuffix("/api") ? String(serverURL.dropLast(4)) : serverURL
     }
 
     /// Go's config.Load: a missing file or no agents is an error for daemon-side commands.
@@ -83,7 +108,7 @@ public enum TSQCommandLine {
     ]
     /// Implemented so far; the rest are still handled by the app's legacy paths.
     static let implemented: Set<String> = ["sessions", "attach", "logs", "pane", "screenshot", "send", "report", "send-image", "skill",
-                                           "memory", "kb", "tags"]
+                                           "memory", "kb", "tags", "login", "logout", "init"]
 
     public static func handles(_ arguments: [String]) -> Bool {
         guard let first = arguments.first else { return false }
@@ -104,6 +129,9 @@ public enum TSQCommandLine {
         case "report": return await HookCommands.report(rest, context)
         case "send-image": return await HookCommands.sendImage(rest, context)
         case "skill": return await HookCommands.skill(rest, context)
+        case "login": return await AuthCommands.login(context)
+        case "logout": return await AuthCommands.logout(context)
+        case "init": return await AuthCommands.initialize(context)
         case "memory": return await KnowledgeCommands.memory(rest, context)
         case "kb": return await KnowledgeCommands.kb(rest, context)
         case "tags": return await KnowledgeCommands.tags(rest, context)

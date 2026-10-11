@@ -93,8 +93,8 @@ Output text and exit codes must match Go byte-for-byte: agents and skills parse 
 
 | Command | Status |
 |---|---|
-| `login`, `logout`, `--version` | partial (implemented; no golden tests) |
-| `init` | missing |
+| `login`, `logout`, `init` | done in `TaskSquadCLI` (`CLIAuthTests`: Go's prompts, `Scanln` first-word answers, config text and 0600 mode). Browser sign-in can't run against the Go binary |
+| `--version` | partial (app build only) |
 | `sessions`, `attach`, `pane`, `send` | done (`CLIGoldenTests`: byte-identical stdout/stderr/exit vs the Go binary) |
 | `logs` | done (golden) |
 | `screenshot` | done (golden for output and errors; PNG pixels differ by rasterizer) |

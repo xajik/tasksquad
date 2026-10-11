@@ -2,6 +2,8 @@ import Foundation
 import Darwin
 
 public struct DaemonConfiguration: Codable, Equatable, Sendable {
+    /// Built-in defaults with no agents (Go: embedded defaults before the user file).
+    public static var defaults: DaemonConfiguration { DaemonConfiguration() }
     public struct Server: Codable, Equatable, Sendable {
         public var url = "https://api.tasksquad.ai"
         public var pollInterval = 60
