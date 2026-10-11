@@ -83,7 +83,9 @@ jobs:
       - name: Test native implementation against Go (x86_64)
         run: |
           test "$(uname -m)" = x86_64
-          make test-compatibility
+          # Hosted Intel VMs expose no Metal device architecture, so offscreen
+          # SwiftUI renders abort in MTLLoader; the arm64 job covers UI renders.
+          make test-compatibility TEST_FLAGS="--skip TaskSquadUITests"
       - name: Build and run the standalone tsq CLI (x86_64)
         run: |
           swift build -c release --product tsq
