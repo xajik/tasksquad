@@ -64,6 +64,9 @@ public struct WorkspaceDraftScope: Codable, Sendable {
     private let defaults: UserDefaults
     private let prefix: String
     public init(defaults: UserDefaults = .standard, prefix: String = "workspace.draft.") { self.defaults = defaults; self.prefix = prefix }
+    public func load(_ scope: WorkspaceDraftScope) -> [String: JSONValue]? { load(scope.key) }
+    public func save(_ values: [String: JSONValue], scope: WorkspaceDraftScope) { save(values, key: scope.key) }
+    public func remove(_ scope: WorkspaceDraftScope) { remove(scope.key) }
     public func load(_ key: String) -> [String: JSONValue]? {
         guard let data = defaults.data(forKey: prefix + key) else { return nil }
         return try? JSONDecoder().decode([String: JSONValue].self, from: data)

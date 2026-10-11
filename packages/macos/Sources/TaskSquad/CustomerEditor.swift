@@ -12,6 +12,8 @@ struct CustomerEditorRequest: Identifiable {
     var attachments = false
     var phases = false
     var submitLabel = "Save"
+    /// `WorkspaceDraftScope.key`; values persist until a successful submit.
+    var draftKey: String? = nil
     let submit: @MainActor ([String: JSONValue], [CustomerUpload]) async -> Bool
 }
 
@@ -28,7 +30,7 @@ struct CustomerEditor: View {
 
     init(model: CustomerWorkspaceModel, request: CustomerEditorRequest) {
         self.model = model; self.request = request
-        _values = State(initialValue: Dictionary(uniqueKeysWithValues: request.fields.map { ($0.id, $0.initial) }))
+        _values = State(initialValue: request.draftKey.flatMap { model.drafts.load($0) } ?? Dictionary(uniqueKeysWithValues: request.fields.map { ($0.id, $0.initial) }))
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -60,6 +62,7 @@ struct CustomerEditor: View {
             }.padding(20).edgeBorder(.top)
         }.frame(width: 620, height: request.phases ? 750 : 630).background(Theme.background)
         .interactiveDismissDisabled(submitting)
+        .onChange(of: values) { value in if let key = request.draftKey { model.drafts.save(value, key: key) } }
         .task {
             guard request.phases else { return }
             do { subAgents = CustomerRecord(try await model.api().request(model.teamPath("sub-agents"))).records("sub_agents") }
@@ -138,7 +141,7 @@ struct CustomerEditor: View {
         do { body = try WorkspaceEditor.payload(fields: request.fields, values: values, phases: request.phases ? phaseRows : nil, files: files) }
         catch { validation = error.localizedDescription; return }
         submitting = true; defer { submitting = false }
-        if await request.submit(body, files) { dismiss() }
+        if await request.submit(body, files) { if let key = request.draftKey { model.drafts.remove(key) }; dismiss() }
     }
 }
 

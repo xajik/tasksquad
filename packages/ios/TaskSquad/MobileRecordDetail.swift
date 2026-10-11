@@ -197,8 +197,7 @@ struct MobileRecordDetail: View {
         }
     }
     private func reply() {
-        let project = model.projectID
-        editor = MobileEditorRequest(title: "Reply", fields: [.init("body", "Message", .multiline, required: true), .init("scheduled_at", "Schedule reply", .date, initial: .null)], draftKey: "\(model.api.baseURL.absoluteString).\(model.profile?.id ?? "").\(project).reply.\(id)", attachments: true, submitLabel: "Send") { body, files in
+        editor = MobileEditorRequest(title: "Reply", fields: [.init("body", "Message", .multiline, required: true), .init("scheduled_at", "Schedule reply", .date, initial: .null)], draftKey: model.draftScope("reply." + id).key, attachments: true, submitLabel: "Send") { body, files in
             guard await model.perform(.reply(task: id, values: body, files: files)) != nil else { return false }; await refresh(); return true
         }
     }

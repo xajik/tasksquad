@@ -45,7 +45,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] `WorkspaceOperation` (named constructors → path/method/body/files), `WorkspaceStore.perform(_:)`, route table tests
 - [x] Migrate the macOS call sites (`CustomerWorkspace`, `CustomerTaskDetail`, `CustomerNoteDetail`, `ApplicationWorkspace`)
 - [x] Migrate the iOS call sites (`MobileRecordDetail`, `PortalHomeView`); remove the app-level `perform(path:method:)`
-- [ ] macOS editors use `WorkspaceDraftStore`/`WorkspaceDraftScope`; delete iOS `MobileDraftStore`
+- [x] Both apps key drafts by `WorkspaceStore.draftScope` (origin/account/project/operation). macOS gains create-editor and inline-reply drafts, cleared on sign-out. iOS `MobileDraftStore` stays as a thin adapter that picks the fixture `UserDefaults` suite in UI tests. Drafts saved under the old dotted iOS keys are not migrated.
 - [ ] Tests: `WorkspaceEditor` validation, `StatusPresentation`, draft-scope isolation
 
 ### C. Store completion
@@ -71,6 +71,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [ ] Regenerate reviewed light/dark screenshots on both platforms from the fixture
 
 ## Notes and decisions
+- If `test08TerminalControlInputAndResize` fails on rotation (`landscape` waiter times out and the screenshot stays portrait), the simulator is stuck in portrait. Run `xcrun simctl shutdown all` and rerun. It is not a code regression.
 - Task removal: macOS offers **Delete** (`DELETE /tasks/:id`, as on the web) and iOS offers **Cancel** (`PUT /tasks/:id {status: cancelled}`). Both are valid Worker routes (`.deleteTask`, `.cancelTask`). Choosing one UX for both apps is still open.
 - `createPayload` drops `scheduled_at: null` and empty `close_steps`, as macOS did before, for both apps.
 - Icon sources: `scripts/vendor-icons.mjs` (macOS) writes `Sources/TaskSquadDesign/Vectors/Icons`. `packages/ios/scripts/generate_icons.swift` (run by `make build` in `packages/ios`) regenerates PDF imagesets when a source digest changes.

@@ -399,7 +399,8 @@ struct CustomerWorkspace: View {
         var fields = CustomerField.fields(for: section, record: record)
         if section == .agents, updating { fields.removeAll { $0.id != "role" } }
         if duplicate, let index = fields.firstIndex(where: { $0.id == "name" }) { fields[index].initial = .string((record?.title ?? "") + "-copy") }
-        editor = CustomerEditorRequest(title: "\(updating ? "Edit" : "New") \(section.rawValue)", fields: fields, attachments: section == .inbox, phases: section == .planners, submitLabel: updating ? "Save" : "Create") { values, files in
+        editor = CustomerEditorRequest(title: "\(updating ? "Edit" : "New") \(section.rawValue)", fields: fields, attachments: section == .inbox, phases: section == .planners, submitLabel: updating ? "Save" : "Create",
+                                        draftKey: updating || duplicate ? nil : model.workspace.draftScope("create." + section.rawValue).key) { values, files in
             let body = values
             if section == .conveyors {
                 guard (0...23).contains(Int(body["hour"]?.number ?? -1)), (0...59).contains(Int(body["minute"]?.number ?? -1)), TimeZone(identifier: body["timezone"]?.string ?? "") != nil else {

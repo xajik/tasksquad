@@ -61,6 +61,8 @@ extension WorkspaceSection {
     private var notificationTask: Task<Void, Never>?
     private var notificationRefreshing = false
     private let suppliedAPI: CustomerAPI?
+    /// Unsent editor and reply text, scoped by `WorkspaceStore.draftScope`; cleared on sign-out.
+    var drafts: WorkspaceDraftStore { WorkspaceDraftStore(defaults: defaults, prefix: "customer.draft.") }
 
     init(defaults: UserDefaults = .standard, api: CustomerAPI? = nil) {
         self.defaults = defaults; suppliedAPI = api
@@ -148,7 +150,7 @@ extension WorkspaceSection {
     func signOut() async {
         notificationTask?.cancel(); notificationTask = nil
         cancelLogin(); await loginTask?.value
-        generation = UUID(); clearAccount()
+        generation = UUID(); clearAccount(); drafts.clear()
         do { try await auth().logout() } catch { self.error = error.localizedDescription }
         authentication = nil
         configureWorkspace()

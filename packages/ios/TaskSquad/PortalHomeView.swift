@@ -96,7 +96,7 @@ struct PortalHomeView: View {
     private func create() {
         let section = model.section, project = model.projectID, context = model.context
         model.error = nil
-        editor = MobileEditorRequest(title: section == .inbox ? "New task" : "New " + section.rawValue.lowercased(), fields: WorkspaceField.fields(for: section), draftKey: "\(model.api.baseURL.absoluteString).\(model.profile?.id ?? "").\(project).\(section.rawValue)", eligibleAgentsOnly: section == .portals, attachments: section == .inbox, phases: section == .planners, submitLabel: section == .inbox ? "Send" : "Create") { body, files in
+        editor = MobileEditorRequest(title: section == .inbox ? "New task" : "New " + section.rawValue.lowercased(), fields: WorkspaceField.fields(for: section), draftKey: model.draftScope("create." + section.rawValue).key, eligibleAgentsOnly: section == .portals, attachments: section == .inbox, phases: section == .planners, submitLabel: section == .inbox ? "Send" : "Create") { body, files in
             guard context == model.context, let result = await model.perform(.create(section, project: project, values: body, files: files)) else { return false }
             await model.refresh()
             let record = CustomerRecord(result)

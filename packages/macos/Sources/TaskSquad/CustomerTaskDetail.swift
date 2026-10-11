@@ -20,6 +20,7 @@ struct CustomerTaskDetail: View {
     @State private var sending = false
     @State private var supervisorPort = "7374"
     private var shownMessages: [CustomerRecord] { supervisorOnly ? model.messages.filter { $0.text("role") == "supervisor" } : model.messages }
+    private var replyDraft: WorkspaceDraftScope { model.workspace.draftScope("reply." + record.id) }
     private var active: Bool { !["done", "failed"].contains(record.status) }
     private var pendingReply: CustomerRecord? {
         model.messages.first { $0.text("role") == "user" && $0.number("scheduled_at") > Date().timeIntervalSince1970 * 1000 && $0.text("sender_id") == model.profile?.id }
@@ -227,6 +228,8 @@ struct CustomerTaskDetail: View {
             }
             VStack(spacing: 0) {
                 TextEditor(text: $reply).font(.system(size: 13)).scrollContentBackground(.hidden)
+                    .onAppear { reply = model.drafts.load(replyDraft)?["body"]?.string ?? reply }
+                    .onChange(of: reply) { text in if text.isEmpty { model.drafts.remove(replyDraft) } else { model.drafts.save(["body": .string(text)], scope: replyDraft) } }
                     .frame(minHeight: 64, maxHeight: 120).padding(.horizontal, 10).padding(.top, 8)
                     .overlay(alignment: .topLeading) {
                         if reply.isEmpty { Text("Write your reply…").font(.system(size: 13)).foregroundStyle(Theme.mutedForeground).padding(.horizontal, 15).padding(.top, 8).allowsHitTesting(false) }

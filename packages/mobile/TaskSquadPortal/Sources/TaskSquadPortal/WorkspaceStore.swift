@@ -61,6 +61,10 @@ import Combine
         default: return record.text("first_message_type") == origin
         }
     }
+    /// Drafts are isolated per API origin, account, project and operation.
+    public func draftScope(_ operation: String) -> WorkspaceDraftScope {
+        WorkspaceDraftScope(origin: api.baseURL.absoluteString, account: profile?.id ?? "", project: projectID, operation: operation)
+    }
     public func agentName(_ id: String) -> String { agents.first { $0.id == id }?.title ?? id }
     public var canCreate: Bool { WorkspacePolicy.canCreate(section: section, project: projectID, role: currentProject?.text("role") ?? "", isPro: isPro, agents: agents, records: records) }
     private func invalidateQuery() { generation = UUID(); refreshID = UUID(); records = []; rollups = []; hasMore = false; loading = false; refreshedAt = nil }
