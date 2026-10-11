@@ -14,5 +14,6 @@ let package = Package(
         .target(name: "TaskSquadDesign", resources: [.copy("Vectors"), .process("Assets.xcassets")]),
         .target(name: "TaskSquadPortalUI", dependencies: ["TaskSquadPortal", "TaskSquadDesign"]),
         .testTarget(name: "TaskSquadPortalTests", dependencies: ["TaskSquadPortal", "TaskSquadDesign"]),
+        .testTarget(name: "TaskSquadPortalUITests", dependencies: ["TaskSquadPortalUI", "TaskSquadPortal", "TaskSquadDesign"]),
     ]
 )

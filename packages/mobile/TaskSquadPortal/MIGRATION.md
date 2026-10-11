@@ -59,7 +59,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] `TSQCard`, `TSQEmptyState`, `TSQErrorBanner`, `TSQStatusDot` and `TSQPageHeader` live in `TaskSquadPortalUI`. `TSQIcon` (asset catalog) is in `TaskSquadDesign`. macOS uses them via aliases. iOS uses the empty state, error banner and icon (`MobileIcon` wraps `TSQIcon`).
 - [ ] `RecordRow`, `ConversationMessage` + authenticated attachments, `PhaseSummary`, `MetricTile`, `TerminalConnectionHeader`
 - [x] `MarkdownContent` uses `TSQTheme` tokens (and table header tint spans the row); `MarkdownBlock.parse` tests moved to `MarkdownBlockTests`
-- [ ] `TaskSquadPortalUI` render smoke tests
+- [x] `TaskSquadPortalUI` render smoke tests (`Tests/TaskSquadPortalUITests`, macOS `ImageRenderer`): icons must draw non-blank pixels, and components render in light and dark
 
 ### E. Remove compatibility layers
 - [ ] iOS uses `CustomerAPI` directly; delete `PortalAPI`
