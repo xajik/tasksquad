@@ -268,6 +268,17 @@ actor Dreamer {
     }
 }
 
+/// `tsq kb init` entry point for the command line (Go: dreamer.RunInit).
+public enum KnowledgeBaseInit {
+    public static func start(configuration: DaemonConfiguration, workDir: String, agentID: String, paths: TaskSquadPaths,
+                             environment: [String: String], tmux: TmuxConnection) async throws -> (session: String, log: URL) {
+        let binDir = URL(fileURLWithPath: CommandLine.arguments.first ?? "").deletingLastPathComponent().path
+        let dreamer = Dreamer(configuration: configuration, searchPath: environment["PATH"] ?? "", daemonBinDir: binDir, paths: paths, tmux: tmux,
+                              post: { _, _, _ in .object([:]) }, get: { _, _ in .object([:]) })
+        return try await dreamer.startKBInit(workDir: workDir, agentID: agentID)
+    }
+}
+
 private actor ProcessOutput {
     var data = Data()
     func append(_ chunk: Data) { data.append(chunk) }

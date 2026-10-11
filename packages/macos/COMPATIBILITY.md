@@ -68,6 +68,7 @@ Status: **missing** (no Swift implementation), **partial** (some behaviour or te
 | `metrics/lifecycle.go`, `codex_lifecycle.go`, `report.go` | `SessionLifecycle.swift`, `SessionReport.swift` | `SessionLifecycleTests`, `SessionReportTests` | done | — |
 | `harness` reconcile, `skills`, `agents`, `commands` sync | `ResourceSync.swift` | `ResourceSyncTests` | partial | Port `reconcile_test`, `codex_test`; live D1 catalog/ETags |
 | `upload` | `ArtifactUploader.swift` | `EngineIntegrationTests` | done | — |
+| `memory`, `kb` storage/search | `LocalKnowledge.swift` | `CLIGoldenTests` | done | — |
 | `memory`, `kb` close-step learning | `DaemonEngine` close sequence | — | partial | Verify against Go close steps; tests |
 | `orphan` sweep (startup + hourly) | `OrphanSweep.swift` | `OrphanSweepTests` | done | A response without `states` is a failed lookup (Go would kill every session) |
 | `supervisor` (`tsq-sup-*`) | `Supervisor.swift` | `SupervisorTests` (incl. byte-golden vs Go `buildContextBlock`/`printModeCmd`) | done | Screenshot snapshot + closing attachment and analytics wired. Go bugs kept for parity: `CancelForTask` kills `tsq-sup-<first 8>` (never the real session), and the `PATH=… cat … \| cli` prefix only reaches `cat`, not the CLI |
@@ -98,7 +99,7 @@ Output text and exit codes must match Go byte-for-byte: agents and skills parse 
 | `logs` | done (golden) |
 | `screenshot` | done (golden for output and errors; PNG pixels differ by rasterizer) |
 | `report`, `skill`, `send-image` | done (golden, incl. Go flag errors and `-h`; identical request bodies). Connection-refused error text differs from Go's net/http wording |
-| `memory`, `kb`, `tags` | missing |
+| `memory`, `kb`, `tags` | done: offline paths golden (`testMemoryKBAndTagsOffline`: local push/search, kb search, usage and config errors); cloud paths in `CLINetworkTests` (Go reads the real Keychain, so they can't run against the Go binary) |
 | `projects`, `agents`, `tasks`, `portals`, `resources`, `doctor` | missing |
 
 ### macOS app lifecycle

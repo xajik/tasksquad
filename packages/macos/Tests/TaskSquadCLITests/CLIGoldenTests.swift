@@ -46,11 +46,14 @@ final class CLIGoldenTests: XCTestCase {
         if let root { try? FileManager.default.removeItem(at: root) }
     }
 
+    private var cwd: String?
+
     private func go(_ args: [String], stdin: String = "") throws -> (Int32, String, String) {
         let process = Process()
+        if let cwd { process.currentDirectoryURL = URL(fileURLWithPath: cwd) }
         process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["TSQ_GO_TSQ"]!)
         process.arguments = args
-        process.environment = environment
+        process.environment = environment.merging(cwd.map { ["PWD": $0] } ?? [:]) { $1 }
         let out = Pipe(), err = Pipe(), input = Pipe()
         process.standardOutput = out; process.standardError = err; process.standardInput = input
         try process.run()
@@ -63,7 +66,7 @@ final class CLIGoldenTests: XCTestCase {
     private func swift(_ args: [String], stdin: String = "") async -> (Int32, String, String) {
         let captured = Captured()
         let context = CLIContext(environment: environment, stdout: { captured.write($0, error: false) }, stderr: { captured.write($0, error: true) },
-                                 stdin: { Data(stdin.utf8) }, interactive: { _, _, _ in 1 })
+                                 stdin: { Data(stdin.utf8) }, interactive: { _, _, _ in 1 }, workingDirectory: cwd ?? root.path)
         let code = await TSQCommandLine.run(args, context: context)
         return (code, captured.stdout, captured.stderr)
     }
@@ -142,5 +145,30 @@ final class CLIGoldenTests: XCTestCase {
         let failing = try go(["screenshot", "nosuch"]), mine = await swift(["screenshot", "nosuch"])
         XCTAssertEqual(mine.0, failing.0)
         XCTAssertTrue(mine.2.hasPrefix("error: ") && mine.2.hasSuffix("— session \"tsq-nosuch\" may not exist\n"), mine.2)
+    }
+
+    func testMemoryKBAndTagsOffline() async throws {
+        let work = root.appendingPathComponent("proj")
+        cwd = work.path
+        try FileManager.default.createDirectory(at: work.appendingPathComponent("tsq/kb/deep"), withIntermediateDirectories: true)
+        try Data("---\ntitle: Build steps\ntags: ci, make\n---\n\nRun make test before pushing. \(String(repeating: "padding words ", count: 20))".utf8)
+            .write(to: work.appendingPathComponent("tsq/kb/build.md"))
+        try Data("No frontmatter here, deploy with wrangler é.".utf8).write(to: work.appendingPathComponent("tsq/kb/deep/deploy.md"))
+        for args in [["memory"], ["memory", "bogus"], ["memory", "push"], ["memory", "push", "--scope", "local"],
+                     ["memory", "push", "--scope", "local", "--category", "events"], ["memory", "search"],
+                     ["kb"], ["kb", "bogus"], ["kb", "search"], ["kb", "search", "make"], ["kb", "search", "WRANGLER"], ["kb", "search", "absent"],
+                     ["tags"], ["tags", "pull"], ["kb", "init"], ["memory", "push", "--scope", "global", "--category", "events", "--title", "t"]] {
+            try await assertSame(args, stdin: "content")
+        }
+        // Local pushes: same file layout and text from both (Go first, then Swift numbering -2).
+        let g = try go(["memory", "push", "--scope", "local", "--category", "events", "--title", "Ship it!", "--tags", "a, b,,c"], stdin: "Body line\n\n")
+        let s = await swift(["memory", "push", "--scope", "local", "--category", "events", "--title", "Ship it!", "--tags", "a, b,,c"], stdin: "Body line\n\n")
+        XCTAssertEqual(g.0, 0); XCTAssertEqual(s.0, 0)
+        let goPath = String(g.1.dropFirst("Saved local memory entry: ".count).dropLast())
+        let swiftPath = String(s.1.dropFirst("Saved local memory entry: ".count).dropLast())
+        XCTAssertEqual(swiftPath, String(goPath.dropLast(3)) + "-2.md")
+        XCTAssertEqual(try String(contentsOfFile: swiftPath, encoding: .utf8), try String(contentsOfFile: goPath, encoding: .utf8))
+        try await assertSame(["memory", "search", "body"])
+        try await assertSame(["memory", "search", "nothing-matches"])
     }
 }
