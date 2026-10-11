@@ -1,0 +1,46 @@
+name: TaskSquad
+options:
+  bundleIdPrefix: ai.tasksquad
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_TSQAPIBaseURL: https://api.tasksquad.ai
+    INFOPLIST_KEY_TSQDashboardURL: https://tasksquad.ai
+    INFOPLIST_KEY_CFBundleDisplayName: TaskSquad Portal
+    INFOPLIST_KEY_UIUserInterfaceStyle: Automatic
+targets:
+  TaskSquad:
+    type: application
+    platform: iOS
+    sources:
+      - path: TaskSquad
+    dependencies:
+      - package: TaskSquadPortal
+      - package: SwiftTerm
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.tasksquad.portal
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_CFBundleURLTypes:
+          - CFBundleURLName: ai.tasksquad.portal.auth
+            CFBundleURLSchemes:
+              - tasksquad-portal
+  TaskSquadUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: TaskSquadUITests
+    dependencies:
+      - target: TaskSquad
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.tasksquad.portal.uitests
+packages:
+  TaskSquadPortal:
+    path: ../mobile/TaskSquadPortal
+  SwiftTerm:
+    path: ../macos/.build/checkouts/SwiftTerm

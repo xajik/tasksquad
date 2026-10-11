@@ -1,0 +1,463 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		14FBF6994DB867F459886C06 /* PortalHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C2060585F24003A06B8E88A /* PortalHomeView.swift */; };
+		35C95D01C813ED2EF6C26CA1 /* MobileAuthFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */; };
+		60CB3BFF7EF9CCAA1C7F89AE /* PortalTerminalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A24DFD7CDB332FEB0BFA475 /* PortalTerminalScreen.swift */; };
+		84CB2C312440586E11EDA45A /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 55F351BEB49BF4FC2D89436E /* SwiftTerm */; };
+		A3081A9FB955E187348AB96E /* TaskSquadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1756F65F3A291F9D9547D06 /* TaskSquadApp.swift */; };
+		C377783D45D1AA5E610332E0 /* TaskSquadPortal in Frameworks */ = {isa = PBXBuildFile; productRef = 05923C9AD5D3F2A79B7BD7C8 /* TaskSquadPortal */; };
+		C689009D9255D34FD761F0C1 /* PortalFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D799CB7685A475963E63111 /* PortalFlowTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		11CAB20E9202E1654A419B8D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0A5C99B51911152B352B6A70 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BD53E6EBB01F95472F1128E3;
+			remoteInfo = TaskSquad;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		2BCC62A613A83F8C03BD4FA2 /* TaskSquad.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TaskSquad.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2DB780B1B653C4F0694E2D32 /* SwiftTerm */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SwiftTerm; path = ../macos/.build/checkouts/SwiftTerm; sourceTree = SOURCE_ROOT; };
+		3D799CB7685A475963E63111 /* PortalFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalFlowTests.swift; sourceTree = "<group>"; };
+		7FE0916A7F339476E58B09DB /* TaskSquadPortal */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TaskSquadPortal; path = ../mobile/TaskSquadPortal; sourceTree = SOURCE_ROOT; };
+		8A24DFD7CDB332FEB0BFA475 /* PortalTerminalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalTerminalScreen.swift; sourceTree = "<group>"; };
+		9C2060585F24003A06B8E88A /* PortalHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalHomeView.swift; sourceTree = "<group>"; };
+		AF431F3FA8AA7300FDE4DE83 /* TaskSquadUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TaskSquadUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAuthFlow.swift; sourceTree = "<group>"; };
+		F1756F65F3A291F9D9547D06 /* TaskSquadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskSquadApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0432533C6B50C970FCC16AE6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C377783D45D1AA5E610332E0 /* TaskSquadPortal in Frameworks */,
+				84CB2C312440586E11EDA45A /* SwiftTerm in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2E7007C108EDC9306302DA7C /* TaskSquadUITests */ = {
+			isa = PBXGroup;
+			children = (
+				3D799CB7685A475963E63111 /* PortalFlowTests.swift */,
+			);
+			path = TaskSquadUITests;
+			sourceTree = "<group>";
+		};
+		86B5879F4D6A031FFDB26923 = {
+			isa = PBXGroup;
+			children = (
+				F5ECD87333E3C4CD9BD17DCF /* Packages */,
+				F5142DA14E144B21DC26BB64 /* TaskSquad */,
+				2E7007C108EDC9306302DA7C /* TaskSquadUITests */,
+				A28748E4DC99113992B70991 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A28748E4DC99113992B70991 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2BCC62A613A83F8C03BD4FA2 /* TaskSquad.app */,
+				AF431F3FA8AA7300FDE4DE83 /* TaskSquadUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		F5142DA14E144B21DC26BB64 /* TaskSquad */ = {
+			isa = PBXGroup;
+			children = (
+				D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */,
+				9C2060585F24003A06B8E88A /* PortalHomeView.swift */,
+				8A24DFD7CDB332FEB0BFA475 /* PortalTerminalScreen.swift */,
+				F1756F65F3A291F9D9547D06 /* TaskSquadApp.swift */,
+			);
+			path = TaskSquad;
+			sourceTree = "<group>";
+		};
+		F5ECD87333E3C4CD9BD17DCF /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				2DB780B1B653C4F0694E2D32 /* SwiftTerm */,
+				7FE0916A7F339476E58B09DB /* TaskSquadPortal */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BD53E6EBB01F95472F1128E3 /* TaskSquad */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 341170187629420654C1A2F5 /* Build configuration list for PBXNativeTarget "TaskSquad" */;
+			buildPhases = (
+				5E3D5B6434DA558C9A2AE53E /* Sources */,
+				0432533C6B50C970FCC16AE6 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TaskSquad;
+			packageProductDependencies = (
+				05923C9AD5D3F2A79B7BD7C8 /* TaskSquadPortal */,
+				55F351BEB49BF4FC2D89436E /* SwiftTerm */,
+			);
+			productName = TaskSquad;
+			productReference = 2BCC62A613A83F8C03BD4FA2 /* TaskSquad.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CED5F74F3FB44649AB99B8D4 /* TaskSquadUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 344E45C7FE0F2B1336C6E583 /* Build configuration list for PBXNativeTarget "TaskSquadUITests" */;
+			buildPhases = (
+				57EE1B7FBD4B264237BC4C0B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5ACC3BB7826A05DF87B615B8 /* PBXTargetDependency */,
+			);
+			name = TaskSquadUITests;
+			packageProductDependencies = (
+			);
+			productName = TaskSquadUITests;
+			productReference = AF431F3FA8AA7300FDE4DE83 /* TaskSquadUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0A5C99B51911152B352B6A70 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					CED5F74F3FB44649AB99B8D4 = {
+						TestTargetID = BD53E6EBB01F95472F1128E3;
+					};
+				};
+			};
+			buildConfigurationList = F54D154E6F7FFE55FCF378F5 /* Build configuration list for PBXProject "TaskSquad" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 86B5879F4D6A031FFDB26923;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				58416CCC17954FB9BD52FB1E /* XCLocalSwiftPackageReference "../macos/.build/checkouts/SwiftTerm" */,
+				B35F6F2DE9D375B6E039A864 /* XCLocalSwiftPackageReference "../mobile/TaskSquadPortal" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A28748E4DC99113992B70991 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BD53E6EBB01F95472F1128E3 /* TaskSquad */,
+				CED5F74F3FB44649AB99B8D4 /* TaskSquadUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		57EE1B7FBD4B264237BC4C0B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C689009D9255D34FD761F0C1 /* PortalFlowTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5E3D5B6434DA558C9A2AE53E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				35C95D01C813ED2EF6C26CA1 /* MobileAuthFlow.swift in Sources */,
+				14FBF6994DB867F459886C06 /* PortalHomeView.swift in Sources */,
+				60CB3BFF7EF9CCAA1C7F89AE /* PortalTerminalScreen.swift in Sources */,
+				A3081A9FB955E187348AB96E /* TaskSquadApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5ACC3BB7826A05DF87B615B8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BD53E6EBB01F95472F1128E3 /* TaskSquad */;
+			targetProxy = 11CAB20E9202E1654A419B8D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		14B01C9599C230C920A7D532 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLName\": \"ai.tasksquad.portal.auth\", \"CFBundleURLSchemes\": [\"tasksquad-portal\"]]]";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.tasksquad.portal;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		16DECC20927528BA3512CE5F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLName\": \"ai.tasksquad.portal.auth\", \"CFBundleURLSchemes\": [\"tasksquad-portal\"]]]";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.tasksquad.portal;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		1A86DF8EC1855E3C306DA680 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.tasksquad.portal.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = TaskSquad;
+			};
+			name = Debug;
+		};
+		9112DF7502014F9D43EC8EE6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.tasksquad.portal.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = TaskSquad;
+			};
+			name = Release;
+		};
+		BAD62B25E4FB7BD834C1ECB3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "TaskSquad Portal";
+				INFOPLIST_KEY_TSQAPIBaseURL = "https://api.tasksquad.ai";
+				INFOPLIST_KEY_TSQDashboardURL = "https://tasksquad.ai";
+				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		FFF06127741DD5C2F72422BF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "TaskSquad Portal";
+				INFOPLIST_KEY_TSQAPIBaseURL = "https://api.tasksquad.ai";
+				INFOPLIST_KEY_TSQDashboardURL = "https://tasksquad.ai";
+				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		341170187629420654C1A2F5 /* Build configuration list for PBXNativeTarget "TaskSquad" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				14B01C9599C230C920A7D532 /* Debug */,
+				16DECC20927528BA3512CE5F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		344E45C7FE0F2B1336C6E583 /* Build configuration list for PBXNativeTarget "TaskSquadUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A86DF8EC1855E3C306DA680 /* Debug */,
+				9112DF7502014F9D43EC8EE6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F54D154E6F7FFE55FCF378F5 /* Build configuration list for PBXProject "TaskSquad" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BAD62B25E4FB7BD834C1ECB3 /* Debug */,
+				FFF06127741DD5C2F72422BF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		58416CCC17954FB9BD52FB1E /* XCLocalSwiftPackageReference "../macos/.build/checkouts/SwiftTerm" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../macos/.build/checkouts/SwiftTerm;
+		};
+		B35F6F2DE9D375B6E039A864 /* XCLocalSwiftPackageReference "../mobile/TaskSquadPortal" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../mobile/TaskSquadPortal;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		05923C9AD5D3F2A79B7BD7C8 /* TaskSquadPortal */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TaskSquadPortal;
+		};
+		55F351BEB49BF4FC2D89436E /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SwiftTerm;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 0A5C99B51911152B352B6A70 /* Project object */;
+}
