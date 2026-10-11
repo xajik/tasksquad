@@ -1,4 +1,4 @@
-.PHONY: build test test-compatibility test-keychain test-ui dev app app-check app-signed package install smoke workflow-check clean
+.PHONY: build test test-compatibility test-keychain test-ui dev app app-check app-signed package install install-cli cli smoke workflow-check clean
 
 # Bumped by `make bump` at the repo root; release workflows pass VERSION explicitly.
 VERSION ?= 0.4.3
@@ -58,6 +58,18 @@ package:
 
 install: app-check
 	APP_DIR="$(APP_DIR)" ./scripts/install-app.sh
+
+# Standalone tsq tarball (CLI + headless daemon), like the Go release archives.
+cli:
+	VERSION="$(VERSION)" ./scripts/build-cli.sh
+
+# Puts the installed app's tsq on PATH; never replaces a tsq that isn't a link to an app.
+CLI_LINK ?= $(HOME)/.local/bin/tsq
+install-cli:
+	@target="$(APP_DIR)/TaskSquad Native.app/Contents/MacOS/tsq"; test -x "$$target" || { echo "Install the app first (make install)"; exit 1; }; \
+	mkdir -p "$$(dirname "$(CLI_LINK)")"; \
+	if [ -e "$(CLI_LINK)" ] && [ ! -L "$(CLI_LINK)" ]; then echo "$(CLI_LINK) exists and is not a link; leaving it (Go tsq?)"; exit 1; fi; \
+	ln -sfn "$$target" "$(CLI_LINK)" && echo "$(CLI_LINK) -> $$target"
 
 smoke:
 	open "$(APP_DIR)/TaskSquad Native.app" --args --config "$(SMOKE_CONFIG)"

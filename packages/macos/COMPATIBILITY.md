@@ -113,6 +113,13 @@ Output text and exit codes must match Go byte-for-byte: agents and skills parse 
 | Menu: email, live stats, Pause/Resume Pulling, Run on OS Boot, Open Config, Logout | done | Deliberate difference: Go's pause flag is never read by its poller, so pausing does not stop task pickup there; Swift stops new pickup while heartbeats continue |
 | Go ↔ Swift switching after drain | partial | No duplicate task claims; config/history/credentials |
 
+### Distribution
+
+| Go | Swift | Status |
+|---|---|---|
+| `tsq` binary (CLI + headless daemon, GoReleaser archives) | `tsq` executable target (no AppKit/SwiftUI): subcommands via `TaskSquadCLI`, no subcommand runs `DaemonRunner` (daemon log, wake lock, first-run autostart, SIGINT/SIGTERM drain); `make cli` → `tsq_Darwin_universal.tar.gz`, signed and notarized by the stable workflow | done (golden: daemon flags, `-h`, config errors) |
+| Tray app (`TaskSquad.app`, Homebrew cask) | `TaskSquad Native.app` with `Contents/MacOS/tsq` beside the app binary; `make install-cli` links it onto PATH | done; Homebrew cask switch waits for cut-over |
+
 ### Qualification (exit criteria for the migration decision)
 
 - [ ] Differential E2E, Go then Swift, on the Pi agent: task → waiting_input → reply → done; deliberate close; crash; attachments in/out; Portal open/close; web live terminal; supervisor trigger; daemon switching.

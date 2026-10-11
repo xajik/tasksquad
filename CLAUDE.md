@@ -60,6 +60,7 @@ make test                      # swift test;  swift test --filter TestClassName 
 make test-compatibility        # builds Go reference oracle, then Swift tests
 make test-ui                   # offscreen UI renders → .build/ui-artifacts/
 make app-check | make install  # universal .app + checks | install ~/Applications/TaskSquad Native.app
+make cli | make install-cli    # standalone tsq tarball (CLI + headless daemon) | link the app's tsq into ~/.local/bin
 
 # iOS portal (packages/ios) — needs xcodegen; project file is generated
 make build | make test         # xcodegen generate + xcodebuild on iPhone 17 Pro / iOS 26.1 simulator

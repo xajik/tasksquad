@@ -24,6 +24,8 @@ public struct CLIContext: Sendable {
     /// Cloud orchestration never follows redirects (Go: CustomerClient).
     public var customerTransport: any HTTPTransport
     public var version: String
+    /// Go's os.Args[0], shown in the daemon's "Usage of …" header.
+    public var programName = CommandLine.arguments.first ?? "tsq"
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment,
                 stdout: @escaping @Sendable (String) -> Void = { FileHandle.standardOutput.write(Data($0.utf8)) },

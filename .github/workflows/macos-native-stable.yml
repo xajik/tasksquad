@@ -71,6 +71,17 @@ jobs:
           NOTARY_PROFILE: tasksquad-native-stable
           NOTARY_KEYCHAIN: ${{ runner.temp }}/tasksquad-native-stable.keychain-db
         run: make app-signed package
+      - name: Build, sign, and notarize the standalone tsq CLI
+        env:
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          NOTARY_KEYCHAIN: ${{ runner.temp }}/tasksquad-native-stable.keychain-db
+        run: |
+          set -euo pipefail
+          make cli
+          lipo -verify_arch arm64 x86_64 dist/cli/tsq
+          ditto -c -k dist/cli/tsq dist/tsq-notarization.zip
+          xcrun notarytool submit dist/tsq-notarization.zip --keychain-profile tasksquad-native-stable \
+            --keychain "$NOTARY_KEYCHAIN" --wait
       - name: Verify signed artifact and prepare release notes
         run: |
           set -euo pipefail
@@ -87,7 +98,8 @@ jobs:
           tag="macos-v$VERSION"
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
             --title "TaskSquad Native $VERSION" --notes-file STABLE.md \
-            "dist/TaskSquad-Native-$VERSION.dmg" "dist/TaskSquad-Native-$VERSION.dmg.sha256"
+            "dist/TaskSquad-Native-$VERSION.dmg" "dist/TaskSquad-Native-$VERSION.dmg.sha256" \
+            dist/tsq_Darwin_universal.tar.gz dist/tsq_Darwin_universal.tar.gz.sha256
       - name: Remove signing material
         if: always()
         run: |

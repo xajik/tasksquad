@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .executable(name: "TaskSquad", targets: ["TaskSquad"]),
+        .executable(name: "tsq", targets: ["tsq"]),
         .library(name: "TaskSquadCore", targets: ["TaskSquadCore"]),
     ],
     dependencies: [
@@ -16,6 +17,7 @@ let package = Package(
         .target(name: "TaskSquadCore", dependencies: [.product(name: "TaskSquadPortal", package: "TaskSquadPortal")],
                 resources: [.copy("Resources/Fonts")]),
         .target(name: "TaskSquadCLI", dependencies: ["TaskSquadCore"]),
+        .executableTarget(name: "tsq", dependencies: ["TaskSquadCLI", "TaskSquadCore"]),
         .executableTarget(name: "TaskSquad", dependencies: ["TaskSquadCore", "TaskSquadCLI", .product(name: "SwiftTerm", package: "SwiftTerm"),
                                                              .product(name: "TaskSquadPortal", package: "TaskSquadPortal"),
                                                              .product(name: "TaskSquadDesign", package: "TaskSquadPortal"),

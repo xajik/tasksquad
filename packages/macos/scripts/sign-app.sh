@@ -3,6 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${SIGNING_IDENTITY:?Set SIGNING_IDENTITY to your Developer ID Application identity}"
 : "${NOTARY_PROFILE:?Set NOTARY_PROFILE to an existing notarytool Keychain profile}"
+# Nested code is signed before its container.
+codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" dist/TaskSquad.app/Contents/MacOS/tsq
 codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" dist/TaskSquad.app
 codesign --verify --deep --strict --verbose=2 dist/TaskSquad.app
 ditto -c -k --keepParent dist/TaskSquad.app dist/TaskSquad-notarization.zip

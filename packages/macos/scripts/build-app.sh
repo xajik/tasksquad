@@ -19,7 +19,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 for arch in $ARCHS; do
     swift build -c release --arch "$arch" --scratch-path ".build/$arch"
     path=$(swift build -c release --arch "$arch" --scratch-path ".build/$arch" --show-bin-path)
+    swift build -c release --arch "$arch" --scratch-path ".build/$arch" --product tsq
     cp "$path/TaskSquad" "dist/TaskSquad-$arch"
+    cp "$path/tsq" "dist/tsq-app-$arch"
     # SwiftTerm's Metal shaders are architecture-independent SwiftPM resources.
     # Its packaged-app lookup includes Contents/Resources.
     if [[ "$arch" == "$first" ]]; then
@@ -33,6 +35,9 @@ for arch in $ARCHS; do
 done
 slices=(); for arch in $ARCHS; do slices+=("dist/TaskSquad-$arch"); done
 lipo -create "${slices[@]}" -output "$APP/Contents/MacOS/TaskSquad"
+# The headless `tsq` CLI/daemon ships beside the app executable (same engine, no UI).
+cli=(); for arch in $ARCHS; do cli+=("dist/tsq-app-$arch"); done
+lipo -create "${cli[@]}" -output "$APP/Contents/MacOS/tsq"
 VERSION="$VERSION" /usr/bin/python3 - "$APP/Contents/Info.plist" <<'PY'
 import os, plistlib, sys
 version = os.environ['VERSION']
@@ -55,5 +60,6 @@ with open(sys.argv[1], 'wb') as output:
 PY
 swift scripts/Icon.swift dist/AppIcon.iconset ../../icon/tasksquad-favicon.svg
 iconutil -c icns dist/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
+codesign --force --sign - "$APP/Contents/MacOS/tsq"
 codesign --force --sign - "$APP"
 echo "Built $APP ($VERSION, ${ARCHS// / + })"

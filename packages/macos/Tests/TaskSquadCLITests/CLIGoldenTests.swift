@@ -65,9 +65,11 @@ final class CLIGoldenTests: XCTestCase {
 
     private func swift(_ args: [String], stdin: String = "") async -> (Int32, String, String) {
         let captured = Captured()
-        let context = CLIContext(environment: environment, stdout: { captured.write($0, error: false) }, stderr: { captured.write($0, error: true) },
+        let context0 = CLIContext(environment: environment, stdout: { captured.write($0, error: false) }, stderr: { captured.write($0, error: true) },
                                  stdin: { Data(stdin.utf8) }, interactive: { _, _, _ in 1 }, workingDirectory: cwd ?? root.path)
-        let code = await TSQCommandLine.run(args, context: context)
+        var context = context0
+        context.programName = ProcessInfo.processInfo.environment["TSQ_GO_TSQ"]!
+        let code = TSQCommandLine.handles(args) ? await TSQCommandLine.run(args, context: context) : await DaemonRunner.run(args, context: context)
         return (code, captured.stdout, captured.stderr)
     }
 
@@ -190,5 +192,15 @@ final class CLIGoldenTests: XCTestCase {
         try FileManager.default.createDirectory(at: root.appendingPathComponent(".tasksquad"), withIntermediateDirectories: true)
         try Data("[server]\nurl = 'https://example.invalid'\n".utf8).write(to: root.appendingPathComponent(".tasksquad/config.toml"))
         try await assertSame(["doctor", "--json"])
+    }
+
+    func testDaemonEntryPointFlagsAndConfigErrors() async throws {
+        try await assertSame(["-version"])
+        try await assertSame(["--version"])
+        try await assertSame(["-bogus"])
+        try await assertSame(["-h"])
+        try await assertSame(["--config", root.appendingPathComponent("missing.toml").path])
+        try Data("[server]\nurl='x'\n".utf8).write(to: root.appendingPathComponent("noagents.toml"))
+        try await assertSame(["--config", root.appendingPathComponent("noagents.toml").path])
     }
 }

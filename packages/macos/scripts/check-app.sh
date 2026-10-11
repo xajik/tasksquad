@@ -17,6 +17,11 @@ design=$(bundle_resources TaskSquadPortal_TaskSquadDesign.bundle)
 test -s "$design/Vectors/Icons/inbox.svg" || { echo "Missing icon resources in $design" >&2; exit 1; }
 test -s "$design/Vectors/Brand/logo.svg" || { echo "Missing brand resources in $design" >&2; exit 1; }
 "$binary" --version
+cli="$APP/Contents/MacOS/tsq"
+lipo "$cli" -verify_arch ${ARCHS:-$(lipo -archs "$binary")}
+! otool -L "$cli" | grep -qiE 'AppKit|SwiftUI' || { echo "tsq must not link UI frameworks" >&2; exit 1; }
+"$cli" --version
+"$cli" sessions > /dev/null
 "$binary" --check-config Tests/TaskSquadCoreTests/Fixtures/full.toml > /dev/null
 if "$binary" --check-config Tests/TaskSquadCoreTests/Fixtures/invalid-type.toml 2>/dev/null; then
     echo "App accepted invalid configuration" >&2
