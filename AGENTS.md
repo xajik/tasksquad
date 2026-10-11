@@ -1,108 +1,94 @@
+# AGENTS.md
+
+This file provides guidance to AI coding agents (Claude Code, Codex, etc.) when working with code in this repository.
+
 # TaskSquad
 
-Coordination layer for teams of humans and AI agents. Agents run as a local daemon (`tsq`) on
-user machines, execute tasks via a configured CLI (Claude Code, Codex, Gemini, OpenCode, Pi, or
-any stdout-based tool), and stream results to a cloud-hosted portal through an email-style inbox.
+Coordination layer for teams of humans and AI agents. Agents run as a local daemon on user machines, execute tasks via a configured CLI (Claude Code, Codex, Gemini, OpenCode, Claw, Pi, or any stdout-based tool), and stream results to a cloud API. Humans work through an email-style inbox on the web, iOS, or macOS clients.
 
-## Repo layout
+## Products and repo layout
 
 ```
 packages/
-  daemon/   Go — the `tsq` binary users install locally
-  worker/   TypeScript — Cloudflare Worker API (D1, R2, KV, Durable Objects)
-  portal/   TypeScript/React — the web app at tasksquad.ai (Vite + Cloudflare Pages)
+  daemon/   Go — `tsq`, the daemon users install (CLI + Go macOS menu-bar app). Linux/production reference implementation.
+  worker/   TypeScript — Cloudflare Worker API (D1, R2, KV, Durable Objects). Every client talks to this.
+  portal/   TypeScript/React — web portal at tasksquad.ai (Vite + Tailwind v4 + shadcn/Radix, Cloudflare Pages)
+  macos/    Swift — native macOS app = daemon engine + portal UI in one process ("TaskSquad Native.app")
+  ios/      Swift — iOS portal app (XcodeGen project; no daemon)
+  mobile/TaskSquadPortal/  Swift package shared by ios/ and macos/: portal API client, workspace store, terminal session
 ```
 
-Each package is independently deployed and has its own `Makefile` (`make build|test|dev|deploy`).
-The root `Makefile` just fans out `make test` to all three. There is no shared build step —
-changes to one package don't require touching the others unless the API contract between them
-changes.
+How the pieces relate:
+
+- **Two daemons.** `packages/daemon` (Go) is the shipping daemon and the compatibility oracle. `packages/macos` is an independent Swift reimplementation of the daemon (`TaskSquadCore`: engine, polling, providers, tmux, credentials, crypto) **plus** a native portal UI (`TaskSquad` target: `Customer*.swift` files mirror the web portal's sections). It is still work in progress — see `packages/macos/COMPATIBILITY.md` for parity gates. Do not retire or diverge from Go behaviour based on the Swift build.
+- **Both daemons share on-disk state**: `~/.tasksquad/config.toml`, `device-id`, `daemon.lock` (BSD `flock`, never unlink it), `logs/`, `tasks/`, and the login Keychain service `tasksquad-daemon`. Swift must write values the Go daemon can read. `make test-compatibility` builds `macos/Tests/GoReference` against the real Go config/crypto packages to verify this.
+- **Three portal clients** — web (`portal/`), macOS (`macos/Sources/TaskSquad/Customer*`), iOS (`ios/`) — all hit the same worker API. The two Swift clients share `mobile/TaskSquadPortal` (both `packages/ios/project.yml` and `packages/macos/Package.swift` reference it by path), so changes there affect both apps.
+- **`DESIGN.md`** at the repo root is the shared design spec (colors, type, spacing, radius, light + dark themes) for every UI. Web tokens live in `portal/src/index.css`; macOS tokens in `macos/Sources/TaskSquad/Design/Theme.swift`.
 
 ## Commands
 
 ```bash
-make test                              # from repo root: runs daemon + portal + worker tests
+make test                      # root: daemon + portal + worker; macos test-compatibility too on Darwin
+make bump [minor|major]        # bump every product's version (patch default) — scripts/bump.py
 
-cd packages/daemon && make dev         # air hot-reload — rebuilds+restarts tsq on save
-cd packages/daemon && make build       # go build -o tsq .
-cd packages/daemon && go test ./...
+# Go daemon (packages/daemon)
+make dev                       # air hot-reload
+make build                     # go build -o tsq .
+make test                      # CGO_ENABLED=0 go test ./...
+go test ./agent -run TestName  # single test
 
-cd packages/worker && bun run dev      # wrangler dev --local
-cd packages/worker && bun run build    # wrangler deploy --dry-run (this is what CI runs as "build")
-cd packages/worker && bun run test     # vitest
+# Worker (packages/worker)
+bun run dev                    # wrangler dev --local
+bun run build                  # wrangler deploy --dry-run (CI "build")
+bun run test                   # vitest;  bunx vitest run src/routes/memory.test.ts -t "name" for one test
+make migrate-local | make migrate          # apply D1 migrations local | production
+make new-migration name=add_something
 
-cd packages/portal && bun run dev      # vite dev server, localhost:5173
-cd packages/portal && bun run build    # tsc -b && vite build — fails hard on any TS error
-cd packages/portal && bun run test     # vitest
+# Web portal (packages/portal)
+bun run dev                    # vite, localhost:5173
+bun run build                  # SEO manifest + tsc -b + vite build — fails hard on any TS error
+bun run test | bun run lint
+
+# macOS native (packages/macos) — Darwin only
+make build | make dev          # swift build / run debug binary
+make test                      # swift test;  swift test --filter TestClassName for one
+make test-compatibility        # builds Go reference oracle, then Swift tests
+make test-ui                   # offscreen UI renders → .build/ui-artifacts/
+make app-check | make install  # universal .app + checks | install ~/Applications/TaskSquad Native.app
+
+# iOS portal (packages/ios) — needs xcodegen; project file is generated
+make build | make test         # xcodegen generate + xcodebuild on iPhone 17 Pro / iOS 26.1 simulator
+make e2e-contract              # starts scripts/workspace_fixture.py on :18743, runs UI tests against it
+
+# Shared Swift package (packages/mobile/TaskSquadPortal)
+swift test
 ```
 
 ## Deploys
 
-All three deploy via GitHub Actions on push to `main`, gated by path filters — a commit only
-triggers the workflow(s) for the package(s) it touches:
+GitHub Actions, gated by path filters — a commit only triggers workflows for packages it touches:
 
-- **Deploy Worker** (`packages/worker/**`) → `wrangler deploy` to Cloudflare Workers. Fast,
-  usually done within a minute of push.
-- **Deploy Portal** (`packages/portal/**`) → `tsc -b && vite build` then `wrangler pages deploy`
-  to Cloudflare Pages. **Any TypeScript error fails the whole deploy silently** (no PR gate
-  catches it unless a PR was opened) — the site just keeps serving the previous build. Always
-  run `bun run build` locally before trusting that a portal change is live.
-- **Release Daemon** (`packages/daemon/**`, tag push `v*` only) → GoReleaser. Unlike the other
-  two, this does **not** fire on merge to `main` — it needs an explicit version tag. A fix merged
-  to `main` does not reach any installed `tsq` binary until a new tag is cut and users update.
+- **Worker** (`deploy-worker.yml`, push to `main` on `packages/worker/**`) → `wrangler deploy`. Apply D1 migrations (`make migrate`) **before** pushing worker code that depends on them.
+- **Portal** (`portal.yml`, `packages/portal/**`) → build then `wrangler pages deploy`. **Any TypeScript error fails the deploy silently** — the site keeps serving the previous build. Always run `bun run build` locally before trusting a portal change is live.
+- **Go daemon** (`daemon.yml`) → GoReleaser on `v*` tag push only. Merging to `main` does not reach installed `tsq` binaries until a tag is cut.
+- **macOS native** (`macos-native.yml` on PR/push for `packages/macos/**` or `packages/daemon/**`; preview/stable are manual `workflow_dispatch` with `X.Y.Z-preview.N` / `X.Y.Z`) → separate `macos-v*` releases. They never touch Go `v*` releases or the Homebrew cask.
+- **iOS** has no CI deploy.
 
-## Architecture facts worth knowing before touching daemon↔worker↔portal code
+## Architecture facts worth knowing before touching daemon↔worker↔client code
 
-- **The daemon polls; nothing pushes to it.** Heartbeats hit `/daemon/heartbeat/batch` on an
-  interval (`poll_interval` in config, default 60s). There is no SSE or webhook notifying the
-  daemon of new work — it finds out on its next poll.
-- **The portal polls too**, not SSE, for task/message updates (`setInterval`, 2s for Pro / 5s
-  free). SSE genuinely exists in this codebase, but only for the Voice-to-Markdown feature
-  (`packages/daemon/speechtomd`) — don't assume it's used for the main task flow.
-- **Live terminal output (both regular task sessions and Portals) streams over a WebSocket**,
-  not polling: `packages/daemon/agent/terminal_relay.go` dials
-  `packages/worker/src/terminal/relay.ts` (a `TerminalRelay` Durable Object), which fans out raw
-  PTY bytes to browser viewers rendering via `xterm.js`. Regular tasks and Portals share this
-  same relay and DO class — the daemon just dials it from two call sites
-  (`lifecycle.go` for tasks, `portal.go` for Portals).
-- **Auth header split**: daemon requests carry `Authorization: Bearer <token>` (either a 90-day
-  `tsq_cli_*` token or a short-lived Firebase ID token — `withFirebaseAuth` in `auth.ts` accepts
-  either) *and* `X-TSQ-Agent: <agentID>` identifying which agent the request is scoped to. Both
-  headers are required together for any `daemonRoute`-wrapped endpoint, including the WebSocket
-  upgrade route.
-- **Portals** (`packages/daemon/agent/portal.go`, `packages/worker/src/routes/portals.ts`,
-  `packages/portal/src/pages/Portals.tsx`) open a bare interactive tmux session (no task, no
-  prompt) and stream it to the browser. Pro-only, capped at 3 concurrent per team. A portal's
-  tmux session is named `tsq-portal-<first8CharsOfID>` — this prefix matters, see gotchas below.
+- **The daemon polls; nothing pushes to it.** Heartbeats hit `/daemon/heartbeat/batch` every `poll_interval` (default 60s). It learns about new work on the next poll.
+- **The web portal polls too** (`setInterval`, 2s Pro / 5s free) for task/message updates. There is no SSE in the task flow.
+- **Task execution**: daemon spawns the provider CLI in a named tmux session (falls back to PTY without tmux), reads output via `tmux pipe-pane` → FIFO, detects completion via provider HTTP hooks (preferred) or process exit, then `POST /daemon/session/close` and uploads the log to R2 via presigned URL.
+- **Live terminal output streams over WebSocket**, not polling: `daemon/agent/terminal_relay.go` dials `worker/src/terminal/relay.ts` (`TerminalRelay` Durable Object), which fans out raw PTY bytes to viewers (xterm.js on web, SwiftTerm on iOS/macOS). Regular tasks (`lifecycle.go`) and Portals (`portal.go`) share the same relay and DO class.
+- **Auth header split**: daemon requests carry `Authorization: Bearer <token>` (90-day `tsq_cli_*` token or a Firebase ID token — `withFirebaseAuth` in `worker/src/auth.ts` accepts either) **and** `X-TSQ-Agent: <agentID>`. Both are required for every `daemonRoute`-wrapped endpoint, including the WebSocket upgrade. Mobile clients sign in via browser + PKCE code exchange (`MobileAuthFlow.swift`, `PortalAPI.swift`).
+- **Portals** (`daemon/agent/portal.go`, `worker/src/routes/portals.ts`, `portal/src/pages/Portals.tsx`) open a bare interactive tmux session streamed to the client. Pro-only, max 3 concurrent per team. Session name `tsq-portal-<first8CharsOfID>` — the prefix matters (see orphan sweep below).
 
-## Gotchas discovered the hard way (read before debugging similar symptoms)
+## Gotchas discovered the hard way
 
-- **`addCors()` in `packages/worker/src/index.ts` must not rebuild WebSocket-upgrade responses.**
-  The top-level `fetch` handler wraps every response through `addCors`, which used to do
-  `new Response(res.body, { status, headers })` unconditionally — that constructor silently
-  drops Cloudflare's `webSocket` property, breaking every WS upgrade (browser and daemon alike)
-  while still returning a "successful-looking" 101. Symptom was `websocket: bad handshake` on
-  the daemon side with no server-side error at all. Fixed by short-circuiting on
-  `res.webSocket` truthy. If you touch `addCors` or add new WebSocket routes, keep this guard.
-- **FIFO reads for tmux `pipe-pane` output must not stay `O_NONBLOCK` once a writer is
-  connected.** `packages/daemon/agent/portal.go` opens the FIFO non-blocking only to bound the
-  wait for `pipe-pane`'s writer to show up; leaving it non-blocking after that makes every
-  `Read()` on an idle-but-open pane return `EAGAIN` (`resource temporarily unavailable`) instead
-  of blocking for the next chunk, which looks exactly like the session ending. Call
-  `syscall.SetNonblock(fd, false)` once a writer is confirmed connected — `os.File.Fd()` alone
-  does **not** reliably do this for a caller-opened `O_NONBLOCK` fd, verified empirically.
-- **The orphan-sweep in `packages/daemon/orphan/orphan.go` runs on daemon startup + hourly and
-  kills any `tsq-*` tmux session whose ID isn't found in the `sessions` table.** Portal sessions
-  (`tsq-portal-*`) live in the `portals` table instead, so without an explicit exclusion they get
-  killed as false orphans within seconds of starting — the relay would connect successfully and
-  then the tmux session would die underneath it. Same treatment `tsq-sup-*` (supervisor sessions)
-  already gets. Any new tmux-session-naming pattern needs the same exclusion or its own state
-  lookup.
-- **The portal bundle's PWA service worker has a 2 MiB precache limit by default** (`vite-plugin-
-  pwa`'s `injectManifest.maximumFileSizeToCacheInBytes`). Adding a sizeable dependency (e.g.
-  `@xterm/xterm`) can push the main chunk over that limit and fail the build at the `vite build`
-  step *after* `tsc` already passed — a different failure mode than a TS error, easy to miss if
-  you only check `tsc`.
-- **Lockfiles**: the repo has both `bun.lock` (workspace root) and `package-lock.json` files
-  sitting alongside each other in several packages. CI uses `bun install`, which resolves fresh
-  regardless of a stale `package-lock.json`, but don't assume the two are in sync.
+- **`addCors()` in `worker/src/index.ts` must not rebuild WebSocket-upgrade responses.** `new Response(res.body, …)` silently drops Cloudflare's `webSocket` property, breaking every WS upgrade while still returning a successful-looking 101 (daemon sees `websocket: bad handshake`, no server error). It short-circuits on `res.webSocket`; keep that guard when touching `addCors` or adding WS routes.
+- **FIFO reads for `pipe-pane` must not stay `O_NONBLOCK` once a writer connects.** `portal.go` opens non-blocking only to bound the wait for the writer; afterwards an idle pane makes `Read()` return `EAGAIN`, which looks like the session ended. Call `syscall.SetNonblock(fd, false)` — `os.File.Fd()` alone does not reliably do this.
+- **The orphan sweep (`daemon/orphan/orphan.go`, on startup + hourly) kills any `tsq-*` tmux session not in the `sessions` table.** Portal (`tsq-portal-*`) and supervisor (`tsq-sup-*`) sessions are explicitly excluded. Any new tmux naming pattern needs the same exclusion or its own state lookup. The Swift engine shares tmux and lock files, so keep naming consistent across both daemons.
+- **Portal PWA precache limit is 2 MiB** (`vite-plugin-pwa` `injectManifest.maximumFileSizeToCacheInBytes`). A big dependency can fail `vite build` *after* `tsc` passed.
+- **Lockfiles**: `bun.lock` at the root and `package-lock.json` in several packages coexist. CI uses `bun install`; don't assume they're in sync.
+- **macOS native and Go must interoperate**: the Swift config editor edits the same `config.toml` text in place (preserving comments/unknown fields) rather than regenerating it; Keychain values must stay Go-readable. Managed tmux input/close from the Swift UI goes through the Go daemon's `/hooks/terminal/input` and `/hooks/terminal/close` endpoints.
+- **iOS project file is generated** — edit `packages/ios/project.yml`, not `TaskSquad.xcodeproj` (`make clean` deletes it).
