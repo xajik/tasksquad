@@ -50,7 +50,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 
 ### C. Store completion
 - [x] Single shared poll driver (`WorkspaceStore.poll(refreshWorkspace:onTick:)`). Timer ticks coalesce, explicit refreshes never do. macOS chains detail and notifications from it, and the background notifier fetches only when the inbox isn't visible.
-- [ ] Remove the iOS detail-screen poll loop (`MobileRecordDetail` `.task`) in favor of a chained detail refresh
+- [x] iOS detail screen uses the shared driver in detail-only mode. It was never a double poll: `NavigationStack` cancels the inbox poller while the detail screen is pushed.
 - [ ] `CustomerWorkspaceModel`: delete duplicated `path(for:)`, `teamPath`, `agentName`, `isOwner`, `isPro`, `currentTeam`
 - [ ] `RecordDetailStore`: concurrent note comments/tasks; Portal lifecycle state
 - [ ] Tests: pagination survives refresh, out-of-order detail, account switch during `connect`, poll cancellation

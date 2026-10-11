@@ -63,11 +63,9 @@ struct MobileRecordDetail: View {
         }
         .task(id: "\(model.context):\(id):\(phase)") {
             guard phase == .active else { return }
-            await refresh()
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(WorkspacePolicy.pollInterval(isPro: model.isPro))) } catch { return }
-                await refresh()
-            }
+            // NavigationStack cancels the inbox poller while this screen is pushed,
+            // so the shared driver refreshes only this record until it pops.
+            await model.poll(refreshWorkspace: false) { await refresh() }
         }
         .sheet(item: $editor) { MobileEditor(model: model, request: $0) }
         .sheet(isPresented: Binding(get: { transcript != nil }, set: { if !$0 { transcript = nil } })) {
