@@ -8,13 +8,15 @@ import (
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
-	"github.com/tasksquad/daemon/harness"
 	"github.com/tasksquad/daemon/logger"
 )
 
 type Syncer struct {
 	triggerCh chan struct{}
 }
+
+// SyncNow performs one bounded reconciliation pass for explicit CLI requests.
+func SyncNow(cfg *config.Config, agents []AgentRef) { syncCommands(cfg, agents) }
 
 func NewSyncer() *Syncer {
 	return &Syncer{triggerCh: make(chan struct{}, 1)}
@@ -93,13 +95,8 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 
 		cmdFile := fmt.Sprintf("%s/.tsq/commands/%s.md", workDir, cmd.Name)
 		if lock[cmd.Name] == cmd.Etag && cmd.Etag != "" {
-			if harness.FileExists(cmdFile) {
-				if body, err := os.ReadFile(cmdFile); err == nil {
-					if err := harness.InstallCodexCommand(workDir, cmd.Name, string(body)); err != nil {
-						logger.Warn(fmt.Sprintf("[commands] Codex sync: %v", err))
-					}
-				}
-				continue
+			if body, err := os.ReadFile(cmdFile); err == nil {
+				cmd.Content = string(body)
 			}
 		}
 
@@ -110,7 +107,7 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 			} else {
 				path = fmt.Sprintf("/daemon/commands/%s", cmd.ID)
 			}
-			full, err := api.GetConditional(cfg, token, path, lock[cmd.Name])
+			full, err := api.GetConditional(cfg, token, path, "")
 			if err != nil {
 				logger.Error(fmt.Sprintf("[commands] Failed to fetch command %q content: %v", cmd.Name, err))
 				continue

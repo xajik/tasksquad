@@ -8,7 +8,6 @@ import (
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
-	"github.com/tasksquad/daemon/harness"
 	"github.com/tasksquad/daemon/logger"
 )
 
@@ -16,6 +15,9 @@ import (
 type Syncer struct {
 	triggerCh chan struct{}
 }
+
+// SyncNow performs one bounded reconciliation pass for explicit CLI requests.
+func SyncNow(cfg *config.Config, agents []AgentRef) { syncAgents(cfg, agents) }
 
 // NewSyncer creates a Syncer.
 func NewSyncer() *Syncer {
@@ -98,15 +100,8 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 
 		agentFile := fmt.Sprintf("%s/.tsq/agents/%s.md", workDir, agent.Name)
 		if lock[agent.Name] == agent.Etag && agent.Etag != "" {
-			if harness.FileExists(agentFile) {
-				// Repair newly introduced provider formats even when the server etag
-				// has not changed since an older daemon installed the Markdown copy.
-				if body, err := os.ReadFile(agentFile); err == nil {
-					if err := harness.InstallCodexAgent(workDir, agent.Name, agent.Description, string(body)); err != nil {
-						logger.Warn(fmt.Sprintf("[agents] Codex sync: %v", err))
-					}
-				}
-				continue
+			if body, err := os.ReadFile(agentFile); err == nil {
+				agent.Content = string(body)
 			}
 		}
 
@@ -118,7 +113,7 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 			} else {
 				path = fmt.Sprintf("/daemon/sub-agents/%s", agent.ID)
 			}
-			full, err := api.GetConditional(cfg, token, path, lock[agent.Name])
+			full, err := api.GetConditional(cfg, token, path, "")
 			if err != nil {
 				logger.Error(fmt.Sprintf("[agents] Failed to fetch sub-agent %q content: %v", agent.Name, err))
 				continue

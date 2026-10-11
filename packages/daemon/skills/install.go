@@ -15,9 +15,6 @@ import (
 // and copies it to .claude/skills/<name>, .agents/skills/<name>, and .gemini/skills/<name>
 // for compatibility with various agent tools.
 func installSkill(workDir string, skill remoteSkill, lock skillsLock) error {
-	if currentEtag, ok := lock[skill.Name]; ok && currentEtag == skill.Etag {
-		return nil
-	}
 
 	dir := skillDir(workDir, skill.Name)
 	if info, lErr := os.Lstat(dir); lErr == nil {
@@ -30,6 +27,7 @@ func installSkill(workDir string, skill remoteSkill, lock skillsLock) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
+	previous, _ := os.ReadFile(filepath.Join(dir, "SKILL.md"))
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(skill.Content), 0644); err != nil {
 		return err
 	}
@@ -44,7 +42,7 @@ func installSkill(workDir string, skill remoteSkill, lock skillsLock) error {
 		os.MkdirAll(cd, 0755) //nolint:errcheck
 
 		dest := filepath.Join(cd, skill.Name)
-		if err := copyDir(dir, dest); err != nil {
+		if err := harness.ReconcileFile(filepath.Join(dest, "SKILL.md"), []byte(skill.Content), previous); err != nil {
 			logger.Warn(fmt.Sprintf("[skills] Failed to copy skill %q to %s: %v", skill.Name, dest, err))
 		}
 	}
@@ -57,14 +55,17 @@ func installSkill(workDir string, skill remoteSkill, lock skillsLock) error {
 // Only server-managed skills (tracked in the lock file) are ever passed here,
 // so user-created skills in provider directories are never touched.
 func removeSkill(workDir, name string) {
-	os.RemoveAll(skillDir(workDir, name)) //nolint:errcheck
+	previous, _ := os.ReadFile(filepath.Join(skillDir(workDir, name), "SKILL.md"))
+	_ = os.Remove(filepath.Join(skillDir(workDir, name), "SKILL.md"))
+	_ = os.Remove(skillDir(workDir, name))
 
 	for _, cd := range harness.SkillDirs(workDir) {
 		if cd == filepath.Join(workDir, ".agents", "skills") {
 			harness.RemoveCodexSkill(workDir, name)
 			continue
 		}
-		os.RemoveAll(filepath.Join(cd, name)) //nolint:errcheck
+		harness.RemoveMatchingFile(filepath.Join(cd, name, "SKILL.md"), previous)
+		_ = os.Remove(filepath.Join(cd, name))
 	}
 }
 

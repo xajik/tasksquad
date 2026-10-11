@@ -18,6 +18,7 @@ func installCommand(workDir string, cmd remoteCommand) error {
 		return err
 	}
 	src := filepath.Join(dir, cmd.Name+".md")
+	previous, _ := os.ReadFile(src)
 	if err := os.WriteFile(src, []byte(cmd.Content), 0644); err != nil {
 		return err
 	}
@@ -26,7 +27,7 @@ func installCommand(workDir string, cmd remoteCommand) error {
 	for _, cd := range harness.CommandDirs(workDir) {
 		os.MkdirAll(cd, 0755) //nolint:errcheck
 		dest := filepath.Join(cd, cmd.Name+".md")
-		if err := harness.CopyFile(src, dest); err != nil {
+		if err := harness.ReconcileFile(dest, []byte(cmd.Content), previous); err != nil {
 			logger.Warn(fmt.Sprintf("[commands] Failed to copy %q to %s: %v", cmd.Name, dest, err))
 		}
 	}
@@ -35,12 +36,13 @@ func installCommand(workDir string, cmd remoteCommand) error {
 }
 
 func removeCommand(workDir, name string) {
+	src := filepath.Join(workDir, ".tsq", "commands", name+".md")
+	previous, _ := os.ReadFile(src)
 	harness.RemoveCodexCommand(workDir, name)
-	os.Remove(filepath.Join(workDir, ".tsq", "commands", name+".md")) //nolint:errcheck
-
 	for _, cd := range harness.CommandDirs(workDir) {
-		os.Remove(filepath.Join(cd, name+".md")) //nolint:errcheck
+		harness.RemoveMatchingFile(filepath.Join(cd, name+".md"), previous)
 	}
+	_ = os.Remove(src)
 }
 
 func lockPath(workDir string) string {

@@ -20,6 +20,7 @@ func installAgent(workDir string, agent remoteAgent) error {
 		return err
 	}
 	src := filepath.Join(dir, agent.Name+".md")
+	previous, _ := os.ReadFile(src)
 	if err := os.WriteFile(src, []byte(agent.Content), 0644); err != nil {
 		return err
 	}
@@ -27,7 +28,7 @@ func installAgent(workDir string, agent remoteAgent) error {
 	for _, cd := range harness.AgentDirs(workDir) {
 		os.MkdirAll(cd, 0755) //nolint:errcheck
 		dest := filepath.Join(cd, agent.Name+".md")
-		if err := harness.CopyFile(src, dest); err != nil {
+		if err := harness.ReconcileFile(dest, []byte(agent.Content), previous); err != nil {
 			logger.Warn(fmt.Sprintf("[agents] Failed to copy sub-agent %q to %s: %v", agent.Name, dest, err))
 		}
 	}
@@ -37,12 +38,13 @@ func installAgent(workDir string, agent remoteAgent) error {
 
 // removeAgent deletes the sub-agent from .tsq/agents and its provider copies.
 func removeAgent(workDir, name string) {
+	src := filepath.Join(workDir, ".tsq", "agents", name+".md")
+	previous, _ := os.ReadFile(src)
 	harness.RemoveCodexAgent(workDir, name)
-	os.Remove(filepath.Join(workDir, ".tsq", "agents", name+".md")) //nolint:errcheck
-
 	for _, cd := range harness.AgentDirs(workDir) {
-		os.Remove(filepath.Join(cd, name+".md")) //nolint:errcheck
+		harness.RemoveMatchingFile(filepath.Join(cd, name+".md"), previous)
 	}
+	_ = os.Remove(src)
 }
 
 // ─── Lock file helpers ────────────────────────────────────────────────────────

@@ -2,12 +2,12 @@ package skills
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/tasksquad/daemon/api"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
-	"github.com/tasksquad/daemon/harness"
 	"github.com/tasksquad/daemon/logger"
 )
 
@@ -15,6 +15,9 @@ import (
 type Syncer struct {
 	triggerCh chan struct{}
 }
+
+// SyncNow performs one bounded reconciliation pass for explicit CLI requests.
+func SyncNow(cfg *config.Config, agents []AgentRef) { syncSkills(cfg, agents) }
 
 // NewSyncer creates a Syncer.
 func NewSyncer() *Syncer {
@@ -96,9 +99,8 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 		serverNames[skill.Name] = true
 
 		if lock[skill.Name] == skill.Etag && skill.Etag != "" {
-			skillDir := skillDir(workDir, skill.Name)
-			if harness.FileExists(skillDir + "/SKILL.md") {
-				continue // already up to date and exists on disk
+			if body, err := os.ReadFile(skillDir(workDir, skill.Name) + "/SKILL.md"); err == nil {
+				skill.Content = string(body)
 			}
 		}
 
@@ -110,7 +112,7 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 			} else {
 				path = fmt.Sprintf("/daemon/skills/%s", skill.ID)
 			}
-			full, err := api.GetConditional(cfg, token, path, lock[skill.Name])
+			full, err := api.GetConditional(cfg, token, path, "")
 			if err != nil {
 				logger.Error(fmt.Sprintf("[skills] Failed to fetch skill %q content: %v", skill.Name, err))
 				continue
