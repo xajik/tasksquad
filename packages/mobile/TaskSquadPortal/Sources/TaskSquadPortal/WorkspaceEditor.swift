@@ -43,6 +43,12 @@ public enum WorkspaceEditor {
             })
             for key in ["default_sub_agent_id", "default_harness_agent_id"] where body[key] == .string("") { body.removeValue(forKey: key) }
         }
+        // Conveyor schedules: a time and zone are always needed; the day depends on frequency.
+        if let frequency = body["frequency"]?.string {
+            guard body["hour"]?.number != nil, body["minute"]?.number != nil, body["timezone"]?.string?.isEmpty == false else { throw WorkspaceValidationError("Enter a valid hour, minute, and time zone.") }
+            if frequency == "weekly", body["day_of_week"]?.number == nil { throw WorkspaceValidationError("Choose a weekday from 0 to 6.") }
+            if frequency == "monthly", body["day_of_month"]?.number == nil { throw WorkspaceValidationError("Choose a day from 1 to 31.") }
+        }
         for (key, range) in [("hour", 0...23), ("minute", 0...59), ("day_of_week", 0...6), ("day_of_month", 1...31)] {
             if let value = body[key]?.number, !range.contains(Int(value)) { throw WorkspaceValidationError("\(key.replacingOccurrences(of: "_", with: " ")) must be between \(range.lowerBound) and \(range.upperBound).") }
         }

@@ -401,17 +401,8 @@ struct CustomerWorkspace: View {
         if duplicate, let index = fields.firstIndex(where: { $0.id == "name" }) { fields[index].initial = .string((record?.title ?? "") + "-copy") }
         editor = CustomerEditorRequest(title: "\(updating ? "Edit" : "New") \(section.rawValue)", fields: fields, attachments: section == .inbox, phases: section == .planners, submitLabel: updating ? "Save" : "Create",
                                         draftKey: updating || duplicate ? nil : model.workspace.draftScope("create." + section.rawValue).key) { values, files in
-            let body = values
-            if section == .conveyors {
-                guard (0...23).contains(Int(body["hour"]?.number ?? -1)), (0...59).contains(Int(body["minute"]?.number ?? -1)), TimeZone(identifier: body["timezone"]?.string ?? "") != nil else {
-                    model.error = "Enter a valid hour, minute, and time zone."; return false
-                }
-                if body["frequency"] == .string("weekly"), !(0...6).contains(Int(body["day_of_week"]?.number ?? -1)) { model.error = "Choose a weekday from 0 to 6."; return false }
-                if body["frequency"] == .string("monthly"), !(1...31).contains(Int(body["day_of_month"]?.number ?? -1)) { model.error = "Choose a day from 1 to 31."; return false }
-                if let count = body["repeat_count"]?.number, count < 1 { model.error = "Maximum runs must be positive."; return false }
-            }
-            let operation: WorkspaceOperation = if updating, let id = record?.id { .update(section, project: team, id: id, values: body, files: files) }
-                else { .create(section, project: team, values: body, files: files) }
+            let operation: WorkspaceOperation = if updating, let id = record?.id { .update(section, project: team, id: id, values: values, files: files) }
+                else { .create(section, project: team, values: values, files: files) }
             guard let result = await model.perform(operation) else { return false }
             if let id = result["id"]?.string { model.selectedID = id }
             await model.refresh(); return true

@@ -46,7 +46,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] Migrate the macOS call sites (`CustomerWorkspace`, `CustomerTaskDetail`, `CustomerNoteDetail`, `ApplicationWorkspace`)
 - [x] Migrate the iOS call sites (`MobileRecordDetail`, `PortalHomeView`); remove the app-level `perform(path:method:)`
 - [x] Both apps key drafts by `WorkspaceStore.draftScope` (origin/account/project/operation). macOS gains create-editor and inline-reply drafts, cleared on sign-out. iOS `MobileDraftStore` stays as a thin adapter that picks the fixture `UserDefaults` suite in UI tests. Drafts saved under the old dotted iOS keys are not migrated.
-- [ ] Tests: `WorkspaceEditor` validation, `StatusPresentation`, draft-scope isolation
+- [x] Tests: `WorkspaceEditor` validation (incl. conveyor schedules, now shared instead of macOS-only), `StatusPresentation`, draft-scope isolation
 
 ### C. Store completion
 - [ ] Single poll driver per shell; coalesce overlapping refreshes; the macOS notification monitor reuses inbox records instead of a second `/tasks` poll
