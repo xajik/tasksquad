@@ -118,6 +118,75 @@ private actor WorkspaceTransport: HTTPTransport {
         model.disconnect(); XCTAssertFalse(model.connected)
     }
 
+    func testPortalMonkeyFixture15RunsAndMeasuresNativeActions() async throws {
+        _ = NSApplication.shared
+        var randomState: UInt64 = 0x51C0_FFEE
+        func next(_ upperBound: UInt64) -> UInt64 {
+            randomState = randomState &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return (randomState >> 32) % upperBound
+        }
+        var runs: [[String: Any]] = []
+        for iteration in 1...15 {
+            let transport = WorkspaceTransport(), model = fixture(transport)
+            let launchStart = Date()
+            await model.restore()
+            model.section = .portals
+            await model.refresh()
+            let listMilliseconds = Date().timeIntervalSince(launchStart) * 1_000
+            XCTAssertFalse(model.records.isEmpty, "iteration \(iteration): Portal list loads")
+            model.selectedID = "item-1"
+            let openStart = Date()
+            await model.refresh()
+            XCTAssertEqual(model.detail?.id, "item-1", "iteration \(iteration): Portal detail opens")
+            let openMilliseconds = Date().timeIntervalSince(openStart) * 1_000
+            if iteration == 1 {
+                try render(CustomerWorkspace(model: model), name: "portal-native-detail", appearance: .aqua)
+            }
+            var trace: [String] = []
+            for _ in 0..<5 {
+                switch next(3) {
+                case 0:
+                    trace.append("refresh-list")
+                    model.selectedID = nil
+                    await model.refresh()
+                    XCTAssertFalse(model.records.isEmpty)
+                case 1:
+                    trace.append("cancel-selection")
+                    model.selectedID = nil
+                    XCTAssertNil(model.selectedID)
+                default:
+                    trace.append("back-reopen")
+                    model.selectedID = nil
+                    model.selectedID = "item-1"
+                    await model.refresh()
+                    XCTAssertEqual(model.detail?.id, "item-1")
+                }
+            }
+            let closeStart = Date()
+            await model.perform(["portals", "item-1", "close"])
+            let closeMilliseconds = Date().timeIntervalSince(closeStart) * 1_000
+            XCTAssertNil(model.error, "iteration \(iteration): close request succeeds")
+            let requests = await transport.requests
+            XCTAssertTrue(requests.contains { $0.url?.path == "/portals/item-1/close" }, "iteration \(iteration): close endpoint called")
+            trace.append("confirmed-close")
+            runs.append(["iteration": iteration, "listMilliseconds": listMilliseconds,
+                         "openMilliseconds": openMilliseconds, "closeMilliseconds": closeMilliseconds,
+                         "actionTrace": trace])
+        }
+        let data = try JSONSerialization.data(withJSONObject: runs, options: [.prettyPrinted, .sortedKeys])
+        if let directory = ProcessInfo.processInfo.environment["TSQ_UI_ARTIFACTS"] {
+            try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent("portal-monkey-metrics.json"))
+        }
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+        attachment.name = "macOS Portal fixture monkey run · 15 iterations"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        func average(_ key: String) -> Double {
+            runs.compactMap { ($0[key] as? NSNumber)?.doubleValue }.reduce(0, +) / Double(runs.count)
+        }
+        print(String(format: "PORTAL_MAC_MONKEY_METRICS iterations=15 seed=0x51C0FFEE averageListMs=%.2f averageOpenMs=%.2f averageCloseMs=%.2f", average("listMilliseconds"), average("openMilliseconds"), average("closeMilliseconds")))
+    }
+
     func testNativeCustomerScreensRenderInLightAndDark() async throws {
         _ = NSApplication.shared
         let model = fixture(); await model.restore()
