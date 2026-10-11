@@ -55,8 +55,13 @@ struct TaskSquadApplication: App {
                 .frame(minWidth: 900, minHeight: 560)
                 .onAppear { delegate.model = model; delegate.customer = customer }
                 .task {
+                    // Like the Go app: with no configuration, run `tsq init` in Terminal and
+                    // relaunch afterwards; otherwise the daemon starts with the app.
+                    if !delegate.startedAtLaunch, AppSetup.startIfNeeded(configuration: model.configurationURL, paths: model.paths) {
+                        NSApp.terminate(nil); return
+                    }
                     await model.load()
-                    if startEngineAtLaunch, !delegate.startedAtLaunch {
+                    if !delegate.startedAtLaunch, model.configuration != nil || startEngineAtLaunch {
                         delegate.startedAtLaunch = true
                         await model.startEngine()
                     }
@@ -107,8 +112,15 @@ private struct MenuBarContent: View {
     @ObservedObject var model: ControlPanelModel
     @Environment(\.openWindow) var openWindow
     var body: some View {
-        Text(model.configuration.map { "\($0.agents.count) configured agents" } ?? "Configuration unavailable")
-        Text(model.engineRunning ? "Daemon running" : "Daemon stopped")
+        Text(model.loginEmail.map { "👤 " + $0 } ?? "👤 Not logged in")
+        Text(model.engineRunning ? model.statsLabel : (model.configuration == nil ? "Configuration unavailable" : "Daemon stopped"))
+        Divider()
+        Button(model.pullingPaused ? "▶ Resume Pulling" : "⏸ Pause Pulling") { Task { await model.togglePulling() } }
+            .disabled(!model.engineRunning)
+        Toggle("Run on OS Boot", isOn: Binding(get: { model.runOnLogin }, set: { _ in model.toggleRunOnLogin() }))
+        Button("Open Config") { NSWorkspace.shared.open(model.configurationURL) }
+        if model.loginEmail != nil { Button("Logout") { Task { await model.logout() } } }
+        Divider()
         Button("Open TaskSquad") {
             openWindow(id: WindowID.main)
             NSApp.activate(ignoringOtherApps: true)
@@ -134,5 +146,23 @@ private struct ThisMacCommand: View {
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         Button("This Mac") { openWindow(id: WindowID.thisMac) }.keyboardShortcut("m", modifiers: [.command, .shift])
+    }
+}
+
+/// Go's startAppSetup: the setup wizard is interactive and Finder has no stdin.
+enum AppSetup {
+    static func startIfNeeded(configuration: URL, paths: TaskSquadPaths) -> Bool {
+        guard configuration == paths.config, !FileManager.default.fileExists(atPath: configuration.path),
+              let executable = Bundle.main.executableURL?.path, Bundle.main.bundleURL.pathExtension == "app" else { return false }
+        func quote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\"'\"'") + "'" }
+        let script = FileManager.default.temporaryDirectory.appendingPathComponent("tasksquad-setup-\(UUID().uuidString).command")
+        do {
+            try Data("#!/bin/sh\nrm -- \"$0\"\n\(quote(executable)) init && /usr/bin/open -a \(quote(Bundle.main.bundleURL.path))\n".utf8).write(to: script)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+            let open = Process()
+            open.executableURL = URL(fileURLWithPath: "/usr/bin/open"); open.arguments = ["-a", "Terminal", script.path]
+            try open.run(); open.waitUntilExit()
+            return open.terminationStatus == 0
+        } catch { try? FileManager.default.removeItem(at: script); return false }
     }
 }

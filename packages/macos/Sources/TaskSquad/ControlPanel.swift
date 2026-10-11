@@ -18,6 +18,10 @@ import TaskSquadDesign
     @Published private(set) var appliedConfiguration: DaemonConfiguration?
     @Published private(set) var appliedDocument: String?
     @Published var engineCanDrain = false
+    /// Menu "Pause Pulling": stops new task pickup and lets the Mac sleep (Go: ui.go toggle + wakelock).
+    @Published var pullingPaused = false
+    @Published var runOnLogin = LaunchAgent().isEnabled
+    private let wakeLock = WakeLock()
     var configurationRestartRequired: Bool { engineRunning && appliedDocument != nil && appliedDocument != savedDocument }
     @Published var agentSnapshots: [AgentSnapshot] = []
     @Published var observedAgents: [ObservedAgent] = []
@@ -172,6 +176,10 @@ import TaskSquadDesign
             appliedDocument = document
             engineRunning = true
             error = nil
+            await candidate.setPullingPaused(pullingPaused)
+            if !pullingPaused { wakeLock.acquire() }
+            // Go registers run-on-boot once, on the first successful daemon start.
+            if (try? LaunchAgent().enableOnFirstRun(executable: Self.loginExecutable, paths: paths)) != nil { runOnLogin = LaunchAgent().isEnabled }
             snapshotTask = Task {
                 while !Task.isCancelled {
                     applyNativeSnapshots(await candidate.snapshots())
@@ -215,6 +223,34 @@ import TaskSquadDesign
         appliedDocument = nil; engineCanDrain = false
         engine = nil
         engineRunning = false
+        wakeLock.release()
+    }
+
+    /// The bundle's executable, as Go registers its own binary in the LaunchAgent.
+    static var loginExecutable: String { Bundle.main.executableURL?.path ?? CommandLine.arguments[0] }
+
+    func togglePulling() async {
+        pullingPaused.toggle()
+        await engine?.setPullingPaused(pullingPaused)
+        if pullingPaused || !engineRunning { wakeLock.release() } else { wakeLock.acquire() }
+    }
+
+    func toggleRunOnLogin() {
+        do {
+            if LaunchAgent().isEnabled { try LaunchAgent().disable() } else { try LaunchAgent().enable(executable: Self.loginExecutable) }
+        } catch { self.error = error.localizedDescription }
+        runOnLogin = LaunchAgent().isEnabled
+    }
+
+    func logout() async {
+        await stopEngine()
+        do { try await sharedAuthentication().logout(); loginEmail = nil } catch { self.error = error.localizedDescription }
+    }
+
+    /// "1 running · 2 idle · 0 waiting" (Go: ui.statsLabel, without the last-pull time).
+    var statsLabel: String {
+        let modes = agentSnapshots.map(\.mode)
+        return "\(modes.filter { $0 == .running }.count) running · \(modes.filter { $0 == .idle }.count) idle · \(modes.filter { $0 == .waitingInput }.count) waiting"
     }
     func forcePoll() async { await engine?.forcePoll() }
     func shutdown() async {

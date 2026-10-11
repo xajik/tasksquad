@@ -67,6 +67,8 @@ public actor DaemonEngine {
     private var hookServer: LocalHTTPServer?
     private var startedAt = ContinuousClock.now
     private var running = false
+    /// "Pause Pulling": heartbeats continue (agents stay online) but no new task is taken.
+    public private(set) var pullingPaused = false
     private var stopping = false
 
     public init(configuration: DaemonConfiguration, paths: TaskSquadPaths = .init(),
@@ -217,6 +219,10 @@ public actor DaemonEngine {
     }
 
     public func forcePoll() async { await poller?.forcePoll() }
+    public func setPullingPaused(_ paused: Bool) {
+        pullingPaused = paused
+        NSLog("Pulling %@", paused ? "paused" : "resumed")
+    }
     /// Re-syncs skills, sub-agents and commands now (Go: Syncer.ForceSync).
     public func forceResourceSync() async { await resourceSync?.forceSync() }
     public func snapshots() -> [AgentSnapshot] {
@@ -279,7 +285,7 @@ public actor DaemonEngine {
                 }
                 continue // never pick up a new task while the session is still open
             }
-            if mode == .idle, let task = item["task"], task.object != nil {
+            if mode == .idle, !pullingPaused, let task = item["task"], task.object != nil {
                 analytics.track("task_received", ["task_id": .string(task["id"]?.string ?? ""), "agent_id": .string(id),
                                                   "agent_name": .string(agent.configuration.name)])
                 beginTask(agentID: id, task: task, memoryRollup: item["memory_rollup"]?.string ?? "")
