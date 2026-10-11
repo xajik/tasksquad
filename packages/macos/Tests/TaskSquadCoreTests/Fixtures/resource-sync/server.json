@@ -1,0 +1,89 @@
+{
+ "phase1": {
+  "/daemon/user/skills": {
+   "skills": [
+    {
+     "id": "s1",
+     "name": "tsq-default-skill",
+     "is_default": 1,
+     "etag": "e1",
+     "content": "---\nname: tsq-default-skill\ndescription: d\n---\nBody \u00e9"
+    },
+    {
+     "id": "s2",
+     "team_id": "t1",
+     "name": "tsq-team-skill",
+     "auto_install": 1,
+     "etag": "e2"
+    },
+    {
+     "id": "s3",
+     "name": "not-installed",
+     "etag": "e3",
+     "content": "x"
+    },
+    {
+     "id": "s4",
+     "name": "../escape",
+     "is_default": 1,
+     "etag": "e4",
+     "content": "x"
+    }
+   ]
+  },
+  "/teams/t1/skills/s2": {
+   "content": "Team skill body",
+   "etag": "e2"
+  },
+  "/daemon/user/sub-agents": {
+   "sub_agents": [
+    {
+     "id": "a1",
+     "name": "reviewer",
+     "is_default": 1,
+     "etag": "ea",
+     "description": "Reviews \"code\" & <diffs>",
+     "content": "---\nname: reviewer\n---\nCheck\nthe diff"
+    }
+   ]
+  },
+  "/daemon/user/commands": {
+   "commands": [
+    {
+     "id": "c1",
+     "name": "ship",
+     "auto_install": 1,
+     "etag": "ec",
+     "content": "---\ndescription: ship it\n---\nShip it"
+    }
+   ]
+  }
+ },
+ "phase2": {
+  "/daemon/user/skills": {
+   "skills": [
+    {
+     "id": "s1",
+     "name": "tsq-default-skill",
+     "is_default": 1,
+     "etag": "e1b",
+     "content": "---\nname: tsq-default-skill\ndescription: d2\n---\nBody v2"
+    }
+   ]
+  },
+  "/daemon/user/sub-agents": {
+   "sub_agents": []
+  },
+  "/daemon/user/commands": {
+   "commands": [
+    {
+     "id": "c1",
+     "name": "ship",
+     "auto_install": 1,
+     "etag": "ec2",
+     "content": "Ship it v2"
+    }
+   ]
+  }
+ }
+}

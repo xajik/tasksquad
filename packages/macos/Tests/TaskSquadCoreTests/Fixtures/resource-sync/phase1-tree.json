@@ -1,0 +1,45 @@
+{
+ ".agent/agents/reviewer.md": "---\nname: reviewer\n---\nCheck\nthe diff",
+ ".agent/commands/ship.md": "---\ndescription: ship it\n---\nShip it",
+ ".agent/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d\n---\nBody \u00e9",
+ ".agent/skills/tsq-team-skill/SKILL.md": "Team skill body",
+ ".agents/agents/reviewer.md": "---\nname: reviewer\n---\nCheck\nthe diff",
+ ".agents/commands/ship.md": "---\ndescription: ship it\n---\nShip it",
+ ".agents/skills/source-command-ship/SKILL.md": "---\nname: source-command-ship\ndescription: Run the TaskSquad ship command.\n---\n<!-- Managed by TaskSquad command sync. -->\n\nShip it\n",
+ ".agents/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d\n---\n<!-- Managed by TaskSquad skill sync. -->\nBody \u00e9",
+ ".agents/skills/tsq-team-skill/SKILL.md": "mine",
+ ".claude/agents/reviewer.md": "---\nname: reviewer\n---\nCheck\nthe diff",
+ ".claude/commands/ship.md": "---\ndescription: ship it\n---\nShip it",
+ ".claude/escape/SKILL.md": "x",
+ ".claude/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d\n---\nBody \u00e9",
+ ".claude/skills/tsq-team-skill/SKILL.md": "Team skill body",
+ ".codex/agents/reviewer.toml": "# Managed by TaskSquad; edits are replaced on sync.\nname = \"reviewer\"\ndescription = \"Reviews \\\"code\\\" & <diffs>\"\ndeveloper_instructions = \"Check\\nthe diff\"\n",
+ ".forge/agents/reviewer.md": "---\nname: reviewer\n---\nCheck\nthe diff",
+ ".forge/commands/ship.md": "---\ndescription: ship it\n---\nShip it",
+ ".forge/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d\n---\nBody \u00e9",
+ ".forge/skills/tsq-team-skill/SKILL.md": "Team skill body",
+ ".gemini/agents/reviewer.md": "---\nname: reviewer\n---\nCheck\nthe diff",
+ ".gemini/commands/ship.md": "---\ndescription: ship it\n---\nShip it",
+ ".gemini/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d\n---\nBody \u00e9",
+ ".gemini/skills/tsq-team-skill/SKILL.md": "Team skill body",
+ ".opencode/commands/ship.md": "---\ndescription: ship it\n---\nShip it",
+ ".pi/agents/reviewer.md": "---\nname: reviewer\n---\nCheck\nthe diff",
+ ".pi/commands/ship.md": "---\ndescription: ship it\n---\nShip it",
+ ".pi/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d\n---\nBody \u00e9",
+ ".pi/skills/tsq-team-skill/SKILL.md": "Team skill body",
+ ".tsq/agents/reviewer.md": "---\nname: reviewer\n---\nCheck\nthe diff",
+ ".tsq/commands/ship.md": "---\ndescription: ship it\n---\nShip it",
+ ".tsq/escape/SKILL.md": "x",
+ ".tsq/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d\n---\nBody \u00e9",
+ ".tsq/skills/tsq-team-skill/SKILL.md": "Team skill body",
+ "LOCK:agents": {
+  "reviewer": "ea"
+ },
+ "LOCK:commands": {
+  "ship": "ec"
+ },
+ "LOCK:skills": {
+  "tsq-default-skill": "e1",
+  "tsq-team-skill": "e2"
+ }
+}

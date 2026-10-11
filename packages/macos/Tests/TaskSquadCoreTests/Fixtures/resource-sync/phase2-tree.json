@@ -1,0 +1,28 @@
+{
+ ".agent/commands/ship.md": "Ship it v2",
+ ".agent/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d2\n---\nBody v2",
+ ".agents/commands/ship.md": "Ship it v2",
+ ".agents/skills/source-command-ship/SKILL.md": "---\nname: source-command-ship\ndescription: Run the TaskSquad ship command.\n---\n<!-- Managed by TaskSquad command sync. -->\n\nShip it v2\n",
+ ".agents/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d2\n---\n<!-- Managed by TaskSquad skill sync. -->\nBody v2",
+ ".agents/skills/tsq-team-skill/SKILL.md": "mine",
+ ".claude/commands/ship.md": "Ship it v2",
+ ".claude/escape/SKILL.md": "x",
+ ".claude/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d2\n---\nBody v2",
+ ".forge/commands/ship.md": "Ship it v2",
+ ".forge/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d2\n---\nBody v2",
+ ".gemini/commands/ship.md": "Ship it v2",
+ ".gemini/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d2\n---\nBody v2",
+ ".opencode/commands/ship.md": "Ship it v2",
+ ".pi/commands/ship.md": "Ship it v2",
+ ".pi/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d2\n---\nBody v2",
+ ".tsq/commands/ship.md": "Ship it v2",
+ ".tsq/escape/SKILL.md": "x",
+ ".tsq/skills/tsq-default-skill/SKILL.md": "---\nname: tsq-default-skill\ndescription: d2\n---\nBody v2",
+ "LOCK:agents": {},
+ "LOCK:commands": {
+  "ship": "ec2"
+ },
+ "LOCK:skills": {
+  "tsq-default-skill": "e1b"
+ }
+}
