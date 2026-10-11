@@ -1,155 +1,129 @@
 import SwiftUI
 import TaskSquadPortal
 
-struct PortalRow: Identifiable, Hashable {
-    let id: String
-    let agent: String
-    let state: String
-    let sessionID: String
-}
-
-@MainActor
-private final class PortalHomeModel: ObservableObject {
-    @Published var projects: [PortalProject] = []
-    @Published var selectedProject = ""
-    @Published var portals: [PortalRow] = []
-    @Published var agents: [PortalAgent] = []
-    @Published var loading = false
-    @Published var error: String?
-    let api: PortalAPI?
-    let demo: Bool
-
-    init(token: String) {
-        demo = ProcessInfo.processInfo.arguments.contains("--ui-test-demo")
-        api = demo ? nil : PortalAPI(baseURL: MobileAuthStore.apiURL, token: { _ in token })
-        if demo {
-            projects = []
-            selectedProject = "demo-project"
-            portals = [PortalRow(id: "demo-portal", agent: "Demo Agent", state: "running", sessionID: "demo-session")]
-        }
-    }
-
-    func refresh() async {
-        guard !demo, let api else { return }
-        loading = true
-        defer { loading = false }
-        do {
-            let nextProjects = try await api.projects()
-            projects = nextProjects
-            if selectedProject.isEmpty || !nextProjects.contains(where: { $0.id == selectedProject }) {
-                selectedProject = nextProjects.first?.id ?? ""
-            }
-            guard !selectedProject.isEmpty else { portals = []; agents = []; return }
-            async let nextPortals = api.portals(projectID: selectedProject)
-            async let nextAgents = api.agents(projectID: selectedProject)
-            let records = try await nextPortals
-            let projectAgents = try await nextAgents
-            agents = projectAgents
-            let names = Dictionary(uniqueKeysWithValues: projectAgents.map { ($0.id, $0.name) })
-            portals = records.map { PortalRow(id: $0.id, agent: names[$0.agentID] ?? $0.agentID, state: $0.status, sessionID: $0.sessionID ?? "") }
-            error = nil
-        } catch let failure { self.error = failure.localizedDescription }
-    }
-
-    func open(agentID: String) async {
-        guard !demo, let api, !selectedProject.isEmpty else { return }
-        do {
-            let result = try await api.createPortal(projectID: selectedProject, agentID: agentID)
-            _ = result
-            await refresh()
-        } catch let failure { self.error = failure.localizedDescription }
-    }
-
-    func close(_ portal: PortalRow) async {
-        guard !demo, let api else { portals.removeAll { $0.id == portal.id }; return }
-        do { try await api.closePortal(id: portal.id); await refresh() }
-        catch let failure { self.error = failure.localizedDescription }
-    }
-}
-
 struct PortalHomeView: View {
     @ObservedObject var auth: MobileAuthStore
-    @StateObject private var model: PortalHomeModel
-    @State private var selectedPortal: PortalRow?
-    @State private var showOpenSheet = false
-    @State private var confirmClose: PortalRow?
+    @StateObject private var model: WorkspaceStore
+    @State private var selectedID: String?
+    @State private var editor: MobileEditorRequest?
+    @Environment(\.scenePhase) private var scenePhase
 
-    init(auth: MobileAuthStore, token: String) {
+    init(auth: MobileAuthStore, api: CustomerAPI? = nil) {
         self.auth = auth
-        _model = StateObject(wrappedValue: PortalHomeModel(token: token))
+        _model = StateObject(wrappedValue: WorkspaceStore(api: api ?? CustomerAPI(baseURL: MobileAuthStore.apiURL) { force in try await auth.accessToken(forceRefresh: force) }))
     }
-
     var body: some View {
         NavigationStack {
-            Group {
-                if model.loading && model.portals.isEmpty { ProgressView("Loading Portals…") }
-                else if model.portals.isEmpty { ContentUnavailableView("No Portals open", systemImage: "terminal", description: Text("Open an interactive agent session to get started.")) }
+            List {
+                Section {
+                    Picker("Project", selection: $model.projectID) { ForEach(model.projects) { Text($0.title).tag($0.id) } }.accessibilityIdentifier("project-picker")
+                    Picker("Section", selection: $model.section) { ForEach(WorkspaceSection.allCases) { Text($0.rawValue).tag($0) } }.accessibilityIdentifier("section-picker")
+                }
+                if model.section == .settings { settings }
+                else if model.section == .analytics { analytics }
                 else {
-                    List {
-                        if model.demo { Section("Project") { Label("Demo Workspace", systemImage: "folder") } }
-                        else if !model.projects.isEmpty {
-                            Section("Project") {
-                                Picker("Workspace", selection: $model.selectedProject) {
-                                    ForEach(model.projects) { Text($0.name).tag($0.id) }
-                                }.onChange(of: model.selectedProject) { _, _ in Task { await model.refresh() } }
-                            }
+                    if model.section == .inbox {
+                        Section("Filters") {
+                            Picker("Status", selection: $model.status) { ForEach(["all", "pending", "running", "waiting_input", "scheduled", "wrapping_up", "done", "failed"], id: \.self) { Text($0.replacingOccurrences(of: "_", with: " ").capitalized).tag($0) } }.accessibilityIdentifier("status-filter")
+                            Picker("Origin", selection: $model.origin) { ForEach(["all", "mine", "system", "scheduled", "planner", "conveyor", "from-note"], id: \.self) { Text($0.capitalized).tag($0) } }
                         }
-                        Section("Live Portals") {
-                            ForEach(model.portals) { portal in
-                                Button { selectedPortal = portal } label: {
-                                    HStack(spacing: 12) {
-                                        Image(systemName: "terminal.fill").foregroundStyle(.tint)
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(portal.agent).font(.headline)
-                                            Text(portal.state.capitalized).font(.caption).foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                                    }.contentShape(Rectangle())
-                                }.buttonStyle(.plain).accessibilityIdentifier("portal-row-\(portal.id)")
-                                    .swipeActions {
-                                        Button(role: .destructive) { confirmClose = portal } label: { Label("Close", systemImage: "xmark") }
-                                    }
-                            }
-                        }
-                    }.refreshable { await model.refresh() }
+                    }
+                    if model.section == .notes { Toggle("Archived notes", isOn: $model.archived).onChange(of: model.archived) { _, _ in Task { await model.refresh() } } }
+                    if model.loading { ProgressView("Loading…") }
+                    else if model.visibleRecords.isEmpty { ContentUnavailableView("No \(model.section.rawValue.lowercased())", systemImage: "tray", description: Text("Choose another project or create a new item.")) }
+                    else if model.section == .portals {
+                        portalSection("Active sessions", live: true)
+                        portalSection("History", live: false)
+                    } else {
+                        Section(model.section.rawValue) { ForEach(model.visibleRecords) { record in row(record) } }
+                    }
+                    if let refreshedAt = model.refreshedAt { Text("Updated \(refreshedAt.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
+                }
+                if let error = model.error { Text(error).foregroundStyle(.red).accessibilityIdentifier("workspace-error") }
+            }
+            .searchable(text: $model.search, prompt: "Search \(model.section.rawValue)")
+            .navigationTitle(model.section.rawValue)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { if canCreate { Button { create() } label: { Image(systemName: "plus") }.accessibilityLabel("Create " + model.section.rawValue).accessibilityIdentifier("create-item").disabled(model.busy) } } }
+            .refreshable { await model.connect() }
+            .task { await model.connect() }
+            .task(id: "\(model.context):\(scenePhase)") {
+                selectedID = nil
+                guard scenePhase == .active else { return }
+                await model.refresh()
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                    await model.refresh()
                 }
             }
-            .navigationTitle("Portals")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if !model.demo { Button("Sign out") { Task { await auth.signOut() } } }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showOpenSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Open Portal")
-                }
+            .sheet(item: $editor) { MobileEditor(model: model, request: $0) }
+            .navigationDestination(item: $selectedID) { id in
+                MobileRecordDetail(model: model, id: id)
             }
-            .safeAreaInset(edge: .bottom) {
-                if let error = model.error { Text(error).font(.footnote).foregroundStyle(.red).padding().frame(maxWidth: .infinity) }
-            }
-            .task { await model.refresh() }
-            .task { while !Task.isCancelled { try? await Task.sleep(for: .seconds(5)); await model.refresh() } }
-            .sheet(isPresented: $showOpenSheet) { openSheet }
-            .navigationDestination(item: $selectedPortal) { portal in PortalTerminalScreen(portal: portal, api: model.api, demo: model.demo, close: { Task { await model.close(portal); selectedPortal = nil } }) }
-            .confirmationDialog("Close this Portal?", isPresented: Binding(get: { confirmClose != nil }, set: { if !$0 { confirmClose = nil } }), titleVisibility: .visible) {
-                Button("Close Portal", role: .destructive) { if let item = confirmClose { Task { await model.close(item) } }; confirmClose = nil }
-                Button("Cancel", role: .cancel) { confirmClose = nil }
-            } message: { Text("The remote terminal session will be closed.") }
         }
     }
-
-    private var openSheet: some View {
-        NavigationStack {
-            List {
-                if model.demo { Text("Sign in to open a live Portal.").foregroundStyle(.secondary) }
-                ForEach(model.agents) { agent in
-                    Button { Task { await model.open(agentID: agent.id); showOpenSheet = false } } label: {
-                        HStack { VStack(alignment: .leading) { Text(agent.name); Text(agent.status ?? "Available").font(.caption).foregroundStyle(.secondary) }; Spacer(); Image(systemName: "plus.circle") }
-                    }
+    private var canCreate: Bool {
+        if [.inbox, .notes].contains(model.section) { return !model.projectID.isEmpty }
+        if model.section == .portals { return model.isPro && !model.eligibleAgents.isEmpty && model.records.filter { ["pending", "running"].contains($0.status) }.count < 3 }
+        if model.section == .members { return model.isOwner }
+        return model.canManage && ![.supervisor, .memory, .analytics, .settings].contains(model.section)
+    }
+    @ViewBuilder private func portalSection(_ title: String, live: Bool) -> some View {
+        let values = model.visibleRecords.filter { ["pending", "running"].contains($0.status) == live }
+        if !values.isEmpty { Section(title) { ForEach(values) { row($0) } } }
+        if live && !model.isPro { Text("Interactive Portals require an eligible account.").foregroundStyle(.secondary) }
+    }
+    private func row(_ record: CustomerRecord) -> some View {
+        Button { selectedID = record.id } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(model.section == .portals ? model.agentName(record.text("agent_id")) : record.title).font(.headline).foregroundStyle(.primary)
+                    if !record.status.isEmpty { Text(record.status.replacingOccurrences(of: "_", with: " ").capitalized).font(.caption).foregroundStyle(record.status == "waiting_input" ? .orange : .secondary) }
+                    if model.section == .agents { Text(record.flag("paused") ? "Paused" : "Available").font(.caption).foregroundStyle(.secondary) }
+                    if record.number("created_at") > 0 { Text(record.date, style: .relative).font(.caption).foregroundStyle(.secondary) }
                 }
-            }.navigationTitle("Choose an agent")
-                .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { showOpenSheet = false } } }
-                .task { await model.refresh() }
-        }.presentationDetents([.medium, .large])
+                Spacer(); Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+            }.padding(.vertical, 3)
+        }.buttonStyle(.plain).accessibilityIdentifier("record-" + record.id)
+    }
+    private func create() {
+        let section = model.section, project = model.projectID, context = model.context
+        model.error = nil
+        editor = MobileEditorRequest(title: section == .inbox ? "New task" : "New " + section.rawValue.lowercased(), fields: WorkspaceField.fields(for: section), draftKey: "\(model.profile?.id ?? "").\(project).\(section.rawValue)", attachments: section == .inbox, phases: section == .planners, submitLabel: section == .inbox ? "Send" : "Create") { body, files in
+            var body = body
+            if [.inbox, .portals].contains(section) { body["team_id"] = .string(project) }
+            if section == .inbox {
+                body["save_tokens"] = .object(["enabled": body.removeValue(forKey: "save_tokens_enabled") ?? .bool(false), "level": body.removeValue(forKey: "save_tokens_level") ?? .string("full")])
+            }
+            guard context == model.context, let result = await model.mutate(model.path(section, project: project), body: body, files: files) else { return false }
+            await model.refresh()
+            let record = CustomerRecord(result)
+            selectedID = record.id.isEmpty ? nil : record.id
+            return true
+        }
+    }
+    private var settings: some View {
+        Section("Account and project") {
+            Text(model.profile?.text("email") ?? "")
+            Text("Project role: \(model.currentProject?.text("role") ?? "member")")
+            Text("API: \(model.api.baseURL.absoluteString)").font(.caption)
+            if model.canManage {
+                Toggle("Learn from sessions", isOn: setting("learn_from_session"))
+                Toggle("Project memory", isOn: setting("memory_enabled"))
+            }
+            Button("Sign out", role: .destructive) { Task { await auth.signOut() } }
+        }
+    }
+    private func setting(_ key: String) -> Binding<Bool> { Binding(get: { model.currentProject?.flag(key) ?? false }, set: { value in Task { if await model.mutate(["teams", model.projectID], method: "PATCH", body: [key: .bool(value)]) != nil { await model.connect() } } }) }
+    private var analytics: some View {
+        Section("Last 30 days") {
+            if let record = model.records.first {
+                ForEach(["created", "done", "failed", "in_progress", "scheduled"], id: \.self) { key in
+                    LabeledContent(key.replacingOccurrences(of: "_", with: " ").capitalized, value: String(Int(record.value["totals"]?[key]?.number ?? 0)))
+                }
+                ForEach(["turns", "input_tokens", "output_tokens", "tool_calls", "tool_errors"], id: \.self) { key in
+                    LabeledContent(key.replacingOccurrences(of: "_", with: " ").capitalized, value: String(Int(record.value["usage"]?[key]?.number ?? 0)))
+                }
+            }
+        }
     }
 }

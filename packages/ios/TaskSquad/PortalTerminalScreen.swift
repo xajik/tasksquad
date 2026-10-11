@@ -4,56 +4,35 @@ import UIKit
 import SwiftTerm
 
 struct PortalTerminalScreen: View {
-    let portal: PortalRow
-    let api: PortalAPI?
-    let demo: Bool
-    let close: () -> Void
+    let sessionID: String
+    let api: PortalAPI
     @StateObject private var terminal: PortalTerminalSession
     @State private var reconnectID = UUID()
-    @State private var confirmClose = false
-
-    init(portal: PortalRow, api: PortalAPI?, demo: Bool, close: @escaping () -> Void) {
-        self.portal = portal
-        self.api = api
-        self.demo = demo
-        self.close = close
-        if let api, !demo, !portal.sessionID.isEmpty {
-            _terminal = StateObject(wrappedValue: api.terminalSession(sessionID: portal.sessionID))
-        } else {
-            _terminal = StateObject(wrappedValue: PortalTerminalSession(sessionID: portal.sessionID,
-                ticketProvider: { _ in throw URLError(.userAuthenticationRequired) },
-                socketURLProvider: { _, _, _ in throw URLError(.userAuthenticationRequired) }))
-        }
+    @State private var showKeyboard = false
+    @Environment(\.scenePhase) private var phase
+    init(sessionID: String, api: PortalAPI) {
+        self.sessionID = sessionID; self.api = api
+        _terminal = StateObject(wrappedValue: api.terminalSession(sessionID: sessionID))
     }
-
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Circle().fill(demo || terminal.connected ? .green : .orange).frame(width: 7, height: 7)
-                Text(demo ? "Connected · Demo" : terminal.status).font(.caption)
+                Circle().fill(terminal.connected ? .green : .orange).frame(width: 7, height: 7)
+                Text(terminal.status).font(.caption).accessibilityIdentifier("terminal-status")
                 Spacer()
-                Button("Reconnect", systemImage: "arrow.clockwise") { terminal.disconnect(); reconnectID = UUID() }
-                    .labelStyle(.iconOnly).accessibilityLabel("Reconnect terminal")
-            }.padding(.horizontal).padding(.vertical, 10)
-            if !demo {
-                IOSNativeTerminalView(model: terminal)
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("$ tsq portal attach \(portal.id)").foregroundStyle(.green)
-                    Text("Connected to Demo Agent").foregroundStyle(.white)
-                    Text("Portal terminal is ready.").foregroundStyle(.white)
-                    Spacer()
-                }.font(.system(.callout, design: .monospaced)).padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading).background(Color.black).accessibilityIdentifier("demo-terminal")
-            }
+                Button("Reconnect", systemImage: "arrow.clockwise") { reconnectID = UUID() }.labelStyle(.iconOnly).accessibilityLabel("Reconnect terminal")
+            }.padding(12)
+            IOSNativeTerminalView(model: terminal).accessibilityIdentifier("live-terminal")
+            HStack {
+                ForEach([("Esc", "\u{1b}"), ("Tab", "\t"), ("Ctrl-C", "\u{03}"), ("↑", "\u{1b}[A"), ("↓", "\u{1b}[B")], id: \.0) { key in
+                    Button(key.0) { terminal.input(Data(key.1.utf8)) }.buttonStyle(.bordered).disabled(!terminal.connected)
+                }
+            }.font(.caption).padding(8)
         }
-        .background(Color(uiColor: .systemBackground))
-        .navigationTitle(portal.agent).navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Close", role: .destructive) { confirmClose = true }.accessibilityIdentifier("close-portal") } }
-        .confirmationDialog("Close this Portal?", isPresented: $confirmClose, titleVisibility: .visible) {
-            Button("Close Portal", role: .destructive, action: close)
-            Button("Cancel", role: .cancel) { }
-        } message: { Text("The remote terminal session will be closed.") }
-        .task(id: reconnectID) { if !demo { await terminal.connect() } }
+        .task(id: "\(reconnectID):\(phase)") {
+            guard phase == .active else { terminal.disconnect(); return }
+            await terminal.connect()
+        }
         .onDisappear { terminal.disconnect() }
     }
 }
@@ -65,7 +44,11 @@ private struct IOSNativeTerminalView: UIViewRepresentable {
         let view = SwiftTerm.TerminalView(frame: .zero)
         view.terminalDelegate = context.coordinator
         view.font = UIFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        model.onOutput = { [weak view] data in view?.feed(byteArray: Array(data)[...]) }
+        view.accessibilityLabel = "Remote terminal"
+        model.onOutput = { [weak view] data in
+            view?.feed(byteArray: Array(data)[...])
+            view?.accessibilityValue = String(decoding: data, as: UTF8.self)
+        }
         model.resize(cols: view.getTerminal().cols, rows: view.getTerminal().rows)
         view.backgroundColor = .black
         return view
