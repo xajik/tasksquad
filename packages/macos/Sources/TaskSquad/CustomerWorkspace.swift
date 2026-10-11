@@ -266,29 +266,27 @@ struct CustomerWorkspace: View {
             if model.section == .conveyors {
                 Button("Edit") { editRecord(record) }
                 Button("Run Now") {
-                    let team = model.teamID
-                    Task {
-                        if let result = await model.mutate(["tasks"], body: ["team_id": .string(team), "agent_id": .string(record.text("agent_id")), "subject": .string(record.title), "body": .string(record.text("body")), "auto_close": .bool(record.flag("auto_close"))]), let id = result["id"]?.string { model.openTask(id) }
-                    }
+                    let operation = WorkspaceOperation.runConveyor(project: model.teamID, conveyor: record)
+                    Task { if let result = await model.perform(operation), let id = result["id"]?.string { model.openTask(id) } }
                 }
-                Button(record.flag("paused") ? "Resume" : "Pause") { perform(model.path(for: .conveyors, id: record.id), method: "PUT", body: ["paused": .bool(!record.flag("paused"))]) }
+                Button(record.flag("paused") ? "Resume" : "Pause") { run(.setPaused(.conveyors, project: model.teamID, id: record.id, paused: !record.flag("paused"))) }
                 Button("Delete", role: .destructive) { confirmDelete(record) }
             }
             if model.section == .agents, model.isMaintainer {
                 Button("Edit Role") { editRecord(record) }
-                Button(record.flag("paused") ? "Resume" : "Pause") { perform(model.path(for: .agents, id: record.id) + ["pause"], body: ["paused": .bool(!record.flag("paused"))]) }
+                Button(record.flag("paused") ? "Resume" : "Pause") { run(.setPaused(.agents, project: model.teamID, id: record.id, paused: !record.flag("paused"))) }
                 Menu("More") {
                     Button("Create Agent Token") {
-                        let path = model.teamPath("tokens"), name = record.title
+                        let operation = WorkspaceOperation.createAgentToken(project: model.teamID, agent: record.id, label: "Native app"), name = record.title
                         Task {
-                            if let result = await model.mutate(path, body: ["agent_id": .string(record.id), "label": .string("Native app")]) {
+                            if let result = await model.perform(operation) {
                                 presentedText = CustomerText(title: "Token for \(name) · save it now", text: result["token"]?.string ?? "")
                             }
                         }
                     }
                     Button("Reset Agent") {
-                        let path = model.path(for: .agents, id: record.id) + ["reset"]
-                        confirmation = CustomerConfirmation(title: "Reset \(record.title)?", message: "This requests a reset of the agent's current session.", action: "Reset") { await model.perform(path) }
+                        let operation = WorkspaceOperation.resetAgent(project: model.teamID, agent: record.id)
+                        confirmation = CustomerConfirmation(title: "Reset \(record.title)?", message: "This requests a reset of the agent's current session.", action: "Reset") { await model.run(operation) }
                     }
                     Button("Delete Agent", role: .destructive) { confirmDelete(record) }
                 }
@@ -311,10 +309,10 @@ struct CustomerWorkspace: View {
                 }
                 Text(record.text("description")).foregroundStyle(Theme.mutedForeground).textSelection(.enabled)
                 HStack {
-                    Button(record.flag("paused") ? "Resume" : "Pause") { perform(model.path(for: .planners, id: record.id), method: "PATCH", body: ["paused": .bool(!record.flag("paused"))]) }
-                    Button("Approve") { perform(model.path(for: .planners, id: record.id), method: "PATCH", body: ["planner_verdict": .number(1)]) }
-                    Button("Reject") { perform(model.path(for: .planners, id: record.id), method: "PATCH", body: ["planner_verdict": .number(0)]) }
-                    Button("Clear Verdict") { perform(model.path(for: .planners, id: record.id), method: "PATCH", body: ["planner_verdict": .null]) }
+                    Button(record.flag("paused") ? "Resume" : "Pause") { run(.setPaused(.planners, project: model.teamID, id: record.id, paused: !record.flag("paused"))) }
+                    Button("Approve") { run(.plannerVerdict(project: model.teamID, planner: record.id, 1)) }
+                    Button("Reject") { run(.plannerVerdict(project: model.teamID, planner: record.id, 0)) }
+                    Button("Clear Verdict") { run(.plannerVerdict(project: model.teamID, planner: record.id, nil)) }
                     Button("Delete", role: .destructive) { confirmDelete(record) }
                 }.buttonStyle(.tsqOutline).disabled(model.busy)
                 if record.value["planner_verdict"] != nil, record.value["planner_verdict"] != .null {
@@ -329,10 +327,10 @@ struct CustomerWorkspace: View {
                             if !phase.text("task_id").isEmpty {
                                 HStack {
                                     Button(phase.text("user_verdict") == "approved" ? "✓ Phase Approved" : "Approve Phase") {
-                                        perform(["tasks", phase.text("task_id"), "grade"], method: "PATCH", body: ["grade": phase.text("user_verdict") == "approved" ? .null : .number(1)])
+                                        run(.grade(task: phase.text("task_id"), phase.text("user_verdict") == "approved" ? nil : 1))
                                     }
                                     Button(phase.text("user_verdict") == "rejected" ? "✓ Phase Rejected" : "Reject Phase") {
-                                        perform(["tasks", phase.text("task_id"), "grade"], method: "PATCH", body: ["grade": phase.text("user_verdict") == "rejected" ? .null : .number(0)])
+                                        run(.grade(task: phase.text("task_id"), phase.text("user_verdict") == "rejected" ? nil : 0))
                                     }
                                 }.disabled(model.busy)
                             }
@@ -375,7 +373,7 @@ struct CustomerWorkspace: View {
                         let id = model.teamID, name = model.currentTeam?.title ?? "project"
                         editor = CustomerEditorRequest(title: "Delete \(name)", fields: [.init("confirm", "Type the project name", required: true)], submitLabel: "Delete Project") { body, _ in
                             guard body["confirm"]?.string == name else { model.error = "Project name does not match."; return false }
-                            guard await model.mutate(["teams", id], method: "DELETE") != nil else { return false }
+                            guard await model.perform(.deleteProject(id)) != nil else { return false }
                             await model.connect(); return true
                         }
                     }
@@ -384,32 +382,25 @@ struct CustomerWorkspace: View {
         }.formStyle(.grouped).scrollContentBackground(.hidden).frame(maxWidth: 760).frame(maxWidth: .infinity).edgeBorder(.top).disabled(model.busy)
     }
     private func setTeamSetting(_ key: String, _ value: Bool) {
-        let path = ["teams", model.teamID]
-        Task { if await model.mutate(path, method: "PATCH", body: [key: .bool(value)]) != nil { await model.connect() } }
+        let operation = WorkspaceOperation.setProjectFlag(project: model.teamID, key: key, value)
+        Task { if await model.perform(operation) != nil { await model.connect() } }
     }
     private func leaveProject() {
         guard let user = model.profile else { return }
-        let path = model.teamPath("members", id: user.id)
+        let operation = WorkspaceOperation.delete(.members, project: model.teamID, id: user.id)
         confirmation = CustomerConfirmation(title: "Leave this project?", message: "You will lose access until invited again.", action: "Leave") {
-            if await model.mutate(path, method: "DELETE") != nil { await model.connect() }
+            if await model.perform(operation) != nil { await model.connect() }
         }
     }
     private func createRecord() { editRecord(nil) }
     private func editRecord(_ record: CustomerRecord?, duplicate: Bool = false) {
         let section = model.section, team = model.teamID
         let updating = record != nil && !duplicate
-        let path = model.path(for: section, id: updating ? record?.id : nil)
         var fields = CustomerField.fields(for: section, record: record)
         if section == .agents, updating { fields.removeAll { $0.id != "role" } }
         if duplicate, let index = fields.firstIndex(where: { $0.id == "name" }) { fields[index].initial = .string((record?.title ?? "") + "-copy") }
         editor = CustomerEditorRequest(title: "\(updating ? "Edit" : "New") \(section.rawValue)", fields: fields, attachments: section == .inbox, phases: section == .planners, submitLabel: updating ? "Save" : "Create") { values, files in
-            var body = values
-            if [.inbox, .portals].contains(section) { body["team_id"] = .string(team) }
-            if section == .inbox {
-                body["save_tokens"] = .object(["enabled": body.removeValue(forKey: "save_tokens_enabled") ?? .bool(false), "level": body.removeValue(forKey: "save_tokens_level") ?? .string("full")])
-                if body["scheduled_at"] == .null { body.removeValue(forKey: "scheduled_at") }
-                if body["close_steps"] == .array([]) { body.removeValue(forKey: "close_steps") }
-            }
+            let body = values
             if section == .conveyors {
                 guard (0...23).contains(Int(body["hour"]?.number ?? -1)), (0...59).contains(Int(body["minute"]?.number ?? -1)), TimeZone(identifier: body["timezone"]?.string ?? "") != nil else {
                     model.error = "Enter a valid hour, minute, and time zone."; return false
@@ -418,26 +409,25 @@ struct CustomerWorkspace: View {
                 if body["frequency"] == .string("monthly"), !(1...31).contains(Int(body["day_of_month"]?.number ?? -1)) { model.error = "Choose a day from 1 to 31."; return false }
                 if let count = body["repeat_count"]?.number, count < 1 { model.error = "Maximum runs must be positive."; return false }
             }
-            let method = updating ? (section == .agents ? "PATCH" : "PUT") : "POST"
-            guard let result = await model.mutate(path, method: method, body: body, files: files) else { return false }
+            let operation: WorkspaceOperation = if updating, let id = record?.id { .update(section, project: team, id: id, values: body, files: files) }
+                else { .create(section, project: team, values: body, files: files) }
+            guard let result = await model.perform(operation) else { return false }
             if let id = result["id"]?.string { model.selectedID = id }
             await model.refresh(); return true
         }
     }
     private func confirmDelete(_ record: CustomerRecord) {
-        let path = model.path(for: model.section, id: record.id)
+        let operation = WorkspaceOperation.delete(model.section, project: model.teamID, id: record.id)
         confirmation = CustomerConfirmation(title: "Delete \(record.title)?", message: "This cannot be undone.", action: "Delete") {
-            if await model.mutate(path, method: "DELETE") != nil { model.selectedID = nil; await model.refresh() }
+            if await model.perform(operation) != nil { model.selectedID = nil; await model.refresh() }
         }
     }
     private func confirmClosePortal(_ record: CustomerRecord) {
         confirmation = CustomerConfirmation(title: "Close this portal?", message: "The remote terminal session will end.", action: "Close Portal") {
-            await model.perform(["portals", record.id, "close"])
+            await model.run(.closePortal(record.id))
         }
     }
-    private func perform(_ path: [String], method: String = "POST", body: [String: JSONValue] = [:]) {
-        Task { await model.perform(path, method: method, body: body) }
-    }
+    private func run(_ operation: WorkspaceOperation) { Task { await model.run(operation) } }
 }
 
 struct CustomerConfirmation: Identifiable {

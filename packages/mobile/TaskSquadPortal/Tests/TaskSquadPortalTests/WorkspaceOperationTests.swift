@@ -32,6 +32,7 @@ final class WorkspaceOperationTests: XCTestCase {
         assert(.forward(task: "t", values: ["agent_id": .string("a")]), "POST", "tasks/t/forward", ["agent_id": .string("a")])
         assert(.grade(task: "t", 1), "PATCH", "tasks/t/grade", ["grade": .number(1)])
         assert(.grade(task: "t", nil), "PATCH", "tasks/t/grade", ["grade": .null])
+        assert(.gradeMessage(task: "t", message: "m", 0), "PATCH", "tasks/t/messages/m/grade", ["grade": .number(0)])
         assert(.taskSettings(task: "t", saveTokens: ["enabled": .bool(true)]), "PATCH", "tasks/t/settings", ["save_tokens": .object(["enabled": .bool(true)])])
         assert(.closeTask("t"), "POST", "tasks/t/close")
         assert(.cancelTask("t"), "PUT", "tasks/t", ["status": .string("cancelled")])

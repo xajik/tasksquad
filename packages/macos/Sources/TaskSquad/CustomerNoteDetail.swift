@@ -15,8 +15,8 @@ struct CustomerNoteDetail: View {
                 HStack(spacing: 8) {
                     Button(action: edit) { Label("Edit", icon: .pencil) }.buttonStyle(.tsqOutline)
                     Button(record.number("archived_at") > 0 ? "Unarchive" : "Archive") {
-                        let path = model.teamPath("notes", id: record.id) + ["archive"]
-                        Task { await model.perform(path, method: record.number("archived_at") > 0 ? "DELETE" : "POST") }
+                        let operation = WorkspaceOperation.archiveNote(project: model.teamID, note: record.id, restore: record.number("archived_at") > 0)
+                        Task { await model.run(operation) }
                     }.buttonStyle(.tsqOutline)
                     Menu {
                         Button("Convert to Task…") { sendToAgent(critique: false) }
@@ -24,9 +24,9 @@ struct CustomerNoteDetail: View {
                     } label: { Text("Send to Agent") }.menuStyle(.button).controlSize(.small).fixedSize()
                     Spacer()
                     Button {
-                        let path = model.teamPath("notes", id: record.id)
+                        let operation = WorkspaceOperation.delete(.notes, project: model.teamID, id: record.id)
                         confirmation = CustomerConfirmation(title: "Delete \(record.title)?", message: "This note and its comments will be permanently removed.", action: "Delete") {
-                            if await model.mutate(path, method: "DELETE") != nil { model.selectedID = nil; await model.refresh() }
+                            if await model.perform(operation) != nil { model.selectedID = nil; await model.refresh() }
                         }
                     } label: { Icon(.trash, size: 14) }.buttonStyle(.tsqIcon).foregroundStyle(Theme.destructive).help("Delete note")
                 }.disabled(model.busy)
@@ -50,8 +50,8 @@ struct CustomerNoteDetail: View {
                             Spacer(); Text(entry.date.formatted()).font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
                             if entry.text("author_id") == model.profile?.id || model.isMaintainer {
                                 Button {
-                                    let path = model.teamPath("notes", id: record.id) + ["comments", entry.id]
-                                    confirmation = CustomerConfirmation(title: "Delete comment?", message: "This cannot be undone.", action: "Delete") { await model.perform(path, method: "DELETE") }
+                                    let operation = WorkspaceOperation.deleteComment(project: model.teamID, note: record.id, comment: entry.id)
+                                    confirmation = CustomerConfirmation(title: "Delete comment?", message: "This cannot be undone.", action: "Delete") { await model.run(operation) }
                                 } label: { Icon(.trash, size: 13) }.buttonStyle(.plain).foregroundStyle(Theme.mutedForeground).help("Delete comment")
                             }
                         }
@@ -64,18 +64,18 @@ struct CustomerNoteDetail: View {
                     }
                     .overlay(RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.border))
                 Button("Add Comment") {
-                    let path = model.teamPath("notes", id: record.id), text = comment
-                    Task { if await model.mutate(path + ["comments"], body: ["content": .string(text)]) != nil { comment = ""; await model.refresh() } }
+                    let operation = WorkspaceOperation.comment(project: model.teamID, note: record.id, content: comment)
+                    Task { if await model.perform(operation) != nil { comment = ""; await model.refresh() } }
                 }.buttonStyle(.tsqPrimary).disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
             }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
     private func sendToAgent(critique: Bool) {
-        let path = model.teamPath("notes", id: record.id) + [critique ? "critique" : "convert"]
+        let project = model.teamID, note = record.id
         var fields: [CustomerField] = [.init("agent_id", "Agent", .agent, required: true), .init(critique ? "context" : "instructions", critique ? "Context" : "Instructions", .multiline), .init("include_comments", "Include comments", .bool, initial: .bool(true))]
         if !critique { fields.append(.init("auto_close", "Auto-close task", .bool, initial: .bool(false))) }
         editor = CustomerEditorRequest(title: critique ? "Request Critique" : "Convert Note to Task", fields: fields, submitLabel: "Send") { body, _ in
-            guard let result = await model.mutate(path, body: body) else { return false }
+            guard let result = await model.perform(.noteTask(critique ? .critique : .convert, project: project, note: note, values: body)) else { return false }
             if let id = result["task_id"]?.string { model.openTask(id) }; return true
         }
     }

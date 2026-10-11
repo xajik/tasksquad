@@ -211,7 +211,7 @@ extension CustomerSection {
 extension CustomerEditorRequest {
     @MainActor static func newProject(model: CustomerWorkspaceModel) -> CustomerEditorRequest {
         CustomerEditorRequest(title: "New project", fields: [.init("name", "Project name", required: true)], submitLabel: "Create") { body, _ in
-            guard let result = await model.mutate(["teams"], body: body) else { return false }
+            guard let result = await model.perform(.createProject(values: body)) else { return false }
             await model.connect(); model.teamID = result["id"]?.string ?? model.teamID; return true
         }
     }

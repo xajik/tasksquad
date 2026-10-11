@@ -42,6 +42,9 @@ public struct WorkspaceOperation: Sendable {
     public static func forward(task: String, values: [String: JSONValue]) -> Self { .init(["tasks", task, "forward"], body: values) }
     /// `nil` clears a previous grade.
     public static func grade(task: String, _ grade: Double?) -> Self { .init(["tasks", task, "grade"], method: "PATCH", body: ["grade": grade.map(JSONValue.number) ?? .null]) }
+    public static func gradeMessage(task: String, message: String, _ grade: Double?) -> Self {
+        .init(["tasks", task, "messages", message, "grade"], method: "PATCH", body: ["grade": grade.map(JSONValue.number) ?? .null])
+    }
     public static func taskSettings(task: String, saveTokens: [String: JSONValue]) -> Self { .init(["tasks", task, "settings"], method: "PATCH", body: ["save_tokens": .object(saveTokens)]) }
     public static func closeTask(_ task: String) -> Self { .init(["tasks", task, "close"]) }
     public static func cancelTask(_ task: String) -> Self { .init(["tasks", task], method: "PUT", body: ["status": .string("cancelled")]) }

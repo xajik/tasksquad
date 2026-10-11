@@ -168,7 +168,7 @@ private actor WorkspaceTransport: HTTPTransport {
                 }
             }
             let closeStart = Date()
-            await model.perform(["portals", "item-1", "close"])
+            await model.run(.closePortal("item-1"))
             let closeMilliseconds = Date().timeIntervalSince(closeStart) * 1_000
             XCTAssertNil(model.error, "iteration \(iteration): close request succeeds")
             XCTAssertEqual(model.records.first?.status, "done", "Closed Portals remain as completed history")

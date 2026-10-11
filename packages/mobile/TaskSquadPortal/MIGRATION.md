@@ -43,7 +43,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] Fix `WorkspaceStore.mutate` scoping: key on account+project only, so section/filter changes don't drop a successful result (prevents duplicate resubmits)
 - [x] Replace the global `busy` guard with per-operation dedup (`inFlight: Set<String>`), never failing silently
 - [x] `WorkspaceOperation` (named constructors → path/method/body/files), `WorkspaceStore.perform(_:)`, route table tests
-- [ ] Migrate the macOS call sites (`CustomerWorkspace`, `CustomerTaskDetail`, `CustomerNoteDetail`, `ApplicationWorkspace`)
+- [x] Migrate the macOS call sites (`CustomerWorkspace`, `CustomerTaskDetail`, `CustomerNoteDetail`, `ApplicationWorkspace`)
 - [ ] Migrate the iOS call sites (`MobileRecordDetail`, `PortalHomeView`); remove the app-level `perform(path:method:)`
 - [ ] macOS editors use `WorkspaceDraftStore`/`WorkspaceDraftScope`; delete iOS `MobileDraftStore`
 - [ ] Tests: `WorkspaceEditor` validation, `StatusPresentation`, draft-scope isolation

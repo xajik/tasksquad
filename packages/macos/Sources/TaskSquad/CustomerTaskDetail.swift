@@ -90,7 +90,7 @@ struct CustomerTaskDetail: View {
         let isUser = message.text("role") == "user"
         let name = isUser ? (message.text("sender_id") == model.profile?.id ? "You" : "User")
             : message.text("role") == "agent" ? model.agentName(record.text("agent_id")) : message.text("role").capitalized
-        let gradePath = ["tasks", record.id, "messages", message.id, "grade"]
+        let task = record.id
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 Icon(isUser ? .user : message.text("role") == "agent" ? .bot : .info, size: 14)
@@ -107,8 +107,8 @@ struct CustomerTaskDetail: View {
                 Text(message.date.formatted(date: .abbreviated, time: .shortened)).font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
                 Button { copyText(message.text("body")) } label: { Icon(.copy, size: 14) }.buttonStyle(.plain).foregroundStyle(Theme.mutedForeground).help("Copy message")
                 if message.text("role") == "agent" {
-                    gradeIcon(.thumbsUp, record: message, grade: 1, path: gradePath)
-                    gradeIcon(.thumbsDown, record: message, grade: 0, path: gradePath)
+                    gradeIcon(.thumbsUp, record: message, grade: 1) { .gradeMessage(task: task, message: message.id, $0) }
+                    gradeIcon(.thumbsDown, record: message, grade: 0) { .gradeMessage(task: task, message: message.id, $0) }
                 }
                 Menu { messageActions(message) } label: { Icon(.ellipsis, size: 14) }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(Theme.mutedForeground)
@@ -128,10 +128,11 @@ struct CustomerTaskDetail: View {
         .background(isUser ? Theme.primary.opacity(0.04) : Theme.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(isUser ? Theme.primary.opacity(0.2) : Theme.border))
     }
-    private func gradeIcon(_ icon: LucideIcon, record: CustomerRecord, grade: Double, path: [String]) -> some View {
+    /// Selecting the current grade again clears it.
+    private func gradeIcon(_ icon: LucideIcon, record: CustomerRecord, grade: Double, operation: @escaping (Double?) -> WorkspaceOperation) -> some View {
         let selected = record.value["grade"]?.number == grade
         return Button {
-            Task { await model.perform(path, method: "PATCH", body: ["grade": selected ? .null : .number(grade)]) }
+            Task { await model.run(operation(selected ? nil : grade)) }
         } label: {
             Icon(icon, size: 14).padding(3)
                 .background(selected ? (grade == 1 ? Theme.green : Theme.red).opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
@@ -141,17 +142,17 @@ struct CustomerTaskDetail: View {
     }
     @ViewBuilder private var actions: some View {
         Button("Forward to Agent…") {
-            let path = ["tasks", record.id, "forward"]
+            let task = record.id
             editor = CustomerEditorRequest(title: "Forward Task", fields: [.init("agent_id", "Agent", .agent, required: true), .init("instructions", "Instructions", .multiline)], submitLabel: "Forward") { body, _ in
-                guard let response = await model.mutate(path, body: body) else { return false }
+                guard let response = await model.perform(.forward(task: task, values: body)) else { return false }
                 if let id = response["task_id"]?.string { model.openTask(id) }; return true
             }
         }
         Button("Token Saving…") {
             let settings = record.value["settings"]?["save_tokens"]
-            let path = ["tasks", record.id, "settings"]
+            let task = record.id
             editor = CustomerEditorRequest(title: "Token Saving", fields: [.init("enabled", "Enabled", .bool, initial: settings?["enabled"] ?? .bool(false)), .init("level", "Level", .choice(["lite", "full", "ultra"]), initial: settings?["level"] ?? .string("full"))]) { body, _ in
-                guard await model.mutate(path, method: "PATCH", body: ["save_tokens": .object(body)]) != nil else { return false }
+                guard await model.perform(.taskSettings(task: task, saveTokens: body)) != nil else { return false }
                 await model.refresh(); return true
             }
         }
@@ -165,18 +166,18 @@ struct CustomerTaskDetail: View {
             }
         }
         Divider()
-        gradeButton("Approve Task", record: record, grade: 1, path: ["tasks", record.id, "grade"])
-        gradeButton("Reject Task", record: record, grade: 0, path: ["tasks", record.id, "grade"])
+        gradeButton("Approve Task", record: record, grade: 1)
+        gradeButton("Reject Task", record: record, grade: 0)
         if active {
             Button("Close Task…") {
                 let id = record.id
-                confirmation = CustomerConfirmation(title: "Close this task?", message: "The agent will finish and close its session.", action: "Close Task") { await model.perform(["tasks", id, "close"]) }
+                confirmation = CustomerConfirmation(title: "Close this task?", message: "The agent will finish and close its session.", action: "Close Task") { await model.run(.closeTask(id)) }
             }
         }
         Button("Delete Task…", role: .destructive) {
             let id = record.id
             confirmation = CustomerConfirmation(title: "Delete this task?", message: "The task and all its messages will be removed permanently.", action: "Delete") {
-                if await model.mutate(["tasks", id], method: "DELETE") != nil { model.selectedID = nil; await model.refresh() }
+                if await model.perform(.deleteTask(id)) != nil { model.selectedID = nil; await model.refresh() }
             }
         }
     }
@@ -200,19 +201,19 @@ struct CustomerTaskDetail: View {
         }
     }
     private func editMessage(_ message: CustomerRecord) {
-        let path = ["tasks", record.id, "messages", message.id]
+        let task = record.id
         editor = CustomerEditorRequest(title: "Edit Scheduled Reply", fields: [.init("body", "Message", .multiline, required: true, initial: .string(message.text("body"))), .init("scheduled_at", "Schedule reply", .date, initial: message.value["scheduled_at"] ?? .null)]) { body, _ in
-            guard await model.mutate(path, method: "PUT", body: body) != nil else { return false }
+            guard await model.perform(.editMessage(task: task, message: message.id, values: body)) != nil else { return false }
             await model.refresh(); return true
         }
     }
     private func deleteMessage(_ message: CustomerRecord) {
-        let path = ["tasks", record.id, "messages", message.id]
-        confirmation = CustomerConfirmation(title: "Cancel scheduled reply?", message: "This message will not be sent.", action: "Delete Reply") { await model.perform(path, method: "DELETE") }
+        let operation = WorkspaceOperation.deleteMessage(task: record.id, message: message.id)
+        confirmation = CustomerConfirmation(title: "Cancel scheduled reply?", message: "This message will not be sent.", action: "Delete Reply") { await model.run(operation) }
     }
-    private func gradeButton(_ title: String, record: CustomerRecord, grade: Double, path: [String]) -> some View {
+    private func gradeButton(_ title: String, record: CustomerRecord, grade: Double) -> some View {
         Button((record.value["grade"]?.number == grade ? "✓ " : "") + title) {
-            Task { await model.perform(path, method: "PATCH", body: ["grade": record.value["grade"]?.number == grade ? .null : .number(grade)]) }
+            Task { await model.run(.grade(task: record.id, record.value["grade"]?.number == grade ? nil : grade)) }
         }.disabled(model.busy)
     }
     /// Web reply box: bordered card, borderless text area, footer with Schedule and Send.
@@ -270,7 +271,7 @@ struct CustomerTaskDetail: View {
             guard scheduledDate > Date() else { model.error = "Choose a future send time."; return }
             body["scheduled_at"] = .number(scheduledDate.timeIntervalSince1970 * 1000)
         }
-        if await model.mutate(["tasks", record.id, "messages"], body: body, files: files) != nil {
+        if await model.perform(.reply(task: record.id, values: body, files: files)) != nil {
             reply = ""; files = []; scheduled = false; await model.refresh()
         }
     }

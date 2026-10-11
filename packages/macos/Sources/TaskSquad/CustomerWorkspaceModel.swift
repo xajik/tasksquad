@@ -172,12 +172,9 @@ extension WorkspaceSection {
         guard selectionKey == key, !Task.isCancelled else { return }
         if let id { await detailStore.refresh(workspace: workspace, id: id) }
     }
-    @discardableResult func mutate(_ path: [String], method: String = "POST", body: [String: JSONValue] = [:], files: [CustomerUpload] = []) async -> JSONValue? {
-        await workspace.mutate(path, method: method, body: body, files: files)
-    }
-    func perform(_ path: [String], method: String = "POST", body: [String: JSONValue] = [:]) async {
-        if await mutate(path, method: method, body: body) != nil { await refresh() }
-    }
+    @discardableResult func perform(_ operation: WorkspaceOperation) async -> JSONValue? { await workspace.perform(operation) }
+    /// Sends the operation and refreshes the workspace and selection on success.
+    func run(_ operation: WorkspaceOperation) async { if await perform(operation) != nil { await refresh() } }
     func openTask(_ id: String) { section = .inbox; selectedID = id }
     func open(_ route: String) { if let url = URL(string: dashboardURL + route) { NSWorkspace.shared.open(url) } }
     func openInBrowser() {
