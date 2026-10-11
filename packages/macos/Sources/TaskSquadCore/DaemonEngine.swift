@@ -122,7 +122,8 @@ public actor DaemonEngine {
         let poller = BatchPoller(api: api, tokens: tokens, pollInterval: configuration.server.pollInterval,
             entries: { [weak self] in await self?.heartbeatEntries() ?? [] },
             receive: { [weak self] response in await self?.receive(response) },
-            onError: { [weak self] error in self?.report(error) })
+            onError: { [weak self] error in self?.report(error) },
+            track: { [analytics] event, properties in analytics.track(event, properties) })
         self.poller = poller
         portals = PortalHost(serverURL: configuration.server.url, tmux: tmux, environment: environment, timing: timing, tokens: tokens,
             post: { [weak self] agentID, path, body in

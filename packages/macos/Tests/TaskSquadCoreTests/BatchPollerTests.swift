@@ -56,3 +56,53 @@ private actor BatchTransport: HTTPTransport {
         XCTAssertEqual(requests[2].value(forHTTPHeaderField: "If-None-Match"), "tag")
     }
 }
+
+private actor ScriptedTransport: HTTPTransport {
+    var statuses: [Int]
+    var requests: [URLRequest] = []
+    init(_ statuses: [Int]) { self.statuses = statuses }
+    func send(_ request: URLRequest) async throws -> HTTPResult {
+        requests.append(request)
+        let status = statuses.isEmpty ? 200 : statuses.removeFirst()
+        try await Task.sleep(for: .milliseconds(30))
+        return .init(data: Data(#"{"agents":[{"agent_id":"one","next_poll_ms":60000}]}"#.utf8), status: status, headers: ["ETag": "e\(requests.count)"])
+    }
+}
+private actor Events { var names: [String] = []; func add(_ n: String) { names.append(n) } }
+
+extension BatchPollerTests {
+    /// Go: ForcePoll is non-blocking and coalesces while one is pending; a second
+    /// 401 after rotation is reported (task_poll_auth_failed); 429 backs off and is tracked.
+    func testForcePollCoalescesAndFailuresAreTracked() async throws {
+        let transport = ScriptedTransport([401, 401, 429, 200])
+        let events = Events()
+        let poller = BatchPoller(api: WorkerAPI(baseURL: "https://test.invalid", transport: transport), tokens: BatchTokens(), pollInterval: 60,
+                                 entries: { [] }, receive: { _ in }, onError: { _ in }, track: { name, _ in Task { await events.add(name) } })
+        await poller.start()
+        try await Task.sleep(for: .milliseconds(200))
+        for _ in 0..<10 { await poller.forcePoll() }
+        try await Task.sleep(for: .milliseconds(400))
+        await poller.stop()
+        let requests = await transport.requests.count
+        XCTAssertLessThanOrEqual(requests, 5, "ten force-polls coalesce into a pending one")
+        XCTAssertGreaterThanOrEqual(requests, 3)
+        let names = await events.names
+        XCTAssertTrue(names.contains("task_poll_auth_failed"), "\(names)")
+        XCTAssertTrue(names.contains("task_poll_rate_limited"), "\(names)")
+    }
+
+    func testStopThenStartPollsAgainWithFreshETag() async throws {
+        let transport = ScriptedTransport([])
+        let poller = BatchPoller(api: WorkerAPI(baseURL: "https://test.invalid", transport: transport), tokens: BatchTokens(), pollInterval: 60,
+                                 entries: { [] }, receive: { _ in }, onError: { _ in })
+        await poller.start()
+        try await Task.sleep(for: .milliseconds(150))
+        await poller.stop()
+        await poller.start()
+        try await Task.sleep(for: .milliseconds(150))
+        await poller.stop()
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 2, "each start polls immediately")
+        XCTAssertNil(requests.last?.value(forHTTPHeaderField: "If-None-Match"), "a restart drops the previous ETag")
+    }
+}

@@ -39,6 +39,8 @@ public actor BatchPoller {
     private let entries: Entries
     private let receive: Receiver
     private let onError: ErrorHandler
+    /// Go's batch analytics: task_poll_rate_limited, task_poll_auth_failed.
+    private let track: @Sendable (String, [String: JSONValue]?) -> Void
     private let initialInterval: Int
     private var timing: BatchTiming
     private var loop: Task<Void, Never>?
@@ -48,8 +50,8 @@ public actor BatchPoller {
 
     public init(api: WorkerAPI, tokens: any TokenProvider, pollInterval: Int,
                 entries: @escaping Entries, receive: @escaping Receiver,
-                onError: @escaping ErrorHandler) {
-        self.api = api; self.tokens = tokens; self.initialInterval = pollInterval
+                onError: @escaping ErrorHandler, track: @escaping @Sendable (String, [String: JSONValue]?) -> Void = { _, _ in }) {
+        self.api = api; self.tokens = tokens; self.initialInterval = pollInterval; self.track = track
         timing = BatchTiming(pollInterval: pollInterval)
         self.entries = entries; self.receive = receive; self.onError = onError
     }
@@ -94,7 +96,11 @@ public actor BatchPoller {
             catch let error as HTTPError where error.status == 401 {
                 let token = try await tokens.token(forceRotation: true)
                 guard expected == generation, !Task.isCancelled else { return }
-                response = try await api.batch(entries: list, token: token, etag: timing.etag)
+                do { response = try await api.batch(entries: list, token: token, etag: timing.etag) }
+                catch let retry as HTTPError where retry.status == 401 {
+                    track("task_poll_auth_failed", nil) // still unauthorized: the user must run tsq login
+                    throw retry
+                }
             }
             guard expected == generation, !Task.isCancelled else { return }
             if response.status == 304 {
@@ -107,7 +113,10 @@ public actor BatchPoller {
             }
         } catch {
             guard expected == generation, !Task.isCancelled else { return }
-            if let http = error as? HTTPError { next = timing.receive(status: http.status) }
+            if let http = error as? HTTPError {
+                next = timing.receive(status: http.status)
+                if http.status == 429 { track("task_poll_rate_limited", ["backoff_ms": .number(Double(next.components.seconds * 1000))]) }
+            }
             await onError(error)
         }
         guard expected == generation, !Task.isCancelled, let trigger else { return }
