@@ -33,6 +33,7 @@ enum CustomerSection: String, CaseIterable, Identifiable {
         didSet {
             guard oldValue != teamID else { return }
             defaults.set(teamID, forKey: "customer.team"); agents = []; resetSelection()
+            taskStatuses = [:]; didSeedNotificationStatuses = false
         }
     }
     @Published var profile: CustomerRecord?
@@ -69,6 +70,9 @@ enum CustomerSection: String, CaseIterable, Identifiable {
     private var refreshing = false
     private var didRestore = false
     private var taskStatuses: [String: String] = [:]
+    private var didSeedNotificationStatuses = false
+    private var notificationTask: Task<Void, Never>?
+    private var notificationRefreshing = false
     private let suppliedAPI: CustomerAPI?
 
     init(defaults: UserDefaults = .standard, api: CustomerAPI? = nil) {
@@ -97,11 +101,13 @@ enum CustomerSection: String, CaseIterable, Identifiable {
     private func matchesSource(_ record: CustomerRecord) -> Bool {
         guard section == .inbox, sourceFilter != "all" else { return true }
         switch sourceFilter {
-        case "mine": return record.text("sender_id") == profile?.id
-        case "system": return record.text("first_message_role") == "system"
-        case "scheduled": return record.number("scheduled_at") > 0
+        case "mine": return record.text("sender_id") == profile?.id && record.text("first_message_type") != "note-to-inbox"
+        case "system": return record.text("first_message_role") == "system" && record.text("first_message_type") != "note-to-inbox"
+        case "scheduled": return record.status == "scheduled" || record.number("scheduled_at") > Date().timeIntervalSince1970 * 1000
         case "planner": return !record.text("planner_id").isEmpty
         case "conveyor": return !record.text("conveyor_id").isEmpty
+        case "from-note": return record.text("first_message_type") == "note-to-inbox"
+        case "note-critique": return record.text("first_message_type") == "note-critique"
         default: return record.text("first_message_type") == sourceFilter
         }
     }
@@ -172,10 +178,12 @@ enum CustomerSection: String, CaseIterable, Identifiable {
             profile = CustomerRecord(u); teams = CustomerRecord(t).records("teams")
             if !teams.contains(where: { $0.id == teamID }) { teamID = teams.first?.id ?? "" }
             error = nil
+            startNotificationMonitor()
         } catch where isCancellation(error) { }
         catch { if self.generation == generation { self.error = error.localizedDescription } }
     }
     func signOut() async {
+        notificationTask?.cancel(); notificationTask = nil
         cancelLogin(); await loginTask?.value
         generation = UUID(); clearAccount()
         do { try await auth().logout() } catch { self.error = error.localizedDescription }
@@ -241,7 +249,6 @@ enum CustomerSection: String, CaseIterable, Identifiable {
             if section == .memory { fetchedRollups = CustomerRecord(try await api.request(["teams", team, "rollups"], query: ["period": rollupPeriod])).records("rollups") }
             guard selectionKey == key, !Task.isCancelled else { return }
             agents = CustomerRecord(agentList).records("agents")
-            if section == .inbox { notifyTransitions(values) }
             if loadMore {
                 let existing = Set(records.map(\.id)); records += values.filter { !existing.contains($0.id) }
             } else { records = values }
@@ -290,6 +297,7 @@ enum CustomerSection: String, CaseIterable, Identifiable {
     }
     private func notifyTransitions(_ tasks: [CustomerRecord]) {
         defer { taskStatuses = Dictionary(tasks.map { ($0.id, $0.status) }, uniquingKeysWith: { _, new in new }) }
+        if !didSeedNotificationStatuses { didSeedNotificationStatuses = true; return }
         guard notifications, Bundle.main.bundleIdentifier != nil else { return }
         for task in tasks where taskStatuses[task.id] != nil && taskStatuses[task.id] != task.status {
             guard ["running", "waiting_input", "done", "failed"].contains(task.status) else { continue }
@@ -299,7 +307,29 @@ enum CustomerSection: String, CaseIterable, Identifiable {
             UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: task.id, content: content, trigger: nil))
         }
     }
-    func shutdown() async { generation = UUID(); cancelLogin(); await loginTask?.value }
+    private func startNotificationMonitor() {
+        notificationTask?.cancel()
+        guard suppliedAPI == nil, profile != nil, !teamID.isEmpty else { return }
+        notificationTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshNotificationSnapshot()
+                guard let self else { return }
+                do { try await Task.sleep(for: .seconds(self.isPro ? 2 : 5)) } catch { return }
+            }
+        }
+    }
+    private func refreshNotificationSnapshot() async {
+        guard profile != nil, !teamID.isEmpty, !notificationRefreshing else { return }
+        notificationRefreshing = true; defer { notificationRefreshing = false }
+        let team = teamID
+        do {
+            let snapshot = try CustomerRecord(await api().request(["tasks"], query: ["team_id": team]))
+            guard teamID == team, !Task.isCancelled else { return }
+            notifyTransitions(snapshot.records("tasks"))
+        } catch where isCancellation(error) { }
+        catch { /* The view reports interactive failures; background notification polling retries. */ }
+    }
+    func shutdown() async { generation = UUID(); notificationTask?.cancel(); notificationTask = nil; cancelLogin(); await loginTask?.value }
 }
 
 /// Cancellation is routine (a view's `.task` restarting, the user closing the

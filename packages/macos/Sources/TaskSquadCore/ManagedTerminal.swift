@@ -39,7 +39,7 @@ public enum ManagedTerminalError: LocalizedError {
     case updateRequired, sessionChanged, ownerUnavailable, closePending
     public var errorDescription: String? {
         switch self {
-        case .updateRequired: "Update the Go daemon to control managed sessions from this app."
+        case .updateRequired: "Update the daemon to control managed sessions from this app."
         case .sessionChanged: "The task session changed or is closing. Reopen its terminal from Agents."
         case .ownerUnavailable: "Waiting for the daemon to identify this task session. Reopen it from Agents once connected."
         case .closePending: "Task close was requested. The daemon is still finishing cleanup."

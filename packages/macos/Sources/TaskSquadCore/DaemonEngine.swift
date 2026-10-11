@@ -116,7 +116,7 @@ public actor DaemonEngine {
     }
 
     public func stop() async {
-        guard running, !stopping else { return }
+        guard !stopping, running || daemonLock != nil else { return }
         stopping = true; running = false
         await poller?.stop(); poller = nil
         await resourceSync?.stop(); resourceSync = nil
@@ -132,6 +132,21 @@ public actor DaemonEngine {
         await hookServer?.stop(); hookServer = nil
         daemonLock = nil
         stopping = false
+    }
+
+    /// Stops new task claims only when every task and Portal has fully drained.
+    /// The caller may then stop the engine without cancelling user work.
+    public func drain() async -> Bool {
+        guard running, !stopping, tasks.isEmpty, portalTasks.isEmpty,
+              agents.values.allSatisfy({ $0.state.mode == .idle && $0.state.sessionID.isEmpty }) else { return false }
+        running = false
+        await poller?.stop(); poller = nil
+        return true
+    }
+
+    public func canDrain() -> Bool {
+        running && !stopping && tasks.isEmpty && portalTasks.isEmpty
+            && agents.values.allSatisfy { $0.state.mode == .idle && $0.state.sessionID.isEmpty }
     }
 
     public func cancelAgent(_ id: String) async {
@@ -194,7 +209,10 @@ public actor DaemonEngine {
                 }
             }
             if mode == .waitingInput {
-                if let reply = item["reply"]?.string, !reply.isEmpty { deliverReply(agentID: id, reply: reply) }
+                let reply = item["reply"]?.string ?? ""
+                if !reply.isEmpty || !(item["reply_attachments"]?.array ?? []).isEmpty {
+                    deliverReply(agentID: id, reply: reply, response: item)
+                }
                 continue // never pick up a new task while the session is still open
             }
             if mode == .idle, let task = item["task"], task.object != nil {
@@ -256,7 +274,10 @@ public actor DaemonEngine {
             agents[agentID]?.sessionOpenedAt = Date()
             try await artifacts?.event(["type": .string("task_start"), "task_id": .string(taskID), "agent": .string(agent.configuration.name),
                 "agent_id": .string(agentID), "session_id": .string(sessionID), "subject": .string(subject), "log_path": .string(artifacts?.logURL.path ?? "")])
-            let messages = task["messages"]?.array ?? []
+            let messages = await InboundAttachments(api: api, tokens: tokens, report: onError)
+                .materialize(task["messages"]?.array ?? [], agentID: agentID, workDir: agent.configuration.workDir)
+            try Task.checkCancellation()
+            guard agents[agentID]?.state.generation == generation else { throw CancellationError() }
             for message in messages {
                 try await artifacts?.event(["type": .string("message"), "role": .string(message["role"]?.string ?? ""), "body": .string(message["body"]?.string ?? "")])
             }
@@ -544,17 +565,26 @@ public actor DaemonEngine {
         } catch { report(error) }
     }
 
-    private func deliverReply(agentID: String, reply: String) {
+    private func deliverReply(agentID: String, reply: String, response: JSONValue) {
         guard let agent = agents[agentID], let session = agent.tmux else { return }
         // Transition before typing so a repeated heartbeat cannot deliver it twice.
         do { try agents[agentID]?.state.userReplied() } catch { report(error); return }
-        agents[agentID]?.lastPrompt = reply
-        recordTyped(agentID: agentID, reply)
         let provider = agent.provider, timing = timing, artifacts = agent.artifacts
         Task {
+            let message = JSONValue.object(["id": response["reply_message_id"] ?? .string(""),
+                                             "body": .string(reply), "attachments": response["reply_attachments"] ?? .array([])])
+            let materialized = await InboundAttachments(api: api, tokens: tokens, report: onError)
+                .materialize([message], agentID: agentID, workDir: agent.configuration.workDir)
+            let reply = materialized.first?["body"]?.string ?? reply
+            guard agents[agentID]?.state.generation == agent.state.generation,
+                  agents[agentID]?.tmux?.name == session.name, agents[agentID]?.completionRequested == false else { return }
+            agents[agentID]?.lastPrompt = reply
+            recordTyped(agentID: agentID, reply)
             try? await artifacts?.event(["type": .string("user_reply"), "body": .string(reply)])
             do {
                 try await Task.sleep(for: timing.replyDelay)
+                guard agents[agentID]?.state.generation == agent.state.generation,
+                      agents[agentID]?.completionRequested == false else { return }
                 try await self.type(provider.formatPrompt(reply), into: session, provider: provider)
             } catch { self.report(error) }
         }
@@ -745,11 +775,15 @@ public actor DaemonEngine {
             return session
         }
         guard let session = active(), await session.owns(pane: pane) else { return .init(status: 409) }
-        do { try await session.sendBytes(data, pane: pane) } catch { return .init(status: 409) }
+        // Revalidate after the ownership await, then reserve the new turn before
+        // tmux can trigger a completion hook. Never roll back after a write error:
+        // bytes may already have reached the provider.
+        guard active() != nil else { return .init(status: 409) }
         if submit, active() != nil, agents[body.agentID]?.state.mode == .waitingInput {
             try? agents[body.agentID]?.state.userReplied()
-            await forcePoll()
         }
+        do { try await session.sendBytes(data, pane: pane) } catch { report(error); return .init(status: 409) }
+        if submit { await forcePoll() }
         return .init(status: 204)
     }
 

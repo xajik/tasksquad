@@ -66,6 +66,19 @@ Reference inspected: `fb06dad4bab233cb3b614ca036a420a2bcb0c115`. Tests build the
 
 ## Evidence and next work
 
+### Implementation checkpoint (2026-10-10)
+
+This checkpoint records source-level progress separately from installed production evidence:
+
+- Implemented native managed-terminal ownership from daemon snapshots, waiting-input bookkeeping for Return submissions, a drain-before-restart path, attachment materialization for initial tasks and replies, and repair of missing provider resource copies when ETags are unchanged.
+- Corrected Inbox origin/schedule filters and moved notification polling to the workspace model so notifications continue outside the Inbox view. Added a customer CLI for project/agent/task/Portal operations, resource audit/sync, and doctor checks; cloud commands use user authentication without the daemon agent header.
+- Added a versioned generic default-resource catalog, project-over-global resource precedence, a mobile v1 implementation specification, stable-only default macOS downloads, and a separate stable native release workflow that fails when signing/notarization credentials are absent.
+- Automated verification on this date: daemon `make test` passed; macOS `make test-compatibility` passed (including 16 UI tests and the core suites); Worker `make test` passed 177 tests; Worker `make build` passed; macOS workflow syntax passed `make workflow-check`.
+- A local unsigned arm64 app passed `make app-check`; Rosetta was unavailable, so this provides no Intel runtime evidence. The new source-built `tsq` client successfully listed the authenticated account’s projects and agents. Demo’s current Claude/Codex agent IDs are not present in this machine’s config, so no duplicate agents or tasks were created and no other daemon was disturbed.
+- Not qualified by this checkpoint: production Demo Claude/Codex matrix, installed Swift provider execution, live D1 catalog updates/ETags/provider discovery, Developer ID signing/notarization/stapling/Gatekeeper, clean-machine install and lifecycle testing, or App Store sandbox feasibility. The new workflow is prepared but no signed stable artifact was produced.
+
+The source catalog is a proposed, reviewable local catalog only; production resources were not changed. Continue with compatibility and resource gates, then run the Demo matrix sequentially against Go and Swift before attempting a signed release candidate.
+
 The first local installation is `~/Applications/TaskSquad Native.app`; it was launched with a fixture via `make smoke` and its process was observed running. Markdown, JSON, logs and terminal controls have now been inspected in the installed app; remaining checks are listed above. A Go app was already running and was left intact.
 
 Continue with interactive provider setup, tmux/FIFO execution, provider hooks and WebSocket relay, then supervisor/dreamer/synchronization and the remaining CLI/UI. Do not report the app finished while the above gates are incomplete. The development preview name and current stdout-only engine are temporary during implementation, not a reduced final scope.

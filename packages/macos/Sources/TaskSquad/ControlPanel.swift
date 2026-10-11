@@ -14,6 +14,10 @@ import TaskSquadCore
     @Published var loginEmail: String?
     @Published var engineRunning = false
     @Published var engineBusy = false
+    @Published private(set) var appliedConfiguration: DaemonConfiguration?
+    @Published private(set) var appliedDocument: String?
+    @Published var engineCanDrain = false
+    var configurationRestartRequired: Bool { engineRunning && appliedDocument != nil && appliedDocument != savedDocument }
     @Published var agentSnapshots: [AgentSnapshot] = []
     @Published var observedAgents: [ObservedAgent] = []
     @Published var selectedAgentID: String?
@@ -32,6 +36,17 @@ import TaskSquadCore
             observationDate = Date(); observationError = nil
         } catch {
             observedAgents = []; observationError = "Existing daemon is unavailable"; observationDate = nil
+            terminals.managedSessions = [:]
+            terminals.managedClient = nil
+        }
+    }
+    func applyNativeSnapshots(_ snapshots: [AgentSnapshot]) {
+        agentSnapshots = snapshots
+        observedAgents = []
+        terminals.managedClient = appliedConfiguration.map { ManagedTerminalClient(port: $0.hooks.port) }
+        terminals.managedSessions = snapshots.filter { !$0.sessionID.isEmpty && !$0.taskID.isEmpty }.reduce(into: [:]) {
+            let session = "tsq-" + $1.sessionID
+            $0[session] = ManagedTerminalTarget(agentID: $1.id, taskID: $1.taskID, session: session)
         }
     }
     func cancelAgent(_ id: String) async { await engine?.cancelAgent(id); agentSnapshots = await engine?.snapshots() ?? [] }
@@ -140,23 +155,46 @@ import TaskSquadCore
     func cancelLogin() { loginTask?.cancel() }
     func startEngine() async {
         guard !engineBusy, !engineRunning, let configuration else { return }
+        let text = savedDocument
         engineBusy = true
         defer { engineBusy = false }
+        await startEngineInternal(configuration, document: text)
+    }
+    private func startEngineInternal(_ configuration: DaemonConfiguration, document: String) async {
         let candidate = DaemonEngine(configuration: configuration, paths: paths, tokens: sharedAuthentication()) { [weak self] message in
             Task { @MainActor [weak self] in self?.error = message }
         }
         do {
             try await candidate.start()
             engine = candidate
+            appliedConfiguration = configuration
+            appliedDocument = document
             engineRunning = true
             error = nil
             snapshotTask = Task {
                 while !Task.isCancelled {
-                    agentSnapshots = await candidate.snapshots()
+                    applyNativeSnapshots(await candidate.snapshots())
+                    engineCanDrain = await candidate.canDrain()
                     do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
                 }
             }
         } catch { self.error = error.localizedDescription }
+    }
+    func drainAndRestart() async {
+        guard !engineBusy, configurationRestartRequired, let configuration else { return }
+        let text = savedDocument
+        engineBusy = true
+        defer { engineBusy = false }
+        guard await engine?.drain() == true else {
+            error = "Finish active tasks and close Portals before restarting with this configuration. No work was stopped."
+            return
+        }
+        await engine?.stop()
+        snapshotTask?.cancel(); await snapshotTask?.value; snapshotTask = nil
+        engine = nil; engineRunning = false; agentSnapshots = []; engineCanDrain = false
+        terminals.managedSessions = [:]; terminals.managedClient = nil
+        appliedConfiguration = nil; appliedDocument = nil
+        await startEngineInternal(configuration, document: text)
     }
     func stopEngine() async {
         guard !engineBusy else { return }
@@ -170,6 +208,10 @@ import TaskSquadCore
         await snapshotTask?.value
         snapshotTask = nil
         agentSnapshots = []
+        terminals.managedSessions = [:]
+        terminals.managedClient = nil
+        appliedConfiguration = nil
+        appliedDocument = nil; engineCanDrain = false
         engine = nil
         engineRunning = false
     }
@@ -269,6 +311,15 @@ struct LocalSectionView: View {
                     .background(Theme.muted.opacity(0.4), in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.border))
                     .padding(.horizontal, 20)
+                if model.configurationRestartRequired {
+                    HStack(spacing: 12) {
+                        Text("Saved settings differ from the running daemon. Active tasks and Portals must finish before applying them.")
+                            .font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
+                        Spacer()
+                        Button("Drain and restart") { Task { await model.drainAndRestart() } }
+                            .buttonStyle(.tsqPrimary).disabled(model.engineBusy || !model.engineCanDrain)
+                    }.padding(.horizontal, 20).padding(.top, 12)
+                }
                 HStack {
                     Spacer()
                     Button("Discard Changes") { model.document = model.savedDocument }.buttonStyle(.tsq(.outline, size: .default))

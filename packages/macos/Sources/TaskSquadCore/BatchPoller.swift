@@ -72,11 +72,13 @@ public actor BatchPoller {
 
     public func forcePoll() { trigger?.yield() }
 
-    public func stop() {
+    public func stop() async {
         generation &+= 1
         timer?.cancel(); timer = nil
-        loop?.cancel(); loop = nil
+        let current = loop; loop = nil
+        current?.cancel()
         trigger?.finish(); trigger = nil
+        await current?.value
     }
 
     private func cycle(generation expected: UInt64) async {

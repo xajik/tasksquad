@@ -5,6 +5,13 @@ import XCTest
 @testable import TaskSquadCore
 
 @MainActor final class NativeUITests: XCTestCase {
+    func testNativeSnapshotsOwnTerminalsAndClearFinishedSessions() {
+        let model = ControlPanelModel(loadSavedAccount: false)
+        model.applyNativeSnapshots([AgentSnapshot(id: "a", name: "A", mode: .waitingInput, taskID: "t", sessionID: "s")])
+        XCTAssertEqual(model.terminals.managedSessions["tsq-s"], ManagedTerminalTarget(agentID: "a", taskID: "t", session: "tsq-s"))
+        model.applyNativeSnapshots([AgentSnapshot(id: "a", name: "A", mode: .idle, taskID: "t", sessionID: "")])
+        XCTAssertTrue(model.terminals.managedSessions.isEmpty)
+    }
     func testTerminalKeyboardAndInputMethodsProduceExactBytes() throws {
         _ = NSApplication.shared
         let view = TerminalCanvas(frame: NSRect(x: 0, y: 0, width: 900, height: 600))
@@ -122,6 +129,8 @@ import XCTest
         XCTAssertNotNil(model.observationDate)
         await server.stop(); await model.observeAgents()
         XCTAssertTrue(model.observedAgents.isEmpty); XCTAssertNil(model.observationDate)
+        XCTAssertTrue(model.terminals.managedSessions.isEmpty)
+        XCTAssertNil(model.terminals.managedClient)
         XCTAssertNotNil(model.observationError)
     }
 

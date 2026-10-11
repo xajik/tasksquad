@@ -90,6 +90,21 @@ final class ResourceSyncTests: XCTestCase {
         XCTAssertTrue(lock.lastPathComponent.hasPrefix("skills-") && lock.lastPathComponent.count == "skills-".count + 16 + ".lock".count)
         XCTAssertEqual(text(lock), #"{"tsq-default-skill":"e1","tsq-team-skill":"e2"}"#)
 
+        // Repair provider files and a lost canonical file even when ETags match.
+        for relative in [".claude/skills/tsq-default-skill/SKILL.md", ".agents/skills/tsq-default-skill/SKILL.md",
+                         ".opencode/commands/ship.md", ".codex/agents/reviewer.toml", ".tsq/skills/tsq-team-skill/SKILL.md"] {
+            try FileManager.default.removeItem(at: work.appendingPathComponent(relative))
+        }
+        await sync.syncAll()
+        XCTAssertTrue(text(work.appendingPathComponent(".claude/skills/tsq-default-skill/SKILL.md"))?.contains("Body") == true)
+        XCTAssertTrue(text(work.appendingPathComponent(".agents/skills/tsq-default-skill/SKILL.md"))?.contains("Body") == true)
+        XCTAssertEqual(text(work.appendingPathComponent(".opencode/commands/ship.md")), "Ship it")
+        XCTAssertNotNil(text(work.appendingPathComponent(".codex/agents/reviewer.toml")))
+        XCTAssertEqual(text(work.appendingPathComponent(".tsq/skills/tsq-team-skill/SKILL.md")), "Team skill body")
+
+        let edited = work.appendingPathComponent(".claude/skills/tsq-default-skill/SKILL.md")
+        try Data("User edit".utf8).write(to: edited)
+
         // Deleted on the server: managed copies go, the user's file stays.
         await worker.dropSkills()
         await sync.syncAll()
@@ -97,6 +112,7 @@ final class ResourceSyncTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: work.appendingPathComponent(".claude/skills/tsq-team-skill").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: work.appendingPathComponent(".agents/skills/tsq-default-skill/SKILL.md").path))
         XCTAssertEqual(text(userCodex), "mine")
+        XCTAssertEqual(text(edited), "User edit")
         XCTAssertEqual(text(lock), "{}")
         await server.stop()
     }

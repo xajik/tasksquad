@@ -171,8 +171,7 @@ actor ResourceSync {
             if content.isEmpty, let id = item["id"]?.string, !id.isEmpty {
                 do {
                     let result = try await api.send(method: "GET", path: kind.detailPath(id: id, teamID: item["team_id"]?.string ?? ""),
-                                                    token: token, etag: lock[name] ?? "", allowNotModified: true)
-                    if result.status == 304 { continue } // unchanged since our lock
+                                                    token: token)
                     let full = try JSONDecoder().decode(JSONValue.self, from: result.data)
                     content = full["content"]?.string ?? ""
                     if let fresh = full["etag"]?.string, !fresh.isEmpty { etag = fresh }
@@ -180,7 +179,7 @@ actor ResourceSync {
             }
             guard !content.isEmpty else { continue }
             do {
-                try install(kind, name: name, description: item["description"]?.string ?? "", content: content, workDir: workDir)
+                try install(kind, name: name, description: item["description"]?.string ?? "", content: content, workDir: workDir, tracked: lock[name] != nil)
                 lock[name] = etag; installed += 1
             } catch { report("Could not install \(kind.rawValue) \(name) into \(target.workDir): \(error.localizedDescription)") }
         }
@@ -191,98 +190,83 @@ actor ResourceSync {
         if installed + removed > 0 { NSLog("[sync] %@ for %@: %d installed, %d removed", kind.rawValue, target.workDir, installed, removed) }
     }
 
-    private func upToDate(_ kind: ManagedResource, name: String, workDir: URL, description: String) -> Bool {
-        let fm = FileManager.default
-        switch kind {
-        case .skills: return fm.fileExists(atPath: workDir.appendingPathComponent(".tsq/skills/\(name)/SKILL.md").path)
-        case .commands: return fm.fileExists(atPath: workDir.appendingPathComponent(".tsq/commands/\(name).md").path)
-        case .subAgents:
-            let file = workDir.appendingPathComponent(".tsq/agents/\(name).md")
-            guard let body = try? String(contentsOf: file, encoding: .utf8) else { return false }
-            // Repair provider formats added after an older daemon installed the Markdown copy.
-            try? HarnessLayout.writeManaged(workDir.appendingPathComponent(".codex/agents/\(name).toml"),
-                                            HarnessLayout.codexAgent(name: name, description: description, content: body), marker: HarnessLayout.codexManaged)
-            return true
-        }
+    private func canonical(_ kind: ManagedResource, name: String, workDir: URL) -> URL {
+        workDir.appendingPathComponent(kind == .skills ? ".tsq/skills/\(name)/SKILL.md" : ".tsq/\(kind.rawValue)/\(name).md")
     }
 
-    private func install(_ kind: ManagedResource, name: String, description: String, content: String, workDir: URL) throws {
-        let fm = FileManager.default
+    private func upToDate(_ kind: ManagedResource, name: String, workDir: URL, description: String) -> Bool {
+        guard let body = try? String(contentsOf: canonical(kind, name: name, workDir: workDir), encoding: .utf8) else { return false }
+        do {
+            // Equal server content does not imply that every provider copy exists.
+            try install(kind, name: name, description: description, content: body, workDir: workDir, tracked: true)
+            return true
+        } catch { report(error.localizedDescription); return false }
+    }
+
+    private func install(_ kind: ManagedResource, name: String, description: String, content: String, workDir: URL, tracked: Bool) throws {
+        let source = canonical(kind, name: name, workDir: workDir)
+        let previous = try? String(contentsOf: source, encoding: .utf8)
+        guard tracked || previous == nil || previous == content else {
+            throw ConfigurationError("Resource conflict: \(source.path); preserving local content")
+        }
+        try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // Keep the previous canonical bytes until all provider copies are reconciled.
+        let bases = kind == .commands ? HarnessLayout.commandBases : HarnessLayout.bases
+        for base in bases {
+            if kind == .skills && base == ".agents" { continue }
+            let relative = kind == .skills ? "skills/\(name)/SKILL.md" : "\(kind.rawValue)/\(name).md"
+            let destination = workDir.appendingPathComponent("\(base)/\(relative)")
+            if let old = try? String(contentsOf: destination, encoding: .utf8), old != content,
+               !(tracked && previous != nil && old == previous) {
+                report("Resource conflict: \(destination.path); preserving local content")
+                continue
+            }
+            try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(content.utf8).write(to: destination, options: .atomic)
+        }
         switch kind {
         case .skills:
-            let dir = workDir.appendingPathComponent(".tsq/skills/\(name)", isDirectory: true)
-            try Self.replaceSymlink(dir)
-            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-            try Data(content.utf8).write(to: dir.appendingPathComponent("SKILL.md"))
-            for base in HarnessLayout.bases {
-                let destination = workDir.appendingPathComponent("\(base)/skills/\(name)", isDirectory: true)
-                if base == ".agents" {
-                    try HarnessLayout.writeManaged(destination.appendingPathComponent("SKILL.md"), try HarnessLayout.codexSkill(content), marker: HarnessLayout.skillManaged)
-                    continue
-                }
-                do { try Self.copyFlat(dir, to: destination) }
-                catch { NSLog("[sync] skill %@ copy to %@ failed: %@", name, destination.path, error.localizedDescription) }
-            }
+            try HarnessLayout.writeManaged(workDir.appendingPathComponent(".agents/skills/\(name)/SKILL.md"),
+                                           try HarnessLayout.codexSkill(content), marker: HarnessLayout.skillManaged)
         case .subAgents:
-            let source = workDir.appendingPathComponent(".tsq/agents/\(name).md")
-            try fm.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Data(content.utf8).write(to: source)
-            for base in HarnessLayout.bases { Self.copyFile(source, to: workDir.appendingPathComponent("\(base)/agents/\(name).md")) }
             try HarnessLayout.writeManaged(workDir.appendingPathComponent(".codex/agents/\(name).toml"),
                                            HarnessLayout.codexAgent(name: name, description: description, content: content), marker: HarnessLayout.codexManaged)
         case .commands:
-            let source = workDir.appendingPathComponent(".tsq/commands/\(name).md")
-            try fm.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Data(content.utf8).write(to: source)
-            for base in HarnessLayout.commandBases { Self.copyFile(source, to: workDir.appendingPathComponent("\(base)/commands/\(name).md")) }
             try HarnessLayout.writeManaged(workDir.appendingPathComponent(".agents/skills/source-command-\(name)/SKILL.md"),
                                            HarnessLayout.codexCommand(name: name, content: content), marker: HarnessLayout.commandManaged)
         }
+        try Data(content.utf8).write(to: source, options: .atomic)
     }
 
     private func remove(_ kind: ManagedResource, name: String, workDir: URL) {
         guard HarnessLayout.isSafe(name) else { return }
-        let fm = FileManager.default
+        let source = canonical(kind, name: name, workDir: workDir)
+        let previous = try? Data(contentsOf: source)
+        let bases = kind == .commands ? HarnessLayout.commandBases : HarnessLayout.bases
+        for base in bases {
+            if kind == .skills && base == ".agents" { continue }
+            let relative = kind == .skills ? "skills/\(name)/SKILL.md" : "\(kind.rawValue)/\(name).md"
+            let destination = workDir.appendingPathComponent("\(base)/\(relative)")
+            if let previous, (try? Data(contentsOf: destination)) == previous { try? FileManager.default.removeItem(at: destination) }
+        }
         switch kind {
         case .skills:
-            try? fm.removeItem(at: workDir.appendingPathComponent(".tsq/skills/\(name)"))
-            for base in HarnessLayout.bases {
-                if base == ".agents" {
-                    HarnessLayout.removeManaged(workDir.appendingPathComponent(".agents/skills/\(name)/SKILL.md"), marker: HarnessLayout.skillManaged)
-                } else { try? fm.removeItem(at: workDir.appendingPathComponent("\(base)/skills/\(name)")) }
-            }
+            HarnessLayout.removeManaged(workDir.appendingPathComponent(".agents/skills/\(name)/SKILL.md"), marker: HarnessLayout.skillManaged)
         case .subAgents:
             HarnessLayout.removeManaged(workDir.appendingPathComponent(".codex/agents/\(name).toml"), marker: HarnessLayout.codexManaged)
-            try? fm.removeItem(at: workDir.appendingPathComponent(".tsq/agents/\(name).md"))
-            for base in HarnessLayout.bases { try? fm.removeItem(at: workDir.appendingPathComponent("\(base)/agents/\(name).md")) }
         case .commands:
             HarnessLayout.removeManaged(workDir.appendingPathComponent(".agents/skills/source-command-\(name)/SKILL.md"), marker: HarnessLayout.commandManaged)
-            try? fm.removeItem(at: workDir.appendingPathComponent(".tsq/commands/\(name).md"))
-            for base in HarnessLayout.commandBases { try? fm.removeItem(at: workDir.appendingPathComponent("\(base)/commands/\(name).md")) }
         }
-    }
-
-    // MARK: Files
-
-    private static func replaceSymlink(_ url: URL) throws {
-        if let type = try? FileManager.default.attributesOfItem(atPath: url.path)[.type] as? FileAttributeType, type == .typeSymbolicLink {
-            try FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: source)
+        // Empty skill directories may be removed, but never their other user files.
+        if kind == .skills {
+            for base in [".tsq"] + HarnessLayout.bases {
+                let directory = workDir.appendingPathComponent("\(base)/skills/\(name)")
+                if (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) == [] {
+                    try? FileManager.default.removeItem(at: directory)
+                }
+            }
         }
-    }
-    /// Skill directories are flat: copy regular files only (Go: copyDir).
-    private static func copyFlat(_ source: URL, to destination: URL) throws {
-        try replaceSymlink(destination)
-        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-        for file in try FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: [.isDirectoryKey])
-        where (try? file.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true {
-            copyFile(file, to: destination.appendingPathComponent(file.lastPathComponent))
-        }
-    }
-    private static func copyFile(_ source: URL, to destination: URL) {
-        do {
-            try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Data(contentsOf: source).write(to: destination)
-        } catch { NSLog("[sync] copy %@ failed: %@", destination.path, error.localizedDescription) }
     }
 
     // MARK: Lock files — ~/.tasksquad/<kind>-<sha256(workDir)[:8] hex>.lock, {name: etag}

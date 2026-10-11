@@ -3,12 +3,13 @@ import SwiftUI
 import XCTest
 @testable import TaskSquad
 @testable import TaskSquadCore
+import TaskSquadPortal
 
 private actor WorkspaceTransport: HTTPTransport {
     var requests: [URLRequest] = []
     var holdTasks = false
     var pending: CheckedContinuation<HTTPResult, Never>?
-    let record = ###"{"id":"item-1","name":"Builder","title":"Architecture review","subject":"Review the native workspace","status":"waiting_input","role":"owner","agent_id":"agent-1","sender_id":"user-1","body":"## Ready for review\n\nThe native workspace shares the cloud backend.\n\n- [x] Task inbox\n- [x] Team switching\n- [ ] Release verification","content":"# Shared project knowledge\n\nKeep the customer UI independent from the local engine.","description":"Coordinate the next release","created_at":1800000000000,"tags":["native","release"],"phases":[{"phase_id":"phase-1","name":"Implementation","status":"completed","retry_count":0,"max_retries":3,"last_response":"Ready for review"}],"attachments":[],"auto_install":1,"category":"architecture"}"###
+    let record = ###"{"id":"item-1","name":"Builder","title":"Architecture review","subject":"Review the native workspace","status":"waiting_input","role":"owner","agent_id":"agent-1","sender_id":"user-1","first_message_role":"user","first_message_type":"note-to-inbox","scheduled_at":1577836800000,"body":"## Ready for review\n\nThe native workspace shares the cloud backend.\n\n- [x] Task inbox\n- [x] Team switching\n- [ ] Release verification","content":"# Shared project knowledge\n\nKeep the customer UI independent from the local engine.","description":"Coordinate the next release","created_at":1800000000000,"tags":["native","release"],"phases":[{"phase_id":"phase-1","name":"Implementation","status":"completed","retry_count":0,"max_retries":3,"last_response":"Ready for review"}],"attachments":[],"auto_install":1,"category":"architecture"}"###
     static let stats = ###"{"range":{"from":0,"to":1},"totals":{"created":42,"started":40,"done":31,"failed":5,"cancelled":2,"in_progress":4,"scheduled":1,"grades_up":7,"grades_down":1,"success_rate":0.861,"median_completion_ms":372000},"daily":[{"date":"2026-09-24","created":4,"done":3,"failed":1},{"date":"2026-09-25","created":7,"done":6,"failed":0},{"date":"2026-09-26","created":2,"done":2,"failed":0},{"date":"2026-09-27","created":9,"done":6,"failed":2},{"date":"2026-09-28","created":8,"done":7,"failed":1},{"date":"2026-09-29","created":6,"done":4,"failed":1},{"date":"2026-09-30","created":6,"done":3,"failed":0}],"usage":{"sessions_reported":38,"active_ms":15840000,"turns":112,"input_tokens":1840000,"output_tokens":232000,"cache_read_tokens":0,"cache_write_tokens":0,"tool_calls":1284,"tool_errors":17,"models":[{"name":"claude-opus","sessions":20}]},"tools":[{"name":"Bash","count":612},{"name":"Read","count":301},{"name":"Edit","count":190},{"name":"Write","count":88},{"name":"mcp__browser__batch","count":41}],"skills":[{"name":"tsq-end-session-learning","count":24},{"name":"tsq-end-session-memory","count":21},{"name":"tsq-cli-commands","count":6}],"agents":[{"agent_id":"agent-1","name":"Builder","tasks":30,"started":29,"done":24,"failed":3,"cancelled":1,"in_progress":2,"success_rate":0.889,"median_completion_ms":301000,"grades_up":6,"grades_down":0,"sessions_reported":28,"active_ms":11000000,"turns":80,"input_tokens":1500000,"output_tokens":190000,"tool_calls":1001,"tool_errors":9},{"agent_id":"agent-2","name":"Reviewer","tasks":12,"started":11,"done":7,"failed":2,"cancelled":1,"in_progress":2,"success_rate":0.778,"median_completion_ms":544000,"grades_up":1,"grades_down":1,"sessions_reported":10,"active_ms":4840000,"turns":32,"input_tokens":340000,"output_tokens":42000,"tool_calls":283,"tool_errors":8}]}"###
     func suspendTasks() { holdTasks = true }
     func releaseTasks() { pending?.resume(returning: response("{\"tasks\":[\(record)]}")); pending = nil; holdTasks = false }
@@ -92,14 +93,28 @@ private actor WorkspaceTransport: HTTPTransport {
         XCTAssertEqual(model.messages.count, 1)
     }
 
+    func testInboxOriginsExcludeNoteTasksFromMineAndIgnoreHistoricalSchedule() async throws {
+        let model = fixture(); await model.restore(); model.section = .inbox; await model.refresh()
+        XCTAssertEqual(model.visibleRecords.map(\.id), ["item-1"])
+        model.sourceFilter = "mine"
+        XCTAssertTrue(model.visibleRecords.isEmpty)
+        model.sourceFilter = "system"
+        XCTAssertTrue(model.visibleRecords.isEmpty)
+        model.sourceFilter = "from-note"
+        XCTAssertEqual(model.visibleRecords.map(\.id), ["item-1"])
+        model.sourceFilter = "scheduled"
+        XCTAssertTrue(model.visibleRecords.isEmpty, "A historical scheduled message is not scheduled work")
+    }
+
     func testRemoteTerminalFramesPreserveUnicodeAndResize() throws {
         let bytes = Data("café 猫\u{1b}[A\r".utf8)
-        let frame = try JSONDecoder().decode(JSONValue.self, from: CustomerTerminalModel.inputFrame(bytes))
+        let frame = try JSONDecoder().decode(JSONValue.self, from: PortalTerminalSession.inputFrame(bytes))
         XCTAssertEqual(frame["t"]?.string, "i")
         XCTAssertEqual(Data(base64Encoded: frame["d"]!.string!), bytes)
-        let resize = try JSONDecoder().decode(JSONValue.self, from: CustomerTerminalModel.resizeFrame(cols: 132, rows: 40))
+        let resize = try JSONDecoder().decode(JSONValue.self, from: PortalTerminalSession.resizeFrame(cols: 132, rows: 40))
         XCTAssertEqual(resize["c"]?.number, 132); XCTAssertEqual(resize["r"]?.number, 40)
-        let model = CustomerTerminalModel()
+        let model = PortalTerminalSession(sessionID: "fixture", ticketProvider: { _ in throw URLError(.userAuthenticationRequired) },
+                                          socketURLProvider: { _, _, _ in throw URLError(.userAuthenticationRequired) })
         model.disconnect(); XCTAssertFalse(model.connected)
     }
 

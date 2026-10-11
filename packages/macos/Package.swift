@@ -10,10 +10,12 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", exact: "1.20.0"),
+        .package(path: "../mobile/TaskSquadPortal"),
     ],
     targets: [
         .target(name: "TaskSquadCore"),
-        .executableTarget(name: "TaskSquad", dependencies: ["TaskSquadCore", .product(name: "SwiftTerm", package: "SwiftTerm")],
+        .executableTarget(name: "TaskSquad", dependencies: ["TaskSquadCore", .product(name: "SwiftTerm", package: "SwiftTerm"),
+                                                             .product(name: "TaskSquadPortal", package: "TaskSquadPortal")],
                           resources: [.copy("Resources")]),
         .testTarget(name: "TaskSquadUITests", dependencies: ["TaskSquad", "TaskSquadCore"]),
         .testTarget(name: "TaskSquadCoreTests", dependencies: ["TaskSquadCore"],
