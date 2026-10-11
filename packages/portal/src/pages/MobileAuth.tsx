@@ -7,7 +7,7 @@ const redirectUri = params.get('redirect_uri') ?? ''
 const challenge = params.get('code_challenge') ?? ''
 const state = params.get('state') ?? ''
 const expectedRedirect = 'tasksquad-portal://oauth/callback'
-const validRequest = redirectUri === expectedRedirect && /^[A-Za-z0-9_-]{43}$/.test(challenge) && /^[A-Za-z0-9-]{20,100}$/.test(state)
+const validRequest = redirectUri === expectedRedirect && /^[A-Za-z0-9_-]{43}$/.test(challenge) && /^[A-Za-z0-9_-]{20,100}$/.test(state)
 const apiBase = import.meta.env.VITE_API_BASE_URL as string
 
 export default function MobileAuth() {
