@@ -29,8 +29,6 @@ Debug fixture entry points accept only loopback URLs and are compiled out of rel
 
 ## Evidence and limits
 
-The old `screenshots/portal-monkey-run` is rejected prototype evidence. Its demo terminal and macOS mocked model timings must not be used to claim E2E or performance parity.
-
 Current evidence belongs in `screenshots/workspace-contract-run`: native screenshots, named test results, sanitized fixture events, and timings with identical HTTP boundaries. HTTP timings measure networking/client work, not native UI speed. The macOS rendering/model suite provides separate regression coverage.
 
 A successful fixture run qualifies simulator layout, client flows and protocols. A live production account/daemon run, device signing and installation, real provider behavior, APNs delivery, and Store distribution require separate qualification. No fixture test claims these occurred.

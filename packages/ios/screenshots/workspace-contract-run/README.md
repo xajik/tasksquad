@@ -48,6 +48,6 @@ Same host, loopback fixture, native `PortalAPI` and URLSession. Each of 15 sampl
 
 From `packages/ios`, run `make e2e-contract DERIVED_DATA=.build/Qualification`. Export the resulting passed xcresult with `make evidence RESULT=<path>`. The harness refuses an occupied fixture port and stops only its own service. Events omit authorization headers, reusable credentials and PKCE secrets.
 
-`full-summary.json`/`full-tests.json` are the complete acceptance result. Focused result files record strengthened follow-ups. `screenshots.json` identifies the final screenshot’s test, run, capture timestamp and SHA-256; focused captures supersede the originals. The JSONL journals contain server-side observations of the native requests and terminal frames. The original prototype screenshots under `../portal-monkey-run` are explicitly rejected evidence.
+`full-summary.json`/`full-tests.json` are the complete acceptance result. Focused result files record strengthened follow-ups. `screenshots.json` identifies the final screenshot’s test, run, capture timestamp and SHA-256; focused captures supersede the originals. The JSONL journals contain server-side observations of the native requests and terminal frames.
 
 This qualifies the simulator/client fixes. It does **not** qualify live production authentication, all advanced web workflows, daemon/provider execution, device installation, APNs, Watch, or Store distribution. Those remain separate delivery/qualification work; opening every workspace section is not proof that every production operation completed.
