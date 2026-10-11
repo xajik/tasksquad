@@ -1,6 +1,12 @@
 import XCTest
 @testable import TaskSquadCore
 
+private actor AgentBox {
+    var agents: [SupervisedAgent]
+    init(_ agent: SupervisedAgent) { agents = [agent] }
+    func setIdle() { agents[0].mode = "idle" }
+}
+
 private actor Posts {
     var bodies: [(path: String, body: JSONValue)] = []
     func add(_ path: String, _ body: JSONValue) { bodies.append((path, body)) }
@@ -100,7 +106,8 @@ final class SupervisorTests: XCTestCase {
         let agent = SupervisedAgent(name: "coder", agentID: "agent-1", mode: "running", taskID: "01TASK", tmuxSession: "tsq-01AGENT",
                                     sessionID: "01SESSION", workDir: home.appendingPathComponent("proj").path, logPath: "/logs/x.log",
                                     lastActivityAt: Date().addingTimeInterval(-60))
-        await supervisor.start { [agent] }
+        let box = AgentBox(agent)
+        await supervisor.start { await box.agents }
         var listed = ""
         for _ in 0..<100 {
             listed = (try? await tmux.run(["list-sessions", "-F", "#{session_name}"])) ?? ""
@@ -115,6 +122,9 @@ final class SupervisorTests: XCTestCase {
         for _ in 0..<100 where !((try? String(contentsOf: supLog, encoding: .utf8))?.contains("Inspected") ?? false) {
             try await Task.sleep(for: .milliseconds(50))
         }
+        // The task moves on once unblocked; with the test's 10ms window a still-running
+        // agent would be supervised again right after this run.
+        await box.setIdle()
         await supervisor.handleVerdict(taskID: "01TASK", status: "resolved", summary: "Sent 2", found: "rate limit", action: "stopped")
         for _ in 0..<100 where await posts.bodies.isEmpty { try await Task.sleep(for: .milliseconds(50)) }
         let first = await posts.bodies.first

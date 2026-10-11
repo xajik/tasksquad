@@ -70,10 +70,10 @@ Status: **missing** (no Swift implementation), **partial** (some behaviour or te
 | `upload` | `ArtifactUploader.swift` | `EngineIntegrationTests` | done | — |
 | `memory`, `kb` close-step learning | `DaemonEngine` close sequence | — | partial | Verify against Go close steps; tests |
 | `orphan` sweep (startup + hourly) | `OrphanSweep.swift` | `OrphanSweepTests` | done | A response without `states` is a failed lookup (Go would kill every session) |
-| `supervisor` (`tsq-sup-*`) | `Supervisor.swift` | `SupervisorTests` (incl. byte-golden vs Go `buildContextBlock`/`printModeCmd`) | partial | Screenshot snapshot/attachment waits on the `screenshot` port (text capture is used, as Go's fallback); analytics events are no-ops until `analytics` is ported. Go bugs kept for parity: `CancelForTask` kills `tsq-sup-<first 8>` (never the real session), and the `PATH=… cat … \| cli` prefix only reaches `cat`, not the CLI |
+| `supervisor` (`tsq-sup-*`) | `Supervisor.swift` | `SupervisorTests` (incl. byte-golden vs Go `buildContextBlock`/`printModeCmd`) | done | Screenshot snapshot + closing attachment and analytics wired. Go bugs kept for parity: `CancelForTask` kills `tsq-sup-<first 8>` (never the real session), and the `PATH=… cat … \| cli` prefix only reaches `cat`, not the CLI |
 | `dreamer` | config only | — | missing | Nightly window, KB/memory job |
-| `analytics` | config only | — | missing | Event posting |
-| `screenshot` | — | — | missing | Capture + upload (also `tsq screenshot`) |
+| `analytics` | `Analytics.swift` | `AnalyticsTests`, `EngineIntegrationTests` | done | Same events/properties and payload as Go. Go bug kept for parity: the Amplitude batch body is a bare array without `api_key`, which Amplitude rejects. `user_login`/`user_logout`/`$identify` move with the CLI auth commands |
+| `screenshot` | `TerminalScreenshot.swift` (CoreGraphics/CoreText, embedded JetBrains Mono) | `TerminalScreenshotTests` | done | Same grid parser, palette and 10×22 cells, so images have Go's exact dimensions; glyph rasterization differs. `tsq screenshot` command still open |
 | `tasklog`, `logger` | `TaskHistory.swift`, `TaskOutput.swift`, `RunArtifacts.swift` | `StorageTests` | partial | Verify file formats Go's `tsq logs` reads |
 
 ### Local hook routes (`daemon/hooks`)

@@ -111,7 +111,9 @@ private actor WorkerFixture {
         work_dir = '\(home.path)'
         """)
         let paths = TaskSquadPaths(home: home)
-        let engine = DaemonEngine(configuration: config, paths: paths, tokens: FixtureTokens(), onError: { XCTFail($0) })
+        let recorder = AnalyticsRecorder()
+        let analytics = Analytics(enabled: true, apiKey: "test-key", deviceID: "device-1", appVersion: "9.9.9", transport: recorder, flushInterval: .seconds(3600))
+        let engine = DaemonEngine(configuration: config, paths: paths, tokens: FixtureTokens(), appVersion: "9.9.9", analytics: analytics, onError: { XCTFail($0) })
         try await engine.start()
         XCTAssertThrowsError(try DaemonLock(paths: paths))
         if stopEarly {
@@ -154,5 +156,25 @@ private actor WorkerFixture {
         XCTAssertFalse(log.contains("\u{1b}"))
         let released = try DaemonLock(paths: paths)
         withExtendedLifetime(released) { }
+        // Go's analytics events for the same lifecycle, flushed as one JSON array.
+        await analytics.flush()
+        let names = await recorder.events.compactMap { $0["event_type"]?.string }
+        XCTAssertEqual(Array(names.prefix(3)), ["daemon_start", "task_received", "task_started"])
+        if control == nil, !stopEarly { XCTAssertTrue(names.contains(exitCode == 0 ? "task_completed" : "task_failed"), "\(names)") }
+        let started = await recorder.events.first { $0["event_type"]?.string == "task_started" }
+        XCTAssertEqual(started?["properties"]?["via"]?.string, "pipe")
+        XCTAssertEqual(started?["device_id"]?.string, "device-1")
+        XCTAssertEqual(started?["app_version"]?.string, "9.9.9")
+    }
+}
+
+/// Collects every event Analytics posts to Amplitude's batch endpoint.
+actor AnalyticsRecorder: HTTPTransport {
+    var events: [JSONValue] = []
+    func send(_ request: URLRequest) async throws -> HTTPResult {
+        if request.url == Analytics.endpoint, let body = request.httpBody, case .array(let batch)? = try? JSONDecoder().decode(JSONValue.self, from: body) {
+            events += batch
+        }
+        return HTTPResult(data: Data(), status: 200)
     }
 }

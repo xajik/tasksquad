@@ -60,6 +60,7 @@ public actor DaemonEngine {
     private var resourceSync: ResourceSync?
     private var orphanSweep: OrphanSweep?
     private var supervisor: Supervisor?
+    private let analytics: Analytics
     /// Live session analytics keyed "agent/task" (Go: metrics registry).
     private var lifecycles: [String: SessionLifecycle] = [:]
     private var hookServer: LocalHTTPServer?
@@ -71,12 +72,18 @@ public actor DaemonEngine {
                 tokens: (any TokenProvider)? = nil, transport: any HTTPTransport = NativeHTTPTransport(),
                 environment: [String: String] = ProcessInfo.processInfo.environment,
                 tmux: TmuxConnection = TmuxConnection(), timing: InteractiveTiming = InteractiveTiming(),
+                appVersion: String = "", analytics: Analytics? = nil,
                 onError: @escaping @Sendable (String) -> Void = { _ in }) {
         self.configuration = configuration; self.paths = paths
         api = WorkerAPI(baseURL: configuration.server.url, transport: transport)
         self.tokens = tokens ?? Authentication(transport: transport, apiURL: configuration.server.url, firebaseAPIKey: configuration.firebase.apiKey)
         self.environment = environment; self.tmux = tmux; self.timing = timing; self.onError = onError
+        // Opt-in: [analytics] enabled with an api_key (Go: analytics.Init).
+        self.analytics = analytics ?? Analytics(enabled: configuration.analytics.enabled, apiKey: configuration.analytics.apiKey,
+                                                deviceID: (try? paths.deviceID()) ?? "", appVersion: appVersion, transport: transport)
+        self.appVersion = appVersion
     }
+    private let appVersion: String
 
     public func start() async throws {
         guard !running, !stopping else { return }
@@ -99,6 +106,7 @@ public actor DaemonEngine {
         hookServer = server
         daemonLock = lock
         running = true
+        analytics.track("daemon_start", ["version": .string(appVersion)])
         startedAt = .now
         agents = Dictionary(uniqueKeysWithValues: runtimes.map { ($0.configuration.id, $0) })
         order = configuration.agents.map(\.id)
@@ -134,7 +142,9 @@ public actor DaemonEngine {
             attachScreenshot: { [api, tokens] agentID, sessionID, messageID, png in
                 try await ArtifactUploader(api: api, tokens: tokens, agentID: agentID)
                     .attach(sessionID: sessionID, messageID: messageID, filename: "supervisor-snapshot.png", data: png, imageMIMEType: "image/png")
-            })
+            },
+            screenshot: { [tmux] session in try? await TerminalScreenshot.capture(session: session, tmux: tmux) },
+            track: { [analytics] event, properties in analytics.track(event, properties) })
         self.supervisor = supervisor
         await supervisor.start { [weak self] in await self?.supervisedAgents() ?? [] }
     }
@@ -155,6 +165,7 @@ public actor DaemonEngine {
         await resourceSync?.stop(); resourceSync = nil
         await orphanSweep?.stop(); orphanSweep = nil
         await supervisor?.stop(); supervisor = nil
+        await analytics.flush()
         // Close live portals so their tmux sessions and relay sockets don't
         // outlive the engine (Go: CloseActivePortal on shutdown).
         await portals?.closeAll()
@@ -212,6 +223,9 @@ public actor DaemonEngine {
         for item in response {
             guard let id = item["agent_id"]?.string, let agent = agents[id] else { continue }
             if item["reset"] == .bool(true) || item["close"] == .bool(true) {
+                if item["reset"] == .bool(true) {
+                    analytics.track("task_reset_requested", ["task_id": .string(agent.state.taskID), "agent_name": .string(agent.configuration.name)])
+                }
                 agents[id]?.serverClosed = true
                 agents[id]?.resetRequested = item["reset"] == .bool(true)
                 if tasks[id] == nil { agents[id]?.state.reset() }
@@ -246,11 +260,14 @@ public actor DaemonEngine {
             if mode == .waitingInput {
                 let reply = item["reply"]?.string ?? ""
                 if !reply.isEmpty || !(item["reply_attachments"]?.array ?? []).isEmpty {
+                    analytics.track("user_reply_received", ["task_id": .string(agent.state.taskID)])
                     deliverReply(agentID: id, reply: reply, response: item)
                 }
                 continue // never pick up a new task while the session is still open
             }
             if mode == .idle, let task = item["task"], task.object != nil {
+                analytics.track("task_received", ["task_id": .string(task["id"]?.string ?? ""), "agent_id": .string(id),
+                                                  "agent_name": .string(agent.configuration.name)])
                 beginTask(agentID: id, task: task, memoryRollup: item["memory_rollup"]?.string ?? "")
             }
         }
@@ -304,7 +321,13 @@ public actor DaemonEngine {
             artifacts = try RunArtifacts(paths: paths, agentName: agent.configuration.name, taskID: taskID)
             agents[agentID]?.artifacts = artifacts
             try await artifacts?.writeLines(["# TaskSquad run log", "# agent=\(agent.configuration.name)  task_id=\(taskID)  subject=\(subject)", ""])
-            let opened = try await post(agentID: agentID, path: "/daemon/session/open", body: .object(["task_id": .string(taskID)]))
+            let opened: JSONValue
+            do { opened = try await post(agentID: agentID, path: "/daemon/session/open", body: .object(["task_id": .string(taskID)])) }
+            catch {
+                analytics.track("task_spawn_failed", ["task_id": .string(taskID), "agent_name": .string(agent.configuration.name),
+                                                      "error": .string("session_open_failed")])
+                throw error
+            }
             guard let sessionID = opened["session_id"]?.string, !sessionID.isEmpty else { throw ConfigurationError("Session open response missing session_id") }
             guard agents[agentID]?.state.openedSession(sessionID, generation: generation) == true else { throw CancellationError() }
             agents[agentID]?.sessionOpenedAt = Date()
@@ -340,6 +363,7 @@ public actor DaemonEngine {
                 let process = ProcessSpecification(executable: executable, arguments: arguments + ["-p", prompt],
                     directory: agent.configuration.workDir, environment: environment)
                 try await artifacts?.writeLines(["[EVENT] event=running via=pipe"])
+                trackStarted(agent, taskID: taskID, via: "pipe")
                 let result = try await NativeProcess.run(process) { [weak self] channel, data in
                     switch channel {
                     case .stdout: try await self?.output(agentID: agentID, generation: generation, data: data)
@@ -384,6 +408,7 @@ public actor DaemonEngine {
         guard agents[agentID]?.state.generation == generation else { await session.kill(); throw CancellationError() }
         agents[agentID]?.tmux = session
         try? await artifacts?.writeLines(["[EVENT] event=running via=tmux session=\(session.name)"])
+        trackStarted(agent, taskID: agent.state.taskID, via: "tmux")
         let reader = Task {
             for await chunk in stream {
                 do { try await self.output(agentID: agentID, generation: generation, data: chunk) }
@@ -406,6 +431,11 @@ public actor DaemonEngine {
         if Task.isCancelled { return .cancelled }
         // A session that ends without a completion hook is a crash (Go: tmux EOF path).
         return provider.usesHooks ? .crashed : .closed
+    }
+
+    private func trackStarted(_ agent: AgentRuntime, taskID: String, via: String) {
+        analytics.track("task_started", ["task_id": .string(taskID), "agent_name": .string(agent.configuration.name),
+                                         "provider": .string(agent.provider.rawValue), "via": .string(via)])
     }
 
     private func output(agentID: String, generation: UInt64, data: Data) async throws {
@@ -449,6 +479,13 @@ public actor DaemonEngine {
         // agent_end even when its model call failed (Go reports that as success).
         let exitFailed = !agent.provider.interactive && status == .crashed
         let status = exitFailed && agent.completionOverride == .closed ? .crashed : (agent.completionOverride ?? status)
+        let duration = JSONValue.number(agent.sessionOpenedAt.map { Date().timeIntervalSince($0) } ?? 0)
+        let common: [String: JSONValue] = ["task_id": .string(agent.state.taskID), "agent_name": .string(agent.configuration.name)]
+        switch status {
+        case .closed: analytics.track("task_completed", common.merging(["provider": .string(agent.provider.rawValue), "duration_secs": duration]) { $1 })
+        case .crashed: analytics.track("task_failed", common.merging(["provider": .string(agent.provider.rawValue), "duration_secs": duration]) { $1 })
+        case .cancelled: analytics.track("task_cancelled", common.merging(["duration_secs": duration]) { $1 })
+        }
         let sessionID = agent.state.sessionID
         let capture = agent.terminalCapture
         var finalText = wasLearning ? "" : await Self.finalText(hookMessage: agent.hookMessage, provider: agent.provider,
@@ -576,6 +613,7 @@ public actor DaemonEngine {
         // A close/reset may have won while the notify request was in flight.
         guard let latest = agents[agentID], latest.state.generation == generation, !latest.completionRequested, !latest.state.completing else { return }
         try? await latest.artifacts?.event(["type": .string("agent_turn"), "body": .string(text), "transcript_path": .string(transcriptPath)])
+        analytics.track("task_waiting_for_input", ["task_id": .string(latest.state.taskID), "agent_name": .string(latest.configuration.name)])
         let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: agentID)
         let log = capture.isEmpty ? latest.output.logContent : capture
         Task {
@@ -601,6 +639,7 @@ public actor DaemonEngine {
             let result = try await post(agentID: agentID, path: "/daemon/session/message", body: .object([
                 "session_id": .string(agent.state.sessionID), "type": .string("output"), "message": .string(text),
             ]))
+            analytics.track("task_intermediate_response", ["task_id": .string(agent.state.taskID), "agent_name": .string(agent.configuration.name)])
             if result["close"] == .bool(true), agents[agentID]?.state.generation == agent.state.generation {
                 agents[agentID]?.autoClosed = true
                 if let session = agents[agentID]?.tmux { await session.kill() }
@@ -635,6 +674,10 @@ public actor DaemonEngine {
 
     private func startCloseSequence(agentID: String, steps: [String]) {
         do { try agents[agentID]?.state.transition(.learnStart) } catch { report(error); return }
+        if let agent = agents[agentID] {
+            analytics.track("task_close_sequence_started", ["task_id": .string(agent.state.taskID), "agent_name": .string(agent.configuration.name),
+                                                            "step_count": .number(Double(steps.count))])
+        }
         agents[agentID]?.state.pendingSteps = steps
         agents[agentID]?.state.executedSteps = []
         guard agents[agentID]?.tmux != nil else {
@@ -691,6 +734,7 @@ public actor DaemonEngine {
         switch request.path {
         case "/hooks/stop":
             let event = HookAdapter.parseStop(provider: providerParam, body: request.body, isFailure: query["failure"] == "true")
+            analytics.track(event.isFailure ? "task_stop_failure" : "task_stop_received", ["task_id": .string(taskParam), "provider": .string(providerParam)])
             await dispatchStop(agentParam: agentParam, taskParam: taskParam, provider: providerParam, event: event)
             if !taskParam.isEmpty { await supervisor?.cancelForTask(taskParam) }
             return ok
