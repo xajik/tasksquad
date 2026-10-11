@@ -1,0 +1,7 @@
+{"type":"task_start","task_id":"t1","agent":"Coder","agent_id":"a1","session_id":"s1","subject":"a\u003cb\u003e\u0026c \"q\" é猫\nline\t\\","log_path":"/l/t1.log","ts":"TS"}
+{"type":"message","role":"user","body":"a\u003cb\u003e\u0026c \"q\" é猫\nline\t\\","ts":"TS"}
+{"type":"agent_turn","body":"a\u003cb\u003e\u0026c \"q\" é猫\nline\t\\","ts":"TS"}
+{"type":"agent_turn","body":"b","transcript_path":"/t.jsonl","ts":"TS"}
+{"type":"user_reply","body":"a\u003cb\u003e\u0026c \"q\" é猫\nline\t\\","ts":"TS"}
+{"type":"task_end","status":"closed","final_text":"a\u003cb\u003e\u0026c \"q\" é猫\nline\t\\","ts":"TS"}
+{"type":"task_end","status":"crashed","final_text":"","r2_log_key":"k/full.log","ts":"TS"}

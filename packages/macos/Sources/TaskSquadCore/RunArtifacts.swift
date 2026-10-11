@@ -40,13 +40,35 @@ public actor RunArtifacts {
         try runLog.write(contentsOf: Data((lines.joined(separator: "\n") + "\n").utf8))
     }
 
-    public func event(_ object: [String: JSONValue]) throws {
+    /// One journal line exactly as Go's tasklog writes it: fields in struct order, `ts`
+    /// (local RFC3339) last, `omitEmpty` fields dropped when "", encoding/json escaping.
+    public func event(_ fields: KeyValuePairs<String, String>, omitEmpty: Set<String> = []) throws {
         guard !closed else { return }
-        var fields = object
-        fields["ts"] = .string(ISO8601DateFormatter().string(from: Date()))
-        var data = try JSONEncoder().encode(JSONValue.object(fields))
-        data.append(10)
-        try journal.write(contentsOf: data)
+        var parts = fields.filter { !(omitEmpty.contains($0.key) && $0.value.isEmpty) }.map { "\(Self.goQuote($0.key)):\(Self.goQuote($0.value))" }
+        parts.append("\"ts\":\(Self.goQuote(Supervisor.rfc3339(Date())))")
+        try journal.write(contentsOf: Data(("{" + parts.joined(separator: ",") + "}\n").utf8))
+    }
+
+    /// encoding/json string quoting (HTML-safe: <, >, & as \u003c…).
+    static func goQuote(_ s: String) -> String {
+        var out = "\""
+        for scalar in s.unicodeScalars {
+            switch scalar {
+            case "\"": out += "\\\""
+            case "\\": out += "\\\\"
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            case "<": out += "\\u003c"
+            case ">": out += "\\u003e"
+            case "&": out += "\\u0026"
+            case "\u{2028}": out += "\\u2028"
+            case "\u{2029}": out += "\\u2029"
+            default:
+                if scalar.value < 0x20 { out += String(format: "\\u%04x", scalar.value) } else { out.unicodeScalars.append(scalar) }
+            }
+        }
+        return out + "\""
     }
 
     public func close() throws {

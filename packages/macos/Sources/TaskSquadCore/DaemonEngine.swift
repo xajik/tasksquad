@@ -365,14 +365,14 @@ public actor DaemonEngine {
             if let token = try? await tokens.token(forceRotation: false) {
                 agents[agentID]?.relay = TerminalRelay.dial(serverURL: relayServerURL, token: token, agentID: agentID, sessionID: sessionID)
             }
-            try await artifacts?.event(["type": .string("task_start"), "task_id": .string(taskID), "agent": .string(agent.configuration.name),
-                "agent_id": .string(agentID), "session_id": .string(sessionID), "subject": .string(subject), "log_path": .string(artifacts?.logURL.path ?? "")])
+            try await artifacts?.event(["type": "task_start", "task_id": taskID, "agent": agent.configuration.name, "agent_id": agentID,
+                                        "session_id": sessionID, "subject": subject, "log_path": artifacts?.logURL.path ?? ""])
             let messages = await InboundAttachments(api: api, tokens: tokens, report: onError)
                 .materialize(task["messages"]?.array ?? [], agentID: agentID, workDir: agent.configuration.workDir)
             try Task.checkCancellation()
             guard agents[agentID]?.state.generation == generation else { throw CancellationError() }
             for message in messages {
-                try await artifacts?.event(["type": .string("message"), "role": .string(message["role"]?.string ?? ""), "body": .string(message["body"]?.string ?? "")])
+                try await artifacts?.event(["type": "message", "role": message["role"]?.string ?? "", "body": message["body"]?.string ?? ""])
             }
             let provider = agent.provider
             if provider.usesHooks {
@@ -552,20 +552,22 @@ public actor DaemonEngine {
         }
         try? await agent.artifacts?.writeLines(status == .closed ? ["", "[EVENT] event=success"] : ["", "[EVENT] event=failure status=\(status.rawValue)"])
         if !capture.isEmpty { try? await agent.artifacts?.writeLines(["", "# --- terminal scrollback ---", capture]) }
-        var messageID = ""
+        var messageID = "", r2LogKey = ""
         do {
             let response = try await post(agentID: agentID, path: "/daemon/session/close", body: .object([
                 "session_id": .string(sessionID), "agent_id": .string(agentID),
                 "status": .string(status.rawValue), "final_text": .string(finalText),
             ]))
             messageID = response["message_id"]?.string ?? ""
+            r2LogKey = response["r2_log_key"]?.string ?? ""
         } catch { report(error) }
         let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: agentID)
         do { try await uploader.attachLog(sessionID: sessionID, content: capture.isEmpty ? agent.output.logContent : capture) }
         catch { report(error) }
         await attachTranscript(uploader: uploader, sessionID: sessionID, messageID: messageID,
                                transcriptPath: agent.transcriptPath, capture: capture)
-        try? await agent.artifacts?.event(["type": .string("task_end"), "status": .string(status.rawValue), "final_text": .string(finalText)])
+        try? await agent.artifacts?.event(["type": "task_end", "status": status.rawValue, "final_text": finalText, "r2_log_key": r2LogKey],
+                                          omitEmpty: ["r2_log_key"])
         await postSessionReport(agentID: agentID, sessionID: sessionID)
         agents[agentID]?.state.finishCompletion(generation: generation)
     }
@@ -666,7 +668,7 @@ public actor DaemonEngine {
         } catch { report(error) }
         // A close/reset may have won while the notify request was in flight.
         guard let latest = agents[agentID], latest.state.generation == generation, !latest.completionRequested, !latest.state.completing else { return }
-        try? await latest.artifacts?.event(["type": .string("agent_turn"), "body": .string(text), "transcript_path": .string(transcriptPath)])
+        try? await latest.artifacts?.event(["type": "agent_turn", "body": text, "transcript_path": transcriptPath], omitEmpty: ["transcript_path"])
         analytics.track("task_waiting_for_input", ["task_id": .string(latest.state.taskID), "agent_name": .string(latest.configuration.name)])
         let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: agentID)
         let log = capture.isEmpty ? latest.output.logContent : capture
@@ -718,7 +720,7 @@ public actor DaemonEngine {
                   agents[agentID]?.tmux?.name == session.name, agents[agentID]?.completionRequested == false else { return }
             agents[agentID]?.lastPrompt = reply
             recordTyped(agentID: agentID, reply)
-            try? await artifacts?.event(["type": .string("user_reply"), "body": .string(reply)])
+            try? await artifacts?.event(["type": "user_reply", "body": reply])
             do {
                 try await Task.sleep(for: timing.replyDelay)
                 guard agents[agentID]?.state.generation == agent.state.generation,
