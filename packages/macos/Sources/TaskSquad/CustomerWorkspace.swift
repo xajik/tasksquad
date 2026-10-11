@@ -36,10 +36,7 @@ struct CustomerWorkspace: View {
         .task(id: "\(model.active):\(model.selectionKey)") {
             guard model.active else { return }
             await model.restore()
-            while !Task.isCancelled {
-                await model.refresh()
-                do { try await Task.sleep(for: .seconds(WorkspacePolicy.pollInterval(isPro: model.isPro))) } catch { return }
-            }
+            await model.poll()
         }
     }
     /// Mirrors the web `Login` page: a small centered card.

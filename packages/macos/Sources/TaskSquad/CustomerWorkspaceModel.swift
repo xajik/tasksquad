@@ -169,11 +169,23 @@ extension WorkspaceSection {
     }
     func refresh(loadMore: Bool = false) async {
         guard profile != nil else { return }
-        let key = selectionKey, id = selectedID
+        let key = selectionKey
         await workspace.refresh(loadMore: loadMore)
         guard selectionKey == key, !Task.isCancelled else { return }
-        if let id { await detailStore.refresh(workspace: workspace, id: id) }
+        await workspaceDidRefresh()
     }
+    /// Drives the visible window from the shared poller: workspace first, then
+    /// the selected record, then inbox notifications from the same response.
+    func poll() async {
+        guard profile != nil else { return }
+        await workspace.poll { [weak self] in await self?.workspaceDidRefresh() }
+    }
+    private func workspaceDidRefresh() async {
+        if section == .inbox, workspace.refreshedAt != nil { notifyTransitions(records) }
+        if let id = selectedID { await detailStore.refresh(workspace: workspace, id: id) }
+    }
+    /// The visible inbox already fetches the tasks the notifier needs.
+    private var inboxIsPolled: Bool { active && section == .inbox }
     @discardableResult func perform(_ operation: WorkspaceOperation) async -> JSONValue? { await workspace.perform(operation) }
     /// Sends the operation and refreshes the workspace and selection on success.
     func run(_ operation: WorkspaceOperation) async { if await perform(operation) != nil { await refresh() } }
@@ -221,7 +233,7 @@ extension WorkspaceSection {
         }
     }
     private func refreshNotificationSnapshot() async {
-        guard profile != nil, !teamID.isEmpty, !notificationRefreshing else { return }
+        guard profile != nil, !teamID.isEmpty, !notificationRefreshing, !inboxIsPolled else { return }
         notificationRefreshing = true; defer { notificationRefreshing = false }
         let team = teamID
         do {

@@ -89,7 +89,22 @@ import Combine
             if refresh { await self.refresh() }
         } catch { if context == key { handle(error) } }
     }
-    public func refresh(loadMore: Bool = false) async {
+    private var pollRefresh: (key: String, task: Task<Void, Never>)?
+    /// Explicit refreshes (after a mutation, pull-to-refresh) always send new
+    /// requests so they observe the change. `coalesce` is for timer ticks: they
+    /// join a refresh already running for the same scope instead of stacking.
+    public func refresh(loadMore: Bool = false, coalesce: Bool = false) async {
+        if coalesce, !loadMore {
+            if let running = pollRefresh, running.key == context { await running.task.value; return }
+            let key = context, task = Task { await self.load(loadMore: false) }
+            pollRefresh = (key, task)
+            await task.value
+            if pollRefresh?.key == key { pollRefresh = nil }
+            return
+        }
+        await load(loadMore: loadMore)
+    }
+    private func load(loadMore: Bool) async {
         guard !projectID.isEmpty else { return }
         let key = context, team = projectID, section = section, requestID = UUID(), loadedCount = records.count
         refreshID = requestID; loading = records.isEmpty
@@ -153,10 +168,14 @@ import Combine
             error = nil; return result
         } catch { if scope == mutationScope { handle(error) }; return nil }
     }
-    /// The caller's lifecycle task owns cancellation; there is no detached timer.
-    public func poll() async {
+    /// The single polling driver for both apps (2 s Pro, 5 s otherwise). The
+    /// caller's lifecycle task owns cancellation; there is no detached timer.
+    /// `onTick` chains dependent work such as the open record's detail; pass
+    /// `refreshWorkspace: false` when only that dependent work should run.
+    public func poll(refreshWorkspace: Bool = true, onTick: (@MainActor () async -> Void)? = nil) async {
         while !Task.isCancelled {
-            await refresh()
+            if refreshWorkspace { await refresh(coalesce: true) }
+            if !Task.isCancelled { await onTick?() }
             do { try await Task.sleep(for: .seconds(WorkspacePolicy.pollInterval(isPro: isPro))) } catch { return }
         }
     }

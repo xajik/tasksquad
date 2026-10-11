@@ -49,7 +49,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] Tests: `WorkspaceEditor` validation (incl. conveyor schedules, now shared instead of macOS-only), `StatusPresentation`, draft-scope isolation
 
 ### C. Store completion
-- [ ] Single poll driver per shell; coalesce overlapping refreshes; the macOS notification monitor reuses inbox records instead of a second `/tasks` poll
+- [x] Single shared poll driver (`WorkspaceStore.poll(refreshWorkspace:onTick:)`). Timer ticks coalesce, explicit refreshes never do. macOS chains detail and notifications from it, and the background notifier fetches only when the inbox isn't visible.
 - [ ] Remove the iOS detail-screen poll loop (`MobileRecordDetail` `.task`) in favor of a chained detail refresh
 - [ ] `CustomerWorkspaceModel`: delete duplicated `path(for:)`, `teamPath`, `agentName`, `isOwner`, `isPro`, `currentTeam`
 - [ ] `RecordDetailStore`: concurrent note comments/tasks; Portal lifecycle state

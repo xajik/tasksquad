@@ -4,6 +4,8 @@ import XCTest
 private actor WorkspaceTransport: HTTPTransport {
     var closeFails = false
     var mutationCount = 0
+    var taskListCount = 0
+    func listCount() -> Int { taskListCount }
     func failClose() { closeFails = true }
     func count() -> Int { mutationCount }
     func send(_ request: URLRequest) async throws -> HTTPResult {
@@ -18,6 +20,7 @@ private actor WorkspaceTransport: HTTPTransport {
         else if path == "/teams" { body = "{\"teams\":[{\"id\":\"slow\",\"name\":\"Slow\",\"role\":\"owner\"},{\"id\":\"fast\",\"name\":\"Fast\",\"role\":\"owner\"}]}" }
         else if path.hasSuffix("/agents") { body = "{\"agents\":[]}" }
         else if path == "/tasks" {
+            taskListCount += 1
             let team = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "team_id" }!.value!
             if team == "slow" { try await Task.sleep(for: .milliseconds(80)) }
             body = "{\"tasks\":[{\"id\":\"\(team)\",\"subject\":\"\(team)\",\"status\":\"done\",\"scheduled_at\":1}]}"
@@ -86,5 +89,34 @@ final class WorkspaceStoreTests: XCTestCase {
         store.projectID = "slow"
         let late = await reply.value
         XCTAssertNil(late, "A result for the previous project must not reach the new one")
+    }
+    @MainActor func testPollTicksCoalesceButExplicitRefreshAlwaysRequests() async throws {
+        let transport = WorkspaceTransport()
+        let store = WorkspaceStore(api: CustomerAPI(baseURL: URL(string:"https://example.test")!, transport: transport) { _ in "token" })
+        store.projectID = "slow"
+        async let first: Void = store.refresh(coalesce: true)
+        async let second: Void = store.refresh(coalesce: true)
+        _ = await (first, second)
+        var count = await transport.listCount()
+        XCTAssertEqual(count, 1, "Overlapping timer ticks share one request")
+        let tick = Task { await store.refresh(coalesce: true) }
+        try await Task.sleep(for: .milliseconds(10))
+        await store.refresh()
+        await tick.value
+        count = await transport.listCount()
+        XCTAssertEqual(count, 3, "A refresh after a mutation must not reuse an older in-flight response")
+        XCTAssertEqual(store.records.map(\.id), ["slow"])
+    }
+    @MainActor func testPollStopsWhenItsTaskIsCancelled() async throws {
+        let transport = WorkspaceTransport()
+        let store = WorkspaceStore(api: CustomerAPI(baseURL: URL(string:"https://example.test")!, transport: transport) { _ in "token" })
+        store.projectID = "fast"
+        var ticks = 0
+        let poll = Task { await store.poll { ticks += 1 } }
+        try await Task.sleep(for: .milliseconds(50))
+        poll.cancel(); await poll.value
+        XCTAssertEqual(ticks, 1)
+        let count = await transport.listCount()
+        XCTAssertEqual(count, 1)
     }
 }
