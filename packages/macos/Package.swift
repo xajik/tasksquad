@@ -13,7 +13,7 @@ let package = Package(
         .package(path: "../mobile/TaskSquadPortal"),
     ],
     targets: [
-        .target(name: "TaskSquadCore"),
+        .target(name: "TaskSquadCore", dependencies: [.product(name: "TaskSquadPortal", package: "TaskSquadPortal")]),
         .executableTarget(name: "TaskSquad", dependencies: ["TaskSquadCore", .product(name: "SwiftTerm", package: "SwiftTerm"),
                                                              .product(name: "TaskSquadPortal", package: "TaskSquadPortal")],
                           resources: [.copy("Resources")]),

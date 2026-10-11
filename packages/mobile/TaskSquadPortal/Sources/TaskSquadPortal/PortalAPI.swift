@@ -43,6 +43,7 @@ public struct PortalRecord: Decodable, Identifiable, Sendable {
 }
 
 public struct PortalAPIError: LocalizedError, Sendable {
+    public init(status: Int, message: String) { self.status = status; self.message = message }
     public let status: Int
     public let message: String
     public var errorDescription: String? { message }
