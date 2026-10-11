@@ -248,7 +248,10 @@ public actor DaemonEngine {
         guard running else { return }
         for item in response {
             guard let id = item["agent_id"]?.string, let agent = agents[id] else { continue }
-            if item["reset"] == .bool(true) || item["close"] == .bool(true) {
+            // Reset applies in any mode; a user close only while running or awaiting input — during
+            // a close sequence (wrapping_up) Go ignores it and lets the steps finish.
+            let userClose = item["close"] == .bool(true) && (agent.state.mode == .running || agent.state.mode == .waitingInput)
+            if item["reset"] == .bool(true) || userClose {
                 if item["reset"] == .bool(true) {
                     analytics.track("task_reset_requested", ["task_id": .string(agent.state.taskID), "agent_name": .string(agent.configuration.name)])
                 }
