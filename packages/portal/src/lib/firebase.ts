@@ -1,5 +1,5 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider, GithubAuthProvider, signInWithPopup } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, GithubAuthProvider, signInWithPopup, signInWithRedirect } from 'firebase/auth'
 import { getMessaging, getToken as getFCMTokenRaw } from 'firebase/messaging'
 
 const firebaseConfig = {
@@ -37,6 +37,16 @@ export async function signInWithGoogle(): Promise<void> {
 export async function signInWithGitHub(): Promise<void> {
   if (!auth) throw new Error('Firebase not configured')
   await signInWithPopup(auth, githubProvider)
+}
+
+export async function signInWithGoogleRedirect(): Promise<void> {
+  if (!auth) throw new Error('Firebase not configured')
+  await signInWithRedirect(auth, googleProvider)
+}
+
+export async function signInWithGitHubRedirect(): Promise<void> {
+  if (!auth) throw new Error('Firebase not configured')
+  await signInWithRedirect(auth, githubProvider)
 }
 
 export async function getToken(): Promise<string | null> {

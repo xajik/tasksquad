@@ -11,6 +11,7 @@ import HowTo from './pages/HowTo'
 import Demo from './pages/Demo'
 import Login from './pages/Login'
 import CLIAuth from './pages/CLIAuth'
+import MobileAuth from './pages/MobileAuth'
 import Dashboard from './pages/Dashboard'
 import Pricing from './pages/Pricing'
 import Privacy from './pages/Privacy'
@@ -53,6 +54,7 @@ function App() {
         <Route path="/policy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/auth/cli" element={<CLIAuth />} />
+        <Route path="/mobile/authorize" element={<MobileAuth />} />
         <Route path="/docs/*" element={<DocsLayout />} />
         {authed === null ? null : (
           <>

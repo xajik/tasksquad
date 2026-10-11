@@ -19,6 +19,7 @@ import * as memory     from './routes/memory.js'
 import * as dream      from './routes/dream.js'
 import * as tags       from './routes/tags.js'
 import * as download   from './routes/download.js'
+import * as mobileAuth from './routes/mobile-auth.js'
 import * as stats      from './routes/stats.js'
 import { runRollups }  from './cron/rollup.js'
 import type { Env, AuthContext, DaemonContext } from './types.js'
@@ -75,6 +76,8 @@ router.post('/auth/cli-token', firebaseRoute(async (_req, env, _ctx, auth) => {
   const { token, expiresAt } = await mintCliToken(env, auth.userId)
   return json({ token, expires_at: expiresAt, expires_in: 90 * 24 * 3600 })
 }))
+router.post('/mobile/authorization/codes', firebaseRoute(mobileAuth.createCode))
+router.post('/mobile/authorization/exchange', (req: IRequest, env: Env) => mobileAuth.exchangeCode(req as Request, env))
 // Revoke the current CLI token — used by `tsq logout`.
 router.delete('/auth/cli-token', (req: IRequest, env: Env) => revokeCliToken(req as Request, env))
 

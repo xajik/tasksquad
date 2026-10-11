@@ -97,7 +97,9 @@ async function withUserTokenAuth(token: string, env: Env): Promise<AuthContext |
 // The raw token is returned exactly once — only its hash is stored in the DB.
 export async function mintCliToken(
   env: Env,
-  userId: string
+  userId: string,
+  label = 'CLI',
+  ttlMs = CLI_TOKEN_TTL_MS
 ): Promise<{ token: string; expiresAt: number }> {
   const randomBytes = new Uint8Array(32)
   crypto.getRandomValues(randomBytes)
@@ -106,11 +108,11 @@ export async function mintCliToken(
 
   const hash = await sha256(raw)
   const id = ulid()
-  const expiresAt = Date.now() + CLI_TOKEN_TTL_MS
+  const expiresAt = Date.now() + ttlMs
 
   await env.DB.prepare(
     'INSERT INTO user_cli_tokens (id, user_id, token_hash, label, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).bind(id, userId, hash, 'CLI', expiresAt, Date.now()).run()
+  ).bind(id, userId, hash, label, expiresAt, Date.now()).run()
 
   console.log(`[auth] minted CLI token for user ${userId}, expires ${new Date(expiresAt).toISOString()}`)
   return { token: raw, expiresAt }
