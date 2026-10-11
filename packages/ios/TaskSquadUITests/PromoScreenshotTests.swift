@@ -29,13 +29,22 @@ import XCTest
     private func go(_ section: String) {
         let picker = app.buttons["section-picker"]
         if !picker.isHittable { app.swipeDown() }
-        XCTAssertTrue(picker.waitForExistence(timeout: 5)); picker.tap(); app.buttons[section].tap()
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        for _ in 0..<3 {
+            picker.tap()
+            let item = app.buttons[section]
+            if item.waitForExistence(timeout: 3) { item.tap(); break }
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
+        }
+        XCTAssertTrue(app.navigationBars[section].waitForExistence(timeout: 5), "Section \(section) did not open")
     }
     /// Opens the first record whose label contains `text`, or the first record when none matches.
     private func open(matching text: String) -> Bool {
         let records = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'record-'"))
         guard records.firstMatch.waitForExistence(timeout: 8) else { return false }
+        // Rows below the fold aren't in the hierarchy until scrolled into view.
         let match = records.matching(NSPredicate(format: "label CONTAINS[c] %@", text)).firstMatch
+        for _ in 0..<5 where !(match.exists && match.isHittable) { app.swipeUp() }
         (match.exists ? match : records.firstMatch).tap()
         settle(2.5); return true
     }

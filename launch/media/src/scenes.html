@@ -81,6 +81,24 @@
   .quad .window .bar span { color: var(--ink); font-weight: 600; font-size: 12.5px; }
   .quad .window .shot-img { flex: 1; min-height: 0; background: #fff; }
   .quad .window .shot-img img { width: 100%; height: 100%; object-fit: contain; object-position: left top; }
+
+  /* Cross-platform posters (x1–x5): real web, macOS and iOS screenshots from ../shots/native */
+  .phone { position: absolute; background: #0F1117; padding: 9px; border-radius: 48px;
+           box-shadow: 0 1px 2px rgba(15,17,23,.08), 0 30px 70px -14px rgba(15,17,23,.38); }
+  .phone img { display: block; width: 100%; border-radius: 40px; }
+  .window.mac img { aspect-ratio: 1.6; object-fit: cover; object-position: left top; }
+  .window .url { margin-left: 14px; flex: 0 0 300px; height: 18px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border);
+                 font-size: 11px; color: var(--muted); display: flex; align-items: center; padding-left: 8px; }
+  .platforms { display: flex; gap: 8px; }
+  .platforms .chip img { width: 15px; height: 15px; }
+  .icon { width: 22px; height: 22px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; }
+  .tile .head { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 17px; }
+  .tile .head img { width: 20px; height: 20px; }
+  .tile p { color: var(--muted); font-size: 14.5px; line-height: 1.4; }
+  .x-label { position: absolute; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+             display: flex; align-items: center; gap: 6px; }
+  .x-label img { width: 14px; height: 14px; opacity: .7; }
   svg text { font-family: 'DM Sans', sans-serif; }
   svg .mono { font-family: 'JetBrains Mono', monospace; }
 </style>
@@ -337,6 +355,96 @@
   <h1 style="font-size:8.6vh;max-width:92%;position:relative">One creative workspace for <em>teams and agents.</em></h1>
   <p class="sub" style="font-size:2.9vh;max-width:85%;position:relative">Bring any harness and your own servers. Observe, govern and learn together.</p>
   <div style="font-size:2.6vh;font-weight:700;position:relative">tasksquad.ai <span style="color:var(--muted);font-weight:400">· Claude Code · Codex · Gemini · OpenCode · Pi</span></div>
+</section>
+
+<!-- ===================== x1 · Every screen (hero) ===================== -->
+<section class="scene bg" id="x1" style="flex-direction:column;padding:44px 56px 0;">
+  <div style="display:flex;justify-content:space-between;align-items:center;position:relative;z-index:2">
+    <div class="brand"><img src="logo.svg">TaskSquad</div><div class="platforms"><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/monitor.svg">Web</span><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/laptop.svg">macOS</span><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/message-square.svg">iOS</span></div>
+  </div>
+  <h1 style="font-size:54px;margin-top:28px;max-width:760px;position:relative;z-index:2">Your squad, <em>on every screen.</em></h1>
+  <p class="sub" style="font-size:19px;margin-top:12px;max-width:640px;position:relative;z-index:2">Web, a native Mac app and an iPhone app share one workspace. Start a task at your desk, answer the agent from your phone.</p>
+  <div style="position:relative;flex:1;margin-top:24px">
+    <div class="window" style="position:absolute;left:0;top:40px;width:560px"><div class="bar"><i></i><i></i><i></i><span class="url">tasksquad.ai</span></div><img src="../shots/crop/inbox.jpg"></div>
+    <div class="window mac" style="position:absolute;left:330px;top:0;width:640px;z-index:2"><div class="bar"><i></i><i></i><i></i><span>TaskSquad for Mac</span></div><img src="../shots/native/mac-inbox-light.jpg"></div>
+    <div class="phone" style="right:30px;top:-150px;width:236px;z-index:3"><img src="../shots/native/ios-task-light.jpg"></div>
+  </div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== x2 · One backend ===================== -->
+<section class="scene bg wide" id="x2">
+  <div class="top"><span class="eyebrow"><img class="icon" style="width:16px;height:16px" src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/network.svg">One workspace, three apps</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>Every app talks to <em>the same TaskSquad servers.</em></h1>
+  <p class="sub">A reply from your phone lands in the thread your team reads on the web. Live terminals stream to whichever screen you open.</p>
+  <div class="shot" style="display:flex;flex-direction:column;margin-top:24px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;height:290px">
+      <div class="tile" style="padding:14px 16px 0;overflow:hidden"><div class="head"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/monitor.svg">Web<span style="font-weight:400;color:var(--muted);font-size:14px;margin-left:auto">tasksquad.ai</span></div>
+        <img src="../shots/crop/thread.jpg" style="margin-top:8px;width:100%;height:236px;object-fit:cover;object-position:left top;border-radius:8px 8px 0 0;border:1px solid var(--border)"></div>
+      <div class="tile" style="padding:14px 16px 0;overflow:hidden"><div class="head"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/laptop.svg">macOS<span style="font-weight:400;color:var(--muted);font-size:14px;margin-left:auto">native app</span></div>
+        <img src="../shots/native/mac-waiting-light.jpg" style="margin-top:8px;width:100%;height:236px;object-fit:cover;object-position:left top;border-radius:8px 8px 0 0;border:1px solid var(--border)"></div>
+      <div class="tile" style="padding:14px 16px 0;overflow:hidden;position:relative"><div class="head"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/message-square.svg">iOS<span style="font-weight:400;color:var(--muted);font-size:14px;margin-left:auto">iPhone app</span></div>
+        <div class="phone" style="position:relative;margin:8px auto 0;width:170px;padding:6px;border-radius:30px 30px 0 0;box-shadow:none"><img src="../shots/native/ios-task-light.jpg" style="border-radius:25px 25px 0 0"></div></div>
+    </div>
+    <svg viewBox="0 0 1158 70" style="width:100%;height:70px;flex:none"><g stroke="#2563EB" stroke-width="2" stroke-dasharray="6 6" fill="none">
+      <path d="M186,0 C186,40 520,30 560,68"/><path d="M579,0 L579,68"/><path d="M972,0 C972,40 638,30 598,68"/></g>
+      <text x="610" y="40" fill="#5B6475" font-size="13" class="mono">HTTPS · WebSocket</text></svg>
+    <div class="tile" style="flex-direction:row;align-items:center;justify-content:space-between;border-color:var(--accent);border-width:2px;padding:16px 26px">
+      <div class="head" style="font-size:21px"><img src="logo.svg" style="width:30px;height:30px;border-radius:22%">TaskSquad servers</div>
+      <p style="font-size:15px">projects · tasks · threads · notes · planners · analytics · live terminal relay</p>
+      <div class="platforms"><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/terminal.svg">tsq daemons on your machines</span></div>
+    </div>
+  </div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== x3 · iPhone ===================== -->
+<section class="scene bg split" id="x3">
+  <div class="copy">
+    <div class="brand"><img src="logo.svg">TaskSquad</div>
+    <div style="margin-top:34px"><span class="eyebrow"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/message-square.svg" style="width:15px;height:15px">iPhone</span></div>
+    <h1>Unblock agents <em>from anywhere.</em></h1>
+    <p class="sub">When an agent waits for input, answer from your phone. The thread is the same one your team sees.</p>
+    <ul class="checks">
+      <li>Reply mid-task, attach a photo</li>
+      <li>Approve or reject planners on the go</li>
+      <li>Open a live terminal into any machine</li>
+    </ul>
+  </div>
+  <div class="shot">
+    <div class="phone" style="left:0;top:50px;width:208px"><img src="../shots/native/ios-inbox-light.jpg"></div>
+    <div class="phone" style="left:220px;top:6px;width:236px;z-index:2"><img src="../shots/native/ios-task-light.jpg"></div>
+    <div class="phone" style="left:468px;top:50px;width:208px"><img src="../shots/native/ios-planner-detail-light.jpg"></div>
+  </div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== x4 · Mac ===================== -->
+<section class="scene bg wide" id="x4">
+  <div class="top"><span class="eyebrow"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/laptop.svg" style="width:15px;height:15px">Native on Mac</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>A native Mac app for <em>the whole squad.</em></h1>
+  <p class="sub">Inbox, Notes, Planner, Conveyor, Supervisor, Memory and Analytics, in a fast SwiftUI window. ⌘↵ to send.</p>
+  <div class="shot">
+    <div class="window mac" style="position:absolute;left:0;top:0;width:700px"><div class="bar"><i></i><i></i><i></i><span>Planner</span></div><img src="../shots/native/mac-planner-light.jpg"></div>
+    <div class="window mac" style="position:absolute;left:560px;top:60px;width:600px;z-index:2"><div class="bar" style="background:#1B1D24;border-color:#2A2D36"><i></i><i></i><i></i><span>Notes</span></div><img src="../shots/native/mac-notes-dark.jpg"></div>
+  </div>
+  <div class="sample">Sample workspace</div>
+</section>
+
+<!-- ===================== x5 · Light & dark everywhere ===================== -->
+<section class="scene" id="x5" style="background:#0F1117;color:#fff;flex-direction:column;padding:44px 56px 0;">
+  <div style="display:flex;justify-content:space-between;align-items:center;position:relative;z-index:2">
+    <span class="eyebrow" style="background:rgba(255,255,255,.08);color:#fff"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/sun-moon.svg" style="width:15px;height:15px;filter:invert(1)">Light and dark</span>
+    <div class="brand" style="color:#fff"><img src="logo.svg">TaskSquad</div>
+  </div>
+  <h1 style="font-size:46px;margin-top:26px;max-width:900px">Light or dark. <em style="color:#93B4FA">Mac or iPhone.</em></h1>
+  <p class="sub" style="font-size:19px;margin-top:12px;max-width:820px;color:#A9B1C2">One design system with the web app: same tokens, icons and type, so switching screens feels familiar.</p>
+  <div style="position:relative;flex:1;margin-top:28px">
+    <div class="window mac" style="position:absolute;left:0;top:0;width:720px;background:#16181E;border-color:#2A2D36"><div class="bar" style="background:#1B1D24;border-color:#2A2D36"><i></i><i></i><i></i><span>Inbox</span></div><img src="../shots/native/mac-inbox-dark.jpg"></div>
+    <div class="phone" style="left:760px;top:-60px;width:200px;background:#2A2D36"><img src="../shots/native/ios-inbox-dark.jpg"></div>
+    <div class="phone" style="left:975px;top:-20px;width:200px;background:#2A2D36"><img src="../shots/native/ios-task-dark.jpg"></div>
+  </div>
+  <div class="sample" style="background:rgba(15,17,23,.8);color:#8A93A6">Sample workspace</div>
 </section>
 
 <script>

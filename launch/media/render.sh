@@ -24,6 +24,9 @@ for i in 01 02 03 04 05 06 07 08 09 10; do shot "p$i" 1270 760 "$GAL/$i.png"; do
 echo "Bento posters (1270x760)"
 for i in 1 2 3; do shot "b$i" 1270 760 "$GAL/bento-$i.png"; done
 
+echo "Cross-platform posters: web, macOS and iOS (1270x760). Native shots come from native/capture.sh"
+for i in 1 2 3 4 5; do shot "x$i" 1270 760 "$GAL/apps-$i.png"; done
+
 echo "Web (2x PNG for the /demo page; converted to WebP by convert-web.mjs)"
 WEB="$PWD/out/web"; mkdir -p "$WEB"
 for i in 01 02 03 04 05 06 07 08 09 10; do

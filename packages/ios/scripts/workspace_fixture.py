@@ -15,7 +15,19 @@ def reset():
     state.clear(); current_events.clear(); attachment_bytes.clear()
     now = int(time.time()*1000)
     state.update(projects=[dict(id='empty',name='Empty project',role='owner'),dict(id='demo',name='Test workspace',role='owner',memory_enabled=True)], agents=[dict(id='agent',name='Fixture Agent',status='idle',paused=False),dict(id='offline',name='Offline Agent',status='offline',paused=False)], portals={}, tasks={'task':dict(id='task',team_id='demo',agent_id='agent',subject='Review fixture changes',status='waiting_input',created_at=now,sender_id='user',first_message_role='user')}, messages={'task':[dict(id='message',role='agent',body='Ready for your review. 猫 café 🚀',created_at=now,attachments=[])]}, resources={}, authorization_codes={}, failure=None)
+SEED = Path(sys.argv[sys.argv.index('--seed')+1]) if '--seed' in sys.argv else None
+
+def seed():
+    """Replaces the contract state with a sample workspace (launch/media/native/sample_workspace.py)."""
+    data = json.loads(SEED.read_text()); team = data['teams'][0]['id']
+    state.update(projects=data['teams'], agents=data['agents'], me=data['me'], stats=data['stats'],
+                 tasks={t['id']: t for t in data['tasks']}, messages=data['messages'],
+                 portals={p['id']: p for p in data['portals']},
+                 resources={f"{team}:{k.replace('_','-')}": v for k, v in data['resources'].items()})
+    state['resources'][f'{team}:notes:comments'] = [c for cs in data['comments'].values() for c in cs]
+
 reset()
+if SEED: seed()
 
 def event(kind, **kwargs):
     EVENTS.parent.mkdir(parents=True,exist_ok=True)
@@ -28,7 +40,7 @@ def response(value, status=200): return web.json_response(value,status=status)
 async def handler(req):
     path=req.path.strip('/').split('/')
     if path[0]=='__test':
-        if path[-1]=='reset': reset(); event('reset'); return response({'ok':True})
+        if path[-1]=='reset': reset(); SEED and seed(); event('reset'); return response({'ok':True})
         if path[-1]=='fail': state['failure']=await req.json(); return response({'ok':True})
         if path[-1]=='state': return response(state)
         if path[-1]=='events': return web.Response(text='\n'.join(current_events),content_type='application/x-ndjson')
@@ -78,14 +90,15 @@ async def handler(req):
         else: body=await req.json() if req.can_read_body else {}
         event('mutation',method=req.method,path=req.path,body=body,attachments=len(attachments))
     if path==['auth','cli-token'] and req.method=='DELETE': event('token_revoked'); return response({'ok':True})
-    if path==['me']: return response(dict(id='user',email='fixture@example.test',plan='pro'))
+    if path==['me']: return response(state.get('me') or dict(id='user',email='fixture@example.test',plan='pro'))
     if path==['teams']: return response({'teams':state['projects']})
     if path[:1]==['teams']:
         team=path[1]
         if len(path)==2:
             state['projects'][1].update(body); return response({'ok':True})
         resource=path[2]; key=team+':'+resource
-        if resource=='agents' and len(path)==3: return response({'agents':state['agents'] if team=='demo' else []})
+        if resource=='agents' and len(path)==3: return response({'agents':state['agents'] if team in ('demo', SEED and state['projects'][0]['id']) else []})
+        if resource=='stats' and 'stats' in state: return response(state['stats'])
         if resource=='stats': return response({'totals':dict(created=3,done=1,failed=0,in_progress=2,scheduled=0),'usage':dict(turns=5,input_tokens=120,output_tokens=240,tool_calls=2,tool_errors=0)})
         items=state['resources'].setdefault(key,[])
         if len(path)>4 and path[4]=='tasks': return response({'tasks':[]})
