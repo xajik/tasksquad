@@ -794,6 +794,12 @@ public actor DaemonEngine {
             let payload = (try? JSONSerialization.jsonObject(with: request.body)) as? [String: Any] ?? [:]
             guard let thread = payload["thread-id"] as? String, !thread.isEmpty else { return .init(status: 400) }
             guard payload["type"] as? String == "agent-turn-complete" else { return .json(.object(["status": .string("ignored")])) }
+            // Codex titles the thread in an auxiliary thread that also completes a turn; letting it
+            // through would pin the wrong thread and post {"title":…} as the reply (Go: isCodexTitleTurn).
+            if let inputs = payload["input-messages"] as? [String], inputs.count == 1,
+               inputs[0].hasPrefix("Generate a concise, single-line task title") {
+                return .json(.object(["status": .string("ignored")]))
+            }
             guard claimCodexTurn(agentID: agentParam, taskID: taskParam, thread: thread, turn: payload["turn-id"] as? String ?? "") else {
                 return .json(.object(["status": .string("ignored")]))
             }
@@ -983,7 +989,13 @@ public actor DaemonEngine {
             Task { await self.advanceCloseStep(agentID: id) }
         case .running, .waitingInput:
             if event.isFailure {
+                // Carry the provider's error text (e.g. Pi's "API key not valid") into the thread.
+                agents[id]?.hookMessage = event.hookMessage
                 Task { await self.requestCompletion(agentID: id, status: .crashed, transcriptPath: event.transcriptPath) }
+            } else if provider == "pi", event.hookMessage.isEmpty {
+                // Pi fires agent_end with no text when its model call failed; completing "closed"
+                // here would hide the exit code, so the process exit decides closed vs crashed.
+                return
             } else if provider == "pi" {
                 // Pi exits right after agent_end; complete rather than pause.
                 agents[id]?.hookMessage = event.hookMessage

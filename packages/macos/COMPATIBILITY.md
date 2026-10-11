@@ -82,7 +82,7 @@ Status: **missing** (no Swift implementation), **partial** (some behaviour or te
 
 | Route | Status |
 |---|---|
-| `/hooks/stop`, `/hooks/notification`, `/hooks/after_agent`, `/hooks/codex`, `/hooks/opencode`, `/hooks/skill`, `/hooks/tui-blocked`, `/hooks/terminal/input`, `/hooks/terminal/close` | partial (implemented; Go handler tests not yet ported) |
+| `/hooks/stop`, `/hooks/notification`, `/hooks/after_agent`, `/hooks/codex`, `/hooks/opencode`, `/hooks/skill`, `/hooks/tui-blocked`, `/hooks/terminal/input`, `/hooks/terminal/close` | done: `HookParseGoldenTests` (every adapter's ParseStop vs Go), Codex title-turn/duplicate/stale routing and Pi stop semantics in `InteractiveEngineTests`. Fixed: Codex title-generation turn was accepted, failure stops dropped the provider's error text, empty Pi stops completed as closed |
 | `/hooks/attach` (used by `tsq send-image`) | done (`InteractiveEngineTests.testAttachHookSendsImageForCurrentTaskOnly`) |
 | Hook listener always on (stdout-only configs too) | done; deliberate difference: a busy port fails start instead of Go's silent goroutine error |
 | `/hooks/event` | done (`InteractiveEngineTests.testEventHookFeedsCurrentTaskLifecycleIntoSessionReport`) |

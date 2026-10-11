@@ -395,6 +395,61 @@ private actor InteractiveWorker {
         await server.stop()
     }
 
+
+    /// Go hooks codex_test: the title-generation turn is ignored, a real turn pauses
+    /// once, duplicates are dropped, and the next turn is accepted.
+    func testCodexIgnoresTitleTurnAndDuplicateCallbacks() async throws {
+        let tmux = try tmuxConnection()
+        defer { Task { _ = try? await tmux.run(["kill-server"]) } }
+        let script = """
+        #!/bin/sh
+        url=$(printf '%s ' "$@" | grep -o 'http://127.0.0.1:[0-9]*/hooks/codex?[^" ]*' | head -1)
+        post() { curl -s -X POST "$url" -H 'Content-Type: application/json' --data-binary "$1" >/dev/null; }
+        printf 'READY\\n'
+        post '{"type":"agent-turn-complete","thread-id":"title-thread","turn-id":"t1","input-messages":["Generate a concise, single-line task title of at most 36 characters."],"last-assistant-message":"{\\"title\\":\\"x\\"}"}'
+        post '{"type":"agent-turn-complete","thread-id":"thread-a","turn-id":"1","last-assistant-message":"REAL"}'
+        post '{"type":"agent-turn-complete","thread-id":"thread-a","turn-id":"1","last-assistant-message":"DUPLICATE"}'
+        n=1
+        while IFS= read -r line; do n=$((n+1)); post "{\\"type\\":\\"agent-turn-complete\\",\\"thread-id\\":\\"thread-a\\",\\"turn-id\\":\\"$n\\",\\"last-assistant-message\\":\\"again\\"}"; done
+        """
+        let worker = InteractiveWorker()
+        let (engine, server, home) = try await makeEngine(script: script, binary: "codex", worker: worker, tmux: tmux, errors: { _ in })
+        defer { try? FileManager.default.removeItem(at: home) }
+        try await engine.start()
+        try await wait { await worker.notifies.count >= 2 }
+        let notifies = await worker.notifies
+        XCTAssertEqual(notifies, ["REAL", "again"])
+        await engine.stop()
+        await server.stop()
+    }
+
+    /// Go hooks_test (Pi): an empty agent_end defers to the exit code (crashed on
+    /// exit 1); an error stop carries its text into the final reply.
+    func testPiStopEmptyDefersToExitAndErrorCarriesMessage() async throws {
+        let tmux = try tmuxConnection()
+        for (message, expected) in [("", ""), ("Pi model call failed (google/gemini): API key not valid.", "Pi model call failed (google/gemini): API key not valid.")] {
+            let reason = message.isEmpty ? "idle" : "error"
+            let script = """
+            #!/bin/sh
+            url=$(grep -o 'http://localhost:[0-9]*' .pi/extensions/tasksquad.ts | head -1)
+            query=$(grep -o '/hooks/stop?agent=[^"]*' .pi/extensions/tasksquad.ts | head -1)
+            curl -s -X POST "$url$query" --data-binary '{"stop_reason":"\(reason)","message":"\(message)","transcript_path":""}' >/dev/null
+            sleep 0.3
+            exit 1
+            """
+            let worker = InteractiveWorker()
+            let (engine, server, home) = try await makeEngine(script: script, binary: "pi", worker: worker, tmux: tmux, errors: { _ in })
+            try await engine.start()
+            try await wait { await worker.close != nil }
+            let close = await worker.close
+            XCTAssertEqual(close?["status"]?.string, "crashed", "exit 1 decides, whatever the hook said")
+            if !expected.isEmpty { XCTAssertEqual(close?["final_text"]?.string, expected) }
+            await engine.stop()
+            await server.stop()
+            try? FileManager.default.removeItem(at: home)
+        }
+    }
+
 }
 
 private actor AttachErrors {
