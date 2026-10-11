@@ -37,6 +37,9 @@ public actor DaemonEngine {
         var stderrTail = Data()
         /// Last meaningful task event (start, notification); the supervisor's inactivity clock.
         var lastActivityAt: Date?
+        /// Live terminal relay for the web/iOS task view (Go: Agent.relayConn).
+        var relay: URLSessionWebSocketTask?
+        var relayInput: Task<Void, Never>?
         init(configuration: DaemonConfiguration.Agent) {
             self.configuration = configuration
             provider = ProviderKind.detect(command: configuration.command, override: configuration.provider)
@@ -75,7 +78,7 @@ public actor DaemonEngine {
                 tokens: (any TokenProvider)? = nil, transport: any HTTPTransport = NativeHTTPTransport(),
                 environment: [String: String] = ProcessInfo.processInfo.environment,
                 tmux: TmuxConnection = TmuxConnection(), timing: InteractiveTiming = InteractiveTiming(),
-                appVersion: String = "", analytics: Analytics? = nil,
+                appVersion: String = "", analytics: Analytics? = nil, relayServerURL: String? = nil,
                 onError: @escaping @Sendable (String) -> Void = { _ in }) {
         self.configuration = configuration; self.paths = paths
         api = WorkerAPI(baseURL: configuration.server.url, transport: transport)
@@ -85,7 +88,10 @@ public actor DaemonEngine {
         self.analytics = analytics ?? Analytics(enabled: configuration.analytics.enabled, apiKey: configuration.analytics.apiKey,
                                                 deviceID: (try? paths.deviceID()) ?? "", appVersion: appVersion, transport: transport)
         self.appVersion = appVersion
+        self.relayServerURL = relayServerURL ?? configuration.server.url
     }
+    /// Where the TerminalRelay lives: the API server (tests point it elsewhere).
+    private let relayServerURL: String
     private let appVersion: String
 
     public func start() async throws {
@@ -351,6 +357,10 @@ public actor DaemonEngine {
             guard let sessionID = opened["session_id"]?.string, !sessionID.isEmpty else { throw ConfigurationError("Session open response missing session_id") }
             guard agents[agentID]?.state.openedSession(sessionID, generation: generation) == true else { throw CancellationError() }
             agents[agentID]?.sessionOpenedAt = Date()
+            // Raw PTY bytes stream to the portal's live terminal (Go: dialTerminalRelay after session open).
+            if let token = try? await tokens.token(forceRotation: false) {
+                agents[agentID]?.relay = TerminalRelay.dial(serverURL: relayServerURL, token: token, agentID: agentID, sessionID: sessionID)
+            }
             try await artifacts?.event(["type": .string("task_start"), "task_id": .string(taskID), "agent": .string(agent.configuration.name),
                 "agent_id": .string(agentID), "session_id": .string(sessionID), "subject": .string(subject), "log_path": .string(artifacts?.logURL.path ?? "")])
             let messages = await InboundAttachments(api: api, tokens: tokens, report: onError)
@@ -427,6 +437,13 @@ public actor DaemonEngine {
         defer { session.removeFIFO() }
         guard agents[agentID]?.state.generation == generation else { await session.kill(); throw CancellationError() }
         agents[agentID]?.tmux = session
+        // Browser keystrokes reach the CLI only while it is blocked on an interactive
+        // prompt (Codex always), so stray input can't corrupt an autonomous turn.
+        if let relay = agents[agentID]?.relay {
+            agents[agentID]?.relayInput = Task { [weak self] in
+                await TerminalRelay.forwardInput(from: relay, to: session) { [weak self] in await self?.relayInputAllowed(agentID) ?? false }
+            }
+        }
         try? await artifacts?.writeLines(["[EVENT] event=running via=tmux session=\(session.name)"])
         trackStarted(agent, taskID: agent.state.taskID, via: "tmux")
         let reader = Task {
@@ -458,7 +475,19 @@ public actor DaemonEngine {
                                          "provider": .string(agent.provider.rawValue), "via": .string(via)])
     }
 
+    private func relayInputAllowed(_ agentID: String) -> Bool {
+        guard let agent = agents[agentID] else { return false }
+        return agent.provider == .codex || agent.state.tuiBlocked
+    }
+
+    private func closeRelay(_ agentID: String) {
+        agents[agentID]?.relayInput?.cancel(); agents[agentID]?.relayInput = nil
+        agents[agentID]?.relay?.cancel(with: .normalClosure, reason: nil); agents[agentID]?.relay = nil
+    }
+
     private func output(agentID: String, generation: UInt64, data: Data) async throws {
+        // Relay errors are non-fatal: local capture continues (Go: relayWriter).
+        if agents[agentID]?.state.generation == generation, let relay = agents[agentID]?.relay { try? await relay.send(.data(data)) }
         guard agents[agentID]?.state.generation == generation else { return }
         let lines = try agents[agentID]?.output.append(data) ?? []
         try await agents[agentID]?.artifacts?.writeLines(lines)
@@ -472,6 +501,7 @@ public actor DaemonEngine {
 
     private func complete(agentID: String, generation: UInt64, status: CompletionStatus) async {
         guard agents[agentID]?.state.generation == generation else { return }
+        closeRelay(agentID)
         let reportedSession = agents[agentID]?.state.sessionID ?? ""
         let tail = agents[agentID]?.output.finish() ?? []
         try? await agents[agentID]?.artifacts?.writeLines(tail)

@@ -101,10 +101,24 @@ actor PortalHost {
 
     private func dialRelay(agentID: String, sessionID: String) async -> URLSessionWebSocketTask? {
         guard let token = try? await tokens.token(forceRotation: false),
-              let url = URL(string: serverURL.replacingOccurrences(of: "https://", with: "wss://")
-                                              .replacingOccurrences(of: "http://", with: "ws://") + "/terminal/" + sessionID) else {
+              let socket = TerminalRelay.dial(serverURL: serverURL, token: token, agentID: agentID, sessionID: sessionID) else {
             log("Portal terminal relay unavailable for \(sessionID): no token or invalid server URL"); return nil
         }
+        return socket
+    }
+
+    /// Portals have no task mode, so browser input is always allowed.
+    private static func forwardInput(from socket: URLSessionWebSocketTask, to session: TmuxTaskSession) async {
+        await TerminalRelay.forwardInput(from: socket, to: session) { true }
+    }
+}
+
+/// The TerminalRelay Durable Object link shared by tasks and Portals (Go: terminal_relay.go,
+/// handleRelayInput): raw PTY bytes out as binary frames, browser stdin/resize frames in.
+enum TerminalRelay {
+    static func dial(serverURL: String, token: String, agentID: String, sessionID: String) -> URLSessionWebSocketTask? {
+        guard let url = URL(string: serverURL.replacingOccurrences(of: "https://", with: "wss://")
+                                .replacingOccurrences(of: "http://", with: "ws://") + "/terminal/" + sessionID) else { return nil }
         var request = URLRequest(url: url)
         request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
         request.setValue(agentID, forHTTPHeaderField: "X-TSQ-Agent")
@@ -113,9 +127,10 @@ actor PortalHost {
         return socket
     }
 
-    /// Browser frames: `{"t":"i","d":"<base64 stdin>"}` and `{"t":"r","c":cols,"r":rows}`.
-    /// Portals have no task mode, so input is always allowed.
-    private static func forwardInput(from socket: URLSessionWebSocketTask, to session: TmuxTaskSession) async {
+    /// Frames: `{"t":"i","d":"<base64 stdin>"}` (gated by `allowInput`) and
+    /// `{"t":"r","c":cols,"r":rows}` (always applied: cosmetic and harmless).
+    static func forwardInput(from socket: URLSessionWebSocketTask, to session: TmuxTaskSession,
+                             allowInput: @escaping @Sendable () async -> Bool) async {
         while !Task.isCancelled {
             guard let message = try? await socket.receive() else { return }
             let data: Data
@@ -127,7 +142,7 @@ actor PortalHost {
             guard let frame = try? JSONDecoder().decode(JSONValue.self, from: data) else { continue }
             switch frame["t"]?.string {
             case "i":
-                guard let encoded = frame["d"]?.string, let bytes = Data(base64Encoded: encoded), !bytes.isEmpty else { continue }
+                guard await allowInput(), let encoded = frame["d"]?.string, let bytes = Data(base64Encoded: encoded), !bytes.isEmpty else { continue }
                 // Hex keys are byte-exact, including UTF-8 split across frames.
                 _ = try? await session.tmux.run(["send-keys", "-H", "-t", session.name] + bytes.map { String(format: "%02x", $0) })
             case "r":

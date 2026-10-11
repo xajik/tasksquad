@@ -85,7 +85,7 @@ private actor InteractiveWorker {
         }
     }
 
-    private func makeEngine(script: String, binary: String = "claude", worker: InteractiveWorker, tmux: TmuxConnection,
+    private func makeEngine(script: String, binary: String = "claude", worker: InteractiveWorker, tmux: TmuxConnection, relay: String? = nil,
                             errors: @escaping @Sendable (String) -> Void) async throws -> (DaemonEngine, LocalHTTPServer, URL) {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let bin = home.appendingPathComponent("bin")
@@ -98,6 +98,7 @@ private actor InteractiveWorker {
         let port = try await server.start()
         await worker.setBase("http://127.0.0.1:\(port)")
         let hooksPort = try await freePort()
+        try Data("\(hooksPort)\n".utf8).write(to: home.appendingPathComponent("hooks-port"))
         let config = try DaemonConfiguration.parse("""
         [server]
         url = 'http://127.0.0.1:\(port)'
@@ -112,7 +113,7 @@ private actor InteractiveWorker {
         var timing = InteractiveTiming()
         timing.readyWait = .milliseconds(300); timing.submitWait = .milliseconds(100); timing.replyDelay = .milliseconds(100)
         let engine = DaemonEngine(configuration: config, paths: TaskSquadPaths(home: home), tokens: FixtureTokens(),
-                                  tmux: tmux, timing: timing, onError: errors)
+                                  tmux: tmux, timing: timing, relayServerURL: relay, onError: errors)
         return (engine, server, home)
     }
 
@@ -344,6 +345,54 @@ private actor InteractiveWorker {
         XCTAssertEqual(lifecycle?["tools"]?["Glob"]?["calls"]?.number, 1)
         XCTAssertNil(lifecycle?["tools"]?["Read"], "a hook for a stale task was recorded")
         XCTAssertEqual(lifecycle?["source"]?.string, "hooks")
+    }
+
+
+    /// Go's terminal relay for regular tasks: raw PTY bytes stream to /terminal/<session>
+    /// with daemon auth headers, and browser input reaches the CLI only while it is
+    /// blocked on an interactive prompt (resize frames always apply).
+    func testTaskStreamsToRelayAndGatesBrowserInputOnTUIBlocked() async throws {
+        let tmux = try tmuxConnection()
+        defer { Task { _ = try? await tmux.run(["kill-server"]) } }
+        let relay = try RelayFixture()
+        defer { relay.stop() }
+        let script = """
+        #!/bin/sh
+        settings=""
+        while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
+        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed 's/localhost/127.0.0.1/')
+        printf 'RELAY-OUT \\342\\234\\223\\n'
+        IFS= read -r line
+        printf 'prompt:%s\\n' "$line"
+        touch ready
+        IFS= read -r second
+        printf 'second:%s\\n' "$second"
+        curl -s -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"done"}' >/dev/null
+        while IFS= read -r more; do curl -s -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"x"}' >/dev/null; done
+        """
+        let worker = InteractiveWorker()
+        let (engine, server, home) = try await makeEngine(script: script, worker: worker, tmux: tmux, relay: "http://127.0.0.1:\(relay.port)", errors: { _ in })
+        defer { try? FileManager.default.removeItem(at: home) }
+        try await engine.start()
+        try await wait { FileManager.default.fileExists(atPath: home.appendingPathComponent("ready").path) }
+        XCTAssertEqual(relay.connectionCount, 1)
+        XCTAssertEqual(relay.firstHeaders["authorization"], "Bearer fixture-token")
+        XCTAssertEqual(relay.firstHeaders["x-tsq-agent"], "fixture-agent")
+        try await wait { String(decoding: relay.bytes, as: UTF8.self).contains("RELAY-OUT ✓") }
+        // Not blocked on a TUI prompt: browser keystrokes are dropped.
+        relay.send(#"{"t":"i","d":"\#(Data("early\r".utf8).base64EncodedString())"}"#)
+        try await Task.sleep(for: .milliseconds(400))
+        // The CLI reports an interactive prompt; now input is forwarded.
+        let port = try XCTUnwrap(try String(contentsOf: home.appendingPathComponent("hooks-port"), encoding: .utf8).split(separator: "\n").first)
+        var blocked = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/hooks/tui-blocked?agent=fixture-agent&task_id=fixture-task&state=on")!)
+        blocked.httpMethod = "POST"
+        _ = try await URLSession.shared.data(for: blocked)
+        relay.send(#"{"t":"i","d":"\#(Data("late\r".utf8).base64EncodedString())"}"#)
+        try await wait { String(decoding: relay.bytes, as: UTF8.self).contains("second:late") }
+        XCTAssertFalse(String(decoding: relay.bytes, as: UTF8.self).contains("second:early"))
+        try await wait { await worker.notifies.count >= 1 }
+        await engine.stop()
+        await server.stop()
     }
 
 }

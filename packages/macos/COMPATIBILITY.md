@@ -60,7 +60,7 @@ Status: **missing** (no Swift implementation), **partial** (some behaviour or te
 | `agent/state.go`, `agentmode` | `AgentState.swift` | `AgentStateTests` | partial | Port `state_test.go`; reset and failure recovery |
 | `agent/lifecycle.go`, `session.go`, `complete.go` (tmux + FIFO execution) | `DaemonEngine.swift`, `TmuxTaskSession.swift`, `NativeProcess.swift` | `InteractiveEngineTests`, `EngineIntegrationTests`, `TmuxIntegrationTests` | partial | Port `lifecycle_test`, `spawn_failure_test`, `closesequence_test`; crash vs deliberate close, output drain, Unicode fidelity |
 | `agent/terminal_control.go` managed input/close | `DaemonEngine.handleTerminal`, `ManagedTerminal.swift` | `ManagedTerminalTests` | partial | Port `terminal_control_test.go` |
-| `agent/terminal_relay.go` WebSocket relay | `PortalHost.swift` (portals only) | `PortalHostTests` | partial | Relay for regular tasks; auth headers, reconnect, slow readers, input gating, resize |
+| `agent/terminal_relay.go` WebSocket relay | `TerminalRelay` (in `PortalHost.swift`), `DaemonEngine` | `InteractiveEngineTests.testTaskStreamsToRelayAndGatesBrowserInputOnTUIBlocked` | done | Tasks and Portals share it: raw bytes out (tmux and pipe), daemon auth headers, input gated on TUI-blocked (Codex always), resize always. Like Go, no reconnect after a drop |
 | `agent/portal.go` Portals | `PortalHost.swift` | `PortalHostTests` | partial | Port `portal_test.go`; crash recovery, shutdown |
 | `agent/inbound_images.go` | `InboundAttachments.swift` | `InboundAttachmentsTests` | done | — |
 | `agent/transcript.go` | `DaemonEngine.attachTranscript` | — | partial | Fallbacks; tests |
@@ -94,7 +94,7 @@ Output text and exit codes must match Go byte-for-byte: agents and skills parse 
 | Command | Status |
 |---|---|
 | `login`, `logout`, `init` | done in `TaskSquadCLI` (`CLIAuthTests`: Go's prompts, `Scanln` first-word answers, config text and 0600 mode). Browser sign-in can't run against the Go binary |
-| `--version` | partial (app build only) |
+| `--version` / `-version` | done (golden, `tsq` daemon entry) |
 | `sessions`, `attach`, `pane`, `send` | done (`CLIGoldenTests`: byte-identical stdout/stderr/exit vs the Go binary) |
 | `logs` | done (golden) |
 | `screenshot` | done (golden for output and errors; PNG pixels differ by rasterizer) |
