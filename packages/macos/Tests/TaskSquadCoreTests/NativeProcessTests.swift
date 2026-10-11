@@ -20,6 +20,21 @@ private actor CollectedOutput {
         XCTAssertEqual(data, Data((arguments.joined(separator: "\0") + "\0").utf8))
     }
 
+    /// Children blocked in read/waitpid must not occupy the cooperative pool: with
+    /// more live children than cores, other async work (the hook server a provider
+    /// is calling) still runs. CI runners with 3 cores deadlocked Pi's stop hook.
+    func testManyLiveChildrenDoNotStarveOtherTasks() async throws {
+        let children = ProcessInfo.processInfo.activeProcessorCount * 2
+        let running = (0..<children).map { _ in
+            Task.detached { try await NativeProcess.run(.init(executable: "/bin/sleep", arguments: ["2"])) }
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        let started = ContinuousClock.now
+        _ = await Task.detached { 1 }.value
+        XCTAssertLessThan(ContinuousClock.now - started, .milliseconds(500), "cooperative pool starved by blocked process I/O")
+        for task in running { _ = try await task.value }
+    }
+
     func testLargeInputAndOutputDoNotDeadlockOrLoseBytes() async throws {
         let input = Data(String(repeating: "é 猫 \n", count: 100_000).utf8)
         let output = CollectedOutput()

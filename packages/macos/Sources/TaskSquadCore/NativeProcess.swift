@@ -48,29 +48,24 @@ public enum NativeProcess {
                 for (channel, descriptor) in [(ProcessChannel.stdout, child.stdout), (.stderr, child.stderr)] {
                     group.addTask {
                         defer { child.outputFinished() }
-                        // One detached task drains the whole channel instead of spinning
-                        // a fresh Task per chunk, which added a thread-pool hop per 64KB read.
-                        try await Task.detached {
-                            while true {
-                                // Cancellation terminates the process group; continue to
-                                // drain already-written output before reporting its exit.
-                                let data = try readChunk(descriptor)
-                                if data.isEmpty { return }
-                                try await output(channel, data)
-                            }
-                        }.value
-                        return nil
+                        while true {
+                            // Cancellation terminates the process group; continue to
+                            // drain already-written output before reporting its exit.
+                            let data = try await blocking { try readChunk(descriptor) }
+                            if data.isEmpty { return nil }
+                            try await output(channel, data)
+                        }
                     }
                 }
                 group.addTask {
-                    try await Task.detached {
+                    try await blocking {
                         defer { child.closeInput() }
                         if let input = specification.input { try writeAll(input, descriptor: child.stdin) }
-                    }.value
+                    }
                     return nil
                 }
                 group.addTask {
-                    let exit = try await Task.detached { try child.wait() }.value
+                    let exit = try await blocking { try child.wait() }
                     // The direct child exited, but a descendant it spawned can still
                     // hold the output pipes open (dup'd fds aren't CLOEXEC across
                     // posix_spawn), which would otherwise block the drain loops in
@@ -93,6 +88,17 @@ public enum NativeProcess {
                 return result
             }
         } onCancel: { child.terminate() }
+    }
+
+    /// Runs a blocking syscall (read, write, waitpid) on its own thread. On the
+    /// cooperative pool (one thread per core) three such calls per child would
+    /// starve every other task, e.g. the hook server a provider is waiting on.
+    static func blocking<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            let thread = Thread { continuation.resume(with: Result { try body() }) }
+            thread.name = "tsq-process-io"
+            thread.start()
+        }
     }
 
     private static func readChunk(_ descriptor: Int32) throws -> Data {
