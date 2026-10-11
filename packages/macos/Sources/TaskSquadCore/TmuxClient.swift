@@ -38,11 +38,15 @@ private actor TmuxOutput {
 public struct TmuxConnection: Sendable {
     public let executable: String
     public let socketPath: String?
-    public init(executable: String = "tmux", socketPath: String? = nil) { self.executable = executable; self.socketPath = socketPath }
+    /// Process environment for tmux; nil inherits this process's (TMUX_TMPDIR selects the default server).
+    public let environment: [String: String]?
+    public init(executable: String = "tmux", socketPath: String? = nil, environment: [String: String]? = nil) {
+        self.executable = executable; self.socketPath = socketPath; self.environment = environment
+    }
     var prefix: [String] { socketPath.map { ["-S", $0] } ?? [] }
     public func run(_ arguments: [String]) async throws -> String {
         let out = TmuxOutput(), err = TmuxOutput()
-        var environment = ProcessInfo.processInfo.environment
+        var environment = self.environment ?? ProcessInfo.processInfo.environment
         environment.removeValue(forKey: "TMUX")
         let status = try await NativeProcess.run(.init(executable: executable, arguments: prefix + arguments, environment: environment)) { channel, data in
             switch channel { case .stdout: try await out.append(data); case .stderr: try await err.append(data) }

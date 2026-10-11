@@ -88,16 +88,16 @@ Status: **missing** (no Swift implementation), **partial** (some behaviour or te
 
 ### `tsq` CLI (`daemon/main.go`, `daemon/cmd`, `daemon/commands`)
 
-Output text and exit codes must match Go byte-for-byte: agents and skills parse them. Verify with golden tests running both binaries on the same argv against a fixture.
+Output text and exit codes must match Go byte-for-byte: agents and skills parse them. `TaskSquadCLI` (the app binary dispatches these before any UI) is verified by `CLIGoldenTests`, which runs the real Go `tsq` (built by `make test-compatibility`) and Swift on the same argv, HOME and isolated tmux server.
 
 | Command | Status |
 |---|---|
 | `login`, `logout`, `--version` | partial (implemented; no golden tests) |
 | `init` | missing |
-| `sessions`, `attach`, `pane`, `send` | missing |
-| `logs` | missing |
-| `screenshot` | missing |
-| `report`, `skill`, `send-image` | missing |
+| `sessions`, `attach`, `pane`, `send` | done (`CLIGoldenTests`: byte-identical stdout/stderr/exit vs the Go binary) |
+| `logs` | done (golden) |
+| `screenshot` | done (golden for output and errors; PNG pixels differ by rasterizer) |
+| `report`, `skill`, `send-image` | done (golden, incl. Go flag errors and `-h`; identical request bodies). Connection-refused error text differs from Go's net/http wording |
 | `memory`, `kb`, `tags` | missing |
 | `projects`, `agents`, `tasks`, `portals`, `resources`, `doctor` | missing |
 

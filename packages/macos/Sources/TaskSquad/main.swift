@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import SwiftUI
+import TaskSquadCLI
 import TaskSquadCore
 import TaskSquadDesign
 
@@ -20,7 +21,10 @@ if arguments == ["--preview-customer"] {
     exit(0)
 }
 #endif
-if arguments.first == "login" || arguments.first == "logout" {
+if TSQCommandLine.handles(arguments) {
+    // `tsq <command>`: the same binary as the app, no UI (Go: main.go subcommands).
+    exit(await TSQCommandLine.run(arguments))
+} else if arguments.first == "login" || arguments.first == "logout" {
     exit(await AuthenticationCommands.run(arguments[0]))
 } else if arguments == ["--version"] || arguments == ["-version"] {
     print("tsq \(Bundle.main.object(forInfoDictionaryKey: "TSQVersion") as? String ?? "dev")")
