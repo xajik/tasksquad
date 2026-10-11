@@ -71,6 +71,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [ ] Regenerate reviewed light/dark screenshots on both platforms from the fixture
 
 ## Notes and decisions
+- `TSQIcon` loads SVGs from `Vectors/` on macOS and the asset catalog on iOS. The GitHub macOS runner's SwiftPM *copies* `Assets.xcassets` uncompiled (no `Assets.car`), so catalog images are blank in CI-built macOS apps. `RenderSmokeTests` guards this.
 - If `test08TerminalControlInputAndResize` fails on rotation (`landscape` waiter times out and the screenshot stays portrait), the simulator is stuck in portrait. Run `xcrun simctl shutdown all` and rerun. It is not a code regression.
 - Task removal: macOS offers **Delete** (`DELETE /tasks/:id`, as on the web) and iOS offers **Cancel** (`PUT /tasks/:id {status: cancelled}`). Both are valid Worker routes (`.deleteTask`, `.cancelTask`). Choosing one UX for both apps is still open.
 - `createPayload` drops `scheduled_at: null` and empty `close_steps`, as macOS did before, for both apps.
