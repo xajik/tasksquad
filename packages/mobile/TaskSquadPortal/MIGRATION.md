@@ -66,7 +66,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [ ] Drop the `Theme`/`MobileTheme`/`MobilePrimaryButtonStyle` typealiases (optional, mechanical)
 
 ### F. CI and evidence
-- [ ] `macos-native.yml` triggers on `packages/mobile/**`; add a `swift test` job for this package
+- [x] `macos-native.yml` triggers on `packages/mobile/**`; runs `swift test` for this package
 - [ ] iOS CI job: explicit simulator/runtime resolution, recorded in the summary, fails if none is available
 - [ ] Regenerate reviewed light/dark screenshots on both platforms from the fixture
 

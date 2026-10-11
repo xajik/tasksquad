@@ -5,12 +5,14 @@ on:
     paths:
       - 'packages/macos/**'
       - 'packages/daemon/**'
+      - 'packages/mobile/**'
       - '.github/workflows/macos-native.yml'
   push:
     branches: [main]
     paths:
       - 'packages/macos/**'
       - 'packages/daemon/**'
+      - 'packages/mobile/**'
       - '.github/workflows/macos-native.yml'
   workflow_dispatch:
 
@@ -35,6 +37,9 @@ jobs:
           go-version-file: packages/daemon/go.mod
       - name: Install terminal test dependency
         run: command -v tmux || brew install tmux
+      - name: Test shared portal package (stores, operations, design resources, renders)
+        working-directory: packages/mobile/TaskSquadPortal
+        run: swift test
       - name: Test native implementation against Go
         run: make test-compatibility
       - name: Render native UI components
