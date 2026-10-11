@@ -5,6 +5,7 @@ import TaskSquadPortal
 struct MobileRecordDetail: View {
     @ObservedObject var model: WorkspaceStore
     let id: String
+    var isActive = true
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var phase
     @StateObject private var detailStore = RecordDetailStore()
@@ -61,10 +62,10 @@ struct MobileRecordDetail: View {
                 else if model.section == .portals, live { Button("Close", role: .destructive) { ask("Close Portal") }.accessibilityIdentifier("close-portal").disabled(model.busy) }
             }
         }
-        .task(id: "\(model.context):\(id):\(phase)") {
-            guard phase == .active else { return }
-            // NavigationStack cancels the inbox poller while this screen is pushed,
-            // so the shared driver refreshes only this record until it pops.
+        .task(id: "\(model.context):\(id):\(phase):\(isActive)") {
+            guard phase == .active, isActive else { return }
+            // The shell polls only the visible route. Utility screens pause this
+            // detail poller; the sidebar leaves it running.
             await model.poll(refreshWorkspace: false) { await refresh() }
         }
         .sheet(item: $editor) { MobileEditor(model: model, request: $0) }

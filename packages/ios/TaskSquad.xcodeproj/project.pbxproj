@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		02372E4F4DAA304F0B345C90 /* TaskSquadPortal in Frameworks */ = {isa = PBXBuildFile; productRef = 4EE6F3CE0DA282A10A29DD08 /* TaskSquadPortal */; };
 		14FBF6994DB867F459886C06 /* PortalHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C2060585F24003A06B8E88A /* PortalHomeView.swift */; };
+		2D4FBBBE11C73CD6A69053F5 /* MobileNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF3512155D78B938C306E4DD /* MobileNavigation.swift */; };
 		35C95D01C813ED2EF6C26CA1 /* MobileAuthFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */; };
 		41C90D7A2E7A4985C7B458C8 /* MobileEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A30AA7DDE6D278F84DDE19 /* MobileEditor.swift */; };
 		60CB3BFF7EF9CCAA1C7F89AE /* PortalTerminalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A24DFD7CDB332FEB0BFA475 /* PortalTerminalScreen.swift */; };
@@ -58,6 +59,7 @@
 		9C2060585F24003A06B8E88A /* PortalHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalHomeView.swift; sourceTree = "<group>"; };
 		AF431F3FA8AA7300FDE4DE83 /* TaskSquadUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TaskSquadUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B560839AB82BAC6A1E9EBAF9 /* MobileAuthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAuthTests.swift; sourceTree = "<group>"; };
+		BF3512155D78B938C306E4DD /* MobileNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileNavigation.swift; sourceTree = "<group>"; };
 		C65F7AFFE10DF3D195DA20DF /* MobileTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTheme.swift; sourceTree = "<group>"; };
 		D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAuthFlow.swift; sourceTree = "<group>"; };
 		EB207D857A43491B4B23528D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -142,6 +144,7 @@
 				D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */,
 				5EB4A702FA864462F5E6FE52 /* MobileDraftStore.swift */,
 				98A30AA7DDE6D278F84DDE19 /* MobileEditor.swift */,
+				BF3512155D78B938C306E4DD /* MobileNavigation.swift */,
 				050DA99DEA779DFB9A29BA1E /* MobileRecordDetail.swift */,
 				C65F7AFFE10DF3D195DA20DF /* MobileTheme.swift */,
 				9C2060585F24003A06B8E88A /* PortalHomeView.swift */,
@@ -299,6 +302,7 @@
 				35C95D01C813ED2EF6C26CA1 /* MobileAuthFlow.swift in Sources */,
 				DD1759BF6E9091CD96AE1639 /* MobileDraftStore.swift in Sources */,
 				41C90D7A2E7A4985C7B458C8 /* MobileEditor.swift in Sources */,
+				2D4FBBBE11C73CD6A69053F5 /* MobileNavigation.swift in Sources */,
 				CA47F52DC71791B5BC0FC5E1 /* MobileRecordDetail.swift in Sources */,
 				7F46BC20BF5BCE0D56C2CA47 /* MobileTheme.swift in Sources */,
 				14FBF6994DB867F459886C06 /* PortalHomeView.swift in Sources */,

@@ -42,6 +42,8 @@ async def handler(req):
     if path[0]=='__test':
         if path[-1]=='reset': reset(); SEED and seed(); event('reset'); return response({'ok':True})
         if path[-1]=='fail': state['failure']=await req.json(); return response({'ok':True})
+        if path[-1]=='projects' and req.method=='POST':
+            state['projects']=(await req.json())['projects']; return response({'ok':True})
         if path[-1]=='state': return response(state)
         if path[-1]=='events': return web.Response(text='\n'.join(current_events),content_type='application/x-ndjson')
     if path==['mobile','authorize']:

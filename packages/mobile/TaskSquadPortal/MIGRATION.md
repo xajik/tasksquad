@@ -61,6 +61,12 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] `MarkdownContent` uses `TSQTheme` tokens (and table header tint spans the row); `MarkdownBlock.parse` tests moved to `MarkdownBlockTests`
 - [x] `TaskSquadPortalUI` render smoke tests (`Tests/TaskSquadPortalUITests`, macOS `ImageRenderer`): icons must draw non-blank pixels, and components render in light and dark
 
+### iOS navigation shell
+- [x] Phone slide-over / iPad split sidebar; library grouping; dedicated Projects and Account screens; compact Inbox filter sheet
+- [x] Explicit visible-route polling ownership; shared store, project preferences, permissions and drafts retained
+- [x] Contract navigation helpers and coverage for utility Back, project search/retry, no projects and member settings
+- [ ] Review new phone/iPad light/dark navigation evidence (`packages/ios/screenshots/sidebar-navigation/`)
+
 ### E. Remove compatibility layers
 - [x] `PortalAPI` deleted. `CustomerAPI` (in `CustomerSession.swift`) provides `terminalSession`, the PKCE exchange and token revocation, and both terminals use it. `PortalTerminalSession`'s auth-stop now recognizes `CustomerAPIError`; macOS tickets never matched the old `PortalAPIError` check.
 - [ ] Drop the `Theme`/`MobileTheme`/`MobilePrimaryButtonStyle` typealiases (optional, mechanical)

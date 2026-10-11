@@ -1,0 +1,62 @@
+[
+  {
+    "file": "12-dark-large-conversation.png",
+    "test": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+    "timestamp": 1791713073.439,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "11-dark-large-inbox.png",
+    "test": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+    "timestamp": 1791713071.56,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "navigation-account-dark.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1791713110.117,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "navigation-projects-dark.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1791713106.151,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "navigation-sidebar-dark.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1791713103.6,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "navigation-inbox-dark.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1791713103.22,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "navigation-account-light.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1791713095.217,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "navigation-projects-light.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1791713091.264,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "navigation-sidebar-light.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1791713088.721,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "navigation-inbox-light.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1791713088.352,
+    "device": "TaskSquad Sidebar Small"
+  }
+]

@@ -1,0 +1,62 @@
+{
+  "devices": [
+    {
+      "architecture": "arm64",
+      "deviceId": "F58D1267-021E-4C60-81DF-337E51BA57C5",
+      "deviceName": "TaskSquad Sidebar Small",
+      "modelName": "iPhone SE (3rd generation)",
+      "osBuildNumber": "21C62",
+      "osVersion": "17.2",
+      "platform": "iOS Simulator"
+    }
+  ],
+  "testNodes": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "duration": "10s",
+                  "durationInSeconds": 10.376415014266968,
+                  "name": "test17DarkAppearanceAndLargeTextRemainUsable()",
+                  "nodeIdentifier": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "37s",
+                  "durationInSeconds": 37.334020018577576,
+                  "name": "test19NavigationScreenshots()",
+                  "nodeIdentifier": "PortalFlowTests/test19NavigationScreenshots()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test19NavigationScreenshots",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                }
+              ],
+              "name": "PortalFlowTests",
+              "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests",
+              "nodeType": "Test Suite",
+              "result": "Passed"
+            }
+          ],
+          "name": "TaskSquadUITests",
+          "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests",
+          "nodeType": "UI test bundle",
+          "result": "Passed"
+        }
+      ],
+      "name": "TaskSquad",
+      "nodeType": "Test Plan",
+      "result": "Passed"
+    }
+  ],
+  "testPlanConfigurations": [
+    {
+      "configurationId": "1",
+      "configurationName": "Test Scheme Action"
+    }
+  ]
+}

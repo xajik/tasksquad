@@ -24,6 +24,8 @@ with tempfile.TemporaryDirectory() as temp:
             source = pathlib.Path(temp)/item['exportedFileName']
             if name.startswith(tuple(str(i).zfill(2)+'-' for i in range(100))) and source.suffix == '.png':
                 dest = name.split('_')[0]+'.png'
+            elif name.startswith('navigation-') and source.suffix == '.png':
+                dest = name.split('_')[0]+'.png'
             elif name.startswith('iOS matched Portal API timings') and source.suffix == '.json':
                 dest = 'ios-api-metrics.json'
             else: continue

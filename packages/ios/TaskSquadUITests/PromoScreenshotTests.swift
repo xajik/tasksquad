@@ -13,8 +13,10 @@ import XCTest
         for appearance in ["light", "dark"] {
             app.launchArguments = ["--ui-test-api", api, "--ui-test-appearance", appearance]
             app.launch()
-            XCTAssertTrue(app.buttons["project-picker"].waitForExistence(timeout: 15))
-            app.buttons["project-picker"].tap(); app.buttons[project].tap()
+            XCTAssertTrue(app.buttons["open-sidebar"].waitForExistence(timeout: 15))
+            navigate("nav-projects")
+            let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-' AND label CONTAINS %@", project)).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 10)); row.tap()
             settle(); shot("ios-inbox-\(appearance)")
             if open(matching: env["PROMO_TASK"] ?? "rate limiting") { shot("ios-task-\(appearance)"); back() }
             for (section, match, name) in [("Notes", "heatmap", "notes"), ("Planners", "heatmap", "planner"), ("Conveyors", "", "conveyor"),
@@ -26,17 +28,16 @@ import XCTest
         }
     }
 
+    private func navigate(_ identifier: String) {
+        if app.buttons["open-sidebar"].exists { app.buttons["open-sidebar"].tap() }
+        let item = app.buttons[identifier]
+        for _ in 0..<12 where !item.isHittable { app.scrollViews["sidebar-destinations"].swipeUp() }
+        XCTAssertTrue(item.waitForExistence(timeout: 5)); item.tap()
+    }
     private func go(_ section: String) {
-        let picker = app.buttons["section-picker"]
-        if !picker.isHittable { app.swipeDown() }
-        XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        for _ in 0..<3 {
-            picker.tap()
-            let item = app.buttons[section]
-            if item.waitForExistence(timeout: 3) { item.tap(); break }
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
-        }
-        XCTAssertTrue(app.navigationBars[section].waitForExistence(timeout: 5), "Section \(section) did not open")
+        navigate("nav-" + section)
+        let title = ["Planners": "Planner", "Conveyors": "Conveyor"][section] ?? section
+        XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
     }
     /// Opens the first record whose label contains `text`, or the first record when none matches.
     private func open(matching text: String) -> Bool {

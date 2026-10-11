@@ -4,10 +4,14 @@ import Charts
 import TaskSquadPortal
 
 struct PortalHomeView: View {
-    @AppStorage("mobile.appearance") private var appearance = "system"
     @ObservedObject var auth: MobileAuthStore
     @StateObject private var model: WorkspaceStore
-    @State private var selectedID: String?
+    @State private var navigation = MobileNavigation()
+    @State private var filtersPresented = false
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AccessibilityFocusState private var menuFocused: Bool
     @State private var editor: MobileEditorRequest?
     @Environment(\.scenePhase) private var scenePhase
 
@@ -16,20 +20,149 @@ struct PortalHomeView: View {
         _model = StateObject(wrappedValue: WorkspaceStore(api: api ?? CustomerAPI(baseURL: MobileAuthStore.apiURL) { force in try await auth.accessToken(forceRefresh: force) }, preferences: api == nil ? .standard : nil))
     }
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Picker("Project", selection: $model.projectID) { ForEach(model.projects) { Text($0.title).tag($0.id) } }.accessibilityIdentifier("project-picker")
-                    Picker("Section", selection: $model.section) { ForEach(WorkspaceSection.allCases) { Text($0.rawValue).tag($0) } }.accessibilityIdentifier("section-picker")
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Group {
+                    if sizeClass == .regular {
+                        NavigationSplitView(columnVisibility: $columnVisibility) {
+                            sidebar(close: nil)
+                                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
+                        } detail: { content }
+                        .navigationSplitViewStyle(.balanced)
+                    } else { content }
                 }
+                .accessibilityHidden(navigation.sidebarPresented)
+                .allowsHitTesting(!navigation.sidebarPresented)
+                if navigation.sidebarPresented && sizeClass != .regular {
+                    Color.black.opacity(0.35).ignoresSafeArea()
+                        .onTapGesture { closeSidebar() }
+                        .accessibilityHidden(true)
+                    sidebar(close: closeSidebar)
+                        .frame(width: min(340, geometry.size.width - 32))
+                        .background(MobileTheme.sidebar)
+                        .transition(.move(edge: .leading))
+                        .accessibilityAddTraits(.isModal)
+                        .accessibilityAction(.escape) { closeSidebar() }
+                }
+            }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: navigation.sidebarPresented)
+        }
+        .task { await model.connect() }
+        .onChange(of: sizeClass) { _, _ in navigation.sidebarPresented = false }
+        .onChange(of: model.context) { _, _ in navigation.path = []; editor = nil; filtersPresented = false }
+        .sheet(item: $editor) { MobileEditor(model: model, request: $0) }
+        .sheet(isPresented: $filtersPresented) { MobileInboxFilters(model: model) }
+    }
+    private var content: some View {
+        NavigationStack(path: $navigation.path) {
+            workspace
+                .navigationDestination(for: MobileRoute.self) { route in
+                    switch route {
+                    case .record(let id):
+                        MobileRecordDetail(model: model, id: id, isActive: navigation.path.last == route)
+                            .accessibilityHidden(navigation.sidebarPresented)
+                            .allowsHitTesting(!navigation.sidebarPresented)
+                            .toolbar { menuToolbar }
+                    case .projects:
+                        MobileProjectsView(model: model) { project in
+                            if project != model.projectID {
+                                navigation.path = []
+                                model.projectID = project
+                            } else { navigation.path.removeLast() }
+                        }
+                    case .account:
+                        MobileAccountView(auth: auth, model: model) {
+                            navigation = MobileNavigation()
+                            model.resetAccount()
+                        }
+                    }
+                }
+        }
+    }
+    private func sidebar(close: (() -> Void)?) -> some View {
+        MobileSidebar(model: model, route: navigation.path.last, close: close) { section in
+            navigation.path = []
+            if model.section != section { model.section = section }
+            closeSidebar()
+        } open: { route in
+            if navigation.path.last != route {
+                if navigation.path.last == .projects || navigation.path.last == .account { navigation.path.removeLast() }
+                navigation.path.append(route)
+            }
+            closeSidebar()
+        }
+    }
+    private func closeSidebar() {
+        navigation.sidebarPresented = false
+        menuFocused = true
+    }
+    @ToolbarContentBuilder private var menuToolbar: some ToolbarContent {
+        if sizeClass != .regular {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { navigation.sidebarPresented = true } label: { Image(systemName: "sidebar.left").foregroundStyle(MobileTheme.foreground) }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel("Open sidebar")
+                    .accessibilityIdentifier("open-sidebar")
+                    .accessibilityFocused($menuFocused)
+            }
+        }
+    }
+    private var workspace: some View {
+        workspaceList
+            .accessibilityHidden(navigation.sidebarPresented)
+            .allowsHitTesting(!navigation.sidebarPresented)
+            .modifier(MobileWorkspaceSearch(model: model))
+            .navigationTitle(model.section.mobileTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                menuToolbar
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 2) {
+                        Text(model.section.mobileTitle).font(.headline)
+                        Text(model.currentProject?.title ?? "No project selected")
+                            .font(.caption).foregroundStyle(MobileTheme.mutedForeground).lineLimit(1)
+                    }.accessibilityElement(children: .combine)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if canCreate {
+                        Button { create() } label: { MobileIcon(name: "plus") }
+                            .accessibilityLabel("Create " + model.section.rawValue)
+                            .accessibilityIdentifier("create-item").disabled(model.busy)
+                    }
+                }
+            }
+            .refreshable { await model.connect() }
+            .task(id: "\(model.context):\(scenePhase):\(navigation.path.isEmpty)") {
+                guard scenePhase == .active, navigation.path.isEmpty else { return }
+                await model.poll()
+            }
+    }
+    private var workspaceList: some View {
+        List {
+            if model.projectID.isEmpty {
+                TSQEmptyState(icon: "folder", title: "No projects", message: "Open Projects to refresh your available workspaces.")
+                Button("Projects") { navigation.path.append(.projects) }
+            } else if model.section.isLibrary {
+                Picker("Library", selection: $model.section) {
+                    ForEach([WorkspaceSection.skills, .subAgents, .commands]) { Text($0.rawValue).tag($0) }
+                }.accessibilityIdentifier("library-picker")
+            }
+            if !model.projectID.isEmpty {
                 if model.section == .settings { settings }
                 else if model.section == .analytics { analytics }
                 else {
                     if model.section == .inbox {
-                        Section("Filters") {
-                            Picker("Status", selection: $model.status) { ForEach(["all", "pending", "running", "waiting_input", "scheduled", "wrapping_up", "done", "failed"], id: \.self) { Text($0.replacingOccurrences(of: "_", with: " ").capitalized).tag($0) } }.accessibilityIdentifier("status-filter")
-                            Picker("Origin", selection: $model.origin) { ForEach(["all", "mine", "system", "scheduled", "planner", "conveyor", "from-note", "note-critique"], id: \.self) { Text($0.capitalized).tag($0) } }
-                        }
+                        Button { filtersPresented = true } label: {
+                            HStack {
+                                Image(systemName: "line.3.horizontal.decrease")
+                                Text("Filters")
+                                if model.status != "all" || model.origin != "all" {
+                                    Text(String([model.status, model.origin].filter { $0 != "all" }.count))
+                                        .font(.caption.bold()).padding(.horizontal, 7).padding(.vertical, 3)
+                                        .background(MobileTheme.muted, in: Capsule())
+                                }
+                            }.frame(minHeight: 44)
+                        }.accessibilityIdentifier("inbox-filters")
                     }
                     if model.section == .portals {
                         if !model.isPro { Text("Interactive Portals require an eligible account.").foregroundStyle(MobileTheme.mutedForeground) }
@@ -47,32 +180,17 @@ struct PortalHomeView: View {
                         portalSection("Active sessions", live: true)
                         portalSection("History", live: false)
                     } else {
-                        Section(model.section.rawValue) { ForEach(model.visibleRecords) { record in row(record) } }
+                        Section { ForEach(model.visibleRecords) { record in row(record) } }
                     }
                     if model.hasMore { Button("Load more") { Task { await model.refresh(loadMore: true) } }.disabled(model.loading) }
                     if let refreshedAt = model.refreshedAt { Text("Updated \(refreshedAt.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
                 }
-
-            }
-            .safeAreaInset(edge: .bottom) {
-                if let error = model.error { Text(error).font(.footnote).foregroundStyle(MobileTheme.destructive).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("workspace-error") }
-            }
-            .scrollContentBackground(.hidden).background(MobileTheme.background)
-            .searchable(text: $model.search, prompt: "Search \(model.section.rawValue)")
-            .navigationTitle(model.section.rawValue)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { if canCreate { Button { create() } label: { MobileIcon(name: "plus") }.accessibilityLabel("Create " + model.section.rawValue).accessibilityIdentifier("create-item").disabled(model.busy) } } }
-            .refreshable { await model.connect() }
-            .task { await model.connect() }
-            .onChange(of: model.context) { _, _ in selectedID = nil }
-            .task(id: "\(model.context):\(scenePhase)") {
-                guard scenePhase == .active else { return }
-                await model.poll()
-            }
-            .sheet(item: $editor) { MobileEditor(model: model, request: $0) }
-            .navigationDestination(item: $selectedID) { id in
-                MobileRecordDetail(model: model, id: id)
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if let error = model.error { Text(error).font(.footnote).foregroundStyle(MobileTheme.destructive).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("workspace-error") }
+        }
+        .scrollContentBackground(.hidden).background(MobileTheme.background)
     }
     private var canCreate: Bool { model.canCreate }
     @ViewBuilder private func portalSection(_ title: String, live: Bool) -> some View {
@@ -81,7 +199,7 @@ struct PortalHomeView: View {
         if live && !model.isPro { Text("Interactive Portals require an eligible account.").foregroundStyle(MobileTheme.mutedForeground) }
     }
     private func row(_ record: CustomerRecord) -> some View {
-        Button { selectedID = record.id } label: {
+        Button { navigation.path.append(.record(record.id)) } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(model.section == .portals ? model.agentName(record.text("agent_id")) : record.title).font(.headline).foregroundStyle(MobileTheme.foreground)
@@ -100,21 +218,18 @@ struct PortalHomeView: View {
             guard context == model.context, let result = await model.perform(.create(section, project: project, values: body, files: files)) else { return false }
             await model.refresh()
             let record = CustomerRecord(result)
-            selectedID = record.id.isEmpty ? nil : record.id
+            if !record.id.isEmpty { navigation.path = [.record(record.id)] }
             return true
         }
     }
     private var settings: some View {
-        Section("Account and project") {
-            Text(model.profile?.text("email") ?? "")
-            Picker("Appearance", selection: $appearance) { Text("System").tag("system"); Text("Light").tag("light"); Text("Dark").tag("dark") }
+        Section("Project") {
+            Text(model.currentProject?.title ?? "No project selected")
             Text("Project role: \(model.currentProject?.text("role") ?? "member")")
-            Text("API: \(model.api.baseURL.absoluteString)").font(.caption)
             if model.canManage {
                 Toggle("Learn from sessions", isOn: setting("learn_from_session"))
                 Toggle("Project memory", isOn: setting("memory_enabled"))
             }
-            Button("Sign out", role: .destructive) { Task { await auth.signOut() } }
         }
     }
     private func setting(_ key: String) -> Binding<Bool> { Binding(get: { model.currentProject?.flag(key) ?? false }, set: { value in Task { if await model.perform(.setProjectFlag(project: model.projectID, key: key, value)) != nil { await model.connect() } } }) }
