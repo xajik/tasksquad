@@ -1,0 +1,35 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "3D5E8AF0-85BC-4141-8E00-1A18AA2162F9",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "719374AF-BC66-4659-B2AD-320FF3CE1D6C.json",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "iOS Portal monkey run · 15 iterations_0_19ACB392-3725-45C9-AC34-BFA77788B3D9.json",
+        "timestamp" : 1791692609.151
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "3D5E8AF0-85BC-4141-8E00-1A18AA2162F9",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "4F0B1132-34D4-4591-866A-7F4F30A58A54.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Portal Terminal_0_FF296D29-EC9F-41A0-B5EE-C5CAA437195E.png",
+        "timestamp" : 1791692164.441
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "3D5E8AF0-85BC-4141-8E00-1A18AA2162F9",
+        "deviceName" : "iPhone 17 Pro",
+        "exportedFileName" : "88B65BC1-6271-47C3-A25A-77F304EAC8F3.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Portal Home_0_DBDFDC8B-58C9-4ACF-B7A4-F7D3E8029699.png",
+        "timestamp" : 1791692162.187
+      }
+    ],
+    "testIdentifier" : "PortalFlowTests/testPortalMonkeyRunner15Iterations()",
+    "testIdentifierURL" : "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/testPortalMonkeyRunner15Iterations"
+  }
+]

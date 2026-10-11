@@ -1,0 +1,212 @@
+[
+  {
+    "actionTrace" : [
+      "back-reopen",
+      "cancel-selection",
+      "back-reopen",
+      "back-reopen",
+      "cancel-selection",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.29790401458740234,
+    "iteration" : 1,
+    "listMilliseconds" : 1.9470453262329102,
+    "openMilliseconds" : 0.36597251892089844
+  },
+  {
+    "actionTrace" : [
+      "back-reopen",
+      "refresh-list",
+      "back-reopen",
+      "back-reopen",
+      "refresh-list",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.23102760314941406,
+    "iteration" : 2,
+    "listMilliseconds" : 0.98097324371337891,
+    "openMilliseconds" : 0.31292438507080078
+  },
+  {
+    "actionTrace" : [
+      "cancel-selection",
+      "refresh-list",
+      "back-reopen",
+      "cancel-selection",
+      "refresh-list",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.22196769714355469,
+    "iteration" : 3,
+    "listMilliseconds" : 0.72801113128662109,
+    "openMilliseconds" : 0.30303001403808594
+  },
+  {
+    "actionTrace" : [
+      "cancel-selection",
+      "back-reopen",
+      "back-reopen",
+      "cancel-selection",
+      "back-reopen",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.33700466156005859,
+    "iteration" : 4,
+    "listMilliseconds" : 0.73003768920898438,
+    "openMilliseconds" : 0.33104419708251953
+  },
+  {
+    "actionTrace" : [
+      "cancel-selection",
+      "refresh-list",
+      "back-reopen",
+      "back-reopen",
+      "back-reopen",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.33700466156005859,
+    "iteration" : 5,
+    "listMilliseconds" : 0.69403648376464844,
+    "openMilliseconds" : 0.308990478515625
+  },
+  {
+    "actionTrace" : [
+      "refresh-list",
+      "back-reopen",
+      "cancel-selection",
+      "refresh-list",
+      "cancel-selection",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.23305416107177734,
+    "iteration" : 6,
+    "listMilliseconds" : 0.67400932312011719,
+    "openMilliseconds" : 0.30601024627685547
+  },
+  {
+    "actionTrace" : [
+      "back-reopen",
+      "back-reopen",
+      "refresh-list",
+      "cancel-selection",
+      "refresh-list",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.22900104522705078,
+    "iteration" : 7,
+    "listMilliseconds" : 0.63097476959228516,
+    "openMilliseconds" : 0.29802322387695312
+  },
+  {
+    "actionTrace" : [
+      "cancel-selection",
+      "back-reopen",
+      "cancel-selection",
+      "cancel-selection",
+      "refresh-list",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.21803379058837891,
+    "iteration" : 8,
+    "listMilliseconds" : 0.72300434112548828,
+    "openMilliseconds" : 0.29897689819335938
+  },
+  {
+    "actionTrace" : [
+      "cancel-selection",
+      "refresh-list",
+      "back-reopen",
+      "back-reopen",
+      "back-reopen",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.31995773315429688,
+    "iteration" : 9,
+    "listMilliseconds" : 0.62096118927001953,
+    "openMilliseconds" : 0.27596950531005859
+  },
+  {
+    "actionTrace" : [
+      "back-reopen",
+      "refresh-list",
+      "refresh-list",
+      "refresh-list",
+      "back-reopen",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.30207633972167969,
+    "iteration" : 10,
+    "listMilliseconds" : 0.62298774719238281,
+    "openMilliseconds" : 0.28192996978759766
+  },
+  {
+    "actionTrace" : [
+      "back-reopen",
+      "refresh-list",
+      "back-reopen",
+      "refresh-list",
+      "refresh-list",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.20396709442138672,
+    "iteration" : 11,
+    "listMilliseconds" : 0.62799453735351562,
+    "openMilliseconds" : 0.28002262115478516
+  },
+  {
+    "actionTrace" : [
+      "refresh-list",
+      "back-reopen",
+      "cancel-selection",
+      "back-reopen",
+      "refresh-list",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.2269744873046875,
+    "iteration" : 12,
+    "listMilliseconds" : 0.65302848815917969,
+    "openMilliseconds" : 0.28300285339355469
+  },
+  {
+    "actionTrace" : [
+      "refresh-list",
+      "back-reopen",
+      "refresh-list",
+      "refresh-list",
+      "cancel-selection",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.21696090698242188,
+    "iteration" : 13,
+    "listMilliseconds" : 0.75697898864746094,
+    "openMilliseconds" : 0.31006336212158203
+  },
+  {
+    "actionTrace" : [
+      "back-reopen",
+      "cancel-selection",
+      "back-reopen",
+      "back-reopen",
+      "cancel-selection",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.22494792938232422,
+    "iteration" : 14,
+    "listMilliseconds" : 0.66697597503662109,
+    "openMilliseconds" : 0.27000904083251953
+  },
+  {
+    "actionTrace" : [
+      "cancel-selection",
+      "back-reopen",
+      "refresh-list",
+      "back-reopen",
+      "back-reopen",
+      "confirmed-close"
+    ],
+    "closeMilliseconds" : 0.34105777740478516,
+    "iteration" : 15,
+    "listMilliseconds" : 0.67102909088134766,
+    "openMilliseconds" : 0.27704238891601562
+  }
+]
