@@ -23,6 +23,7 @@ Select a topic from the sidebar to get started.
 - [Memory](/docs/concepts/memory)
 - [Portals](/docs/concepts/portals)
 - [Daemon CLI Reference](/docs/api/daemon-cli)
+- [MCP Server](/docs/api/mcp)
 
 ## Need help?
 

@@ -1,0 +1,24 @@
+name = "tasksquad-mcp"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# KV — OAuth clients, grants, tokens, consent/upstream state (@cloudflare/workers-oauth-provider)
+# Provision with: wrangler kv namespace create OAUTH_KV
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id      = "b53c92574dd6439493bf210fa05bc196"
+
+[vars]
+# Public origin of this worker. Its /oauth/callback must be in the worker's MCP_REDIRECT_URIS.
+PUBLIC_URL  = "https://tasksquad-mcp.xajik0.workers.dev"
+# Origins that proxy here with X-TSQ-Public-Host (tasksquad.ai/mcp via the portal's
+# Pages middleware). Each one's /oauth/callback must be in MCP_REDIRECT_URIS too.
+ALIAS_ORIGINS = "https://tasksquad.ai"
+# TaskSquad worker API (packages/worker) every tool proxies to.
+API_BASE    = "https://api.tasksquad.ai"
+# Web portal hosting the sign-in page (/mobile/authorize) and linked from manual-action errors.
+PORTAL_BASE = "https://tasksquad.ai"
+
+[observability]
+enabled = true

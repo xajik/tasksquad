@@ -58,3 +58,17 @@ jobs:
         working-directory: packages/worker
       - run: make test
         working-directory: packages/worker
+
+  test-mcp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: make install
+        working-directory: packages/mcp
+      - run: make test
+        working-directory: packages/mcp
+      - run: bunx tsc --noEmit
+        working-directory: packages/mcp

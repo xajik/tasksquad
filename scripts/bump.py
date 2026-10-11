@@ -9,6 +9,7 @@ Each product keeps its version in exactly one place:
   ios     packages/ios/project.yml   MARKETING_VERSION + CURRENT_PROJECT_VERSION (build number, +1 every bump)
   worker  packages/worker/package.json "version"
   portal  packages/portal/package.json "version"
+  mcp     packages/mcp/package.json "version"
 
 Release pipelines pass VERSION explicitly, so these files are the defaults for
 local builds and the source of the next release tag.
@@ -34,6 +35,7 @@ PRODUCTS = {
     "ios": ("ios/project.yml", r'^(\s+MARKETING_VERSION: ")' + f"({SEMVER})\"$"),
     "worker": ("worker/package.json", r'^(\s+"version": ")' + f"({SEMVER})\""),
     "portal": ("portal/package.json", r'^(\s+"version": ")' + f"({SEMVER})\""),
+    "mcp": ("mcp/package.json", r'^(\s+"version": ")' + f"({SEMVER})\""),
 }
 IOS_BUILD = r'^(\s+CURRENT_PROJECT_VERSION: ")(\d+)(")$'
 

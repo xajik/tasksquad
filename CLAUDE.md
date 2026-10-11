@@ -12,6 +12,7 @@ Coordination layer for teams of humans and AI agents. Agents run as a local daem
 packages/
   daemon/   Go — `tsq`, the daemon users install (CLI + Go macOS menu-bar app). Linux/production reference implementation.
   worker/   TypeScript — Cloudflare Worker API (D1, R2, KV, Durable Objects). Every client talks to this.
+  mcp/      TypeScript — remote MCP server (Cloudflare Worker + OAuth) exposing the portal's capabilities to AI agents; proxies to worker/
   portal/   TypeScript/React — web portal at tasksquad.ai (Vite + Tailwind v4 + shadcn/Radix, Cloudflare Pages)
   macos/    Swift — native macOS app = daemon engine + portal UI in one process ("TaskSquad Native.app")
   ios/      Swift — iOS portal app (XcodeGen project; no daemon)
@@ -22,6 +23,7 @@ How the pieces relate:
 
 - **Two daemons.** `packages/daemon` (Go) is the shipping daemon and the compatibility oracle. `packages/macos` is an independent Swift reimplementation of the daemon (`TaskSquadCore`: engine, polling, providers, tmux, credentials, crypto) **plus** a native portal UI (`TaskSquad` target: `Customer*.swift` files mirror the web portal's sections). It is still work in progress — see `packages/macos/COMPATIBILITY.md` for parity gates. Do not retire or diverge from Go behaviour based on the Swift build.
 - **Both daemons share on-disk state**: `~/.tasksquad/config.toml`, `device-id`, `daemon.lock` (BSD `flock`, never unlink it), `logs/`, `tasks/`, and the login Keychain service `tasksquad-daemon`. Swift must write values the Go daemon can read. `make test-compatibility` builds `macos/Tests/GoReference` against the real Go config/crypto packages to verify this.
+- **MCP server** (`packages/mcp`) is a fourth client of the worker API, for agents. OAuth sign-in reuses the mobile PKCE flow: the portal's `/mobile/authorize` page plus `/mobile/authorization/{codes,exchange}`, with redirect URIs allowlisted by the worker's `MCP_REDIRECT_URIS` and the portal's `MobileAuth.tsx`. Also served at `tasksquad.ai/mcp`: the portal's Pages middleware proxies `/mcp`, `/oauth/*` and `/.well-known/oauth-*` to it (`ALIAS_ORIGINS`). Destructive, membership and credential actions are registered as tools that always return "user needs to take this action manually" (`src/tools/blocked.ts`). `src/api.ts` mirrors `portal/src/lib/api.ts`.
 - **Three portal clients** — web (`portal/`), macOS (`macos/Sources/TaskSquad/Customer*`), iOS (`ios/`) — all hit the same worker API. The two Swift clients share `mobile/TaskSquadPortal` (both `packages/ios/project.yml` and `packages/macos/Package.swift` reference it by path), so changes there affect both apps. The package has three products — `TaskSquadPortal` (API, stores, policy), `TaskSquadDesign` (tokens, icons) and `TaskSquadPortalUI` (shared SwiftUI). The iOS/macOS unification is in progress; `packages/mobile/TaskSquadPortal/MIGRATION.md` tracks status and resume steps.
 - **`DESIGN.md`** at the repo root is the shared design spec (colors, type, spacing, radius, light + dark themes) for every UI. Web tokens live in `portal/src/index.css`; macOS tokens in `macos/Sources/TaskSquad/Design/Theme.swift`.
 
@@ -43,6 +45,9 @@ bun run build                  # wrangler deploy --dry-run (CI "build")
 bun run test                   # vitest;  bunx vitest run src/routes/memory.test.ts -t "name" for one test
 make migrate-local | make migrate          # apply D1 migrations local | production
 make new-migration name=add_something
+
+# MCP server (packages/mcp)
+make dev | make test | make build   # wrangler dev :8788 | vitest | tsc + dry-run deploy
 
 # Web portal (packages/portal)
 bun run dev                    # vite, localhost:5173
@@ -69,6 +74,7 @@ swift test
 GitHub Actions, gated by path filters — a commit only triggers workflows for packages it touches:
 
 - **Worker** (`deploy-worker.yml`, push to `main` on `packages/worker/**`) → `wrangler deploy`. Apply D1 migrations (`make migrate`) **before** pushing worker code that depends on them.
+- **MCP** (`deploy-mcp.yml`, push to `main` on `packages/mcp/**`) → `wrangler deploy` of `tasksquad-mcp`. Needs the worker's `MCP_REDIRECT_URIS` and the portal allowlist deployed first.
 - **Portal** (`portal.yml`, `packages/portal/**`) → build then `wrangler pages deploy`. **Any TypeScript error fails the deploy silently** — the site keeps serving the previous build. Always run `bun run build` locally before trusting a portal change is live.
 - **Go daemon** (`daemon.yml`) → GoReleaser on `v*` tag push only. Merging to `main` does not reach installed `tsq` binaries until a tag is cut.
 - **macOS native** (`macos-native.yml` on PR/push for `packages/macos/**` or `packages/daemon/**`; preview/stable are manual `workflow_dispatch` with `X.Y.Z-preview.N` / `X.Y.Z`) → separate `macos-v*` releases. They never touch Go `v*` releases or the Homebrew cask.

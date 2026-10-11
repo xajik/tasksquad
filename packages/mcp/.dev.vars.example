@@ -1,0 +1,4 @@
+# Local dev: point at a local worker (packages/worker `bun run dev`) and portal (`bun run dev`).
+API_BASE=http://localhost:8787
+PORTAL_BASE=http://localhost:5173
+PUBLIC_URL=http://localhost:8788
