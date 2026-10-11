@@ -133,6 +133,7 @@ struct PortalHomeView: View {
             .navigationDestination(item: $selectedPortal) { portal in PortalTerminalScreen(portal: portal, api: model.api, demo: model.demo, close: { Task { await model.close(portal); selectedPortal = nil } }) }
             .confirmationDialog("Close this Portal?", isPresented: Binding(get: { confirmClose != nil }, set: { if !$0 { confirmClose = nil } }), titleVisibility: .visible) {
                 Button("Close Portal", role: .destructive) { if let item = confirmClose { Task { await model.close(item) } }; confirmClose = nil }
+                Button("Cancel", role: .cancel) { confirmClose = nil }
             } message: { Text("The remote terminal session will be closed.") }
         }
     }
