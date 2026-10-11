@@ -55,4 +55,29 @@ final class WorkspaceStoreTests: XCTestCase {
         let count = await transport.count()
         XCTAssertEqual(count, 2)
     }
+    @MainActor func testMutationResultSurvivesSectionAndFilterChanges() async throws {
+        let transport = WorkspaceTransport()
+        let store = WorkspaceStore(api: CustomerAPI(baseURL: URL(string:"https://example.test")!, transport: transport) { _ in "token" })
+        store.projectID = "fast"
+        let reply = Task { await store.mutate(["tasks", "t", "messages"], body: ["body": .string("hi")]) }
+        try await Task.sleep(for: .milliseconds(5))
+        store.section = .notes; store.archived = true
+        let result = await reply.value
+        XCTAssertNotNil(result, "The server accepted the reply; dropping it invites a duplicate resubmit")
+        XCTAssertFalse(store.busy)
+    }
+    @MainActor func testUnrelatedMutationsRunConcurrentlyButProjectChangeDropsResult() async throws {
+        let transport = WorkspaceTransport()
+        let store = WorkspaceStore(api: CustomerAPI(baseURL: URL(string:"https://example.test")!, transport: transport) { _ in "token" })
+        store.projectID = "fast"
+        let reply = Task { await store.mutate(["tasks", "t", "messages"]) }
+        try await Task.sleep(for: .milliseconds(5))
+        XCTAssertTrue(store.isRunning(["tasks", "t", "messages"]))
+        let grade = await store.mutate(["tasks", "t", "grade"])
+        XCTAssertNotNil(grade)
+        store.projectID = "slow"
+        let late = await reply.value
+        XCTAssertNil(late, "A result for the previous project must not reach the new one")
+        XCTAssertTrue(store.inFlight.isEmpty)
+    }
 }

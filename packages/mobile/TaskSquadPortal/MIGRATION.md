@@ -40,8 +40,8 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] Docs and reviewed iOS screenshots restored after accidental deletion
 
 ### B. Named operations (shared mutation construction)
-- [ ] Fix `WorkspaceStore.mutate` scoping: key on account+project only, so section/filter changes don't drop a successful result (prevents duplicate resubmits)
-- [ ] Replace the global `busy` guard with per-operation dedup (`inFlight: Set<String>`), never failing silently
+- [x] Fix `WorkspaceStore.mutate` scoping: key on account+project only, so section/filter changes don't drop a successful result (prevents duplicate resubmits)
+- [x] Replace the global `busy` guard with per-operation dedup (`inFlight: Set<String>`), never failing silently
 - [ ] `WorkspaceOperation` enum → `(path, method, body)`, plus `WorkspaceStore.perform(_:)` with tests
 - [ ] Migrate the macOS call sites (`CustomerWorkspace`, `CustomerTaskDetail`, `CustomerNoteDetail`, `ApplicationWorkspace`)
 - [ ] Migrate the iOS call sites (`MobileRecordDetail`, `PortalHomeView`); remove the app-level `perform(path:method:)`

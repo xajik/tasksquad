@@ -11,7 +11,9 @@ import Combine
     @Published public private(set) var agents: [CustomerRecord] = []
     @Published public private(set) var records: [CustomerRecord] = []
     @Published public private(set) var loading = false
-    @Published public private(set) var busy = false
+    /// Operation keys (`METHOD path`) currently being sent; drives per-button disabling.
+    @Published public private(set) var inFlight: Set<String> = []
+    public var busy: Bool { !inFlight.isEmpty }
     @Published public private(set) var refreshedAt: Date?
     @Published public var error: String?
     @Published public var search = ""
@@ -30,6 +32,9 @@ import Combine
     private var projectPreferenceKey: String? { profile.map { "mobile.project.\(api.baseURL.absoluteString).\($0.id)" } }
     private var generation = UUID()
     private var refreshID = UUID()
+    /// Changes only with the signed-in account; section and filter changes keep it.
+    private var accountGeneration = UUID()
+    private var mutationScope: String { "\(accountGeneration):\(projectID)" }
     public init(api: CustomerAPI, preferences: UserDefaults? = nil) { self.api = api; self.preferences = preferences }
     public var currentProject: CustomerRecord? { projects.first { $0.id == projectID } }
     public var canManage: Bool { WorkspacePolicy.canManage(role: currentProject?.text("role") ?? "") }
@@ -59,7 +64,7 @@ import Combine
     public func agentName(_ id: String) -> String { agents.first { $0.id == id }?.title ?? id }
     public var canCreate: Bool { WorkspacePolicy.canCreate(section: section, project: projectID, role: currentProject?.text("role") ?? "", isPro: isPro, agents: agents, records: records) }
     private func invalidateQuery() { generation = UUID(); refreshID = UUID(); records = []; rollups = []; hasMore = false; loading = false; refreshedAt = nil }
-    public func resetAccount() { generation = UUID(); refreshID = UUID(); profile = nil; projects = []; projectID = ""; agents = []; reset() }
+    public func resetAccount() { accountGeneration = UUID(); generation = UUID(); refreshID = UUID(); profile = nil; projects = []; projectID = ""; agents = []; reset() }
     private func reset() { hasMore = false; loading = false; memoryTag = ""; refreshID = UUID(); generation = UUID(); records = []; rollups = []; search = ""; status = "all"; origin = "all"; error = nil; refreshedAt = nil }
     public func path(_ section: WorkspaceSection, id: String? = nil, project: String? = nil) -> [String] {
         let root = [.inbox, .supervisor, .portals].contains(section) ? [section.resource] : ["teams", project ?? projectID, section.resource]
@@ -72,7 +77,7 @@ import Combine
             async let teams = api.request(["teams"])
             let (u, t) = try await (user, teams)
             guard context == key, !Task.isCancelled else { return }
-            if profile?.id != nil, profile?.id != CustomerRecord(u).id { reset(); projectID = "" }
+            if profile?.id != nil, profile?.id != CustomerRecord(u).id { accountGeneration = UUID(); reset(); projectID = "" }
             profile = CustomerRecord(u); projects = CustomerRecord(t).records("teams")
             if !projects.contains(where: { $0.id == projectID }) {
                 let saved = projectPreferenceKey.flatMap { preferences?.string(forKey: $0) }
@@ -128,15 +133,22 @@ import Combine
             refreshedAt = Date(); error = nil
         } catch { if key == context, refreshID == requestID { handle(error) } }
     }
+    public static func operationKey(_ path: [String], method: String) -> String { method + " " + path.joined(separator: "/") }
+    public func isRunning(_ path: [String], method: String = "POST") -> Bool { inFlight.contains(Self.operationKey(path, method: method)) }
+    /// A result is returned whenever the server accepted the change for the same
+    /// account and project, even if the section, filters or calling view changed
+    /// meanwhile; dropping it would make callers keep a sent draft and resubmit.
+    /// Only an identical operation already in flight is suppressed.
     @discardableResult public func mutate(_ path: [String], method: String = "POST", body: [String: JSONValue] = [:], files: [CustomerUpload] = []) async -> JSONValue? {
-        guard !busy else { return nil }
-        busy = true; let key = context
-        defer { busy = false }
+        let key = Self.operationKey(path, method: method)
+        guard !inFlight.contains(key) else { return nil }
+        inFlight.insert(key); let scope = mutationScope
+        defer { inFlight.remove(key) }
         do {
             let result = try await api.request(path, method: method, body: method == "DELETE" ? nil : .object(body), files: files)
-            guard key == context, !Task.isCancelled else { return nil }
+            guard scope == mutationScope else { return nil }
             error = nil; return result
-        } catch { if key == context { handle(error) }; return nil }
+        } catch { if scope == mutationScope { handle(error) }; return nil }
     }
     /// The caller's lifecycle task owns cancellation; there is no detached timer.
     public func poll() async {
