@@ -42,7 +42,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 ### B. Named operations (shared mutation construction)
 - [x] Fix `WorkspaceStore.mutate` scoping: key on account+project only, so section/filter changes don't drop a successful result (prevents duplicate resubmits)
 - [x] Replace the global `busy` guard with per-operation dedup (`inFlight: Set<String>`), never failing silently
-- [ ] `WorkspaceOperation` enum → `(path, method, body)`, plus `WorkspaceStore.perform(_:)` with tests
+- [x] `WorkspaceOperation` (named constructors → path/method/body/files), `WorkspaceStore.perform(_:)`, route table tests
 - [ ] Migrate the macOS call sites (`CustomerWorkspace`, `CustomerTaskDetail`, `CustomerNoteDetail`, `ApplicationWorkspace`)
 - [ ] Migrate the iOS call sites (`MobileRecordDetail`, `PortalHomeView`); remove the app-level `perform(path:method:)`
 - [ ] macOS editors use `WorkspaceDraftStore`/`WorkspaceDraftScope`; delete iOS `MobileDraftStore`
@@ -71,5 +71,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [ ] Regenerate reviewed light/dark screenshots on both platforms from the fixture
 
 ## Notes and decisions
+- Task removal: macOS offers **Delete** (`DELETE /tasks/:id`, as on the web) and iOS offers **Cancel** (`PUT /tasks/:id {status: cancelled}`). Both are valid Worker routes (`.deleteTask`, `.cancelTask`). Choosing one UX for both apps is still open.
+- `createPayload` drops `scheduled_at: null` and empty `close_steps`, as macOS did before, for both apps.
 - Icon sources: `scripts/vendor-icons.mjs` (macOS) writes `Sources/TaskSquadDesign/Vectors/Icons`. `packages/ios/scripts/generate_icons.swift` (run by `make build` in `packages/ios`) regenerates PDF imagesets when a source digest changes.
 - The macOS tray icon (`Brand/tray.svg`) stays in the app bundle (`TaskSquad_TaskSquad.bundle`), since it is platform-specific.

@@ -1,6 +1,11 @@
 import Foundation
 
 public enum WorkspacePolicy {
+    /// Inbox, supervisor and Portals are account-scoped resources filtered by `team_id`.
+    public static func path(_ section: WorkspaceSection, id: String? = nil, project: String) -> [String] {
+        let root = [.inbox, .supervisor, .portals].contains(section) ? [section.resource] : ["teams", project, section.resource]
+        return root + (id.map { [$0] } ?? [])
+    }
     public static func pollInterval(isPro: Bool) -> Double { isPro ? 2 : 5 }
     public static func canManage(role: String) -> Bool { ["owner", "maintainer"].contains(role) }
     public static func eligible(_ agent: CustomerRecord) -> Bool { !agent.flag("paused") && ["active", "idle"].contains(agent.status) }
@@ -16,6 +21,8 @@ public enum WorkspacePolicy {
         if [.inbox, .portals].contains(section) { body["team_id"] = .string(project) }
         if section == .inbox {
             body["save_tokens"] = .object(["enabled": body.removeValue(forKey: "save_tokens_enabled") ?? .bool(false), "level": body.removeValue(forKey: "save_tokens_level") ?? .string("full")])
+            if body["scheduled_at"] == .null { body.removeValue(forKey: "scheduled_at") }
+            if body["close_steps"] == .array([]) { body.removeValue(forKey: "close_steps") }
         }
         return body
     }

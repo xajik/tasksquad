@@ -66,18 +66,25 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertNotNil(result, "The server accepted the reply; dropping it invites a duplicate resubmit")
         XCTAssertFalse(store.busy)
     }
-    @MainActor func testUnrelatedMutationsRunConcurrentlyButProjectChangeDropsResult() async throws {
+    @MainActor func testUnrelatedMutationsRunConcurrently() async throws {
+        let transport = WorkspaceTransport()
+        let store = WorkspaceStore(api: CustomerAPI(baseURL: URL(string:"https://example.test")!, transport: transport) { _ in "token" })
+        store.projectID = "fast"
+        async let reply = store.mutate(["tasks", "t", "messages"])
+        async let grade = store.mutate(["tasks", "t", "grade"])
+        let (r, g) = await (reply, grade)
+        XCTAssertNotNil(r); XCTAssertNotNil(g)
+        XCTAssertTrue(store.inFlight.isEmpty)
+    }
+    @MainActor func testProjectChangeDropsMutationResult() async throws {
         let transport = WorkspaceTransport()
         let store = WorkspaceStore(api: CustomerAPI(baseURL: URL(string:"https://example.test")!, transport: transport) { _ in "token" })
         store.projectID = "fast"
         let reply = Task { await store.mutate(["tasks", "t", "messages"]) }
         try await Task.sleep(for: .milliseconds(5))
         XCTAssertTrue(store.isRunning(["tasks", "t", "messages"]))
-        let grade = await store.mutate(["tasks", "t", "grade"])
-        XCTAssertNotNil(grade)
         store.projectID = "slow"
         let late = await reply.value
         XCTAssertNil(late, "A result for the previous project must not reach the new one")
-        XCTAssertTrue(store.inFlight.isEmpty)
     }
 }

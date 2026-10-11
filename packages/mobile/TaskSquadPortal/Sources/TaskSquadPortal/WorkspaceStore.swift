@@ -67,8 +67,7 @@ import Combine
     public func resetAccount() { accountGeneration = UUID(); generation = UUID(); refreshID = UUID(); profile = nil; projects = []; projectID = ""; agents = []; reset() }
     private func reset() { hasMore = false; loading = false; memoryTag = ""; refreshID = UUID(); generation = UUID(); records = []; rollups = []; search = ""; status = "all"; origin = "all"; error = nil; refreshedAt = nil }
     public func path(_ section: WorkspaceSection, id: String? = nil, project: String? = nil) -> [String] {
-        let root = [.inbox, .supervisor, .portals].contains(section) ? [section.resource] : ["teams", project ?? projectID, section.resource]
-        return root + (id.map { [$0] } ?? [])
+        WorkspacePolicy.path(section, id: id, project: project ?? projectID)
     }
     public func connect(refresh: Bool = true) async {
         let key = context
@@ -133,7 +132,7 @@ import Combine
             refreshedAt = Date(); error = nil
         } catch { if key == context, refreshID == requestID { handle(error) } }
     }
-    public static func operationKey(_ path: [String], method: String) -> String { method + " " + path.joined(separator: "/") }
+    nonisolated public static func operationKey(_ path: [String], method: String) -> String { method + " " + path.joined(separator: "/") }
     public func isRunning(_ path: [String], method: String = "POST") -> Bool { inFlight.contains(Self.operationKey(path, method: method)) }
     /// A result is returned whenever the server accepted the change for the same
     /// account and project, even if the section, filters or calling view changed
@@ -157,9 +156,13 @@ import Combine
             do { try await Task.sleep(for: .seconds(WorkspacePolicy.pollInterval(isPro: isPro))) } catch { return }
         }
     }
+    @discardableResult public func perform(_ operation: WorkspaceOperation) async -> JSONValue? {
+        await mutate(operation.path, method: operation.method, body: operation.body, files: operation.files)
+    }
+    public func isRunning(_ operation: WorkspaceOperation) -> Bool { inFlight.contains(operation.key) }
     @discardableResult public func create(section: WorkspaceSection, project: String, values: [String: JSONValue], files: [CustomerUpload] = []) async -> JSONValue? {
         guard project == projectID else { return nil }
-        return await mutate(path(section, project: project), body: WorkspacePolicy.createPayload(values, section: section, project: project), files: files)
+        return await perform(.create(section, project: project, values: values, files: files))
     }
     public func handle(_ failure: Error) {
         guard !(failure is CancellationError), (failure as? URLError)?.code != .cancelled else { return }
