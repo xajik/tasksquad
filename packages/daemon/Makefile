@@ -4,7 +4,7 @@
 export
 
 # Bumped by `make bump` at the repo root; releases pass VERSION from the v* tag.
-VERSION ?= 0.3.11
+VERSION ?= 0.3.12
 LDFLAGS := -ldflags "-X main.version=$(VERSION)"
 GORELEASER ?= goreleaser
 ACTIONLINT ?= actionlint
