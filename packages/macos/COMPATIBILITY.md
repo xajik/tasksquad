@@ -1,6 +1,8 @@
 # Compatibility completion ledger
 
-Objective: one native Swift macOS app, with the full observable behavior of the existing Go daemon, the same storage/configuration, the complete native local control panel, release pipelines, local installation, and end-to-end verification. Go remains for Linux. No embedded Go engine, web control panel, separate helper daemon, or Swift Linux target.
+Objective: one native Swift macOS app, with the full observable behavior of the existing Go daemon, the same storage/configuration, the complete native local control panel, release pipelines, local installation, and end-to-end verification. No embedded Go engine, web control panel or separate helper daemon.
+
+**Parity first (decided 2026-10-11).** Swift must reach full Go parity on macOS before anything else. Whether Swift later replaces Go on Linux and Windows is decided only after every row of the parity matrix below is E2E-verified; until then Go remains the daemon for Linux and Windows and no Swift Linux/Windows target is added. Avoid new Apple-only dependencies in `TaskSquadCore` when a Foundation/POSIX equivalent is equally simple, so that decision stays open.
 
 Reference inspected: `fb06dad4bab233cb3b614ca036a420a2bcb0c115`. Tests build their oracle from the current Go tree, so Go changes can reveal drift. Test successes below prove only their listed scope; they do not establish overall compatibility.
 
@@ -41,28 +43,81 @@ Reference inspected: `fb06dad4bab233cb3b614ca036a420a2bcb0c115`. Tests build the
 - [x] A 12,000-line burst and repeated pane switching preserve input destination, bounded visible screens, and clean client detachment.
 - [ ] Representative real provider sessions and sustained desktop interaction.
 
-## Required before completion
+## Go → Swift parity matrix
 
-- [ ] Extend TOML conformance coverage beyond current fixtures; cover all accepted Go document forms and rejected conflicts.
-- [ ] Verify existing real-account Keychain reuse, including the OS authorization of the new executable.
-- [ ] Qualify automatic engine startup/quit and menu/window lifetime through native UI tests; currently engine startup is explicit.
-- [ ] Broaden polling tests to cancellation/restart, forced-poll coalescing, retry failure, and real Worker behavior.
-- [ ] Complete agent state machine, task/session identity, stale hooks, duplicate notifications, replies, cancellation, reset and failure recovery.
-- [x] Provider detection and exact command/argument/environment/config generation for Claude, Codex, Gemini, OpenCode, Pi, Claw and stdout (`ProviderTests`; real-provider E2E still open below).
-- [ ] Native child-process orchestration; tmux sessions, FIFO lifecycle, output drain, Unicode/whitespace fidelity and crash behavior.
-- [ ] Hook routes and full CLI surface (`init`, sessions, attach, logs, pane, screenshot, send, report, send-image, skill, memory, kb, tags).
-- [ ] Terminal WebSocket output/input/resize, auth headers, input gating, reconnect behavior and slow-reader handling.
-- [ ] Portals: spawn, relay, close, crash recovery, session naming and shutdown.
-- [ ] Session notifications/completion, transcripts/fallbacks, inbound attachments, encrypted artifact upload and screenshots.
-- [ ] Skills, agents and commands synchronization; memory/KB behavior, close-step learning, supervisor, dreamer, orphan cleanup and analytics.
-- [ ] Native setup, Agents, Supervisor, Sessions, Tasks, Logs and Tools feature parity; no inert placeholder controls.
-- [ ] Login item activation/migration, Finder PATH propagation to child processes, wake/sleep and graceful quit.
-- [ ] Complete Go↔Swift configuration/history/credential switching after draining work; no duplicate task claims.
-- [ ] Real-provider end-to-end runs for every supported provider and hosted portal interaction.
-- [ ] Complete remaining native UI lifecycle and production-provider interaction tests; initial desktop interaction now works.
-- [ ] Intel runtime tests (cross-compilation alone is insufficient) and minimum-supported-macOS tests.
-- [ ] Actual Developer ID signing, notarization, installed Gatekeeper checks and signed clean-machine install.
-- [ ] Run remote CI, validate the signed draft release, then promote stable release/cask/CLI activation after full parity.
+Status: **missing** (no Swift implementation), **partial** (some behaviour or tests absent), **done** (ported Go behaviour + Swift tests pass), **E2E** (also verified in a real differential run against Go). Go is the oracle; port its `_test.go` cases with each feature. Snapshot taken from source on 2026-10-11.
+
+### Engine
+
+| Go reference | Swift | Tests | Status | Remaining |
+|---|---|---|---|---|
+| `config` (TOML schema, defaults) | `Configuration.swift`, `TOML.swift` | `ConfigurationTests`, `GoCompatibilityTests` | partial | Cover all accepted Go document forms and rejected conflicts |
+| device-id, `daemon.lock` (`app_darwin.go`) | `Paths.swift` | `StorageTests`, `GoCompatibilityTests` | done | — |
+| `auth` (token priority, refresh, logout) | `Authentication.swift`, `LoginFlow.swift` | `AuthenticationTests`, `LoginFlowTests` | partial | Real-account Keychain reuse incl. OS authorization of the new executable |
+| Keychain (`go-keyring`) | `Credentials.swift` | `KeychainIntegrationTests` (optional) | done | — |
+| AES-GCM upload crypto | `Encryption.swift`, `ArtifactUploader.swift` | `GoCompatibilityTests`, `EngineIntegrationTests` | done | — |
+| `agent/batch.go` heartbeat polling | `BatchPoller.swift` | `BatchPollerTests` | partial | Cancellation/restart, forced-poll coalescing, retry failure, real Worker |
+| `agent/state.go`, `agentmode` | `AgentState.swift` | `AgentStateTests` | partial | Port `state_test.go`; reset and failure recovery |
+| `agent/lifecycle.go`, `session.go`, `complete.go` (tmux + FIFO execution) | `DaemonEngine.swift`, `TmuxTaskSession.swift`, `NativeProcess.swift` | `InteractiveEngineTests`, `EngineIntegrationTests`, `TmuxIntegrationTests` | partial | Port `lifecycle_test`, `spawn_failure_test`, `closesequence_test`; crash vs deliberate close, output drain, Unicode fidelity |
+| `agent/terminal_control.go` managed input/close | `DaemonEngine.handleTerminal`, `ManagedTerminal.swift` | `ManagedTerminalTests` | partial | Port `terminal_control_test.go` |
+| `agent/terminal_relay.go` WebSocket relay | `PortalHost.swift` (portals only) | `PortalHostTests` | partial | Relay for regular tasks; auth headers, reconnect, slow readers, input gating, resize |
+| `agent/portal.go` Portals | `PortalHost.swift` | `PortalHostTests` | partial | Port `portal_test.go`; crash recovery, shutdown |
+| `agent/inbound_images.go` | `InboundAttachments.swift` | `InboundAttachmentsTests` | done | — |
+| `agent/transcript.go` | `DaemonEngine.attachTranscript` | — | partial | Fallbacks; tests |
+| `adapter/*`, `provider/*` (Claude, Codex, Gemini, OpenCode, Pi, Claw, stdout) | `Providers.swift` | `ProviderTests` | done | Real-provider E2E (workstream F) |
+| `metrics/lifecycle.go`, `codex_lifecycle.go`, `report.go` | `SessionReport.swift` | `SessionReportTests` | partial | Port Codex lifecycle and `lifecycle_test` / `report_test` cases |
+| `harness` reconcile, `skills`, `agents`, `commands` sync | `ResourceSync.swift` | `ResourceSyncTests` | partial | Port `reconcile_test`, `codex_test`; live D1 catalog/ETags |
+| `upload` | `ArtifactUploader.swift` | `EngineIntegrationTests` | done | — |
+| `memory`, `kb` close-step learning | `DaemonEngine` close sequence | — | partial | Verify against Go close steps; tests |
+| `orphan` sweep (startup + hourly) | — | — | missing | Exclude `tsq-portal-*`, `tsq-sup-*`; port `orphan_test` |
+| `supervisor` (`tsq-sup-*`) | config only | — | missing | Sessions, schedule, `/hooks/supervisor`, `/hooks/trigger-supervisor` |
+| `dreamer` | config only | — | missing | Nightly window, KB/memory job |
+| `analytics` | config only | — | missing | Event posting |
+| `screenshot` | — | — | missing | Capture + upload (also `tsq screenshot`) |
+| `tasklog`, `logger` | `TaskHistory.swift`, `TaskOutput.swift`, `RunArtifacts.swift` | `StorageTests` | partial | Verify file formats Go's `tsq logs` reads |
+
+### Local hook routes (`daemon/hooks`)
+
+| Route | Status |
+|---|---|
+| `/hooks/stop`, `/hooks/notification`, `/hooks/after_agent`, `/hooks/codex`, `/hooks/opencode`, `/hooks/skill`, `/hooks/tui-blocked`, `/hooks/terminal/input`, `/hooks/terminal/close` | partial (implemented; Go handler tests not yet ported) |
+| `/hooks/attach` (used by `tsq send-image`) | missing |
+| `/hooks/event` | missing |
+| `/hooks/supervisor`, `/hooks/trigger-supervisor` | missing |
+
+### `tsq` CLI (`daemon/main.go`, `daemon/cmd`, `daemon/commands`)
+
+Output text and exit codes must match Go byte-for-byte: agents and skills parse them. Verify with golden tests running both binaries on the same argv against a fixture.
+
+| Command | Status |
+|---|---|
+| `login`, `logout`, `--version` | partial (implemented; no golden tests) |
+| `init` | missing |
+| `sessions`, `attach`, `pane`, `send` | missing |
+| `logs` | missing |
+| `screenshot` | missing |
+| `report`, `skill`, `send-image` | missing |
+| `memory`, `kb`, `tags` | missing |
+| `projects`, `agents`, `tasks`, `portals`, `resources`, `doctor` | missing |
+
+### macOS app lifecycle
+
+| Go reference | Status | Remaining |
+|---|---|---|
+| `autostart` (login item) | missing | `SMAppService` + migration from Go's entry |
+| `ui/power_darwin.go` sleep/wake | missing | — |
+| Finder/login PATH propagation | partial | `TaskSquadPaths.searchPath` exists; verify Finder and login-item launches |
+| Automatic engine start, graceful quit/drain | partial | Engine start is explicit (`--start-engine`) |
+| Go ↔ Swift switching after drain | partial | No duplicate task claims; config/history/credentials |
+
+### Qualification (exit criteria for the migration decision)
+
+- [ ] Differential E2E, Go then Swift, on the Pi agent: task → waiting_input → reply → done; deliberate close; crash; attachments in/out; Portal open/close; web live terminal; supervisor trigger; daemon switching.
+- [ ] Real Claude Code and Codex runs with Unicode input.
+- [ ] Native setup, Agents, Supervisor, Sessions, Tasks, Logs and Tools UI parity; no inert placeholder controls.
+- [ ] Intel runtime and minimum-supported-macOS tests.
+- [ ] Developer ID signing, notarization, Gatekeeper and clean-machine install.
+- [ ] Remote CI green; signed draft release validated.
 
 ## Evidence and next work
 
