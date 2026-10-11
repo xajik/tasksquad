@@ -60,6 +60,7 @@ public actor DaemonEngine {
     private var resourceSync: ResourceSync?
     private var orphanSweep: OrphanSweep?
     private var supervisor: Supervisor?
+    private var dreamer: Dreamer?
     private let analytics: Analytics
     /// Live session analytics keyed "agent/task" (Go: metrics registry).
     private var lifecycles: [String: SessionLifecycle] = [:]
@@ -147,6 +148,18 @@ public actor DaemonEngine {
             track: { [analytics] event, properties in analytics.track(event, properties) })
         self.supervisor = supervisor
         await supervisor.start { [weak self] in await self?.supervisedAgents() ?? [] }
+        // Nightly Dreaming per project (Go: dreamer.New(cfg).Monitor).
+        let dreamer = Dreamer(configuration: configuration, searchPath: environment["PATH"] ?? "", daemonBinDir: executableDir, paths: paths, tmux: tmux,
+            post: { [weak self] agentID, path, body in
+                guard let self else { throw CancellationError() }
+                return try await self.post(agentID: agentID, path: path, body: body)
+            },
+            get: { [weak self] agentID, path in
+                guard let self else { throw CancellationError() }
+                return try await self.get(agentID: agentID, path: path)
+            })
+        self.dreamer = dreamer
+        await dreamer.start(agents: configuration.agents.map { DreamAgent(agentID: $0.id, workDir: $0.workDir, name: $0.name) })
     }
 
     private func supervisedAgents() -> [SupervisedAgent] {
@@ -165,6 +178,7 @@ public actor DaemonEngine {
         await resourceSync?.stop(); resourceSync = nil
         await orphanSweep?.stop(); orphanSweep = nil
         await supervisor?.stop(); supervisor = nil
+        await dreamer?.stop(); dreamer = nil
         await analytics.flush()
         // Close live portals so their tmux sessions and relay sockets don't
         // outlive the engine (Go: CloseActivePortal on shutdown).
@@ -1046,6 +1060,11 @@ public actor DaemonEngine {
     private func post(agentID: String, path: String, body: JSONValue) async throws -> JSONValue {
         let token = try await tokens.token(forceRotation: false)
         let response = try await api.send(path: path, token: token, agentID: agentID, body: body)
+        return response.data.isEmpty ? .object([:]) : try JSONDecoder().decode(JSONValue.self, from: response.data)
+    }
+    private func get(agentID: String, path: String) async throws -> JSONValue {
+        let token = try await tokens.token(forceRotation: false)
+        let response = try await api.send(method: "GET", path: path, token: token, agentID: agentID)
         return response.data.isEmpty ? .object([:]) : try JSONDecoder().decode(JSONValue.self, from: response.data)
     }
     private nonisolated func report(_ error: Error) { onError(error.localizedDescription) }
