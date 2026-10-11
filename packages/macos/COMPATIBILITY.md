@@ -70,7 +70,7 @@ Status: **missing** (no Swift implementation), **partial** (some behaviour or te
 | `upload` | `ArtifactUploader.swift` | `EngineIntegrationTests` | done | — |
 | `memory`, `kb` close-step learning | `DaemonEngine` close sequence | — | partial | Verify against Go close steps; tests |
 | `orphan` sweep (startup + hourly) | `OrphanSweep.swift` | `OrphanSweepTests` | done | A response without `states` is a failed lookup (Go would kill every session) |
-| `supervisor` (`tsq-sup-*`) | config only | — | missing | Sessions, schedule, `/hooks/supervisor`, `/hooks/trigger-supervisor` |
+| `supervisor` (`tsq-sup-*`) | `Supervisor.swift` | `SupervisorTests` (incl. byte-golden vs Go `buildContextBlock`/`printModeCmd`) | partial | Screenshot snapshot/attachment waits on the `screenshot` port (text capture is used, as Go's fallback); analytics events are no-ops until `analytics` is ported. Go bugs kept for parity: `CancelForTask` kills `tsq-sup-<first 8>` (never the real session), and the `PATH=… cat … \| cli` prefix only reaches `cat`, not the CLI |
 | `dreamer` | config only | — | missing | Nightly window, KB/memory job |
 | `analytics` | config only | — | missing | Event posting |
 | `screenshot` | — | — | missing | Capture + upload (also `tsq screenshot`) |
@@ -84,7 +84,7 @@ Status: **missing** (no Swift implementation), **partial** (some behaviour or te
 | `/hooks/attach` (used by `tsq send-image`) | done (`InteractiveEngineTests.testAttachHookSendsImageForCurrentTaskOnly`) |
 | Hook listener always on (stdout-only configs too) | done; deliberate difference: a busy port fails start instead of Go's silent goroutine error |
 | `/hooks/event` | done (`InteractiveEngineTests.testEventHookFeedsCurrentTaskLifecycleIntoSessionReport`) |
-| `/hooks/supervisor`, `/hooks/trigger-supervisor` | missing |
+| `/hooks/supervisor`, `/hooks/trigger-supervisor` | done (validation + 409/503 contract in `InteractiveEngineTests`) |
 
 ### `tsq` CLI (`daemon/main.go`, `daemon/cmd`, `daemon/commands`)
 

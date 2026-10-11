@@ -235,6 +235,21 @@ private actor InteractiveWorker {
         request.httpBody = Data(#"{"task_id":"none","path":"/tmp/x.png"}"#.utf8)
         let (_, response) = try await URLSession.shared.data(for: request)
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 404, "listener up, no agent on that task")
+        func hook(_ path: String, _ body: String) async throws -> (Int, String) {
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)\(path)")!)
+            request.httpMethod = "POST"; request.httpBody = Data(body.utf8)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            return ((response as? HTTPURLResponse)?.statusCode ?? 0, String(decoding: data, as: UTF8.self))
+        }
+        // Go hooks_test: verdict validation and a trigger with the supervisor disabled.
+        let r1 = try await hook("/hooks/supervisor", #"{"status":"resolved"}"#); XCTAssertEqual(r1.0, 400)
+        let r2 = try await hook("/hooks/supervisor", #"{"task_id":"t","status":"bogus"}"#); XCTAssertEqual(r2.0, 400)
+        let r3 = try await hook("/hooks/supervisor", #"{"task_id":"t","status":"resolved","summary":"\#(String(repeating: "x", count: 1001))"}"#); XCTAssertEqual(r3.0, 400)
+        let r4 = try await hook("/hooks/supervisor", #"{"task_id":"t","status":"resolved","summary":"ok"}"#); XCTAssertEqual(r4.0, 200)
+        let trigger = try await hook("/hooks/trigger-supervisor", #"{"task_id":"t"}"#)
+        XCTAssertEqual(trigger.0, 409)
+        XCTAssertTrue(trigger.1.contains("supervisor disabled"), trigger.1)
+        let r5 = try await hook("/hooks/trigger-supervisor", "{}"); XCTAssertEqual(r5.0, 400)
         await engine.stop()
 
         let blocker = try LocalHTTPServer { _ in .init() }

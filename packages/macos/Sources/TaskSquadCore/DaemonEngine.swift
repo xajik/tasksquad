@@ -35,6 +35,8 @@ public actor DaemonEngine {
         var typedSkills: [String] = []
         /// Last bytes a pipe provider wrote to stderr; explains a failed exit.
         var stderrTail = Data()
+        /// Last meaningful task event (start, notification); the supervisor's inactivity clock.
+        var lastActivityAt: Date?
         init(configuration: DaemonConfiguration.Agent) {
             self.configuration = configuration
             provider = ProviderKind.detect(command: configuration.command, override: configuration.provider)
@@ -57,6 +59,7 @@ public actor DaemonEngine {
     private var portalTasks: [String: Task<Void, Never>] = [:]
     private var resourceSync: ResourceSync?
     private var orphanSweep: OrphanSweep?
+    private var supervisor: Supervisor?
     /// Live session analytics keyed "agent/task" (Go: metrics registry).
     private var lifecycles: [String: SessionLifecycle] = [:]
     private var hookServer: LocalHTTPServer?
@@ -120,6 +123,29 @@ public actor DaemonEngine {
         let sweep = OrphanSweep(api: api, tokens: tokens, tmux: tmux) { message in NSLog("%@", message) }
         orphanSweep = sweep
         await sweep.start()
+        // Disabled (but still answering hooks) without [supervisor] or when its CLI is not on PATH.
+        let executableDir = URL(fileURLWithPath: CommandLine.arguments.first ?? "").deletingLastPathComponent().path
+        let supervisor = Supervisor(command: configuration.supervisor?.command, searchPath: environment["PATH"] ?? "",
+            daemonBinDir: executableDir, paths: paths, tmux: tmux,
+            post: { [weak self] agentID, path, body in
+                guard let self else { throw CancellationError() }
+                return try await self.post(agentID: agentID, path: path, body: body)
+            },
+            attachScreenshot: { [api, tokens] agentID, sessionID, messageID, png in
+                try await ArtifactUploader(api: api, tokens: tokens, agentID: agentID)
+                    .attach(sessionID: sessionID, messageID: messageID, filename: "supervisor-snapshot.png", data: png, imageMIMEType: "image/png")
+            })
+        self.supervisor = supervisor
+        await supervisor.start { [weak self] in await self?.supervisedAgents() ?? [] }
+    }
+
+    private func supervisedAgents() -> [SupervisedAgent] {
+        order.compactMap { id in
+            guard let agent = agents[id] else { return nil }
+            return SupervisedAgent(name: agent.configuration.name, agentID: id, mode: agent.state.mode.rawValue, taskID: agent.state.taskID,
+                                   tmuxSession: agent.tmux?.name ?? "", sessionID: agent.state.sessionID, workDir: agent.configuration.workDir,
+                                   logPath: agent.artifacts?.logURL.path ?? "", lastActivityAt: agent.lastActivityAt)
+        }
     }
 
     public func stop() async {
@@ -128,6 +154,7 @@ public actor DaemonEngine {
         await poller?.stop(); poller = nil
         await resourceSync?.stop(); resourceSync = nil
         await orphanSweep?.stop(); orphanSweep = nil
+        await supervisor?.stop(); supervisor = nil
         // Close live portals so their tmux sessions and relay sockets don't
         // outlive the engine (Go: CloseActivePortal on shutdown).
         await portals?.closeAll()
@@ -263,6 +290,7 @@ public actor DaemonEngine {
             agents[agentID]?.typedTurns = 0
             agents[agentID]?.typedSkills = []
             agents[agentID]?.stderrTail = Data()
+            agents[agentID]?.lastActivityAt = Date()
             tasks[agentID] = Task { await self.execute(agentID: agentID, task: task, memoryRollup: memoryRollup, generation: generation) }
         } catch { report(error) }
     }
@@ -530,6 +558,7 @@ public actor DaemonEngine {
         guard let agent = agents[agentID], !agent.completionRequested else { return }
         let generation = agent.state.generation
         guard agents[agentID]?.state.claimNotification(generation: generation) == true else { return }
+        agents[agentID]?.lastActivityAt = Date()
         try? await Task.sleep(for: .milliseconds(300)) // let the FIFO drain
         let capture = await agent.tmux?.capture() ?? ""
         guard let current = agents[agentID], current.state.generation == generation else { return }
@@ -663,6 +692,7 @@ public actor DaemonEngine {
         case "/hooks/stop":
             let event = HookAdapter.parseStop(provider: providerParam, body: request.body, isFailure: query["failure"] == "true")
             await dispatchStop(agentParam: agentParam, taskParam: taskParam, provider: providerParam, event: event)
+            if !taskParam.isEmpty { await supervisor?.cancelForTask(taskParam) }
             return ok
         case "/hooks/codex":
             guard request.method == "POST" else { return .init(status: 405) }
@@ -701,6 +731,10 @@ public actor DaemonEngine {
             return await handleSkill(request, agentParam: agentParam)
         case "/hooks/attach":
             return await handleAttach(request)
+        case "/hooks/supervisor":
+            return await handleSupervisorVerdict(request)
+        case "/hooks/trigger-supervisor":
+            return await handleTriggerSupervisor(request)
         case "/hooks/event":
             return handleEvent(request, agentParam: agentParam, taskParam: taskParam, query: query)
         default:
@@ -723,6 +757,42 @@ public actor DaemonEngine {
                 "name": .string(name), "description": .string(payload["description"]?.string ?? ""), "content": .string(content)]))
             return .json(response)
         } catch { return .init(status: 502, body: Data("upstream error: \(error.localizedDescription)".utf8)) }
+    }
+
+    private static let unsafeVerdictCharacters = try! NSRegularExpression(pattern: "[^\\x09\\x0A\\x0D\\x20-\\x7E]")
+
+    /// POST /hooks/supervisor: `tsq report` from the supervisor session (Go: handleSupervisor).
+    private func handleSupervisorVerdict(_ request: LocalHTTPRequest) async -> LocalHTTPResponse {
+        guard request.method == "POST" else { return .init(status: 405, body: Data("method not allowed\n".utf8)) }
+        guard let payload = try? JSONDecoder().decode(JSONValue.self, from: request.body), case .object = payload,
+              let taskID = payload["task_id"]?.string, !taskID.isEmpty
+        else { return .init(status: 400, body: Data("invalid payload: task_id required\n".utf8)) }
+        let status = payload["status"]?.string ?? ""
+        guard ["working_fine", "resolved", "cannot_help"].contains(status) else {
+            return .init(status: 400, body: Data("status must be working_fine|resolved|cannot_help\n".utf8))
+        }
+        var fields = ["summary", "found", "action"].map { payload[$0]?.string ?? "" }
+        guard fields.allSatisfy({ $0.utf8.count <= 1000 }) else {
+            return .init(status: 400, body: Data("summary/found/action fields must be ≤1000 chars\n".utf8))
+        }
+        // Printable ASCII only, so nothing renders as markup or corrupts the thread.
+        fields = fields.map { Self.unsafeVerdictCharacters.stringByReplacingMatches(in: $0, range: NSRange($0.startIndex..., in: $0), withTemplate: "") }
+        await supervisor?.handleVerdict(taskID: taskID, status: status, summary: fields[0], found: fields[1], action: fields[2])
+        return .json(.object(["status": .string("ok")]))
+    }
+
+    /// POST /hooks/trigger-supervisor: the portal asks for a supervisor run now (Go: handleTriggerSupervisor).
+    private func handleTriggerSupervisor(_ request: LocalHTTPRequest) async -> LocalHTTPResponse {
+        guard request.method == "POST" else { return .init(status: 405, body: Data("method not allowed\n".utf8)) }
+        guard let supervisor else { return .init(status: 503, body: Data("supervisor not configured\n".utf8)) }
+        guard let taskID = (try? JSONDecoder().decode(JSONValue.self, from: request.body))?["task_id"]?.string, !taskID.isEmpty
+        else { return .init(status: 400, body: Data("invalid payload: task_id required\n".utf8)) }
+        do { try await supervisor.triggerForTask(taskID) } catch {
+            var response = LocalHTTPResponse.json(.object(["error": .string(error.localizedDescription)]))
+            response.status = 409
+            return response
+        }
+        return .json(.object(["status": .string("ok")]))
     }
 
     /// POST /hooks/event feeds the task's analytics collector. Observational only:
