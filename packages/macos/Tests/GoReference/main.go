@@ -11,10 +11,14 @@ import (
     "os"
     "path/filepath"
     "syscall"
+    "time"
 
+    "github.com/tasksquad/daemon/agent"
     "github.com/tasksquad/daemon/api"
     "github.com/tasksquad/daemon/config"
+    "github.com/tasksquad/daemon/hooks"
     "github.com/tasksquad/daemon/provider"
+    "github.com/tasksquad/daemon/supervisor"
     "github.com/zalando/go-keyring"
 )
 
@@ -59,6 +63,33 @@ func run() error {
         if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil { return err }
         fmt.Println("locked")
         io.Copy(io.Discard, os.Stdin)
+    case "daemon":
+        // daemon <config>: Go's task path from runDaemon (hook server + batch poller)
+        // under $HOME, with an in-memory keyring holding a CLI token and Go's
+        // daemon.lock held for the process lifetime. Prints "running", then serves
+        // until killed (Go installs no SIGTERM handler).
+        keyring.MockInit()
+        keyring.Set("tasksquad-daemon", "cli-token", "tsq_cli_go_oracle")
+        keyring.Set("tasksquad-daemon", "cli-token-expiry", time.Now().Add(30*24*time.Hour).Format(time.RFC3339))
+        root := config.DefaultDir()
+        if err := os.MkdirAll(root, 0700); err != nil { return err }
+        f, err := os.OpenFile(filepath.Join(root, "daemon.lock"), os.O_CREATE|os.O_RDWR, 0600)
+        if err != nil { return err }
+        if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil { return fmt.Errorf("daemon.lock held: %w", err) }
+        cfg, err := config.Load(os.Args[2])
+        if err != nil { return err }
+        raw := make([]*agent.Agent, 0, len(cfg.Agents))
+        list := make([]hooks.Agent, 0, len(cfg.Agents))
+        for _, ac := range cfg.Agents {
+            a := agent.New(ac)
+            raw = append(raw, a)
+            list = append(list, a)
+        }
+        ctrl := agent.NewBatchController()
+        hooks.StartHookServer(cfg, list, supervisor.New(cfg), ctrl)
+        go agent.RunBatch(cfg, raw, ctrl)
+        fmt.Println("running")
+        select {}
     case "keychain-read":
         value, err := keyring.Get(os.Args[2], os.Args[3])
         if err != nil { return err }
