@@ -1,0 +1,59 @@
+{
+  "catalog_version": 1,
+  "resolution": "A project resource with the same kind and name overrides this global default.",
+  "resources": [
+    {
+      "kind": "skills",
+      "name": "tsq-cli-commands",
+      "path": "tsq-cli-commands.md",
+      "version": 1,
+      "is_default": true,
+      "auto_install": false,
+      "dependencies": [],
+      "etag": "e33c5b265d7e431b16662fa5a9163fd8b7e3b621b764810079115e2534ca4198"
+    },
+    {
+      "kind": "skills",
+      "name": "tsq-supervisor",
+      "path": "tsq-supervisor.md",
+      "version": 1,
+      "is_default": true,
+      "auto_install": false,
+      "dependencies": [
+        "skills:tsq-cli-commands"
+      ],
+      "etag": "aa2591ea2722c771d0b7bebd41df190e98f7b5ca21691b790123492ec23c1f24"
+    },
+    {
+      "kind": "skills",
+      "name": "tsq-end-session-learning",
+      "path": "tsq-end-session-learning.md",
+      "version": 1,
+      "is_default": true,
+      "auto_install": false,
+      "dependencies": [],
+      "etag": "eee2774f15ad46e015cad28d291e96af89a338aade921c8b36eaff0b7acac61f"
+    },
+    {
+      "kind": "skills",
+      "name": "tsq-end-session-memory",
+      "path": "tsq-end-session-memory.md",
+      "version": 1,
+      "is_default": true,
+      "auto_install": false,
+      "dependencies": [],
+      "etag": "ef4cbdb463e04242b580c9080e65808429083f943db38cdc09ee73f2642392cb"
+    },
+    {
+      "kind": "skills",
+      "name": "tsq-cleanup",
+      "path": "tsq-cleanup.md",
+      "version": 1,
+      "is_default": true,
+      "auto_install": false,
+      "dependencies": [],
+      "etag": "780140050720567146c13a8618cff1a6fe017be4f3e9dfccf938ab468d6995d9"
+    }
+  ],
+  "etag_convention": "SHA-256 of exact UTF-8 content bytes, lowercase hexadecimal"
+}

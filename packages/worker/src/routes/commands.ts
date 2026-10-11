@@ -185,11 +185,15 @@ export async function userCommands(req: Request, env: Env, _ctx: unknown, auth: 
   const rows = await env.DB
     .prepare(`
       SELECT id, team_id, name, description, author_id, etag, is_default, auto_install, version, created_at, updated_at
-      FROM commands
-      WHERE (team_id = ? AND auto_install = 1) OR is_default = 1
-      ORDER BY is_default ASC, name ASC
+      FROM commands AS resource
+      WHERE (team_id = ? AND auto_install = 1)
+         OR (is_default = 1 AND NOT EXISTS (
+           SELECT 1 FROM commands AS override
+           WHERE override.team_id = ? AND override.name = resource.name AND override.is_default = 0
+         ))
+      ORDER BY name ASC, id ASC
     `)
-    .bind(teamId)
+    .bind(teamId, teamId)
     .all()
 
   return json({ commands: rows.results })
