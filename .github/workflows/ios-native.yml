@@ -1,0 +1,51 @@
+name: Native iOS
+
+on:
+  pull_request:
+    paths:
+      - 'packages/ios/**'
+      - 'packages/mobile/**'
+      - '.github/workflows/ios-native.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/ios/**'
+      - 'packages/mobile/**'
+      - '.github/workflows/ios-native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: packages/ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      # Never fall back silently: fail when no iPhone simulator is installed, and
+      # record the exact device and runtime used.
+      - name: Resolve simulator
+        run: |
+          python3 scripts/resolve_simulator.py | tee -a "$GITHUB_ENV"
+          { echo "### Simulator"; echo; python3 scripts/resolve_simulator.py | sed 's/^/- /'; echo "- Xcode: $(xcodebuild -version | head -1)"; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build
+        run: make build
+      - name: Workspace contract journeys (fixture server + UI tests)
+        run: make e2e-contract
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-test-results
+          path: |
+            packages/ios/.build/DerivedData/Logs/Test/*.xcresult
+            packages/ios/.build/fixture-server.log

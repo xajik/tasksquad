@@ -67,7 +67,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 
 ### F. CI and evidence
 - [x] `macos-native.yml` triggers on `packages/mobile/**`; runs `swift test` for this package
-- [ ] iOS CI job: explicit simulator/runtime resolution, recorded in the summary, fails if none is available
+- [x] iOS CI (`.github/workflows/ios-native.yml`): `scripts/resolve_simulator.py` picks the newest iPhone runtime, records it in the job summary, and fails if there is none. Then `make build` and `make e2e-contract`. **Not yet observed green on GitHub:** check the first run, since the runner's Xcode must support the project's SDK.
 - [ ] Regenerate reviewed light/dark screenshots on both platforms from the fixture
 
 ## Notes and decisions
