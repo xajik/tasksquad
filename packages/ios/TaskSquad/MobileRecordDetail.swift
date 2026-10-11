@@ -41,7 +41,7 @@ struct MobileRecordDetail: View {
             } }
         }
         .safeAreaInset(edge: .bottom) {
-            if model.section != .portals, let error = mutationError ?? error ?? model.error { Text(error).font(.footnote).foregroundStyle(MobileTheme.destructive).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("detail-error") }
+            if model.section != .portals, let error = mutationError ?? error ?? model.error { TSQErrorBanner(error, identifier: "detail-error").padding(.horizontal).padding(.vertical, 8).background(.regularMaterial) }
         }
         .navigationTitle(model.section == .portals ? model.agentName(record?.text("agent_id") ?? "") : model.section.rawValue)
         .navigationBarTitleDisplayMode(.inline)
@@ -89,10 +89,10 @@ struct MobileRecordDetail: View {
             if let session = lifecycle.sessionID {
                 PortalTerminalScreen(sessionID: session, api: terminalAPI).id(session)
             } else {
-                ContentUnavailableView(lifecycle.title, systemImage: "terminal", description: Text(lifecycle.message))
+                TSQEmptyState(icon: "monitor", title: lifecycle.title, message: lifecycle.message)
                 Text(record.status.capitalized).accessibilityIdentifier("portal-status")
             }
-            if let error = mutationError ?? error ?? model.error { Text(error).foregroundStyle(MobileTheme.destructive).padding().accessibilityIdentifier("detail-error") }
+            if let error = mutationError ?? error ?? model.error { TSQErrorBanner(error, identifier: "detail-error").padding() }
         }
     }
     private var conversation: some View {

@@ -42,7 +42,7 @@ struct PortalHomeView: View {
                     }
                     if model.section == .notes { Toggle("Archived notes", isOn: $model.archived).onChange(of: model.archived) { _, _ in Task { await model.refresh() } } }
                     if model.loading { ProgressView("Loading…") }
-                    else if model.visibleRecords.isEmpty { ContentUnavailableView("No \(model.section.rawValue.lowercased())", systemImage: "tray", description: Text("Choose another project or create a new item.")) }
+                    else if model.visibleRecords.isEmpty { TSQEmptyState(icon: "inbox", title: "No \(model.section.rawValue.lowercased())", message: "Choose another project or create a new item.").listRowBackground(Color.clear) }
                     else if model.section == .portals {
                         portalSection("Active sessions", live: true)
                         portalSection("History", live: false)

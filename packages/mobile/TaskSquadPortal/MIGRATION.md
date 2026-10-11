@@ -56,7 +56,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] Tests: pagination survives refresh, out-of-order detail, account switch during `connect`, poll cancellation
 
 ### D. Shared content components
-- [ ] Move `Card`, `EmptyState`, `ErrorBanner`, `StatusDot`, `PageHeader` to `TaskSquadPortalUI`
+- [x] `TSQCard`, `TSQEmptyState`, `TSQErrorBanner`, `TSQStatusDot` and `TSQPageHeader` live in `TaskSquadPortalUI`. `TSQIcon` (asset catalog) is in `TaskSquadDesign`. macOS uses them via aliases. iOS uses the empty state, error banner and icon (`MobileIcon` wraps `TSQIcon`).
 - [ ] `RecordRow`, `ConversationMessage` + authenticated attachments, `PhaseSummary`, `MetricTile`, `TerminalConnectionHeader`
 - [ ] `MarkdownContent`: tokens instead of `accentColor`/`.quaternary`; move `MarkdownBlock.parse` tests into this package
 - [ ] `TaskSquadPortalUI` render smoke tests

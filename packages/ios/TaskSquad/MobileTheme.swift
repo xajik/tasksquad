@@ -9,7 +9,7 @@ typealias MobilePrimaryButtonStyle = TSQButtonStyle
 struct MobileIcon: View {
     let name: String
     var size: CGFloat = 20
-    var body: some View { Image("TSQ-" + name, bundle: TSQResources.bundle).renderingMode(.template).resizable().frame(width: size, height: size).accessibilityHidden(true) }
+    var body: some View { TSQIcon(name, size: size) }
 }
 
 struct MobileFixtureTypeSize: ViewModifier {
