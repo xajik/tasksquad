@@ -171,4 +171,24 @@ final class CLIGoldenTests: XCTestCase {
         try await assertSame(["memory", "search", "body"])
         try await assertSame(["memory", "search", "nothing-matches"])
     }
+
+    func testCustomerArgumentErrorsAndDoctor() async throws {
+        for args in [["projects"], ["tasks"], ["tasks", "bogus", "--project", "p"], ["tasks", "list"], ["tasks", "get", "--project", "p"],
+                     ["tasks", "close", "--project", "../p", "--id", "t"], ["tasks", "create", "--project", "p", "--agent", "a"],
+                     ["tasks", "create", "--project", "p", "--subject", "s"], ["agents", "create", "--project", "p"],
+                     ["tasks", "wait", "--project", "p", "--id", "t", "--timeout", "31m"], ["tasks", "wait", "--project", "p", "--id", "t", "--timeout", "1x"],
+                     ["tasks", "list", "--project", "p", "--bogus"], ["tasks", "list", "--project", "p", "extra"],
+                     ["tasks", "reply", "--project", "p", "--id", "t", "--body", "a", "--file", "f"], ["tasks", "reply", "--project", "p", "--id", "t"],
+                     ["tasks", "reply", "--project", "p", "--id", "t", "--file", "/nonexistent"], ["projects", "list", "-h"]] {
+            try await assertSame(args)
+        }
+        try Data("not = [valid".utf8).write(to: root.appendingPathComponent("bad.toml"))
+        try await assertSame(["projects", "list", "--config", root.appendingPathComponent("bad.toml").path])
+        // doctor reads the real login Keychain state read-only; both binaries see the same.
+        try await assertSame(["doctor"])
+        try await assertSame(["doctor", "--json"])
+        try FileManager.default.createDirectory(at: root.appendingPathComponent(".tasksquad"), withIntermediateDirectories: true)
+        try Data("[server]\nurl = 'https://example.invalid'\n".utf8).write(to: root.appendingPathComponent(".tasksquad/config.toml"))
+        try await assertSame(["doctor", "--json"])
+    }
 }

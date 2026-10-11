@@ -100,7 +100,7 @@ Output text and exit codes must match Go byte-for-byte: agents and skills parse 
 | `screenshot` | done (golden for output and errors; PNG pixels differ by rasterizer) |
 | `report`, `skill`, `send-image` | done (golden, incl. Go flag errors and `-h`; identical request bodies). Connection-refused error text differs from Go's net/http wording |
 | `memory`, `kb`, `tags` | done: offline paths golden (`testMemoryKBAndTagsOffline`: local push/search, kb search, usage and config errors); cloud paths in `CLINetworkTests` (Go reads the real Keychain, so they can't run against the Go binary) |
-| `projects`, `agents`, `tasks`, `portals`, `resources`, `doctor` | missing |
+| `projects`, `agents`, `tasks`, `portals`, `resources`, `doctor` | done: argument errors, config errors and `doctor` golden vs Go; API behaviour (number-literal JSON, sorted keys, escaping, redaction, project scoping, `wait` exit 3, no redirects) in `CustomerCommandTests` |
 
 ### macOS app lifecycle
 

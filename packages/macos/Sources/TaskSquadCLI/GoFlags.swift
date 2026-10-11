@@ -4,13 +4,15 @@ import Foundation
 /// "--" terminator, stop at the first non-flag) and byte-identical errors and
 /// usage, since agents and scripts read what the Go `tsq` prints.
 final class GoFlagSet {
-    enum Kind { case string(String), int(Int), bool(Bool) }
+    enum Kind { case string(String), int(Int), bool(Bool), duration(Double), list([String]) }
     private struct Flag { let name: String; let usage: String; let defaultValue: Kind; var value: Kind }
     enum ParseError: Error { case help, failed }
 
     let name: String
     private var flags: [String: Flag] = [:]
     private(set) var arguments: [String] = []
+    /// The failure message (also written to output), for callers that discard output.
+    private(set) var lastError = ""
     private let output: (String) -> Void
 
     init(_ name: String, output: @escaping (String) -> Void) { self.name = name; self.output = output }
@@ -18,10 +20,16 @@ final class GoFlagSet {
     func string(_ name: String, _ value: String, _ usage: String) { flags[name] = Flag(name: name, usage: usage, defaultValue: .string(value), value: .string(value)) }
     func int(_ name: String, _ value: Int, _ usage: String) { flags[name] = Flag(name: name, usage: usage, defaultValue: .int(value), value: .int(value)) }
     func bool(_ name: String, _ value: Bool, _ usage: String) { flags[name] = Flag(name: name, usage: usage, defaultValue: .bool(value), value: .bool(value)) }
+    /// time.Duration flag, in seconds.
+    func duration(_ name: String, _ seconds: Double, _ usage: String) { flags[name] = Flag(name: name, usage: usage, defaultValue: .duration(seconds), value: .duration(seconds)) }
+    /// A flag.Value that appends each occurrence.
+    func list(_ name: String, _ usage: String) { flags[name] = Flag(name: name, usage: usage, defaultValue: .list([]), value: .list([])) }
 
     subscript(string name: String) -> String { if case .string(let v)? = flags[name]?.value { v } else { "" } }
     subscript(int name: String) -> Int { if case .int(let v)? = flags[name]?.value { v } else { 0 } }
     subscript(bool name: String) -> Bool { if case .bool(let v)? = flags[name]?.value { v } else { false } }
+    subscript(duration name: String) -> Double { if case .duration(let v)? = flags[name]?.value { v } else { 0 } }
+    subscript(list name: String) -> [String] { if case .list(let v)? = flags[name]?.value { v } else { [] } }
 
     func parse(_ input: [String]) throws {
         var args = input[...]
@@ -47,13 +55,20 @@ final class GoFlagSet {
                     guard let parsed = Self.goBool(value) else { try fail("invalid boolean value \(Self.goQuote(value)) for -\(name): parse error") }
                     flag.value = .bool(parsed)
                 } else { flag.value = .bool(true) }
-            case .string, .int:
+            case .string, .int, .duration, .list:
                 if value == nil, let next = args.first { value = next; args = args.dropFirst() }
                 guard let value else { try fail("flag needs an argument: -\(name)") }
-                if case .int = flag.defaultValue {
+                switch flag.defaultValue {
+                case .int:
                     guard let parsed = Self.goInt(value) else { try fail("invalid value \(Self.goQuote(value)) for flag -\(name): parse error") }
                     flag.value = .int(parsed)
-                } else { flag.value = .string(value) }
+                case .duration:
+                    guard let parsed = Self.goDuration(value) else { try fail("invalid value \(Self.goQuote(value)) for flag -\(name): parse error") }
+                    flag.value = .duration(parsed)
+                case .list:
+                    if case .list(let existing) = flag.value { flag.value = .list(existing + [value]) }
+                default: flag.value = .string(value)
+                }
             }
             flags[name] = flag
         }
@@ -61,6 +76,7 @@ final class GoFlagSet {
     }
 
     private func fail(_ message: String) throws -> Never {
+        lastError = message
         output(message + "\n")
         usage()
         throw ParseError.failed
@@ -71,7 +87,7 @@ final class GoFlagSet {
         for flag in flags.values.sorted(by: { $0.name < $1.name }) {
             var line = "  -\(flag.name)"
             let type: String
-            switch flag.defaultValue { case .string: type = "string"; case .int: type = "int"; case .bool: type = "" }
+            switch flag.defaultValue { case .string: type = "string"; case .int: type = "int"; case .bool: type = ""; case .duration: type = "duration"; case .list: type = "value" }
             var usage = flag.usage
             var shown = type
             if let open = usage.firstIndex(of: "`"), let close = usage[usage.index(after: open)...].firstIndex(of: "`") {
@@ -89,6 +105,25 @@ final class GoFlagSet {
             }
             output(line + "\n")
         }
+    }
+
+    /// time.ParseDuration, in seconds: [-+]?(<number><unit>)+ with ns, us, µs, ms, s, m, h; "0" alone is allowed.
+    static func goDuration(_ text: String) -> Double? {
+        var s = Substring(text), sign = 1.0
+        if s.hasPrefix("-") || s.hasPrefix("+") { sign = s.first == "-" ? -1 : 1; s = s.dropFirst() }
+        if s == "0" { return 0 }
+        guard !s.isEmpty else { return nil }
+        let units: [(String, Double)] = [("ns", 1e-9), ("us", 1e-6), ("µs", 1e-6), ("μs", 1e-6), ("ms", 1e-3), ("s", 1), ("m", 60), ("h", 3600)]
+        var total = 0.0
+        while !s.isEmpty {
+            let number = s.prefix { $0.isASCII && ($0.isNumber || $0 == ".") }
+            guard !number.isEmpty, number != ".", let value = Double(number.hasPrefix(".") ? "0" + number : String(number)) else { return nil }
+            s = s.dropFirst(number.count)
+            guard let unit = units.first(where: { s.hasPrefix($0.0) && !(($0.0 == "m") && s.hasPrefix("ms")) }) else { return nil }
+            s = s.dropFirst(unit.0.count)
+            total += value * unit.1
+        }
+        return sign * total
     }
 
     /// strconv.ParseBool.

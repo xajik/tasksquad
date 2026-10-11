@@ -64,7 +64,13 @@ public struct DaemonConfiguration: Codable, Equatable, Sendable {
         return try parse(String(contentsOf: url, encoding: .utf8), paths: paths)
     }
 
-    public static func parse(_ source: String, paths: TaskSquadPaths = .init()) throws -> Self {
+    /// Go's config.LoadCustomer: built-in defaults when the file is missing, and no agents required.
+    public static func loadCustomer(from url: URL, paths: TaskSquadPaths = .init()) throws -> Self {
+        guard FileManager.default.fileExists(atPath: url.path) else { return Self() }
+        return try parse(String(contentsOf: url, encoding: .utf8), paths: paths, requireAgents: false)
+    }
+
+    public static func parse(_ source: String, paths: TaskSquadPaths = .init(), requireAgents: Bool = true) throws -> Self {
         let root = try TOMLDocument(source).root
         var result = Self()
         func table(_ key: String) throws -> [String: TOMLValue] {
@@ -112,7 +118,7 @@ public struct DaemonConfiguration: Codable, Equatable, Sendable {
                                                workDir: paths.expandHome(string(fields, "work_dir")), provider: string(fields, "provider")))
             }
         }
-        guard !result.agents.isEmpty else { throw ConfigurationError("at least one [[agents]] entry is required") }
+        guard !requireAgents || !result.agents.isEmpty else { throw ConfigurationError("at least one [[agents]] entry is required") }
         // Deliberately not checking agent ID uniqueness here: Go's config.Load
         // doesn't either (see packages/daemon/config/config.go), and this parser
         // exists to match it byte-for-byte (see GoCompatibilityTests). A config

@@ -19,6 +19,11 @@ public struct CLIContext: Sendable {
     public var login: @Sendable (_ context: CLIContext, _ dashboardURL: String, _ apiURL: String, _ firebaseAPIKey: String) async throws -> String
     /// Deletes stored credentials (Go: auth.Logout). Tests substitute it.
     public var logout: @Sendable () async throws -> Void
+    /// Go's auth.IsLoggedIn: an ID token is stored.
+    public var isLoggedIn: @Sendable (_ environment: [String: String]) async -> Bool
+    /// Cloud orchestration never follows redirects (Go: CustomerClient).
+    public var customerTransport: any HTTPTransport
+    public var version: String
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment,
                 stdout: @escaping @Sendable (String) -> Void = { FileHandle.standardOutput.write(Data($0.utf8)) },
@@ -29,10 +34,24 @@ public struct CLIContext: Sendable {
                 workingDirectory: String = FileManager.default.currentDirectoryPath, tokens: (any TokenProvider)? = nil,
                 transport: any HTTPTransport = NativeHTTPTransport(),
                 login: @escaping @Sendable (CLIContext, String, String, String) async throws -> String = CLIContext.browserLogin,
-                logout: @escaping @Sendable () async throws -> Void = { try await Authentication(apiURL: "", firebaseAPIKey: "").logout() }) {
+                logout: @escaping @Sendable () async throws -> Void = { try await Authentication(apiURL: "", firebaseAPIKey: "").logout() },
+                isLoggedIn: @escaping @Sendable ([String: String]) async -> Bool = CLIContext.keychainHasIDToken,
+                customerTransport: (any HTTPTransport)? = nil, version: String = "dev") {
         self.environment = environment; self.stdout = stdout; self.stderr = stderr; self.stdin = stdin; self.now = now; self.interactive = interactive
         self.workingDirectory = workingDirectory; self.tokens = tokens; self.transport = transport
-        self.login = login; self.logout = logout
+        self.login = login; self.logout = logout; self.isLoggedIn = isLoggedIn
+        self.customerTransport = customerTransport ?? NoRedirectTransport(); self.version = version
+    }
+
+    /// Like go-keyring on macOS: `security find-generic-password` (never blocks on Keychain UI from a tool).
+    public static func keychainHasIDToken(environment: [String: String]) async -> Bool {
+        let output = KeychainProbe()
+        let status = try? await NativeProcess.run(.init(executable: "/usr/bin/security",
+            arguments: ["find-generic-password", "-s", "tasksquad-daemon", "-wa", CredentialKey.idToken.rawValue], environment: environment)) { channel, data in
+            if channel == .stdout { await output.append(data) }
+        }
+        let text = await output.text
+        return status?.code == 0 && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     public static func browserLogin(_ c: CLIContext, dashboardURL: String, apiURL: String, firebaseAPIKey: String) async throws -> String {
@@ -108,7 +127,8 @@ public enum TSQCommandLine {
     ]
     /// Implemented so far; the rest are still handled by the app's legacy paths.
     static let implemented: Set<String> = ["sessions", "attach", "logs", "pane", "screenshot", "send", "report", "send-image", "skill",
-                                           "memory", "kb", "tags", "login", "logout", "init"]
+                                           "memory", "kb", "tags", "login", "logout", "init",
+                                           "projects", "agents", "tasks", "portals", "resources", "doctor"]
 
     public static func handles(_ arguments: [String]) -> Bool {
         guard let first = arguments.first else { return false }
@@ -129,6 +149,8 @@ public enum TSQCommandLine {
         case "report": return await HookCommands.report(rest, context)
         case "send-image": return await HookCommands.sendImage(rest, context)
         case "skill": return await HookCommands.skill(rest, context)
+        case "projects", "agents", "tasks", "portals", "resources", "doctor":
+            return await CustomerCommands.run(arguments, version: context.version, context)
         case "login": return await AuthCommands.login(context)
         case "logout": return await AuthCommands.logout(context)
         case "init": return await AuthCommands.initialize(context)
@@ -140,4 +162,10 @@ public enum TSQCommandLine {
             return 2
         }
     }
+}
+
+private actor KeychainProbe {
+    var data = Data()
+    func append(_ chunk: Data) { data.append(chunk) }
+    var text: String { String(decoding: data, as: UTF8.self) }
 }

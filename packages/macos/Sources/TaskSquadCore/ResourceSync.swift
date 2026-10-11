@@ -88,6 +88,16 @@ enum HarnessLayout {
 /// Polls hourly (and on demand) and installs the user's auto-install and server
 /// default resources, removing ones deleted on the server. Only lock-tracked
 /// entries are ever removed, so user-authored files are never touched.
+/// One immediate skills/sub-agents/commands sync for the given agents (Go: skills/agents/commands SyncNow).
+public enum ResourceSyncNow {
+    public static func run(configuration: DaemonConfiguration, agents: [DaemonConfiguration.Agent], tokens: any TokenProvider,
+                           transport: any HTTPTransport, paths: TaskSquadPaths) async {
+        let sync = ResourceSync(api: WorkerAPI(baseURL: configuration.server.url, transport: transport), tokens: tokens, paths: paths,
+                                agents: agents) { NSLog("%@", $0) }
+        await sync.syncAll()
+    }
+}
+
 actor ResourceSync {
     struct Target: Sendable { let agentID: String; let workDir: String }
     private let api: WorkerAPI
