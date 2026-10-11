@@ -26,6 +26,14 @@ public struct TSQIcon: View {
         #endif
     }
 
+    #if !os(macOS)
+    /// The bare template image, for `Menu` rows: UIKit menus drop any icon that
+    /// isn't a plain `Image`, so a sized `TSQIcon` view would vanish there.
+    public static func image(_ name: String) -> Image {
+        Image("TSQ-" + name, bundle: TSQResources.bundle).renderingMode(.template)
+    }
+    #endif
+
     #if os(macOS)
     @MainActor private static var cache: [String: NSImage] = [:]
     @MainActor static func vector(_ name: String) -> NSImage {
@@ -37,4 +45,22 @@ public struct TSQIcon: View {
         return image
     }
     #endif
+}
+
+/// The TaskSquad hex logo in full colour (DESIGN.md §7.2 sidebar brand row).
+public struct TSQLogo: View {
+    let size: CGFloat
+    public init(size: CGFloat = 20) { self.size = size }
+    public var body: some View {
+        image.resizable().interpolation(.high)
+            .frame(width: size, height: size).accessibilityHidden(true)
+    }
+    private var image: Image {
+        #if os(macOS)
+        let url = TSQResources.bundle?.url(forResource: "logo", withExtension: "svg", subdirectory: TSQResources.vectorFolder + "/Brand")
+        return Image(nsImage: url.flatMap(NSImage.init(contentsOf:)) ?? NSImage(size: NSSize(width: 24, height: 24)))
+        #else
+        return Image("TSQBrand-logo", bundle: TSQResources.bundle)
+        #endif
+    }
 }

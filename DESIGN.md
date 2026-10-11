@@ -424,6 +424,8 @@ Dark mode uses lighter surfaces plus stronger, softer shadows instead. See §2.7
 | Sidebar nav | 8px horizontal inset; items are full-width `ghost` buttons, left-aligned, 16px icon + 8px gap, 4px between items |
 | Sidebar footer | `border-t`, 8px padding, 12px muted links |
 | Mobile top bar | 12px vertical / 16px horizontal padding, `border-b`, menu button + logo + wordmark |
+| iOS drawer | Compact width: 256pt slide-over (320pt at accessibility text sizes) on `scrim-drawer`, opened by the `panel-left` button or an edge swipe on the root screen. Nav rows keep the §9.9 recipe at a 44pt minimum height. Regular width (iPad): persistent split-view sidebar. |
+| iOS bar & actions | Root (drawer) screens: `panel-left` leading. Pushed screens (record detail, Projects, Account): system Back only, never both. Trailing: one control per screen, either `list-filter` view options on lists (fills with `accent` when a non-default option is active) or the `…` menu on records. See §9.11. |
 | Main | `p-4 sm:p-8`, safe-area aware |
 | Full-height | `h-screen overflow-hidden` shell; only the main column scrolls |
 
@@ -601,6 +603,12 @@ Full-width `ghost` button, left-aligned, 40px tall, 16px icon + 8px gap, 4px bot
 
 Track: `muted`, 8px radius, 3px padding, 4px gap. Segment: 28px tall, 10px horizontal padding, 5px radius, 14px icon + 12px medium label, 6px gap. **Selected:** `background` fill, `foreground` text, `0 1px 1px rgb(0 0 0 / .08)` shadow. **Unselected:** `muted-foreground`.
 
+### 9.11 Floating action button (mobile)
+
+The screen's single primary action. Lists use it to create (`plus`, "New task", "New note"…); records use it to reply or comment (`message-square`) or edit (`pencil`). 56px circle, `primary` fill, 24px `primary-foreground` icon, `elevation-2`, 16px from the trailing and bottom safe edges (above the search bar and error banner). Hidden when the user can't perform the action. A live terminal is the one exception: its Close stays in the bar so nothing floats over output.
+
+Secondary record actions live in the `…` menu with Lucide icons: neutral actions first, then feedback, then state changes, with `destructive` items last. Actions that can't apply to the current status (e.g. Cancel on a finished task) are left out, not disabled.
+
 ---
 
 ## 10. Motion
@@ -651,6 +659,8 @@ Track: `muted`, 8px radius, 3px padding, 4px gap. Segment: 28px tall, 10px horiz
 | `primary` | `bg-primary` | `Theme.primary` |
 | `destructive` | `bg-destructive` | `Theme.destructive` |
 | `brand` | `#2563EB` | `Theme.brand` |
+| `sidebar` | n/a | `Theme.sidebar` |
+| `scrim-modal` / `scrim-drawer` | `bg-black/80` / `bg-black/50` | `Theme.scrimModal` / `Theme.scrimDrawer` |
 | success / warning / error | `green-600` / `amber-600` / `red-600` | `Theme.green` / `Theme.amber` / `Theme.red` |
 | live dot | `bg-green-500` | `Theme.live` |
 | `radius-md` | `rounded-md` | `Theme.controlRadius` (6) |

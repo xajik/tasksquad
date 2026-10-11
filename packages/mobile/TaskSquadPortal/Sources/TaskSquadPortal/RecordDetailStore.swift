@@ -32,7 +32,6 @@ import Combine
                 async let tasks = workspace.api.request(["teams", project, "notes", id, "tasks"])
                 (nextComments, nextRelated) = try await (CustomerRecord(comments).records("comments"), CustomerRecord(tasks).records("tasks"))
             }
-            if section == .conveyors { nextRelated = CustomerRecord(try await workspace.api.request(["teams", project, "conveyors", id, "tasks"])).records("tasks") }
             guard key == workspace.context, generation == request, !Task.isCancelled else { return }
             detail = next; messages = nextMessages; comments = nextComments; related = nextRelated; error = nil
         } catch {

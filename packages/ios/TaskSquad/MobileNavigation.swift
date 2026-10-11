@@ -1,6 +1,7 @@
 import SwiftUI
 import TaskSquadPortal
 import TaskSquadPortalUI
+import TaskSquadDesign
 
 enum MobileRoute: Hashable {
     case record(String), projects, account
@@ -18,6 +19,23 @@ extension WorkspaceSection {
         case .planners: "Planner"
         case .settings: "Project Settings"
         default: rawValue
+        }
+    }
+    /// Singular item name for "New …" actions and editor titles.
+    var mobileItem: String {
+        switch self {
+        case .inbox, .supervisor: "task"
+        case .portals: "portal"
+        case .notes: "note"
+        case .conveyors: "conveyor"
+        case .planners: "planner"
+        case .skills: "skill"
+        case .subAgents: "sub-agent"
+        case .commands: "command"
+        case .memory: "memory"
+        case .agents: "agent"
+        case .members: "member"
+        case .analytics, .settings: rawValue.lowercased()
         }
     }
     var mobileIcon: String {
@@ -38,6 +56,15 @@ extension WorkspaceSection {
     }
 }
 
+extension WorkspaceStore {
+    /// Members only see teammates' emails as owners or maintainers; everyone
+    /// else gets a readable label instead of a raw user ID.
+    func displayTitle(_ record: CustomerRecord) -> String {
+        guard section == .members, record.text("email").isEmpty else { return record.title }
+        return record.id == profile?.text("id") ? "You" : "Teammate"
+    }
+}
+
 struct MobileSidebar: View {
     @ObservedObject var model: WorkspaceStore
     let route: MobileRoute?
@@ -49,24 +76,26 @@ struct MobileSidebar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("TaskSquad").font(.title3.bold())
+            // DESIGN.md §7.2: 20pt logo + 18pt bold wordmark, 16 × 20 padding.
+            HStack(spacing: 8) {
+                TSQLogo(size: 20)
+                Text("TaskSquad").font(.system(size: 18, weight: .bold))
                 Spacer()
                 if let close {
-                    Button(action: close) { MobileIcon(name: "x") }
+                    Button(action: close) { MobileIcon(name: "x", size: 16) }
                         .frame(minWidth: 44, minHeight: 44)
                         .accessibilityLabel("Close sidebar").accessibilityIdentifier("close-sidebar")
                         .accessibilityFocused($closeFocused)
                 }
-            }.padding(.horizontal, 16).padding(.vertical, 8)
+            }.padding(.leading, 20).padding(.trailing, 8).frame(minHeight: 56)
             ScrollView {
-                VStack(spacing: 2) {
+                VStack(spacing: 4) {
                     ForEach(Self.sections) { section in
                         let selected = route != .projects && route != .account && (model.section == section || section == .skills && model.section.isLibrary)
                         item(section == .skills ? "Skills & Sub-agents" : section.mobileTitle,
                              icon: section.mobileIcon, selected: selected, identifier: "nav-" + section.rawValue) { select(section) }
                     }
-                    Divider().padding(.vertical, 10)
+                    Rectangle().fill(MobileTheme.border).frame(height: 1).padding(.vertical, 8)
                     item("Projects", subtitle: model.currentProject?.title ?? "No project selected", icon: "folder", selected: route == .projects, identifier: "nav-projects") { open(.projects) }
                     item("Account", icon: "user", selected: route == .account, identifier: "nav-account") { open(.account) }
                 }.padding(.horizontal, 8).padding(.bottom, 16)
@@ -74,21 +103,26 @@ struct MobileSidebar: View {
         }
         .foregroundStyle(MobileTheme.foreground)
         .background(MobileTheme.sidebar)
+        .overlay(alignment: .trailing) { Rectangle().fill(MobileTheme.border).frame(width: 1).ignoresSafeArea() }
         .task { if close != nil { closeFocused = true } }
     }
     private func item(_ title: String, subtitle: String? = nil, icon: String, selected: Bool, identifier: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                MobileIcon(name: icon).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.body.weight(selected ? .semibold : .regular))
+            // DESIGN.md §9.9: 16pt icon + 8pt gap; active = accent fill + accent-foreground,
+            // inactive icons muted (§8). 44pt rows keep the iOS hit target (§9.1).
+            HStack(spacing: 8) {
+                MobileIcon(name: icon, size: 16).accessibilityHidden(true)
+                    .foregroundStyle(selected ? MobileTheme.accentForeground : MobileTheme.mutedForeground)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.body.weight(selected ? .medium : .regular))
+                        .foregroundStyle(selected ? MobileTheme.accentForeground : MobileTheme.foreground)
                     if let subtitle { Text(subtitle).font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
                 }.fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
+            .padding(.horizontal, 12).padding(.vertical, 8)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(selected ? MobileTheme.accent : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .background(selected ? MobileTheme.accent : .clear, in: RoundedRectangle(cornerRadius: MobileTheme.controlRadius))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -172,7 +206,9 @@ struct MobileAccountView: View {
                 Button("Sign out", role: .destructive) {
                     signingOut = true
                     Task { await auth.signOut(); signedOut() }
-                }.disabled(signingOut)
+                }
+                .foregroundStyle(MobileTheme.destructive)
+                .disabled(signingOut)
             }
         }
         .scrollContentBackground(.hidden).background(MobileTheme.background)
@@ -180,27 +216,61 @@ struct MobileAccountView: View {
     }
 }
 
-struct MobileInboxFilters: View {
+/// The list screens' one navigation-bar quick action for how the list is
+/// scoped: Inbox status/origin, archived notes, memory category, and which
+/// library (Skills / Sub-agents / Commands) is shown. Every section uses the
+/// same `list-filter` button, which fills when a non-default option is active.
+struct MobileViewOptions: View {
     @ObservedObject var model: WorkspaceStore
-    @Environment(\.dismiss) private var dismiss
+    static func available(for section: WorkspaceSection) -> Bool {
+        section == .inbox || section == .notes || section == .memory || section.isLibrary
+    }
+    private var active: Bool {
+        switch model.section {
+        case .inbox: model.status != "all" || model.origin != "all"
+        case .notes: model.archived
+        case .memory: model.memoryCategory != "all"
+        default: false
+        }
+    }
     var body: some View {
-        NavigationStack {
-            Form {
-                Picker("Status", selection: $model.status) {
+        Menu {
+            if model.section == .inbox {
+                Picker(selection: $model.status) {
                     ForEach(["all", "pending", "running", "waiting_input", "scheduled", "wrapping_up", "done", "failed"], id: \.self) {
                         Text($0.replacingOccurrences(of: "_", with: " ").capitalized).tag($0)
                     }
-                }.accessibilityIdentifier("status-filter")
-                Picker("Origin", selection: $model.origin) {
+                } label: { MobileMenuLabel("Status", icon: "circle-check") }
+                .pickerStyle(.menu).accessibilityIdentifier("status-filter")
+                Picker(selection: $model.origin) {
                     ForEach(["all", "mine", "system", "scheduled", "planner", "conveyor", "from-note", "note-critique"], id: \.self) {
                         Text($0.replacingOccurrences(of: "-", with: " ").capitalized).tag($0)
                     }
-                }.accessibilityIdentifier("origin-filter")
-                Button("Reset filters") { model.status = "all"; model.origin = "all" }
+                } label: { MobileMenuLabel("Origin", icon: "network") }
+                .pickerStyle(.menu).accessibilityIdentifier("origin-filter")
+                if active {
+                    Button { model.status = "all"; model.origin = "all" } label: { MobileMenuLabel("Reset filters", icon: "x") }
+                }
+            } else if model.section == .notes {
+                Toggle(isOn: $model.archived) { MobileMenuLabel("Archived notes", icon: "folder") }
+            } else if model.section == .memory {
+                Picker(selection: $model.memoryCategory) {
+                    ForEach(["all", "personal", "preferences", "structure", "architecture", "events"], id: \.self) { Text($0.capitalized).tag($0) }
+                } label: { MobileMenuLabel("Category", icon: "layers") }
+                .pickerStyle(.menu)
+            } else if model.section.isLibrary {
+                Picker("Library", selection: $model.section) {
+                    ForEach([WorkspaceSection.skills, .subAgents, .commands]) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.inline)
             }
-            .navigationTitle("Filters").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("filters-done") } }
+        } label: {
+            MobileIcon(name: "list-filter")
+                .padding(6)
+                .background(active ? MobileTheme.accent : .clear, in: RoundedRectangle(cornerRadius: MobileTheme.controlRadius))
+                .frame(minWidth: 44, minHeight: 44)
         }
+        .accessibilityLabel(active ? "View options, filtered" : "View options")
+        .accessibilityIdentifier("view-options")
     }
 }
 
@@ -208,6 +278,6 @@ struct MobileWorkspaceSearch: ViewModifier {
     @ObservedObject var model: WorkspaceStore
     func body(content: Content) -> some View {
         if [.settings, .analytics].contains(model.section) { content }
-        else { content.searchable(text: $model.search, prompt: "Search " + model.section.rawValue) }
+        else { content.searchable(text: $model.search, prompt: "Search " + model.section.mobileTitle) }
     }
 }

@@ -62,9 +62,10 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] `TaskSquadPortalUI` render smoke tests (`Tests/TaskSquadPortalUITests`, macOS `ImageRenderer`): icons must draw non-blank pixels, and components render in light and dark
 
 ### iOS navigation shell
-- [x] Phone slide-over / iPad split sidebar; library grouping; dedicated Projects and Account screens; compact Inbox filter sheet
+- [x] Phone slide-over / iPad split sidebar; library grouping; dedicated Projects and Account screens; `list-filter` view-options menu (Inbox status/origin, archived notes, memory category, library)
 - [x] Explicit visible-route polling ownership; shared store, project preferences, permissions and drafts retained
 - [x] Contract navigation helpers and coverage for utility Back, project search/retry, no projects and member settings
+- [x] Mobile quick actions: one FAB per screen for the primary action, `…` menu for secondary record actions, Back-only pushed screens (DESIGN.md §9.11)
 - [ ] Review new phone/iPad light/dark navigation evidence (`packages/ios/screenshots/sidebar-navigation/`)
 
 ### E. Remove compatibility layers

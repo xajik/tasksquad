@@ -34,6 +34,20 @@ for input in try FileManager.default.contentsOfDirectory(at: source.appendingPat
     }
 }
 
+// Full-colour brand logo for in-app use (TSQLogo); not a template image.
+let logoSource = source.appendingPathComponent("Brand/logo.svg")
+let logoFolder = output.appendingPathComponent("TSQBrand-logo.imageset")
+let logoDigest = Data(SHA256.hash(data: try Data(contentsOf: logoSource)))
+let logoHash = hashes.appendingPathComponent("brand-logo.sha256")
+if !FileManager.default.fileExists(atPath: logoFolder.appendingPathComponent("logo.pdf").path) || logoDigest != (try? Data(contentsOf: logoHash)) {
+    guard let image = NSImage(contentsOf: logoSource) else { fatalError("Missing SVG: " + logoSource.path) }
+    try FileManager.default.createDirectory(at: logoFolder, withIntermediateDirectories: true)
+    try VectorView(image: image, size: 64).dataWithPDF(inside: NSRect(x: 0, y: 0, width: 64, height: 64)).write(to: logoFolder.appendingPathComponent("logo.pdf"))
+    try logoDigest.write(to: logoHash)
+    let contents: [String: Any] = ["images": [["filename": "logo.pdf", "idiom": "universal"]], "properties": ["preserves-vector-representation": true, "template-rendering-intent": "original"], "info": ["author": "xcode", "version": 1]]
+    try JSONSerialization.data(withJSONObject: contents, options: [.prettyPrinted, .sortedKeys]).write(to: logoFolder.appendingPathComponent("Contents.json"))
+}
+
 // Drop imagesets (and digests) whose source SVG was removed.
 let svgNames = Set(try FileManager.default.contentsOfDirectory(atPath: source.appendingPathComponent("Icons").path).filter { $0.hasSuffix(".svg") }.map { String($0.dropLast(4)) })
 for set in try FileManager.default.contentsOfDirectory(atPath: output.path) where set.hasPrefix("TSQ-") && set.hasSuffix(".imageset") {

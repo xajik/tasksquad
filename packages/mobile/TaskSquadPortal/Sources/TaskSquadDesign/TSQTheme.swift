@@ -43,6 +43,9 @@ public enum TSQTheme {
     public static let amber = dynamic(light: 0xD97706, dark: 0xFBBF24)
     public static let red = dynamic(light: 0xDC2626, dark: 0xF87171)
     public static let live = dynamic(light: 0x22C55E, dark: 0x22C55E)
+    /// DESIGN.md §2.5 overlays.
+    public static let scrimModal = Color.black.opacity(0.8)
+    public static let scrimDrawer = Color.black.opacity(0.5)
     public static let radius: CGFloat = 8
     public static let controlRadius: CGFloat = 6
     public static let warning = amber

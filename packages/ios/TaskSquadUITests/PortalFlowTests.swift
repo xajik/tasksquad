@@ -45,7 +45,7 @@ import CryptoKit
         let library = ["Skills", "Sub-agents", "Commands"].contains(name)
         navigate("nav-" + (library ? "Skills" : name))
         if library && name != "Skills" {
-            app.buttons["library-picker"].tap(); app.buttons[name].tap()
+            app.buttons["view-options"].tap(); app.buttons[name].tap()
         }
         let title = ["Settings": "Project Settings", "Conveyors": "Conveyor", "Planners": "Planner"][name] ?? name
         XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
@@ -63,6 +63,12 @@ import CryptoKit
         XCTAssertTrue(app.descendants(matching: .any)["live-terminal"].firstMatch.waitForExistence(timeout: 12))
         let state = try await control("state"), portals = state["portals"] as! [String: Any]
         return portals.keys.first!
+    }
+    private func filterStatus(_ value: String) {
+        app.buttons["view-options"].tap()
+        let status = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Status'")).firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 5)); status.tap()
+        let option = app.buttons[value]; XCTAssertTrue(option.waitForExistence(timeout: 5)); option.tap()
     }
     private func scrollTo(_ element: XCUIElement) {
         for _ in 0..<6 { if element.exists && element.isHittable && app.frame.contains(element.frame) { break }; app.swipeUp() }
@@ -90,8 +96,8 @@ import CryptoKit
     func test01EmptyProjectKeepsNavigationAndNativeLayout() async throws {
         try await launch(project: false)
         XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5))
-        assertFits(app.buttons["open-sidebar"]); assertFits(app.buttons["inbox-filters"])
-        XCTAssertTrue(app.buttons["inbox-filters"].isHittable)
+        assertFits(app.buttons["open-sidebar"])
+        assertFits(app.buttons["view-options"]); assertFits(app.buttons["create-item"])
         screenshot("01-empty-project")
         chooseProject("Test workspace"); XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
         screenshot("02-inbox")
@@ -102,9 +108,10 @@ import CryptoKit
         chooseProject("Test workspace"); XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
     }
     func test03InboxStatusFilter() async throws {
-        try await launch(); app.buttons["inbox-filters"].tap(); app.buttons["status-filter"].tap(); app.buttons.matching(NSPredicate(format: "label == 'Done' AND identifier != 'filters-done'")).firstMatch.tap(); app.buttons["filters-done"].tap()
+        try await launch(); filterStatus("Done")
         XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5))
-        app.buttons["inbox-filters"].tap(); app.buttons["status-filter"].tap(); app.buttons["Waiting Input"].tap(); app.buttons["filters-done"].tap()
+        XCTAssertEqual(app.buttons["view-options"].label, "View options, filtered")
+        filterStatus("Waiting Input")
         XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
     }
     func test04CreateUnicodeTaskAndInitialImage() async throws {
@@ -199,7 +206,7 @@ import CryptoKit
     }
     func test13NotesCreateEditAndComment() async throws {
         try await launch(); section("Notes"); create(); type("title","Test note"); type("content","Note content"); app.buttons["editor-submit"].tap()
-        XCTAssertTrue(app.buttons["Add comment"].waitForExistence(timeout: 5)); app.buttons["Add comment"].tap(); type("content","Review comment"); app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.buttons["add-comment"].waitForExistence(timeout: 5)); app.buttons["add-comment"].tap(); type("content","Review comment"); app.buttons["editor-submit"].tap()
         XCTAssertTrue(app.staticTexts["Review comment"].waitForExistence(timeout: 5)); screenshot("08-note")
     }
     func test14AllWorkspaceSectionsLoad() async throws {
@@ -245,16 +252,25 @@ import CryptoKit
         XCTAssertTrue(app.buttons["open-sidebar"].waitForExistence(timeout: 5))
     }
     func test18SidebarDismissalAndUtilityBackPreserveDetail() async throws {
-        try await launch(); openTask()
+        try await launch()
         openSidebar()
-        XCTAssertFalse(app.buttons["reply-task"].isHittable)
+        XCTAssertFalse(app.buttons["create-item"].isHittable)
         app.buttons["close-sidebar"].tap()
-        XCTAssertTrue(app.buttons["reply-task"].isHittable)
+        XCTAssertTrue(app.buttons["create-item"].isHittable)
         navigate("nav-account")
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.switches["Project memory"].exists)
         back()
-        XCTAssertTrue(app.buttons["reply-task"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["create-item"].waitForExistence(timeout: 5))
+        // Pushed screens show Back only; the drawer button belongs to root screens.
+        openTask()
+        XCTAssertFalse(app.buttons["open-sidebar"].exists)
+        XCTAssertTrue(app.buttons["more-actions"].isHittable)
+        app.buttons["more-actions"].tap()
+        XCTAssertTrue(app.buttons["Forward to agent"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Delete task"].exists)
+        app.buttons["Forward to agent"].tap(); app.buttons["Cancel"].tap()
+        back()
         chooseProject("Empty project")
         XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["reply-task"].exists)
@@ -305,9 +321,18 @@ import CryptoKit
         app.launch()
         XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 10))
         section("Settings")
-        XCTAssertTrue(app.staticTexts["Project role: member"].exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Your role' OR (label == 'Member')")).firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.switches["Project memory"].exists)
         XCTAssertFalse(app.buttons["Sign out"].exists)
+    }
+    func test23EdgeSwipeOpensAndSwipeClosesSidebar() async throws {
+        try await launch()
+        guard app.buttons["open-sidebar"].exists else { throw XCTSkip("Regular width keeps a persistent sidebar") }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)))
+        XCTAssertTrue(app.buttons["close-sidebar"].waitForExistence(timeout: 3))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
+        XCTAssertTrue(app.buttons["close-sidebar"].waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["record-task"].isHittable)
     }
 
 }
