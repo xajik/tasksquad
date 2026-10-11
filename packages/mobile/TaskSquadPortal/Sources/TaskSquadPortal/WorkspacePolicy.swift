@@ -12,7 +12,7 @@ public enum WorkspacePolicy {
     public static func canCreate(section: WorkspaceSection, project: String, role: String, isPro: Bool, agents: [CustomerRecord], records: [CustomerRecord]) -> Bool {
         guard !project.isEmpty else { return false }
         if [.inbox, .notes].contains(section) { return true }
-        if section == .portals { return isPro && agents.contains(where: eligible) && records.filter { ["pending", "running"].contains($0.status) }.count < 3 }
+        if section == .portals { return isPro && agents.contains(where: eligible) && records.filter { PortalLifecycle.isLive($0.status) }.count < 3 }
         if section == .members { return role == "owner" }
         return canManage(role: role) && ![.supervisor, .memory, .analytics, .settings].contains(section)
     }

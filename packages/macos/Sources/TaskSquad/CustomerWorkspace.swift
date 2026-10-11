@@ -207,11 +207,12 @@ struct CustomerWorkspace: View {
                     Icon(.monitor).foregroundStyle(Theme.mutedForeground)
                     Text(model.agentName(record.text("agent_id"))).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.foreground)
                     CustomerStatus(status: record.status); Spacer()
-                    if ["pending", "running"].contains(record.status) { Button("Close Portal") { confirmClosePortal(record) }.buttonStyle(.tsqOutline) }
+                    if PortalLifecycle.isLive(record.status) { Button("Close Portal") { confirmClosePortal(record) }.buttonStyle(.tsqOutline) }
                 }.padding(.horizontal, 16).padding(.vertical, 12).edgeBorder(.bottom)
-                if !record.text("session_id").isEmpty, record.status == "running" {
-                    CustomerRemoteTerminal(api: try? model.api(), sessionID: record.text("session_id"))
-                } else { EmptyState(icon: .monitor, title: record.status == "pending" ? "Waiting for the agent" : "Portal \(record.status)", message: "The agent's daemon handles this terminal session.") }
+                let lifecycle = PortalLifecycle(record)
+                if let session = lifecycle.sessionID {
+                    CustomerRemoteTerminal(api: try? model.api(), sessionID: session)
+                } else { EmptyState(icon: .monitor, title: lifecycle.title, message: lifecycle.message) }
             }
         case .planners: plannerDetail(record)
         default: genericDetail(record)

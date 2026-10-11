@@ -28,8 +28,9 @@ import Combine
             var nextMessages: [CustomerRecord] = [], nextComments: [CustomerRecord] = [], nextRelated: [CustomerRecord] = []
             if [.inbox, .supervisor].contains(section) { nextMessages = CustomerRecord(try await workspace.api.request(["tasks", id, "messages"])).records("messages") }
             if section == .notes {
-                nextComments = CustomerRecord(try await workspace.api.request(["teams", project, "notes", id, "comments"])).records("comments")
-                nextRelated = CustomerRecord(try await workspace.api.request(["teams", project, "notes", id, "tasks"])).records("tasks")
+                async let comments = workspace.api.request(["teams", project, "notes", id, "comments"])
+                async let tasks = workspace.api.request(["teams", project, "notes", id, "tasks"])
+                (nextComments, nextRelated) = try await (CustomerRecord(comments).records("comments"), CustomerRecord(tasks).records("tasks"))
             }
             if section == .conveyors { nextRelated = CustomerRecord(try await workspace.api.request(["teams", project, "conveyors", id, "tasks"])).records("tasks") }
             guard key == workspace.context, generation == request, !Task.isCancelled else { return }

@@ -66,3 +66,17 @@ final class WorkspaceEditorTests: XCTestCase {
         XCTAssertEqual(StatusPresentation("something_new").variant, .outline, "Unknown statuses are neutral")
     }
 }
+
+final class PortalLifecycleTests: XCTestCase {
+    private func portal(_ status: String, session: String = "") -> PortalLifecycle {
+        PortalLifecycle(CustomerRecord(.object(["id": .string("p"), "status": .string(status), "session_id": .string(session)])))
+    }
+    func testPendingRunningAndEndedTransitions() {
+        XCTAssertEqual(portal("pending").phase, .waiting); XCTAssertTrue(portal("pending").isLive)
+        XCTAssertEqual(portal("running").phase, .starting); XCTAssertNil(portal("running").sessionID)
+        XCTAssertEqual(portal("running", session: "s").sessionID, "s")
+        XCTAssertEqual(portal("done").title, "Portal completed"); XCTAssertFalse(portal("done").isLive)
+        XCTAssertEqual(portal("failed").title, "Portal failed")
+        XCTAssertEqual(portal("failed", session: "s").sessionID, nil, "Ended Portals never reconnect")
+    }
+}

@@ -52,7 +52,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] Single shared poll driver (`WorkspaceStore.poll(refreshWorkspace:onTick:)`). Timer ticks coalesce, explicit refreshes never do. macOS chains detail and notifications from it, and the background notifier fetches only when the inbox isn't visible.
 - [x] iOS detail screen uses the shared driver in detail-only mode. It was never a double poll: `NavigationStack` cancels the inbox poller while the detail screen is pushed.
 - [x] `CustomerWorkspaceModel`: `path(for:)` and `teamPath` removed. `agentName`, `isOwner`, `isMaintainer`, `isPro` and `currentTeam` delegate to `WorkspaceStore`.
-- [ ] `RecordDetailStore`: concurrent note comments/tasks; Portal lifecycle state
+- [x] `RecordDetailStore` fetches note comments and tasks concurrently. `PortalLifecycle` (waiting/starting/connected/failed/ended) drives both terminal screens, the close button and the 3-live limit. macOS ended Portals now read "Portal completed" instead of "Portal done".
 - [ ] Tests: pagination survives refresh, out-of-order detail, account switch during `connect`, poll cancellation
 
 ### D. Shared content components

@@ -22,7 +22,7 @@ struct MobileRecordDetail: View {
     @State private var transcript: String?
     private var record: CustomerRecord? { detail ?? model.records.first { $0.id == id } }
     private var taskSection: Bool { [.inbox, .supervisor].contains(model.section) }
-    private var live: Bool { ["pending", "running"].contains(record?.status ?? "") }
+    private var live: Bool { PortalLifecycle.isLive(record?.status ?? "") }
     var body: some View {
         Group {
             if model.section == .portals, let record { portal(record) }
@@ -85,10 +85,11 @@ struct MobileRecordDetail: View {
     private var terminalAPI: PortalAPI { PortalAPI(baseURL: model.api.baseURL) { force in try await model.api.accessToken(forceRefresh: force) } }
     @ViewBuilder private func portal(_ record: CustomerRecord) -> some View {
         VStack(spacing: 0) {
-            if record.status == "running", !record.text("session_id").isEmpty {
-                PortalTerminalScreen(sessionID: record.text("session_id"), api: terminalAPI).id(record.text("session_id"))
+            let lifecycle = PortalLifecycle(record)
+            if let session = lifecycle.sessionID {
+                PortalTerminalScreen(sessionID: session, api: terminalAPI).id(session)
             } else {
-                ContentUnavailableView(record.status == "pending" ? "Waiting for agent" : record.status == "running" ? "Starting terminal" : record.status == "failed" ? "Portal failed" : "Portal completed", systemImage: "terminal", description: Text(live ? "The terminal will connect when the agent starts the session." : "This session has ended."))
+                ContentUnavailableView(lifecycle.title, systemImage: "terminal", description: Text(lifecycle.message))
                 Text(record.status.capitalized).accessibilityIdentifier("portal-status")
             }
             if let error = mutationError ?? error ?? model.error { Text(error).foregroundStyle(MobileTheme.destructive).padding().accessibilityIdentifier("detail-error") }
