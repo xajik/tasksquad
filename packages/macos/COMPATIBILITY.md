@@ -51,7 +51,7 @@ Status: **missing** (no Swift implementation), **partial** (some behaviour or te
 
 | Go reference | Swift | Tests | Status | Remaining |
 |---|---|---|---|---|
-| `config` (TOML schema, defaults) | `Configuration.swift`, `TOML.swift` | `ConfigurationTests`, `GoCompatibilityTests` | partial | Cover all accepted Go document forms and rejected conflicts |
+| `config` (TOML schema, defaults) | `Configuration.swift`, `TOML.swift` | `ConfigurationTests`, `GoCompatibilityTests`, `TOMLConformanceTests` (44-document corpus: number forms, dotted/inline/quoted keys, multiline and escaped strings, duplicates, redefinitions, wrong types, malformed input — accept/reject and values identical to Go) | done | — |
 | device-id, `daemon.lock` (`app_darwin.go`) | `Paths.swift` | `StorageTests`, `GoCompatibilityTests` | done | — |
 | `auth` (token priority, refresh, logout) | `Authentication.swift`, `LoginFlow.swift` | `AuthenticationTests`, `LoginFlowTests` | partial | Real-account Keychain reuse incl. OS authorization of the new executable |
 | Keychain (`go-keyring`) | `Credentials.swift` | `KeychainIntegrationTests` (optional) | done | — |
