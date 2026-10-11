@@ -16,6 +16,9 @@ private actor InteractiveWorker {
     var imageMessages: [JSONValue] = []
     var imageAttaches: [JSONValue] = []
     var metrics: [JSONValue] = []
+    /// Manual mode: never auto-reply or auto-close (the test drives the session).
+    var manual = false
+    func setManual() { manual = true }
     var base = ""
     func setBase(_ value: String) { base = value }
     func handle(_ request: LocalHTTPRequest) -> LocalHTTPResponse {
@@ -29,7 +32,7 @@ private actor InteractiveWorker {
                 assigned = true
                 let message = JSONValue.object(["role": .string("user"), "body": .string("first é猫")])
                 agent["task"] = .object(["id": .string("fixture-task"), "subject": .string("s"), "messages": .array([message])])
-            } else if status == "waiting_input" && !replied {
+            } else if status == "waiting_input" && !replied && !manual {
                 replied = true
                 agent["reply"] = .string("second turn")
             }
@@ -39,7 +42,7 @@ private actor InteractiveWorker {
         case "/daemon/session/notify":
             notifies.append(body["message"]?.string ?? "")
             // The second paused reply is auto-closed by the server.
-            return .json(.object(["message_id": .string("m\(notifies.count)"), "close": .bool(notifies.count == 2)]))
+            return .json(.object(["message_id": .string("m\(notifies.count)"), "close": .bool(notifies.count == 2 && !manual)]))
         case "/daemon/session/close":
             close = body
             return .json(.object(["message_id": .string("final")]))
@@ -448,6 +451,70 @@ private actor InteractiveWorker {
             await server.stop()
             try? FileManager.default.removeItem(at: home)
         }
+    }
+
+
+    /// Go agent/terminal_control_test: native terminal input joins the task lifecycle
+    /// (origin/pane/task checks, Unicode, waiting_input → running, one reply per turn)
+    /// and a scoped close completes the task "closed" without touching other sessions.
+    func testManagedTerminalTwoTurnsAndScopedClose() async throws {
+        let tmux = try tmuxConnection()
+        defer { Task { _ = try? await tmux.run(["kill-server"]) } }
+        let script = """
+        #!/bin/sh
+        url=$(printf '%s ' "$@" | grep -o 'http://127.0.0.1:[0-9]*/hooks/codex?[^" ]*' | head -1)
+        post() { curl -s -X POST "$url" -H 'Content-Type: application/json' --data-binary "{\\"type\\":\\"agent-turn-complete\\",\\"thread-id\\":\\"thread\\",\\"turn-id\\":\\"$1\\",\\"last-assistant-message\\":\\"$2\\"}" >/dev/null; }
+        post 1 FIRST
+        while IFS= read -r line; do post 2 "SECOND $line"; post 2 DUPLICATE; done
+        """
+        let worker = InteractiveWorker()
+        await worker.setManual()
+        let (engine, server, home) = try await makeEngine(script: script, binary: "codex", worker: worker, tmux: tmux, errors: { _ in })
+        defer { try? FileManager.default.removeItem(at: home) }
+        _ = try await tmux.run(["new-session", "-d", "-s", "unrelated", "/bin/cat"])
+        try await engine.start()
+        try await wait { await worker.notifies == ["FIRST"] }
+        try await wait { await engine.snapshots().first?.mode == .waitingInput }
+        let port = try String(contentsOf: home.appendingPathComponent("hooks-port"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        let pane = try await tmux.run(["display-message", "-p", "-t", "tsq-01FIXTURESESSION", "#{pane_id}"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let other = try await tmux.run(["display-message", "-p", "-t", "unrelated", "#{pane_id}"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        func call(_ path: String, _ body: [String: Any], origin: String? = nil) async throws -> Int {
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)\(path)")!)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let origin { request.setValue(origin, forHTTPHeaderField: "Origin") }
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            return (try await URLSession.shared.data(for: request).1 as? HTTPURLResponse)?.statusCode ?? 0
+        }
+        var input: [String: Any] = ["agent_id": "fixture-agent", "task_id": "fixture-task", "session": "tsq-01FIXTURESESSION", "pane": pane,
+                                    "data": Data("café 猫\r".utf8).base64EncodedString(), "submit": true]
+        var code = try await call("/hooks/terminal/input", input, origin: "https://untrusted.example"); XCTAssertEqual(code, 403)
+        input["pane"] = other
+        code = try await call("/hooks/terminal/input", input); XCTAssertEqual(code, 409, "cross-session input")
+        input["pane"] = pane; input["task_id"] = "stale"
+        code = try await call("/hooks/terminal/input", input); XCTAssertEqual(code, 409, "stale task input")
+        input["task_id"] = "fixture-task"
+        code = try await call("/hooks/terminal/input", input); XCTAssertEqual(code, 204)
+        try await wait { await worker.notifies.count >= 2 }
+        try await Task.sleep(for: .milliseconds(200))
+        let notifies = await worker.notifies
+        XCTAssertEqual(notifies, ["FIRST", "SECOND café 猫"], "one reply per turn; the duplicate is dropped")
+        let journal = try String(contentsOf: home.appendingPathComponent(".tasksquad/tasks/fixture-task.jsonl"), encoding: .utf8)
+        XCTAssertEqual(journal.components(separatedBy: #""type":"agent_turn""#).count - 1, 2, journal)
+
+        var close: [String: Any] = ["agent_id": "fixture-agent", "task_id": "stale", "session": "tsq-01FIXTURESESSION"]
+        code = try await call("/hooks/terminal/close", close); XCTAssertEqual(code, 409, "stale close")
+        close["task_id"] = "fixture-task"
+        code = try await call("/hooks/terminal/close", close); XCTAssertEqual(code, 204)
+        try await wait { await worker.close != nil }
+        let closeBody = await worker.close
+        XCTAssertEqual(closeBody?["status"]?.string, "closed")
+        try await wait { await engine.snapshots().first?.mode == .idle }
+        let sessions = try await tmux.run(["list-sessions", "-F", "#{session_name}"])
+        XCTAssertFalse(sessions.contains("tsq-01FIXTURESESSION")); XCTAssertTrue(sessions.contains("unrelated"))
+        code = try await call("/hooks/terminal/close", close); XCTAssertEqual(code, 409, "repeated close")
+        await engine.stop()
+        await server.stop()
     }
 
 }
