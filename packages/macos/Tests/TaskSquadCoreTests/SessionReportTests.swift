@@ -108,9 +108,12 @@ final class SessionReportTests: XCTestCase {
         let port = try await server.start()
         let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        let hooksPort = try await freeLoopbackPort()
         let config = try DaemonConfiguration.parse("""
         [server]
         url = 'http://127.0.0.1:\(port)'
+        [hooks]
+        port = \(hooksPort)
         [[agents]]
         id = 'report-agent'
         name = 'Report fixture'

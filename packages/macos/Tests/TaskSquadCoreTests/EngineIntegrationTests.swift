@@ -97,9 +97,12 @@ private actor WorkerFixture {
         let server = try LocalHTTPServer { await fixture.handle($0) }
         let port = try await server.start()
         await fixture.setURL("http://127.0.0.1:\(port)")
+        let hooksPort = try await freeLoopbackPort()
         let config = try DaemonConfiguration.parse("""
         [server]
         url = 'http://127.0.0.1:\(port)'
+        [hooks]
+        port = \(hooksPort)
         [[agents]]
         id = 'fixture-agent'
         name = 'Test agent'

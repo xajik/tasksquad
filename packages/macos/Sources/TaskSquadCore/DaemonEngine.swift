@@ -82,19 +82,18 @@ public actor DaemonEngine {
         }
         let lock = try DaemonLock(paths: paths)
         let runtimes = configuration.agents.map { AgentRuntime(configuration: $0) }
-        // Stdout-only configurations have no hook traffic and need no listener.
-        if runtimes.contains(where: { $0.provider.usesHooks }) {
-            guard let port = UInt16(exactly: configuration.hooks.port), port > 0 else {
-                throw ConfigurationError("hooks.port must be between 1 and 65535")
-            }
-            let server = try LocalHTTPServer(port: port) { [weak self] request in
-                await self?.handleHook(request) ?? .init(status: 503)
-            }
-            do { _ = try await server.start() } catch {
-                throw ConfigurationError("Could not listen for provider hooks on 127.0.0.1:\(port): \(error.localizedDescription). Quit any other TaskSquad daemon using this port.")
-            }
-            hookServer = server
+        // Always listen, as Go does: stdout agents use it too (`tsq send-image`,
+        // `tsq report`, supervisor verdicts, Portal-triggered supervisor runs).
+        guard let port = UInt16(exactly: configuration.hooks.port), port > 0 else {
+            throw ConfigurationError("hooks.port must be between 1 and 65535")
         }
+        let server = try LocalHTTPServer(port: port) { [weak self] request in
+            await self?.handleHook(request) ?? .init(status: 503)
+        }
+        do { _ = try await server.start() } catch {
+            throw ConfigurationError("Could not listen for provider hooks on 127.0.0.1:\(port): \(error.localizedDescription). Quit any other TaskSquad daemon using this port.")
+        }
+        hookServer = server
         daemonLock = lock
         running = true
         startedAt = .now

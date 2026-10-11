@@ -81,7 +81,8 @@ Status: **missing** (no Swift implementation), **partial** (some behaviour or te
 | Route | Status |
 |---|---|
 | `/hooks/stop`, `/hooks/notification`, `/hooks/after_agent`, `/hooks/codex`, `/hooks/opencode`, `/hooks/skill`, `/hooks/tui-blocked`, `/hooks/terminal/input`, `/hooks/terminal/close` | partial (implemented; Go handler tests not yet ported) |
-| `/hooks/attach` (used by `tsq send-image`) | done (`InteractiveEngineTests.testAttachHookSendsImageForCurrentTaskOnly`). Gap: Swift starts the hook listener only when an agent uses hooks; Go always listens, so stdout-only setups can't `send-image` yet |
+| `/hooks/attach` (used by `tsq send-image`) | done (`InteractiveEngineTests.testAttachHookSendsImageForCurrentTaskOnly`) |
+| Hook listener always on (stdout-only configs too) | done; deliberate difference: a busy port fails start instead of Go's silent goroutine error |
 | `/hooks/event` | done (`InteractiveEngineTests.testEventHookFeedsCurrentTaskLifecycleIntoSessionReport`) |
 | `/hooks/supervisor`, `/hooks/trigger-supervisor` | missing |
 

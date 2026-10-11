@@ -208,26 +208,40 @@ private actor InteractiveWorker {
         await server.stop()
     }
 
-    func testStdoutOnlyConfigurationDoesNotListenForHooks() async throws {
+    /// Like Go, stdout-only agents still get the hook listener (`tsq send-image`,
+    /// supervisor). Unlike Go's silent goroutine, a taken port fails start clearly.
+    func testStdoutOnlyConfigurationListensForHooksAndReportsABusyPort() async throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: home) }
+        func config(_ port: Int) throws -> DaemonConfiguration {
+            try DaemonConfiguration.parse("""
+            [server]
+            url = 'http://127.0.0.1:1'
+            [hooks]
+            port = \(port)
+            [[agents]]
+            id = 'a'
+            name = 'a'
+            command = '/bin/echo'
+            provider = 'stdout'
+            work_dir = '/tmp'
+            """)
+        }
+        let port = try await freeLoopbackPort()
+        let engine = DaemonEngine(configuration: try config(port), paths: TaskSquadPaths(home: home), tokens: FixtureTokens())
+        try await engine.start()
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/hooks/attach")!)
+        request.httpMethod = "POST"
+        request.httpBody = Data(#"{"task_id":"none","path":"/tmp/x.png"}"#.utf8)
+        let (_, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 404, "listener up, no agent on that task")
+        await engine.stop()
+
         let blocker = try LocalHTTPServer { _ in .init() }
         let busy = try await blocker.start()
-        let config = try DaemonConfiguration.parse("""
-        [server]
-        url = 'http://127.0.0.1:1'
-        [hooks]
-        port = \(busy)
-        [[agents]]
-        id = 'a'
-        name = 'a'
-        command = '/bin/echo'
-        provider = 'stdout'
-        work_dir = '/tmp'
-        """)
-        let engine = DaemonEngine(configuration: config, paths: TaskSquadPaths(home: home), tokens: FixtureTokens())
-        try await engine.start()
-        await engine.stop()
+        let second = DaemonEngine(configuration: try config(Int(busy)), paths: TaskSquadPaths(home: home), tokens: FixtureTokens())
+        do { try await second.start(); XCTFail("expected a busy-port error"); await second.stop() }
+        catch { XCTAssertTrue(error.localizedDescription.contains("Could not listen for provider hooks"), error.localizedDescription) }
         await blocker.stop()
     }
 

@@ -46,10 +46,12 @@ final class PortalHostTests: XCTestCase {
         let port = try await server.start()
         let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
-        // Stdout provider: no hook listener is needed, so the test owns no fixed port.
+        let hooksPort = try await freeLoopbackPort()
         let config = try DaemonConfiguration.parse("""
         [server]
         url = 'http://127.0.0.1:\(port)'
+        [hooks]
+        port = \(hooksPort)
         [[agents]]
         id = 'portal-agent'
         name = 'Portal fixture'
