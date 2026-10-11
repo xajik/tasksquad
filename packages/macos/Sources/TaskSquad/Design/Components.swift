@@ -37,68 +37,31 @@ struct SidebarHeader: View {
 }
 
 typealias Badge = TSQBadge
+typealias Card = TSQCard
+typealias EmptyState = TSQEmptyState
+typealias StatusDot = TSQStatusDot
+typealias PageHeader = TSQPageHeader
 
-struct StatusDot: View {
-    var active: Bool
-    var color: Color? = nil
-    var size: CGFloat = 8
-    @State private var pulse = false
-    var body: some View {
-        Circle().fill(color ?? (active ? Theme.live : Theme.mutedForeground)).frame(width: size, height: size)
-            .opacity(active && pulse ? 0.45 : 1)
-            .animation(active ? .easeInOut(duration: 1).repeatForever(autoreverses: true) : .default, value: pulse)
-            .onAppear { pulse = active }
-            .onChange(of: active) { pulse = $0 }
+/// macOS call sites name icons with `LucideIcon`; the shared views take the file name.
+extension TSQEmptyState {
+    init(icon: LucideIcon, title: String, message: String, @ViewBuilder actions: () -> Actions) {
+        self.init(icon: icon.rawValue, title: title, message: message, actions: actions)
     }
 }
-
-struct Card<Content: View>: View {
-    var padding: CGFloat = 16
-    @ViewBuilder let content: Content
-    var body: some View {
-        content.padding(padding)
-            .background(Theme.background, in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.border))
-    }
+extension TSQEmptyState where Actions == EmptyView {
+    init(icon: LucideIcon, title: String, message: String) { self.init(icon: icon.rawValue, title: title, message: message) }
+}
+extension TSQPageHeader {
+    init(title: String, subtitle: String? = nil, @ViewBuilder trailing: () -> Trailing) { self.init(title, subtitle: subtitle, trailing: trailing) }
 }
 
-struct EmptyState<Actions: View>: View {
-    let icon: LucideIcon, title: String, message: String
-    @ViewBuilder var actions: Actions
-    var body: some View {
-        VStack(spacing: 10) {
-            Icon(icon, size: 22).foregroundStyle(Theme.mutedForeground)
-                .frame(width: 48, height: 48).background(Theme.muted, in: Circle())
-                .padding(.bottom, 4)
-            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.foreground)
-            Text(message).font(.system(size: 13)).foregroundStyle(Theme.mutedForeground)
-                .multilineTextAlignment(.center).frame(maxWidth: 380)
-            actions.padding(.top, 6)
-        }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-extension EmptyState where Actions == EmptyView {
-    init(icon: LucideIcon, title: String, message: String) { self.init(icon: icon, title: title, message: message) { EmptyView() } }
-}
-
+/// Shared destructive callout, inset like the macOS panes expect.
 struct ErrorBanner: View {
     let message: String
     var dismiss: (() -> Void)?
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Icon(.circleAlert).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
-            Text(message).font(.system(size: 13)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-            if let dismiss {
-                Button(action: dismiss) { Icon(.x, size: 14) }.buttonStyle(.plain).help("Dismiss")
-            }
-        }
-        .foregroundStyle(Theme.destructive)
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(Theme.destructive.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.destructive.opacity(0.3)))
-        .padding(.horizontal, 16).padding(.vertical, 10)
-    }
+    var body: some View { TSQErrorBanner(message, dismiss: dismiss).padding(.horizontal, 16).padding(.vertical, 10) }
 }
+
 
 /// Web `Input` with a leading search icon.
 struct SearchField: View {
@@ -168,22 +131,6 @@ struct TSQList<Item, ID: Hashable, Row: View>: View {
 extension TSQList where Item: Identifiable, ID == Item.ID {
     init(items: [Item], selection: Binding<ID?>, @ViewBuilder row: @escaping (Item) -> Row) {
         self.init(items: items, id: \.id, selection: selection, row: row)
-    }
-}
-
-struct PageHeader<Trailing: View>: View {
-    let title: String
-    var subtitle: String? = nil
-    @ViewBuilder var trailing: Trailing
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 20, weight: .bold)).foregroundStyle(Theme.foreground)
-                if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.mutedForeground) }
-            }
-            Spacer(minLength: 12)
-            trailing
-        }.padding(.horizontal, 20).padding(.vertical, 14)
     }
 }
 
