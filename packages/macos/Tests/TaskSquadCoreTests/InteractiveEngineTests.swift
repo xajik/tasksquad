@@ -20,8 +20,10 @@ private actor InteractiveWorker {
     var manual = false
     func setManual() { manual = true }
     var base = ""
+    var paths: [String] = []
     func setBase(_ value: String) { base = value }
     func handle(_ request: LocalHTTPRequest) -> LocalHTTPResponse {
+        paths.append(request.path)
         let body = (try? JSONDecoder().decode(JSONValue.self, from: request.body)) ?? .null
         switch request.path {
         case "/daemon/heartbeat/batch":
@@ -86,6 +88,23 @@ private actor InteractiveWorker {
             guard ContinuousClock.now < deadline else { XCTFail("Timed out waiting for condition"); return }
             try await Task.sleep(for: .milliseconds(50))
         }
+    }
+
+    /// On timeout, report what the task got to (CI-only failures are otherwise silent).
+    private func diagnose(_ worker: InteractiveWorker, home: URL) async {
+        guard await worker.close == nil else { return }
+        let logs = home.appendingPathComponent(".tasksquad/logs")
+        var report = "requests: \(await worker.paths.joined(separator: " "))\n"
+        let files = (FileManager.default.enumerator(at: logs, includingPropertiesForKeys: nil)?.allObjects as? [URL]) ?? []
+        for url in files where url.pathExtension == "log" {
+            report += "== \(url.lastPathComponent)\n" + ((try? String(contentsOf: url, encoding: .utf8)) ?? "") + "\n"
+        }
+        let ps = Process(); let out = Pipe()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps"); ps.arguments = ["-axo", "pid,ppid,etime,command"]; ps.standardOutput = out
+        try? ps.run(); ps.waitUntilExit()
+        report += String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .split(separator: "\n").filter { $0.contains(home.lastPathComponent) || $0.contains("curl") }.joined(separator: "\n")
+        XCTFail("diagnostics:\n" + report)
     }
 
     private func makeEngine(script: String, binary: String = "claude", worker: InteractiveWorker, tmux: TmuxConnection, relay: String? = nil,
@@ -195,7 +214,7 @@ private actor InteractiveWorker {
         ext=.pi/extensions/tasksquad.ts
         port=$(grep -o 'http://localhost:[0-9]*' "$ext" | head -1 | sed 's/.*://')
         path=$(grep -o '/hooks/stop?agent=[^"]*' "$ext" | head -1)
-        curl -s -X POST "http://127.0.0.1:$port$path" -H 'Content-Type: application/json' --data-binary '{"stop_reason":"idle","message":""}' >/dev/null
+        curl -s -m 5 -X POST "http://127.0.0.1:$port$path" -H 'Content-Type: application/json' --data-binary '{"stop_reason":"idle","message":""}' >/dev/null
         echo 'Error: model omlx/default is not loaded' >&2
         exit 1
         """
@@ -204,6 +223,7 @@ private actor InteractiveWorker {
         defer { try? FileManager.default.removeItem(at: home) }
         try await engine.start()
         try await wait { await worker.close != nil }
+        await diagnose(worker, home: home)
         let close = await worker.close
         XCTAssertEqual(close?["status"], .string("crashed"))
         XCTAssertEqual(close?["final_text"], .string("Agent process failed:\nError: model omlx/default is not loaded"))
@@ -436,7 +456,7 @@ private actor InteractiveWorker {
             #!/bin/sh
             url=$(grep -o 'http://localhost:[0-9]*' .pi/extensions/tasksquad.ts | head -1)
             query=$(grep -o '/hooks/stop?agent=[^"]*' .pi/extensions/tasksquad.ts | head -1)
-            curl -s -X POST "$url$query" --data-binary '{"stop_reason":"\(reason)","message":"\(message)","transcript_path":""}' >/dev/null
+            curl -s -m 5 -X POST "$url$query" --data-binary '{"stop_reason":"\(reason)","message":"\(message)","transcript_path":""}' >/dev/null
             sleep 0.3
             exit 1
             """
@@ -444,6 +464,7 @@ private actor InteractiveWorker {
             let (engine, server, home) = try await makeEngine(script: script, binary: "pi", worker: worker, tmux: tmux, errors: { _ in })
             try await engine.start()
             try await wait { await worker.close != nil }
+            await diagnose(worker, home: home)
             let close = await worker.close
             XCTAssertEqual(close?["status"]?.string, "crashed", "exit 1 decides, whatever the hook said")
             if !expected.isEmpty { XCTAssertEqual(close?["final_text"]?.string, expected) }
