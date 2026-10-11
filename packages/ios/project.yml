@@ -43,4 +43,5 @@ packages:
   TaskSquadPortal:
     path: ../mobile/TaskSquadPortal
   SwiftTerm:
-    path: ../macos/.build/checkouts/SwiftTerm
+    url: https://github.com/migueldeicaza/SwiftTerm.git
+    exactVersion: 1.20.0

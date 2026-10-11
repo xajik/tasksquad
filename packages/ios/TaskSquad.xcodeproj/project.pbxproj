@@ -28,7 +28,6 @@
 
 /* Begin PBXFileReference section */
 		2BCC62A613A83F8C03BD4FA2 /* TaskSquad.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TaskSquad.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		2DB780B1B653C4F0694E2D32 /* SwiftTerm */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SwiftTerm; path = ../macos/.build/checkouts/SwiftTerm; sourceTree = SOURCE_ROOT; };
 		3D799CB7685A475963E63111 /* PortalFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalFlowTests.swift; sourceTree = "<group>"; };
 		7FE0916A7F339476E58B09DB /* TaskSquadPortal */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TaskSquadPortal; path = ../mobile/TaskSquadPortal; sourceTree = SOURCE_ROOT; };
 		8A24DFD7CDB332FEB0BFA475 /* PortalTerminalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalTerminalScreen.swift; sourceTree = "<group>"; };
@@ -92,7 +91,6 @@
 		F5ECD87333E3C4CD9BD17DCF /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				2DB780B1B653C4F0694E2D32 /* SwiftTerm */,
 				7FE0916A7F339476E58B09DB /* TaskSquadPortal */,
 			);
 			name = Packages;
@@ -163,7 +161,7 @@
 			mainGroup = 86B5879F4D6A031FFDB26923;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				58416CCC17954FB9BD52FB1E /* XCLocalSwiftPackageReference "../macos/.build/checkouts/SwiftTerm" */,
+				DADF41AC399544AEF63000CF /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 				B35F6F2DE9D375B6E039A864 /* XCLocalSwiftPackageReference "../mobile/TaskSquadPortal" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -213,7 +211,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLName\": \"ai.tasksquad.portal.auth\", \"CFBundleURLSchemes\": [\"tasksquad-portal\"]]]";
+				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLSchemes\": [\"tasksquad-portal\"], \"CFBundleURLName\": \"ai.tasksquad.portal.auth\"]]";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -230,7 +228,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLName\": \"ai.tasksquad.portal.auth\", \"CFBundleURLSchemes\": [\"tasksquad-portal\"]]]";
+				INFOPLIST_KEY_CFBundleURLTypes = "[[\"CFBundleURLSchemes\": [\"tasksquad-portal\"], \"CFBundleURLName\": \"ai.tasksquad.portal.auth\"]]";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -438,15 +436,22 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		58416CCC17954FB9BD52FB1E /* XCLocalSwiftPackageReference "../macos/.build/checkouts/SwiftTerm" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../macos/.build/checkouts/SwiftTerm;
-		};
 		B35F6F2DE9D375B6E039A864 /* XCLocalSwiftPackageReference "../mobile/TaskSquadPortal" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../mobile/TaskSquadPortal;
 		};
 /* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		DADF41AC399544AEF63000CF /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
+			requirement = {
+				kind = exactVersion;
+				version = 1.20.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		05923C9AD5D3F2A79B7BD7C8 /* TaskSquadPortal */ = {
@@ -455,6 +460,7 @@
 		};
 		55F351BEB49BF4FC2D89436E /* SwiftTerm */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = DADF41AC399544AEF63000CF /* XCRemoteSwiftPackageReference "SwiftTerm" */;
 			productName = SwiftTerm;
 		};
 /* End XCSwiftPackageProductDependency section */

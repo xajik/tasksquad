@@ -8,10 +8,10 @@ generate:
 	xcodegen generate --spec project.yml
 
 build: generate
-	xcodebuild -project TaskSquad.xcodeproj -scheme TaskSquad -destination 'platform=iOS Simulator,name=$(SIMULATOR),OS=$(SIMULATOR_OS)' -derivedDataPath $(DERIVED_DATA) CODE_SIGNING_ALLOWED=NO build
+	xcodebuild -project TaskSquad.xcodeproj -scheme TaskSquad -destination 'platform=iOS Simulator,name=$(SIMULATOR),OS=$(SIMULATOR_OS)' -derivedDataPath $(DERIVED_DATA) -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO build
 
 test: generate
-	xcodebuild -project TaskSquad.xcodeproj -scheme TaskSquad -destination 'platform=iOS Simulator,name=$(SIMULATOR),OS=$(SIMULATOR_OS)' -derivedDataPath $(DERIVED_DATA) -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
+	xcodebuild -project TaskSquad.xcodeproj -scheme TaskSquad -destination 'platform=iOS Simulator,name=$(SIMULATOR),OS=$(SIMULATOR_OS)' -derivedDataPath $(DERIVED_DATA) -parallel-testing-enabled NO -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO test
 
 e2e: test
 
