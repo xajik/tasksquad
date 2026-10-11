@@ -1,91 +1,223 @@
 import XCTest
+import CryptoKit
 
-private struct PortalMonkeyIteration: Encodable {
-    let iteration: Int
-    let launchToListMilliseconds: Double
-    let openTerminalMilliseconds: Double
-    let closeMilliseconds: Double
-    let actionTrace: [String]
-}
-
+/// Seventeen distinct journeys through production views, HTTP and WebSocket code.
+/// The fixture is loopback and stateful, not an in-app demo or a live daemon.
 @MainActor final class PortalFlowTests: XCTestCase {
-    func testPortalMonkeyRunner15Iterations() throws {
-        var randomState: UInt64 = 0x51C0_FFEE
-        func next(_ upperBound: UInt64) -> UInt64 {
-            randomState = randomState &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-            return (randomState >> 32) % upperBound
-        }
-
-        var metrics: [PortalMonkeyIteration] = []
-        for iteration in 1...15 {
-            let app = XCUIApplication()
-            app.launchArguments = ["--ui-test-demo", "--monkey-iteration=\(iteration)"]
-            let launchStart = Date()
-            app.launch()
-            XCTAssertTrue(app.navigationBars["Portals"].waitForExistence(timeout: 10), "iteration \(iteration): app reaches Portal list")
-            let launchTime = Date().timeIntervalSince(launchStart) * 1_000
-            let portal = app.buttons["portal-row-demo-portal"]
-            XCTAssertTrue(portal.waitForExistence(timeout: 5), "iteration \(iteration): fixture Portal appears")
-            if iteration == 1 { attach(app, name: "Portal Home") }
-
-            let openStart = Date()
-            portal.tap()
-            XCTAssertTrue(app.staticTexts["Connected · Demo"].waitForExistence(timeout: 5), "iteration \(iteration): terminal opens")
-            XCTAssertTrue(app.staticTexts["Portal terminal is ready."].exists, "iteration \(iteration): terminal content renders")
-            let openTime = Date().timeIntervalSince(openStart) * 1_000
-            if iteration == 1 { attach(app, name: "Portal Terminal") }
-
-            var trace: [String] = []
-            for _ in 0..<5 {
-                switch next(2) {
-                case 0:
-                    trace.append("reconnect")
-                    app.buttons["Reconnect terminal"].tap()
-                    XCTAssertTrue(app.staticTexts["Connected · Demo"].waitForExistence(timeout: 3))
-                default:
-                    trace.append("back-reopen")
-                    let back = app.navigationBars.buttons.element(boundBy: 0)
-                    XCTAssertTrue(back.waitForExistence(timeout: 3))
-                    back.tap()
-                    XCTAssertTrue(app.navigationBars["Portals"].waitForExistence(timeout: 3))
-                    let row = app.buttons["portal-row-demo-portal"]
-                    XCTAssertTrue(row.waitForExistence(timeout: 3))
-                    row.tap()
-                    XCTAssertTrue(app.staticTexts["Connected · Demo"].waitForExistence(timeout: 3))
-                }
-            }
-
-            let closeStart = Date()
-            app.buttons["close-portal"].tap()
-            let confirm = app.buttons["Close Portal"]
-            XCTAssertTrue(confirm.waitForExistence(timeout: 3))
-            confirm.tap()
-            XCTAssertTrue(app.staticTexts["No Portals open"].waitForExistence(timeout: 5), "iteration \(iteration): confirmed close returns to empty state")
-            let closeTime = Date().timeIntervalSince(closeStart) * 1_000
-            trace.append("confirmed-close")
-            metrics.append(PortalMonkeyIteration(iteration: iteration,
-                launchToListMilliseconds: launchTime,
-                openTerminalMilliseconds: openTime,
-                closeMilliseconds: closeTime,
-                actionTrace: trace))
-            app.terminate()
-        }
-
-        let payload = try JSONEncoder().encode(metrics)
-        let report = XCTAttachment(data: payload, uniformTypeIdentifier: "public.json")
-        report.name = "iOS Portal monkey run · 15 iterations"
-        report.lifetime = .keepAlways
-        add(report)
-        let averageLaunch = metrics.map(\.launchToListMilliseconds).reduce(0, +) / Double(metrics.count)
-        let averageOpen = metrics.map(\.openTerminalMilliseconds).reduce(0, +) / Double(metrics.count)
-        let averageClose = metrics.map(\.closeMilliseconds).reduce(0, +) / Double(metrics.count)
-        print("PORTAL_MONKEY_METRICS iterations=15 seed=0x51C0FFEE averageLaunchMs=\(Int(averageLaunch)) averageOpenMs=\(Int(averageOpen)) averageCloseMs=\(Int(averageClose))")
+    private let app = XCUIApplication()
+    private let base = URL(string: "http://127.0.0.1:18743")!
+    private func control(_ route: String, body: [String: Any]? = nil) async throws -> [String: Any] {
+        var req = URLRequest(url: base.appendingPathComponent("__test/" + route))
+        if let body { req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.httpBody = try JSONSerialization.data(withJSONObject: body) }
+        let (data, _) = try await URLSession.shared.data(for: req)
+        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
+    private func launch(project: Bool = true) async throws {
+        _ = try await control("reset")
+        app.launchArguments = ["--ui-test-api", base.absoluteString, "--ui-test-reset-drafts", "--ui-test-appearance", "light"]
+        app.launch()
+        XCTAssertTrue(app.buttons["project-picker"].waitForExistence(timeout: 10))
+        if project { chooseProject("Test workspace") }
+    }
+    private func chooseProject(_ name: String) {
+        app.buttons["project-picker"].tap()
+        app.buttons[name].tap()
+    }
+    private func section(_ name: String) {
+        let picker = app.buttons["section-picker"]
+        if !picker.isHittable { app.swipeDown() }
+        XCTAssertTrue(picker.waitForExistence(timeout: 5)); picker.tap(); app.buttons[name].tap()
+        XCTAssertTrue(app.navigationBars[name].waitForExistence(timeout: 5))
+    }
+    private func create() { let button = app.buttons["create-item"]; XCTAssertTrue(button.waitForExistence(timeout: 5)); XCTAssertTrue(button.isHittable); button.tap() }
+    private func agent() { app.buttons["field-agent_id"].tap(); app.buttons["Fixture Agent"].tap() }
+    private func type(_ id: String, _ text: String) { let field = app.descendants(matching: .any)["field-"+id].firstMatch; XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap(); field.typeText(text); if app.buttons["Done editing"].exists { app.buttons["Done editing"].tap() } }
+    private func back() { app.navigationBars.buttons.element(boundBy: 0).tap() }
+    private func openTask() { let row = app.buttons["record-task"]; XCTAssertTrue(row.waitForExistence(timeout: 5)); row.tap(); XCTAssertTrue(app.buttons["reply-task"].waitForExistence(timeout: 5)) }
+    private func openPortal() async throws -> String {
+        section("Portals"); create(); agent(); app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["live-terminal"].firstMatch.waitForExistence(timeout: 12))
+        let state = try await control("state"), portals = state["portals"] as! [String: Any]
+        return portals.keys.first!
+    }
+    private func scrollTo(_ element: XCUIElement) {
+        for _ in 0..<6 { if element.exists && element.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(element.exists); XCTAssertTrue(element.isHittable)
+    }
+    private func screenshot(_ name: String) { let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a) }
+    private func assertImageRoundTrip(taskID: String, message: [String: Any]) async throws {
+        let attachment = (message["attachments"] as! [[String: Any]])[0]
+        let attachmentID = attachment["id"] as! String
+        let messageID = message["id"] as! String
+        let image = app.images["test.png"].firstMatch
+        scrollTo(image)
+        XCTAssertTrue(image.waitForExistence(timeout: 8), "Authenticated download renders the uploaded image")
+        var request = URLRequest(url: base.appendingPathComponent("tasks/\(taskID)/messages/\(messageID)/attachments/\(attachmentID)"))
+        request.setValue("Bearer fixture-token", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        XCTAssertGreaterThan(data.count, 100)
+        XCTAssertEqual(data.count, attachment["size"] as? Int)
+        XCTAssertEqual(data.prefix(8), Data([137,80,78,71,13,10,26,10]))
+        XCTAssertEqual(SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), attachment["sha256"] as? String)
+    }
+    private func assertFits(_ element: XCUIElement) { XCTAssertTrue(element.isHittable); XCTAssertTrue(app.frame.contains(element.frame), "Control outside screen: \(element.frame), screen \(app.frame)") }
 
-    private func attach(_ app: XCUIApplication, name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
+    func test01EmptyProjectKeepsPickerAndNativeLayout() async throws {
+        try await launch(project: false)
+        XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5))
+        assertFits(app.buttons["project-picker"]); assertFits(app.buttons["section-picker"])
+        XCTAssertGreaterThan(app.frame.height, 800)
+        screenshot("01-empty-project")
+        chooseProject("Test workspace"); XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+        screenshot("02-inbox")
+    }
+    func test02ProjectSwitchClearsOldRecords() async throws {
+        try await launch(); XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+        chooseProject("Empty project"); XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["record-task"].exists)
+        chooseProject("Test workspace"); XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+    }
+    func test03InboxStatusFilter() async throws {
+        try await launch(); app.buttons["status-filter"].tap(); app.buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5))
+        app.buttons["status-filter"].tap(); app.buttons["Waiting Input"].tap()
+        XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+    }
+    func test04CreateUnicodeTaskAndInitialImage() async throws {
+        try await launch(); create(); type("subject", "Unicode 猫 café"); agent(); type("body", "Review 🚀")
+        scrollTo(app.buttons["Attach test image"]); app.buttons["Attach test image"].tap(); app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.buttons["reply-task"].waitForExistence(timeout: 8))
+        let state = try await control("state"), tasks = state["tasks"] as! [String:[String:Any]]
+        XCTAssertEqual(tasks.count,2); XCTAssertTrue(tasks.values.contains { $0["subject"] as? String == "Unicode 猫 café" })
+        let messages = state["messages"] as! [String:[[String:Any]]]
+        XCTAssertTrue(messages.values.contains { ($0.first?["attachments"] as? [Any])?.count == 1 })
+        let createdID = tasks.first { $0.value["subject"] as? String == "Unicode 猫 café" }!.key
+        try await assertImageRoundTrip(taskID: createdID, message: messages[createdID]![0])
+        screenshot("03-created-task")
+    }
+    func test05ReplyAndImageRoundTrip() async throws {
+        try await launch(); openTask(); screenshot("04-conversation")
+        app.buttons["reply-task"].tap(); type("body", "Reply café 猫")
+        app.buttons["Attach test image"].tap(); app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.staticTexts["Reply café 猫"].waitForExistence(timeout: 8))
+        let state = try await control("state"), messages = state["messages"] as! [String:[[String:Any]]]
+        XCTAssertEqual(messages["task"]!.count,2); XCTAssertEqual((messages["task"]!.last!["attachments"] as! [Any]).count,1)
+        try await assertImageRoundTrip(taskID: "task", message: messages["task"]!.last!)
+        screenshot("13-reply-image")
+    }
+    func test06CreateErrorRetainsDraft() async throws {
+        try await launch(); _ = try await control("fail", body:["method":"POST","path":"/tasks","error":"Creation rejected"])
+        create(); type("subject","Retry this task"); agent(); app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.staticTexts["editor-error"].waitForExistence(timeout: 5)); XCTAssertEqual(app.textFields["field-subject"].value as? String,"Retry this task")
+        app.buttons["editor-submit"].tap(); XCTAssertTrue(app.buttons["reply-task"].waitForExistence(timeout: 8))
+    }
+    func test07PendingPortalStartsRealTerminal() async throws {
+        try await launch(); _ = try await openPortal()
+        XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 8)); assertFits(app.buttons["close-portal"])
+        let terminal = app.descendants(matching: .any)["live-terminal"].firstMatch
+        XCTAssertTrue((terminal.value as? String)?.contains("Fixture shell ready") == true, "Actual socket output reaches SwiftTerm")
+        XCTAssertGreaterThan(terminal.frame.height, 200)
+        screenshot("05-live-terminal")
+        let state = try await control("state"), portals = state["portals"] as! [String:[String:Any]]
+        XCTAssertEqual(portals.values.first!["status"] as? String,"running")
+    }
+    func test08TerminalControlInputAndResize() async throws {
+        try await launch(); _ = try await openPortal(); XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 8))
+        let terminal = app.descendants(matching: .any)["live-terminal"].firstMatch
+        app.textFields["terminal-input"].tap(); app.textFields["terminal-input"].typeText("echo café"); app.buttons["send-terminal-input"].tap()
+        app.buttons["Tab"].tap(); app.buttons["Ctrl-C"].tap()
+        if app.buttons["Hide keyboard"].exists { app.buttons["Hide keyboard"].tap() }
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let landscape = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            self.app.frame.width > self.app.frame.height && self.app.buttons["close-portal"].isHittable && self.app.frame.contains(self.app.buttons["close-portal"].frame)
+        }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [landscape], timeout: 8), .completed)
+        assertFits(app.buttons["close-portal"])
+        XCTAssertGreaterThan(terminal.frame.height, 100)
+        let rotated = XCUIScreen.main.screenshot()
+        XCTAssertGreaterThan(rotated.image.size.width, rotated.image.size.height)
+        let attachment = XCTAttachment(screenshot: rotated); attachment.name = "06-terminal-landscape"; attachment.lifetime = .keepAlways; add(attachment)
+        XCUIDevice.shared.orientation = .portrait
+        let (data,_) = try await URLSession.shared.data(from:base.appendingPathComponent("__test/events"))
+        let events = String(decoding:data,as:UTF8.self)
+        let inputs = events.split(separator: "\n").compactMap { line -> String? in
+            guard let value = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any], value["kind"] as? String == "input" else { return nil }
+            return value["text"] as? String
+        }.joined()
+        XCTAssertTrue(inputs.contains("echo café")); XCTAssertTrue(events.contains("\"kind\": \"input\"")); XCTAssertTrue(events.contains("\"kind\": \"resize\""))
+    }
+    func test09ReconnectMakesNewSocket() async throws {
+        try await launch(); _ = try await openPortal(); XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 8))
+        app.buttons["Reconnect terminal"].tap(); XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 8))
+        XCUIDevice.shared.press(.home); app.activate()
+        XCTAssertTrue(app.buttons["close-portal"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 8))
+        let (data,_) = try await URLSession.shared.data(from:base.appendingPathComponent("__test/events"))
+        XCTAssertGreaterThanOrEqual(String(decoding:data,as:UTF8.self).components(separatedBy:"\"kind\": \"socket_open\"").count-1,2)
+    }
+    func test10CancelClosePreservesRunningSession() async throws {
+        try await launch(); let id = try await openPortal(); app.buttons["close-portal"].tap()
+        XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 5)); app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.buttons["close-portal"].isHittable)
+        let state = try await control("state"), portals = state["portals"] as! [String:[String:Any]]; XCTAssertEqual(portals[id]!["status"] as? String,"running")
+    }
+    func test11CloseErrorKeepsDetailOpen() async throws {
+        try await launch(); let id = try await openPortal()
+        _ = try await control("fail",body:["method":"POST","path":"/portals/\(id)/close","error":"Close rejected"])
+        app.buttons["close-portal"].tap(); app.buttons["Close Portal"].tap()
+        XCTAssertTrue(app.staticTexts["detail-error"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["close-portal"].isHittable)
+    }
+    func test12CloseRetainsCompletedHistory() async throws {
+        try await launch(); let id = try await openPortal(); app.buttons["close-portal"].tap(); app.buttons["Close Portal"].tap()
+        XCTAssertTrue(app.staticTexts["Portal completed"].waitForExistence(timeout: 8)); XCTAssertFalse(app.descendants(matching: .any)["live-terminal"].firstMatch.exists)
+        back(); XCTAssertTrue(app.staticTexts["History"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["record-"+id].exists)
+        screenshot("07-portal-history")
+    }
+    func test13NotesCreateEditAndComment() async throws {
+        try await launch(); section("Notes"); create(); type("title","Test note"); type("content","Note content"); app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.buttons["Add comment"].waitForExistence(timeout: 5)); app.buttons["Add comment"].tap(); type("content","Review comment"); app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.staticTexts["Review comment"].waitForExistence(timeout: 5)); screenshot("08-note")
+    }
+    func test14AllWorkspaceSectionsLoad() async throws {
+        try await launch()
+        for name in ["Agents","Members","Skills","Sub-agents","Commands","Memory","Analytics","Conveyors","Planners","Supervisor","Settings"] { section(name); XCTAssertFalse(app.staticTexts["workspace-error"].exists) }
+        screenshot("09-settings")
+    }
+    func test17DarkAppearanceAndLargeTextRemainUsable() async throws {
+        _ = try await control("reset")
+        app.launchArguments = ["--ui-test-api", base.absoluteString, "--ui-test-reset-drafts", "--ui-test-appearance", "dark", "--ui-test-large-text"]
+        app.launch()
+        XCTAssertTrue(app.buttons["project-picker"].waitForExistence(timeout: 10)); assertFits(app.buttons["project-picker"])
+        chooseProject("Test workspace")
+        screenshot("11-dark-large-inbox")
+        scrollTo(app.buttons["record-task"]); app.buttons["record-task"].tap()
+        XCTAssertTrue(app.buttons["reply-task"].waitForExistence(timeout: 5)); assertFits(app.buttons["reply-task"])
+        screenshot("12-dark-large-conversation")
+    }
+    func test16BrowserPKCEKeychainAndLogout() async throws {
+        _ = try await control("reset")
+        app.launchArguments = ["--ui-test-auth", base.absoluteString, "--ui-test-reset-auth", "--ui-test-reset-drafts"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Continue to sign in"].waitForExistence(timeout: 10)); screenshot("00-sign-in"); app.buttons["Continue to sign in"].tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        if app.buttons["Continue"].waitForExistence(timeout: 3) { app.buttons["Continue"].tap() }
+        else if springboard.buttons["Continue"].exists { springboard.buttons["Continue"].tap() }
+        let link = app.webViews.links["Authorize fixture"]
+        XCTAssertTrue(link.waitForExistence(timeout: 12)); link.tap()
+        XCTAssertTrue(app.buttons["project-picker"].waitForExistence(timeout: 10))
+        screenshot("10-authenticated-workspace")
+        let (data,_) = try await URLSession.shared.data(from: base.appendingPathComponent("__test/events"))
+        XCTAssertTrue(String(decoding:data,as:UTF8.self).contains("\"verified\": true"))
+        section("Settings"); app.buttons["Sign out"].tap()
+        XCTAssertTrue(app.buttons["Continue to sign in"].waitForExistence(timeout: 10))
+        app.terminate(); app.launchArguments = ["--ui-test-auth", base.absoluteString]; app.launch()
+        XCTAssertTrue(app.buttons["Continue to sign in"].waitForExistence(timeout: 10), "Logout purges the persisted credential")
+    }
+    func test15SeededNavigationAndForegroundRecovery() async throws {
+        try await launch(); var seed: UInt64 = 0x51C0FFEE
+        let names = ["Inbox","Notes","Agents","Portals","Analytics","Skills"]
+        for _ in 0..<15 { seed = seed &* 6364136223846793005 &+ 1442695040888963407; section(names[Int((seed>>32)%UInt64(names.count))]); assertFits(app.buttons["project-picker"]) }
+        XCUIDevice.shared.press(.home); app.activate()
+        XCTAssertTrue(app.buttons["project-picker"].waitForExistence(timeout: 5))
     }
 }

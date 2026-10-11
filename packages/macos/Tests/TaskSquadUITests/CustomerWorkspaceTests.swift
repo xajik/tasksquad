@@ -7,6 +7,8 @@ import TaskSquadPortal
 
 private actor WorkspaceTransport: HTTPTransport {
     var requests: [URLRequest] = []
+    var portalClosed = false
+    var portalRecord: String { "{\"id\":\"item-1\",\"team_id\":\"team-1\",\"agent_id\":\"agent-1\",\"status\":\"\(portalClosed ? "done" : "pending")\",\"created_at\":1800000000000}" }
     var holdTasks = false
     var pending: CheckedContinuation<HTTPResult, Never>?
     let record = ###"{"id":"item-1","name":"Builder","title":"Architecture review","subject":"Review the native workspace","status":"waiting_input","role":"owner","agent_id":"agent-1","sender_id":"user-1","first_message_role":"user","first_message_type":"note-to-inbox","scheduled_at":1577836800000,"body":"## Ready for review\n\nThe native workspace shares the cloud backend.\n\n- [x] Task inbox\n- [x] Team switching\n- [ ] Release verification","content":"# Shared project knowledge\n\nKeep the customer UI independent from the local engine.","description":"Coordinate the next release","created_at":1800000000000,"tags":["native","release"],"phases":[{"phase_id":"phase-1","name":"Implementation","status":"completed","retry_count":0,"max_retries":3,"last_response":"Ready for review"}],"attachments":[],"auto_install":1,"category":"architecture"}"###
@@ -18,6 +20,9 @@ private actor WorkspaceTransport: HTTPTransport {
     func send(_ request: URLRequest) async throws -> HTTPResult {
         requests.append(request)
         let path = request.url!.path
+        if path == "/portals/item-1/close", request.httpMethod == "POST" { portalClosed = true; return response(#"{"ok":true}"#) }
+        if path == "/portals" { return response("{\"portals\":[\(portalRecord)]}") }
+        if path == "/portals/item-1" { return response(portalRecord) }
         if request.httpMethod != "GET" { return response(#"{"ok":true,"id":"created"}"#) }
         if path == "/me" { return response(#"{"id":"user-1","email":"fixture@example.invalid","plan":"pro"}"#) }
         if path == "/teams" { return response(#"{"teams":[{"id":"team-1","name":"Product","role":"owner","memory_enabled":true},{"id":"team-2","name":"Research","role":"viewer"}]}"#) }
@@ -118,7 +123,7 @@ private actor WorkspaceTransport: HTTPTransport {
         model.disconnect(); XCTAssertFalse(model.connected)
     }
 
-    func testPortalMonkeyFixture15RunsAndMeasuresNativeActions() async throws {
+    func testPortalModelWorkflow15RunsWithRetainedHistory() async throws {
         _ = NSApplication.shared
         var randomState: UInt64 = 0x51C0_FFEE
         func next(_ upperBound: UInt64) -> UInt64 {
@@ -166,6 +171,7 @@ private actor WorkspaceTransport: HTTPTransport {
             await model.perform(["portals", "item-1", "close"])
             let closeMilliseconds = Date().timeIntervalSince(closeStart) * 1_000
             XCTAssertNil(model.error, "iteration \(iteration): close request succeeds")
+            XCTAssertEqual(model.records.first?.status, "done", "Closed Portals remain as completed history")
             let requests = await transport.requests
             XCTAssertTrue(requests.contains { $0.url?.path == "/portals/item-1/close" }, "iteration \(iteration): close endpoint called")
             trace.append("confirmed-close")
@@ -178,13 +184,13 @@ private actor WorkspaceTransport: HTTPTransport {
             try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent("portal-monkey-metrics.json"))
         }
         let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
-        attachment.name = "macOS Portal fixture monkey run · 15 iterations"
+        attachment.name = "macOS Portal model fixture · 15 iterations"
         attachment.lifetime = .keepAlways
         add(attachment)
         func average(_ key: String) -> Double {
             runs.compactMap { ($0[key] as? NSNumber)?.doubleValue }.reduce(0, +) / Double(runs.count)
         }
-        print(String(format: "PORTAL_MAC_MONKEY_METRICS iterations=15 seed=0x51C0FFEE averageListMs=%.2f averageOpenMs=%.2f averageCloseMs=%.2f", average("listMilliseconds"), average("openMilliseconds"), average("closeMilliseconds")))
+        print(String(format: "PORTAL_MAC_MODEL_METRICS iterations=15 seed=0x51C0FFEE averageListMs=%.2f averageOpenMs=%.2f averageCloseMs=%.2f", average("listMilliseconds"), average("openMilliseconds"), average("closeMilliseconds")))
     }
 
     func testNativeCustomerScreensRenderInLightAndDark() async throws {
