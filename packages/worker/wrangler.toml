@@ -47,6 +47,11 @@ new_classes = ["TerminalRelay"]
 name = "TERMINAL_RELAY"
 class_name = "TerminalRelay"
 
+# OAuth callbacks of the TaskSquad MCP server (packages/mcp) allowed to receive
+# /mobile/authorization codes. Exact match, comma-separated.
+[vars]
+MCP_REDIRECT_URIS = "https://tasksquad-mcp.xajik0.workers.dev/oauth/callback,https://tasksquad.ai/oauth/callback,http://localhost:8788/oauth/callback"
+
 [observability]
 enabled = true
 

@@ -6,8 +6,13 @@ const params = new URLSearchParams(window.location.search)
 const redirectUri = params.get('redirect_uri') ?? ''
 const challenge = params.get('code_challenge') ?? ''
 const state = params.get('state') ?? ''
-const expectedRedirect = 'tasksquad-portal://oauth/callback'
-const validRequest = redirectUri === expectedRedirect && /^[A-Za-z0-9_-]{43}$/.test(challenge) && /^[A-Za-z0-9_-]{20,100}$/.test(state)
+const mobileRedirect = 'tasksquad-portal://oauth/callback'
+// MCP server OAuth callbacks (packages/mcp). Must match the worker's MCP_REDIRECT_URIS.
+const mcpRedirects = ((import.meta.env.VITE_MCP_REDIRECT_URIS as string | undefined)
+  ?? 'https://tasksquad-mcp.xajik0.workers.dev/oauth/callback,https://tasksquad.ai/oauth/callback,http://localhost:8788/oauth/callback')
+  .split(',').map(s => s.trim()).filter(Boolean)
+const isMcp = mcpRedirects.includes(redirectUri)
+const validRequest = (redirectUri === mobileRedirect || isMcp) && /^[A-Za-z0-9_-]{43}$/.test(challenge) && /^[A-Za-z0-9_-]{20,100}$/.test(state)
 const apiBase = import.meta.env.VITE_API_BASE_URL as string
 
 export default function MobileAuth() {
@@ -81,7 +86,7 @@ export default function MobileAuth() {
       <section className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-xl">
         <div className="mb-5 flex items-center gap-3">
           <div className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-500 font-semibold">T</div>
-          <div><h1 className="text-lg font-semibold">TaskSquad Portal</h1><p className="text-sm text-slate-400">Sign in to continue on iPhone</p></div>
+          <div><h1 className="text-lg font-semibold">TaskSquad Portal</h1><p className="text-sm text-slate-400">{isMcp ? 'Sign in to connect your AI agent' : 'Sign in to continue on iPhone'}</p></div>
         </div>
         {user === null && !error ? <p className="text-sm text-slate-300">{status}</p> : user && !error ? <p className="text-sm text-slate-300">{status}</p> : (
           <div className="space-y-3">

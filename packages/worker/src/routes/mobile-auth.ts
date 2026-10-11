@@ -5,6 +5,14 @@ const CODE_TTL_MS = 5 * 60 * 1000
 const MOBILE_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000
 export const MOBILE_REDIRECT_URI = 'tasksquad-portal://oauth/callback'
 
+// allowedRedirectUri accepts the iOS app callback plus the MCP server callbacks
+// listed in MCP_REDIRECT_URIS (comma-separated, exact match).
+export function allowedRedirectUri(env: Pick<Env, 'MCP_REDIRECT_URIS'>, uri: unknown): boolean {
+  if (typeof uri !== 'string') return false
+  if (uri === MOBILE_REDIRECT_URI) return true
+  return (env.MCP_REDIRECT_URIS ?? '').split(',').map(s => s.trim()).filter(Boolean).includes(uri)
+}
+
 export function pkceChallenge(verifier: string): Promise<string> {
   return crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)).then((digest) => {
     const bytes = new Uint8Array(digest)
@@ -20,7 +28,7 @@ export function validVerifier(value: unknown): value is string {
 
 export async function createCode(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const body = await req.json<{ code_challenge?: string; redirect_uri?: string }>().catch((): { code_challenge?: string; redirect_uri?: string } => ({}))
-  if (body.redirect_uri !== MOBILE_REDIRECT_URI || !body.code_challenge || !/^[A-Za-z0-9_-]{43}$/.test(body.code_challenge)) {
+  if (!allowedRedirectUri(env, body.redirect_uri) || !body.code_challenge || !/^[A-Za-z0-9_-]{43}$/.test(body.code_challenge)) {
     return err('invalid_authorization_request', 400)
   }
 
@@ -37,7 +45,7 @@ export async function createCode(req: Request, env: Env, _ctx: unknown, auth: Au
 }
 
 export async function exchangeCode(req: Request, env: Env): Promise<Response> {
-  const body = await req.json<{ code?: string; code_verifier?: string }>().catch((): { code?: string; code_verifier?: string } => ({}))
+  const body = await req.json<{ code?: string; code_verifier?: string; client?: string }>().catch((): { code?: string; code_verifier?: string; client?: string } => ({}))
   if (typeof body.code !== 'string' || !/^[a-f0-9]{64}$/.test(body.code) || !validVerifier(body.code_verifier)) {
     return err('invalid_authorization_code', 400)
   }
@@ -53,6 +61,6 @@ export async function exchangeCode(req: Request, env: Env): Promise<Response> {
 
   // Mobile access uses the existing revocable user-token table, with a shorter
   // lifetime and a distinct label. The app revokes it on logout.
-  const minted = await mintCliToken(env, row.user_id, 'iOS Portal', MOBILE_TOKEN_TTL_MS)
+  const minted = await mintCliToken(env, row.user_id, body.client === 'mcp' ? 'MCP' : 'iOS Portal', MOBILE_TOKEN_TTL_MS)
   return json({ token: minted.token, expires_at: minted.expiresAt })
 }

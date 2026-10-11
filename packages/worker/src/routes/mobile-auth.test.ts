@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MOBILE_REDIRECT_URI, pkceChallenge, validVerifier } from './mobile-auth.js'
+import { MOBILE_REDIRECT_URI, allowedRedirectUri, pkceChallenge, validVerifier } from './mobile-auth.js'
 
 describe('mobile authorization PKCE', () => {
   it('uses the RFC 7636 S256 base64url challenge', async () => {
@@ -19,5 +19,17 @@ describe('mobile authorization PKCE', () => {
 
   it('pins authorization codes to the registered app callback', () => {
     expect(MOBILE_REDIRECT_URI).toBe('tasksquad-portal://oauth/callback')
+  })
+
+  it('allows MCP callbacks only when listed exactly', () => {
+    const env = { MCP_REDIRECT_URIS: 'https://mcp.example.com/oauth/callback, http://localhost:8788/oauth/callback' }
+    expect(allowedRedirectUri(env, MOBILE_REDIRECT_URI)).toBe(true)
+    expect(allowedRedirectUri({}, MOBILE_REDIRECT_URI)).toBe(true)
+    expect(allowedRedirectUri(env, 'https://mcp.example.com/oauth/callback')).toBe(true)
+    expect(allowedRedirectUri(env, 'http://localhost:8788/oauth/callback')).toBe(true)
+    expect(allowedRedirectUri(env, 'https://mcp.example.com/oauth/callback?x=1')).toBe(false)
+    expect(allowedRedirectUri(env, 'https://evil.example.com/oauth/callback')).toBe(false)
+    expect(allowedRedirectUri({}, 'https://mcp.example.com/oauth/callback')).toBe(false)
+    expect(allowedRedirectUri(env, undefined)).toBe(false)
   })
 })

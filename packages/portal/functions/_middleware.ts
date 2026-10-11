@@ -58,10 +58,39 @@ function proxyFirebaseAuth(request: Request): Promise<Response> {
   return fetch(new Request(url.toString(), request));
 }
 
+// tasksquad.ai/mcp is an alias of the MCP server (packages/mcp). Its OAuth
+// endpoints and metadata are proxied too, so clients see one origin. The MCP
+// worker trusts X-TSQ-Public-Host only for origins in its ALIAS_ORIGINS.
+const MCP_ORIGIN = 'https://tasksquad-mcp.xajik0.workers.dev';
+
+function isMcpPath(pathname: string): boolean {
+  return (
+    pathname === '/mcp' ||
+    pathname.startsWith('/mcp/') ||
+    pathname.startsWith('/oauth/') ||
+    pathname.startsWith('/.well-known/oauth-')
+  );
+}
+
+function proxyMcp(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const headers = new Headers(request.headers);
+  headers.set('X-TSQ-Public-Host', url.host);
+  return fetch(new URL(url.pathname + url.search, MCP_ORIGIN).toString(), {
+    method: request.method,
+    headers,
+    body: request.body,
+    redirect: 'manual',
+  });
+}
+
 export const onRequest: PagesFunction = async (context) => {
   const { pathname: requestPath } = new URL(context.request.url);
   if (requestPath.startsWith('/__/auth/')) {
     return proxyFirebaseAuth(context.request);
+  }
+  if (isMcpPath(requestPath)) {
+    return proxyMcp(context.request);
   }
 
   const response = await context.next();

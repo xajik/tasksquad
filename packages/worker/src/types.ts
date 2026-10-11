@@ -19,6 +19,8 @@ export interface Env {
   ADMIN_SECRET?: string
   // Comma-separated list of allowed CORS origins, e.g. "https://tasksquad.ai,http://localhost:5173"
   ALLOWED_ORIGINS?: string
+  // Comma-separated MCP server OAuth callbacks accepted by /mobile/authorization/codes
+  MCP_REDIRECT_URIS?: string
   // KV namespace for circuit breaker rate limiting (optional — gracefully skipped if not provisioned)
   // Provision with: wrangler kv namespace create CB_CACHE
   CB_KV?: KVNamespace
