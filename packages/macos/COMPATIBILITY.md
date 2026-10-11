@@ -69,7 +69,7 @@ Status: **missing** (no Swift implementation), **partial** (some behaviour or te
 | `harness` reconcile, `skills`, `agents`, `commands` sync | `ResourceSync.swift` | `ResourceSyncTests` | partial | Port `reconcile_test`, `codex_test`; live D1 catalog/ETags |
 | `upload` | `ArtifactUploader.swift` | `EngineIntegrationTests` | done | — |
 | `memory`, `kb` close-step learning | `DaemonEngine` close sequence | — | partial | Verify against Go close steps; tests |
-| `orphan` sweep (startup + hourly) | — | — | missing | Exclude `tsq-portal-*`, `tsq-sup-*`; port `orphan_test` |
+| `orphan` sweep (startup + hourly) | `OrphanSweep.swift` | `OrphanSweepTests` | done | A response without `states` is a failed lookup (Go would kill every session) |
 | `supervisor` (`tsq-sup-*`) | config only | — | missing | Sessions, schedule, `/hooks/supervisor`, `/hooks/trigger-supervisor` |
 | `dreamer` | config only | — | missing | Nightly window, KB/memory job |
 | `analytics` | config only | — | missing | Event posting |

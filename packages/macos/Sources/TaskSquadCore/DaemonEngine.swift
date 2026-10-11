@@ -56,6 +56,7 @@ public actor DaemonEngine {
     private var portals: PortalHost?
     private var portalTasks: [String: Task<Void, Never>] = [:]
     private var resourceSync: ResourceSync?
+    private var orphanSweep: OrphanSweep?
     private var hookServer: LocalHTTPServer?
     private var startedAt = ContinuousClock.now
     private var running = false
@@ -113,6 +114,11 @@ public actor DaemonEngine {
         let sync = ResourceSync(api: api, tokens: tokens, paths: paths, agents: configuration.agents) { [weak self] message in self?.onError(message) }
         resourceSync = sync
         await sync.start()
+        // Startup + hourly cleanup of task sessions the server closed (Go: orphan.New(...).Run()).
+        // Like Go, failures are only logged; a missed sweep retries next hour.
+        let sweep = OrphanSweep(api: api, tokens: tokens, tmux: tmux) { message in NSLog("%@", message) }
+        orphanSweep = sweep
+        await sweep.start()
     }
 
     public func stop() async {
@@ -120,6 +126,7 @@ public actor DaemonEngine {
         stopping = true; running = false
         await poller?.stop(); poller = nil
         await resourceSync?.stop(); resourceSync = nil
+        await orphanSweep?.stop(); orphanSweep = nil
         // Close live portals so their tmux sessions and relay sockets don't
         // outlive the engine (Go: CloseActivePortal on shutdown).
         await portals?.closeAll()
