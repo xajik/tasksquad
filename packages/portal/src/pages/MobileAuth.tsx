@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { onAuthStateChanged, type User } from 'firebase/auth'
-import { auth, signInWithGoogleRedirect, signInWithGitHubRedirect } from '../lib/firebase'
+import { auth, mobileAuth, signInWithGoogleFirstParty, signInWithGitHubRedirect } from '../lib/firebase'
 
 const params = new URLSearchParams(window.location.search)
 const redirectUri = params.get('redirect_uri') ?? ''
@@ -27,9 +27,18 @@ export default function MobileAuth() {
       setUser(false)
       return
     }
-    return onAuthStateChanged(auth, async currentUser => {
-      setUser(currentUser ?? false)
-      if (!currentUser || exchanged.current) return
+    // Google signs in through the first-party helper (mobileAuth); GitHub still uses the default
+    // auth domain, since its OAuth app allows a single callback URL. Whichever signs in first wins.
+    const instances = [...new Set([mobileAuth(), auth].filter(a => a !== null))]
+    const signedOut = new Set<number>()
+    const unsubscribers = instances.map((instance, index) => onAuthStateChanged(instance, async currentUser => {
+      if (!currentUser) {
+        signedOut.add(index)
+        if (signedOut.size === instances.length && !exchanged.current) setUser(false)
+        return
+      }
+      setUser(currentUser)
+      if (exchanged.current) return
       exchanged.current = true
       try {
         setStatus('Finishing secure sign-in…')
@@ -50,7 +59,8 @@ export default function MobileAuth() {
         setError(reason instanceof Error ? reason.message : 'Sign-in failed.')
         setUser(false)
       }
-    })
+    }))
+    return () => unsubscribers.forEach(unsubscribe => unsubscribe())
   }, [])
 
   async function signIn(provider: 'google' | 'github') {
@@ -58,7 +68,7 @@ export default function MobileAuth() {
     setStatus('Opening secure sign-in…')
     setUser(null)
     try {
-      if (provider === 'google') await signInWithGoogleRedirect()
+      if (provider === 'google') await signInWithGoogleFirstParty()
       else await signInWithGitHubRedirect()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Sign-in failed.')

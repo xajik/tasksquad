@@ -44,7 +44,26 @@ function resolve(pathname: string): { meta: RouteMeta; status: number } {
   };
 }
 
+// Firebase's sign-in helper, served first-party. Browsers that partition third-party storage (Safari,
+// and the iOS app's ASWebAuthenticationSession sheet) lose a redirect sign-in whose handler runs on
+// <project>.firebaseapp.com: the page comes back signed out. Pages that sign in with
+// authDomain = tasksquad.ai use these paths instead (see mobileAuth in src/lib/firebase.ts).
+const FIREBASE_AUTH_HOST = 'tasksquad-e1442.firebaseapp.com';
+
+function proxyFirebaseAuth(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  url.hostname = FIREBASE_AUTH_HOST;
+  url.port = '';
+  url.protocol = 'https:';
+  return fetch(new Request(url.toString(), request));
+}
+
 export const onRequest: PagesFunction = async (context) => {
+  const { pathname: requestPath } = new URL(context.request.url);
+  if (requestPath.startsWith('/__/auth/')) {
+    return proxyFirebaseAuth(context.request);
+  }
+
   const response = await context.next();
 
   const contentType = response.headers.get('content-type') || '';

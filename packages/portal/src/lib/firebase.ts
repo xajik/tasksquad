@@ -44,6 +44,23 @@ export async function signInWithGoogleRedirect(): Promise<void> {
   await signInWithRedirect(auth, googleProvider)
 }
 
+// Redirect sign-in whose helper runs on this site (proxied by functions/_middleware.ts), so it
+// survives browsers that partition third-party storage, such as the iOS app's sign-in sheet.
+// Google's OAuth client must list https://<this host>/__/auth/handler as a redirect URI.
+// Local dev has no proxy, so it keeps the default auth domain.
+let firstPartyAuth: ReturnType<typeof getAuth> | null = null
+export function mobileAuth(): ReturnType<typeof getAuth> | null {
+  if (!auth || ['localhost', '127.0.0.1'].includes(window.location.hostname)) return auth
+  firstPartyAuth ??= getAuth(initializeApp({ ...firebaseConfig, authDomain: window.location.host }, 'first-party'))
+  return firstPartyAuth
+}
+
+export async function signInWithGoogleFirstParty(): Promise<void> {
+  const firstParty = mobileAuth()
+  if (!firstParty) throw new Error('Firebase not configured')
+  await signInWithRedirect(firstParty, googleProvider)
+}
+
 export async function signInWithGitHubRedirect(): Promise<void> {
   if (!auth) throw new Error('Firebase not configured')
   await signInWithRedirect(auth, githubProvider)
