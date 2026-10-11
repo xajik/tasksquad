@@ -58,7 +58,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 ### D. Shared content components
 - [x] `TSQCard`, `TSQEmptyState`, `TSQErrorBanner`, `TSQStatusDot` and `TSQPageHeader` live in `TaskSquadPortalUI`. `TSQIcon` (asset catalog) is in `TaskSquadDesign`. macOS uses them via aliases. iOS uses the empty state, error banner and icon (`MobileIcon` wraps `TSQIcon`).
 - [ ] `RecordRow`, `ConversationMessage` + authenticated attachments, `PhaseSummary`, `MetricTile`, `TerminalConnectionHeader`
-- [ ] `MarkdownContent`: tokens instead of `accentColor`/`.quaternary`; move `MarkdownBlock.parse` tests into this package
+- [x] `MarkdownContent` uses `TSQTheme` tokens (and table header tint spans the row); `MarkdownBlock.parse` tests moved to `MarkdownBlockTests`
 - [ ] `TaskSquadPortalUI` render smoke tests
 
 ### E. Remove compatibility layers
