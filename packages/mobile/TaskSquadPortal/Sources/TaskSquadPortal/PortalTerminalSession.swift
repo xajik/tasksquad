@@ -18,6 +18,7 @@ public final class PortalTerminalSession: ObservableObject {
     private let socketURLProvider: SocketURLProvider
     private var socket: URLSessionWebSocketTask?
     private var connectionID = UUID()
+    private var pendingBytes = 0
     private var sendTask: Task<Void, Never>?
     private var cols = 100
     private var rows = 30
@@ -94,17 +95,21 @@ public final class PortalTerminalSession: ObservableObject {
         connected = false
         sendTask?.cancel()
         sendTask = nil
+        pendingBytes = 0
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
     }
 
     private func send(_ data: Data) {
         guard connected, let socket else { return }
+        guard pendingBytes + data.count <= 64 * 1024 else { status = "Input buffer full. Wait before sending more."; return }
+        pendingBytes += data.count
         let previous = sendTask
         let id = connectionID
         sendTask = Task { [weak self] in
             await previous?.value
             guard !Task.isCancelled, self?.connectionID == id else { return }
+            defer { if self?.connectionID == id { self?.pendingBytes -= data.count } }
             do { try await socket.send(.data(data)) }
             catch { socket.cancel(with: .goingAway, reason: nil) }
         }

@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import TaskSquadPortal
 
 struct PortalHomeView: View {
@@ -10,7 +11,7 @@ struct PortalHomeView: View {
 
     init(auth: MobileAuthStore, api: CustomerAPI? = nil) {
         self.auth = auth
-        _model = StateObject(wrappedValue: WorkspaceStore(api: api ?? CustomerAPI(baseURL: MobileAuthStore.apiURL) { force in try await auth.accessToken(forceRefresh: force) }))
+        _model = StateObject(wrappedValue: WorkspaceStore(api: api ?? CustomerAPI(baseURL: MobileAuthStore.apiURL) { force in try await auth.accessToken(forceRefresh: force) }, preferences: api == nil ? .standard : nil))
     }
     var body: some View {
         NavigationStack {
@@ -28,6 +29,15 @@ struct PortalHomeView: View {
                             Picker("Origin", selection: $model.origin) { ForEach(["all", "mine", "system", "scheduled", "planner", "conveyor", "from-note"], id: \.self) { Text($0.capitalized).tag($0) } }
                         }
                     }
+                    if model.section == .portals {
+                        if !model.isPro { Text("Interactive Portals require an eligible account.").foregroundStyle(.secondary) }
+                        else if model.eligibleAgents.isEmpty { Text("No available agents. Bring an agent online to open a Portal.").foregroundStyle(.secondary) }
+                        else if model.records.filter({ ["pending", "running"].contains($0.status) }).count >= 3 { Text("Three sessions are active. Close one to open another.").foregroundStyle(.secondary) }
+                    }
+                    if model.section == .memory {
+                        Picker("Category", selection: $model.memoryCategory) { ForEach(["all","personal","preferences","structure","architecture","events"], id: \.self) { Text($0.capitalized).tag($0) } }.onChange(of: model.memoryCategory) { _, _ in Task { await model.refresh() } }
+                        if !model.rollups.isEmpty { Section("Daily rollups") { ForEach(model.rollups) { rollup in DisclosureGroup(rollup.title) { Text(.init(rollup.text("content"))).textSelection(.enabled) } } } }
+                    }
                     if model.section == .notes { Toggle("Archived notes", isOn: $model.archived).onChange(of: model.archived) { _, _ in Task { await model.refresh() } } }
                     if model.loading { ProgressView("Loading…") }
                     else if model.visibleRecords.isEmpty { ContentUnavailableView("No \(model.section.rawValue.lowercased())", systemImage: "tray", description: Text("Choose another project or create a new item.")) }
@@ -39,15 +49,18 @@ struct PortalHomeView: View {
                     }
                     if let refreshedAt = model.refreshedAt { Text("Updated \(refreshedAt.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
                 }
-                if let error = model.error { Text(error).foregroundStyle(.red).accessibilityIdentifier("workspace-error") }
+
+            }
+            .safeAreaInset(edge: .bottom) {
+                if let error = model.error { Text(error).font(.footnote).foregroundStyle(.red).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("workspace-error") }
             }
             .searchable(text: $model.search, prompt: "Search \(model.section.rawValue)")
             .navigationTitle(model.section.rawValue)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { if canCreate { Button { create() } label: { Image(systemName: "plus") }.accessibilityLabel("Create " + model.section.rawValue).accessibilityIdentifier("create-item").disabled(model.busy) } } }
             .refreshable { await model.connect() }
             .task { await model.connect() }
+            .onChange(of: model.context) { _, _ in selectedID = nil }
             .task(id: "\(model.context):\(scenePhase)") {
-                selectedID = nil
                 guard scenePhase == .active else { return }
                 await model.refresh()
                 while !Task.isCancelled {
@@ -88,7 +101,7 @@ struct PortalHomeView: View {
     private func create() {
         let section = model.section, project = model.projectID, context = model.context
         model.error = nil
-        editor = MobileEditorRequest(title: section == .inbox ? "New task" : "New " + section.rawValue.lowercased(), fields: WorkspaceField.fields(for: section), draftKey: "\(model.profile?.id ?? "").\(project).\(section.rawValue)", attachments: section == .inbox, phases: section == .planners, submitLabel: section == .inbox ? "Send" : "Create") { body, files in
+        editor = MobileEditorRequest(title: section == .inbox ? "New task" : "New " + section.rawValue.lowercased(), fields: WorkspaceField.fields(for: section), draftKey: "\(model.api.baseURL.absoluteString).\(model.profile?.id ?? "").\(project).\(section.rawValue)", eligibleAgentsOnly: section == .portals, attachments: section == .inbox, phases: section == .planners, submitLabel: section == .inbox ? "Send" : "Create") { body, files in
             var body = body
             if [.inbox, .portals].contains(section) { body["team_id"] = .string(project) }
             if section == .inbox {
@@ -119,6 +132,16 @@ struct PortalHomeView: View {
             if let record = model.records.first {
                 ForEach(["created", "done", "failed", "in_progress", "scheduled"], id: \.self) { key in
                     LabeledContent(key.replacingOccurrences(of: "_", with: " ").capitalized, value: String(Int(record.value["totals"]?[key]?.number ?? 0)))
+                }
+                if !record.records("daily").isEmpty {
+                    Chart(record.records("daily").indices, id: \.self) { index in
+                        let day = record.records("daily")[index]
+                        BarMark(x: .value("Day", day.text("date")), y: .value("Created", day.number("created")))
+                    }.frame(height: 180).accessibilityLabel("Tasks created by day")
+                }
+                ForEach(record.records("agents").indices, id: \.self) { index in
+                    let agent = record.records("agents")[index]
+                    LabeledContent(agent.title, value: "\(Int(agent.number("done"))) completed / \(Int(agent.number("tasks"))) tasks")
                 }
                 ForEach(["turns", "input_tokens", "output_tokens", "tool_calls", "tool_errors"], id: \.self) { key in
                     LabeledContent(key.replacingOccurrences(of: "_", with: " ").capitalized, value: String(Int(record.value["usage"]?[key]?.number ?? 0)))

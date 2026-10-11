@@ -12,9 +12,18 @@ final class MobileAuthStore: ObservableObject {
     @Published private(set) var signingIn = false
     private var credential: SavedMobileToken?
     private var generation = UUID()
-    private let keychain = MobileTokenStore()
+    private let clearsDrafts: Bool
+    private let keychain: MobileTokenStore
     private var webSession: ASWebAuthenticationSession?
 
+    init(keychainService: String? = nil) {
+        keychain = MobileTokenStore(serviceOverride: keychainService)
+        clearsDrafts = keychainService == nil
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-reset-drafts") { MobileDraftStore.clear() }
+        if Self.fixtureAuthURL != nil, ProcessInfo.processInfo.arguments.contains("--ui-test-reset-auth") { keychain.delete() }
+        #endif
+    }
     func restore() {
         guard token == nil else { return }
         credential = keychain.read()
@@ -29,10 +38,18 @@ final class MobileAuthStore: ObservableObject {
         return credential.token
     }
 
+    func acceptToken(_ value: String, expiresAt: Double) throws {
+        guard expiresAt > Date().timeIntervalSince1970 * 1000 else {
+            throw PortalAPIError(status: 401, message: "Your session expired. Please sign in again.")
+        }
+        let saved = SavedMobileToken(token: value, expiresAt: expiresAt)
+        try keychain.save(saved); credential = saved; token = value
+    }
+
     func invalidate() {
         generation = UUID(); webSession?.cancel(); webSession = nil; signingIn = false
         keychain.delete(); credential = nil; token = nil
-        MobileDraftStore.clear()
+        if clearsDrafts { MobileDraftStore.clear() }
     }
 
     func signIn(presentation: MobileAuthPresenter) async {
@@ -67,9 +84,7 @@ final class MobileAuthStore: ObservableObject {
                         let api = PortalAPI(baseURL: Self.apiURL, token: { _ in throw URLError(.userAuthenticationRequired) })
                         let result = try await api.exchangeAuthorizationCode(code, verifier: verifier)
                         guard self.generation == attempt else { return }
-                        let saved = SavedMobileToken(token: result.token, expiresAt: result.expiresAt)
-                        try self.keychain.save(saved)
-                        self.credential = saved; self.token = result.token
+                        try self.acceptToken(result.token, expiresAt: result.expiresAt)
                     } catch { self.error = error.localizedDescription }
                 }
             }
@@ -89,8 +104,16 @@ final class MobileAuthStore: ObservableObject {
         }
     }
 
-    static var apiURL: URL { URL(string: Bundle.main.object(forInfoDictionaryKey: "TSQAPIBaseURL") as? String ?? "https://api.tasksquad.ai")! }
-    static var dashboardURL: URL { URL(string: Bundle.main.object(forInfoDictionaryKey: "TSQDashboardURL") as? String ?? "https://tasksquad.ai")! }
+    static var apiURL: URL { fixtureAuthURL ?? URL(string: Bundle.main.object(forInfoDictionaryKey: "TSQAPIBaseURL") as? String ?? "https://api.tasksquad.ai")! }
+    static var dashboardURL: URL { fixtureAuthURL ?? URL(string: Bundle.main.object(forInfoDictionaryKey: "TSQDashboardURL") as? String ?? "https://tasksquad.ai")! }
+    private static var fixtureAuthURL: URL? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let index = args.firstIndex(of: "--ui-test-auth"), args.count > index + 1,
+           let url = URL(string: args[index + 1]), url.host == "127.0.0.1", url.scheme == "http" { return url }
+        #endif
+        return nil
+    }
     private static func randomString(count: Int) throws -> String {
         var bytes = [UInt8](repeating: 0, count: (count * 3 + 3) / 4)
         let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
@@ -102,7 +125,8 @@ final class MobileAuthStore: ObservableObject {
 private struct SavedMobileToken: Codable { let token: String; let expiresAt: Double }
 
 private struct MobileTokenStore {
-    @MainActor private var service: String { "ai.tasksquad.mobile." + SHA256.hash(data: Data(MobileAuthStore.apiURL.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined() }
+    let serviceOverride: String?
+    @MainActor private var service: String { serviceOverride ?? "ai.tasksquad.mobile." + SHA256.hash(data: Data(MobileAuthStore.apiURL.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined() }
     @MainActor func read() -> SavedMobileToken? {
         var query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                     kSecAttrService as String: service,

@@ -4,11 +4,9 @@ import SwiftUI
 import TaskSquadCore
 import UserNotifications
 
-enum CustomerSection: String, CaseIterable, Identifiable {
-    case inbox = "Inbox", notes = "Notes", portals = "Portals", conveyors = "Conveyors", planners = "Planners"
-    case supervisor = "Supervisor", skills = "Skills", subAgents = "Sub-agents", commands = "Commands"
-    case memory = "Memory", analytics = "Analytics", agents = "Agents", members = "Members", settings = "Settings"
-    var id: String { rawValue }
+typealias CustomerSection = WorkspaceSection
+
+extension WorkspaceSection {
     var icon: LucideIcon {
         switch self {
         case .inbox: .inbox; case .notes: .fileText; case .portals: .monitor; case .conveyors: .repeat
@@ -17,14 +15,6 @@ enum CustomerSection: String, CaseIterable, Identifiable {
         case .settings: .settings
         }
     }
-    var resource: String {
-        switch self {
-        case .inbox, .supervisor: "tasks"; case .subAgents: "sub-agents"
-        default: rawValue.lowercased()
-        }
-    }
-    var envelope: String { self == .subAgents ? "sub_agents" : resource }
-    var isLibrary: Bool { [.skills, .subAgents, .commands].contains(self) }
 }
 
 @MainActor final class CustomerWorkspaceModel: ObservableObject {

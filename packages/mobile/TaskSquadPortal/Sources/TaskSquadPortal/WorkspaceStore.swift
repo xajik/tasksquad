@@ -5,7 +5,7 @@ import Combine
 /// is scoped to the project/section generation that initiated it.
 @MainActor public final class WorkspaceStore: ObservableObject {
     @Published public var section: WorkspaceSection = .inbox { didSet { if oldValue != section { reset() } } }
-    @Published public var projectID = "" { didSet { if oldValue != projectID { agents = []; reset() } } }
+    @Published public var projectID = "" { didSet { if oldValue != projectID { agents = []; reset(); if let key = projectPreferenceKey { preferences?.set(projectID, forKey: key) } } } }
     @Published public private(set) var projects: [CustomerRecord] = []
     @Published public private(set) var profile: CustomerRecord?
     @Published public private(set) var agents: [CustomerRecord] = []
@@ -18,10 +18,14 @@ import Combine
     @Published public var status = "all"
     @Published public var origin = "all"
     @Published public var archived = false
+    @Published public var memoryCategory = "all"
+    @Published public private(set) var rollups: [CustomerRecord] = []
     public let api: CustomerAPI
+    private let preferences: UserDefaults?
+    private var projectPreferenceKey: String? { profile.map { "mobile.project.\(api.baseURL.absoluteString).\($0.id)" } }
     private var generation = UUID()
     private var refreshID = UUID()
-    public init(api: CustomerAPI) { self.api = api }
+    public init(api: CustomerAPI, preferences: UserDefaults? = nil) { self.api = api; self.preferences = preferences }
     public var currentProject: CustomerRecord? { projects.first { $0.id == projectID } }
     public var canManage: Bool { ["owner", "maintainer"].contains(currentProject?.text("role") ?? "") }
     public var isOwner: Bool { currentProject?.text("role") == "owner" }
@@ -47,7 +51,7 @@ import Combine
         }
     }
     public func agentName(_ id: String) -> String { agents.first { $0.id == id }?.title ?? id }
-    private func reset() { generation = UUID(); records = []; search = ""; status = "all"; origin = "all"; error = nil; refreshedAt = nil }
+    private func reset() { generation = UUID(); records = []; rollups = []; search = ""; status = "all"; origin = "all"; error = nil; refreshedAt = nil }
     public func path(_ section: WorkspaceSection, id: String? = nil, project: String? = nil) -> [String] {
         let root = [.inbox, .supervisor, .portals].contains(section) ? [section.resource] : ["teams", project ?? projectID, section.resource]
         return root + (id.map { [$0] } ?? [])
@@ -60,7 +64,10 @@ import Combine
             let (u, t) = try await (user, teams)
             guard context == key, !Task.isCancelled else { return }
             profile = CustomerRecord(u); projects = CustomerRecord(t).records("teams")
-            if !projects.contains(where: { $0.id == projectID }) { projectID = projects.first?.id ?? "" }
+            if !projects.contains(where: { $0.id == projectID }) {
+                let saved = projectPreferenceKey.flatMap { preferences?.string(forKey: $0) }
+                projectID = projects.first { $0.id == saved }?.id ?? projects.first?.id ?? ""
+            }
             await refresh()
         } catch { if context == key { handle(error) } }
     }
@@ -73,16 +80,19 @@ import Combine
             async let agents = api.request(["teams", team, "agents"])
             var query: [String: String] = [:]
             if [.inbox, .supervisor, .portals].contains(section) { query["team_id"] = team }
+            if section == .memory, memoryCategory != "all" { query["category"] = memoryCategory }
             if section == .notes { query = ["archived": archived ? "true" : "false", "limit": "100"] }
             let response: JSONValue
             if section == .settings { response = .null }
             else if section == .analytics {
                 response = try await api.request(["teams", team, "stats"], query: ["from": String(Int(Date().addingTimeInterval(-30*86400).timeIntervalSince1970*1000)), "to": String(Int(Date().timeIntervalSince1970*1000)), "tz": "0"])
             } else { response = try await api.request(path(section, project: team), query: query) }
+            let nextRollups = section == .memory ? CustomerRecord(try await api.request(["teams", team, "rollups"], query: ["period": "daily"])).records("rollups") : []
             let agentResponse = try await agents
             guard key == context, refreshID == requestID, !Task.isCancelled else { return }
             self.agents = CustomerRecord(agentResponse).records("agents")
             records = section == .analytics ? [CustomerRecord(response)] : CustomerRecord(response).records(section.envelope)
+            rollups = nextRollups
             refreshedAt = Date(); error = nil
         } catch { if key == context, refreshID == requestID { handle(error) } }
     }

@@ -9,12 +9,15 @@ struct MobileRecordDetail: View {
     @State private var detail: CustomerRecord?
     @State private var messages: [CustomerRecord] = []
     @State private var related: [CustomerRecord] = []
+    @State private var mutationError: String?
     @State private var error: String?
     @State private var editor: MobileEditorRequest?
-    @State private var confirm: String?
+    @State private var confirm = ""
+    @State private var showConfirmation = false
     @State private var logs: [CustomerRecord] = []
     @State private var showLogs = false
     @State private var terminalPresented = false
+    @State private var transcript: String?
     private var record: CustomerRecord? { detail ?? model.records.first { $0.id == id } }
     private var taskSection: Bool { [.inbox, .supervisor].contains(model.section) }
     private var live: Bool { ["pending", "running"].contains(record?.status ?? "") }
@@ -32,8 +35,11 @@ struct MobileRecordDetail: View {
                     else { contents(record); actions(record) }
                     if !related.isEmpty { Section("Related tasks") { ForEach(related) { Text($0.title + " · " + $0.status) } } }
                 } else { ProgressView("Loading…") }
-                if let error = error ?? model.error { Text(error).foregroundStyle(.red).accessibilityIdentifier("detail-error") }
+
             } }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if model.section != .portals, let error = mutationError ?? error ?? model.error { Text(error).font(.footnote).foregroundStyle(.red).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("detail-error") }
         }
         .navigationTitle(model.section == .portals ? model.agentName(record?.text("agent_id") ?? "") : model.section.rawValue)
         .navigationBarTitleDisplayMode(.inline)
@@ -42,10 +48,15 @@ struct MobileRecordDetail: View {
                 if taskSection { Menu {
                     Button("Reply") { reply() }
                     Button("Logs") { Task { await loadLogs() } }
+                    Button("Forward to agent") { forward() }
+                    Button("Mark helpful") { Task { await perform(["tasks", id, "grade"], method: "PATCH", body: ["grade": .number(1)]) } }
+                    Button("Mark unhelpful") { Task { await perform(["tasks", id, "grade"], method: "PATCH", body: ["grade": .number(0)]) } }
+                    Button("Cancel task", role: .destructive) { ask("Cancel task") }
+                    Button("Delete task", role: .destructive) { ask("Delete item") }
                     if !(record?.text("session_id") ?? "").isEmpty { Button("Terminal") { terminalPresented = true } }
-                    Button("Close task", role: .destructive) { confirm = "Close task" }
+                    Button("Close task", role: .destructive) { ask("Close task") }
                 } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("Task actions") }
-                else if model.section == .portals, live { Button("Close", role: .destructive) { confirm = "Close Portal" }.accessibilityIdentifier("close-portal").disabled(model.busy) }
+                else if model.section == .portals, live { Button("Close", role: .destructive) { ask("Close Portal") }.accessibilityIdentifier("close-portal").disabled(model.busy) }
             }
         }
         .task(id: "\(model.context):\(id):\(phase)") {
@@ -57,15 +68,20 @@ struct MobileRecordDetail: View {
             }
         }
         .sheet(item: $editor) { MobileEditor(model: model, request: $0) }
+        .sheet(isPresented: Binding(get: { transcript != nil }, set: { if !$0 { transcript = nil } })) {
+            NavigationStack { ScrollView { Text(transcript ?? "").font(.system(.caption, design: .monospaced)).textSelection(.enabled).padding() }.navigationTitle("Transcript").toolbar { Button("Done") { transcript = nil } } }
+        }
         .sheet(isPresented: $showLogs) { NavigationStack { List(logs) { Text($0.text("body")).font(.system(.caption, design: .monospaced)).textSelection(.enabled) }.navigationTitle("Task logs").toolbar { Button("Done") { showLogs = false } } } }
         .sheet(isPresented: $terminalPresented) { NavigationStack {
             if let session = record?.text("session_id"), !session.isEmpty { PortalTerminalScreen(sessionID: session, api: terminalAPI).navigationTitle("Task terminal").toolbar { Button("Done") { terminalPresented = false } } }
         } }
-        .confirmationDialog(confirm ?? "Confirm", isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {
-            Button(confirm ?? "Confirm", role: .destructive) { let action = confirm; confirm = nil; Task { await confirmed(action) } }
-            Button("Cancel", role: .cancel) { confirm = nil }
-        } message: { Text("This will end the remote session. Completed records remain available.") }
+        .alert(confirm, isPresented: $showConfirmation) {
+            Button(confirm, role: .destructive) { let action = confirm; Task { await confirmed(action) } }
+            Button("Cancel", role: .cancel) { }
+        } message: { Text(confirm == "Delete item" ? "This permanently removes the record." : "This changes the remote work. Completed records remain available.") }
     }
+    private func ask(_ action: String) { confirm = action; showConfirmation = true }
+
     private var terminalAPI: PortalAPI { PortalAPI(baseURL: model.api.baseURL) { force in try await model.api.accessToken(forceRefresh: force) } }
     @ViewBuilder private func portal(_ record: CustomerRecord) -> some View {
         VStack(spacing: 0) {
@@ -75,7 +91,7 @@ struct MobileRecordDetail: View {
                 ContentUnavailableView(record.status == "pending" ? "Waiting for agent" : record.status == "running" ? "Starting terminal" : record.status == "failed" ? "Portal failed" : "Portal completed", systemImage: "terminal", description: Text(live ? "The terminal will connect when the agent starts the session." : "This session has ended."))
                 Text(record.status.capitalized).accessibilityIdentifier("portal-status")
             }
-            if let error = error ?? model.error { Text(error).foregroundStyle(.red).padding().accessibilityIdentifier("detail-error") }
+            if let error = mutationError ?? error ?? model.error { Text(error).foregroundStyle(.red).padding().accessibilityIdentifier("detail-error") }
         }
     }
     private var conversation: some View {
@@ -87,6 +103,14 @@ struct MobileRecordDetail: View {
                         Text(.init(message.text("body"))).textSelection(.enabled).accessibilityIdentifier("message-" + message.id)
                         if !message.text("type").isEmpty { Text(message.text("type").replacingOccurrences(of: "_", with: " ")).font(.caption).foregroundStyle(.secondary) }
                         if message.number("scheduled_at") > Date().timeIntervalSince1970*1000 { Text("Scheduled reply").font(.caption).foregroundStyle(.orange) }
+                        if !message.text("transcript_key").isEmpty { Button("View transcript") { Task {
+                            do { transcript = String(decoding: try await model.api.data(["tasks", id, "messages", message.id, "transcript"]), as: UTF8.self) } catch { self.error = error.localizedDescription }
+                        } } }
+                        if message.text("type") == "permission_request", message.text("interaction_status") == "pending" {
+                            ForEach(permissionOptions(message), id: \.self) { option in
+                                Button(option) { Task { await perform(["tasks", id, "messages"], body: ["body": .string(option)]) } }.disabled(model.busy)
+                            }
+                        }
                         ForEach(message.records("attachments")) { attachment in MobileAttachment(api: model.api, path: ["tasks", id, "messages", message.id, "attachments", attachment.id], name: attachment.text("filename")) }
                     }.padding(.vertical, 5)
                 }
@@ -127,8 +151,21 @@ struct MobileRecordDetail: View {
                     await perform(model.path(section, id: id) + (section == .agents ? ["pause"] : []), method: section == .conveyors ? "PUT" : section == .planners ? "PATCH" : "POST", body: ["paused": .bool(!record.flag("paused"))])
                 } }
             }
+            if model.section == .agents, model.canManage {
+                Button("Edit role") { editor = MobileEditorRequest(title: "Edit agent role", fields: [.init("role", "Role", .multiline, initial: .string(record.text("role")))]) { body, _ in
+                    guard await model.mutate(model.path(.agents, id: id), method: "PATCH", body: body) != nil else { return false }; await model.refresh(); await refresh(); return true
+                } }
+                Button("Reset agent") { ask("Reset agent") }
+            }
+            if model.section == .notes || (model.canManage && !record.flag("is_default") && [.skills,.subAgents,.commands,.conveyors,.planners,.agents].contains(model.section)) || (model.section == .members && model.isOwner) {
+                Button("Delete", role: .destructive) { ask("Delete item") }
+            }
             if model.section == .planners { Button("Approve planner") { Task { await perform(model.path(.planners, id: id), method: "PATCH", body: ["planner_verdict": .number(1)]) } }; Button("Reject planner") { Task { await perform(model.path(.planners, id: id), method: "PATCH", body: ["planner_verdict": .number(0)]) } } }
         }
+    }
+    private func permissionOptions(_ message: CustomerRecord) -> [String] {
+        guard let data = message.text("json_payload").data(using: .utf8), let payload = try? JSONDecoder().decode(JSONValue.self, from: data) else { return [] }
+        return (payload["options"]?.array ?? []).compactMap(\.string)
     }
     private func refresh() async {
         let key = model.context, section = model.section, project = model.projectID
@@ -151,12 +188,23 @@ struct MobileRecordDetail: View {
         if await model.mutate(path, method: method, body: body) != nil { await model.refresh(); await refresh() }
     }
     private func confirmed(_ action: String?) async {
-        let path = model.path(model.section, id: id) + ["close"]
-        if await model.mutate(path) != nil { await model.refresh(); await refresh() }
+        let section = model.section
+        let path = model.path(section, id: id) + (action == "Delete item" || action == "Cancel task" ? [] : action == "Reset agent" ? ["reset"] : ["close"])
+        let method = action == "Delete item" ? "DELETE" : action == "Cancel task" ? "PUT" : "POST"
+        let body: [String: JSONValue] = action == "Cancel task" ? ["status": .string("cancelled")] : [:]
+        if await model.mutate(path, method: method, body: body) != nil {
+            mutationError = nil; await model.refresh()
+            if action == "Delete item" { dismiss() } else { await refresh() }
+        } else { mutationError = model.error }
+    }
+    private func forward() {
+        editor = MobileEditorRequest(title: "Forward task", fields: [.init("agent_id", "Agent", .agent, required: true), .init("instructions", "Instructions", .multiline)]) { body, _ in
+            guard await model.mutate(["tasks", id, "forward"], body: body) != nil else { return false }; await model.refresh(); return true
+        }
     }
     private func reply() {
         let project = model.projectID
-        editor = MobileEditorRequest(title: "Reply", fields: [.init("body", "Message", .multiline, required: true), .init("scheduled_at", "Schedule reply", .date, initial: .null)], draftKey: "\(model.profile?.id ?? "").\(project).reply.\(id)", attachments: true, submitLabel: "Send") { body, files in
+        editor = MobileEditorRequest(title: "Reply", fields: [.init("body", "Message", .multiline, required: true), .init("scheduled_at", "Schedule reply", .date, initial: .null)], draftKey: "\(model.api.baseURL.absoluteString).\(model.profile?.id ?? "").\(project).reply.\(id)", attachments: true, submitLabel: "Send") { body, files in
             guard await model.mutate(["tasks", id, "messages"], body: body, files: files) != nil else { return false }; await refresh(); return true
         }
     }
@@ -186,6 +234,7 @@ private struct MobileAttachment: View {
     let path: [String]
     let name: String
     @State private var image: UIImage?
+    @State private var mutationError: String?
     @State private var error: String?
     var body: some View {
         VStack(alignment: .leading) {
