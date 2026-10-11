@@ -62,7 +62,7 @@ smoke:
 	open "$(APP_DIR)/TaskSquad Native.app" --args --config "$(SMOKE_CONFIG)"
 
 workflow-check:
-	$(ACTIONLINT) ../../.github/workflows/macos-native.yml ../../.github/workflows/macos-native-preview.yml
+	$(ACTIONLINT) ../../.github/workflows/macos-native.yml ../../.github/workflows/macos-native-preview.yml ../../.github/workflows/macos-native-stable.yml
 
 clean:
 	$(SWIFT) package clean

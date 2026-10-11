@@ -13,8 +13,13 @@ describe('pickMacRelease', () => {
     { tag_name: 'macos-v0.3.9', draft: false, prerelease: false, assets: [asset('TaskSquad-Native-0.3.9.dmg')] },
   ]
 
-  it('skips drafts and daemon releases, includes prereleases by default', () => {
-    const r = pickMacRelease(releases)
+  it('skips drafts and daemon releases and excludes prereleases for stable downloads', () => {
+    const r = pickMacRelease(releases, false)
+    expect(r?.version).toBe('0.3.9')
+  })
+
+  it('allows explicit preview downloads', () => {
+    const r = pickMacRelease(releases, true)
     expect(r?.version).toBe('0.4.0-preview.2')
     expect(r?.dmg).toBe('https://example.test/TaskSquad-Native-0.4.0-preview.2.dmg')
     expect(r?.sha256).toBe('https://example.test/TaskSquad-Native-0.4.0-preview.2.dmg.sha256')

@@ -1,6 +1,7 @@
 name: Native macOS release
 
-# Builds, signs (Developer ID + notarization when secrets exist, ad-hoc otherwise)
+# Builds an explicitly marked development preview. Preview releases are separate
+# from stable downloads; stable releases require Developer ID and notarization.
 # and publishes the DMG as a `macos-v*` GitHub release. The website links to
 # https://api.tasksquad.ai/download/macos, which redirects to the newest published
 # one. Releases are never marked "Latest": install.sh resolves the Go daemon via
@@ -43,7 +44,7 @@ jobs:
         run: command -v tmux || brew install tmux
       - name: Validate version and test
         run: |
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]] || { echo 'Expected X.Y.Z or X.Y.Z-preview.N'; exit 1; }
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]] || { echo 'Expected X.Y.Z-preview.N'; exit 1; }
           make test-compatibility app-check
       - name: Check signing credentials
         id: signing
@@ -55,13 +56,12 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
         run: |
-          # Like the daemon release: without Apple credentials, publish an
-          # ad-hoc-signed, unnotarized draft instead of failing the preview.
+          # Previews can be unsigned, but are visibly marked as development builds.
           if [[ -n "$MACOS_CERTIFICATE_P12_BASE64" && -n "$MACOS_CERTIFICATE_PASSWORD" && -n "$MACOS_SIGNING_IDENTITY" \
                 && -n "$APPLE_API_KEY_ID" && -n "$APPLE_API_ISSUER" && -n "$APPLE_API_KEY_P8" ]]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::Apple signing secrets are missing — publishing an ad-hoc-signed (unnotarized) preview. Users must right-click > Open on first launch."
+            echo "::warning::Apple signing secrets are missing — publishing an unsigned, unnotarized development preview."
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Import Developer ID and notarization credentials
@@ -104,7 +104,7 @@ jobs:
         if: steps.signing.outputs.available != 'true'
         run: |
           make app package
-          printf '\n> **Ad-hoc signed, not notarized.** macOS blocks it on first launch: right-click the app and choose **Open**, or run `xattr -d com.apple.quarantine "/Applications/TaskSquad Native.app"`.\n' >> PREVIEW.md
+          printf '\n> **Unsigned development preview; not notarized. Do not use this build for stable distribution.**\n' >> PREVIEW.md
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

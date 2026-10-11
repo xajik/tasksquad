@@ -80,12 +80,12 @@ async function latestMacRelease(ctx: ExecutionContext, includePrerelease: boolea
   return pickMacRelease(await res.json() as Release[], includePrerelease)
 }
 
-// GET /download/macos            → 302 to the newest DMG (prereleases included)
-// GET /download/macos?stable=1   → 302 to the newest non-prerelease DMG
+// GET /download/macos            → newest published stable DMG
+// GET /download/macos?preview=1  → newest published preview (if one exists)
 // GET /download/macos/latest.json → version metadata for the website / update checks
 export async function macos(req: Request, _env: unknown, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(req.url)
-  const release = await latestMacRelease(ctx, url.searchParams.get('stable') !== '1')
+  const release = await latestMacRelease(ctx, url.searchParams.get('preview') === '1')
   if (!release) {
     return Response.redirect(`https://github.com/${REPO}/releases`, 302)
   }
