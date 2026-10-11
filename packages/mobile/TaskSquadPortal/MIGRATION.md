@@ -24,7 +24,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
    ```bash
    (cd packages/mobile/TaskSquadPortal && swift test)
    (cd packages/macos && make test && make test-compatibility && ARCHS=arm64 make app-check)
-   (cd packages/ios && make build)            # make test / make e2e-contract for UI journeys
+   (cd packages/ios && make build && make e2e-contract)   # e2e-contract starts the :18743 fixture; plain `make test` fails without it (~8 min)
    ```
 3. Pick the first unchecked item. One item per commit, and tick it in this file in that commit.
 
@@ -44,7 +44,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 - [x] Replace the global `busy` guard with per-operation dedup (`inFlight: Set<String>`), never failing silently
 - [x] `WorkspaceOperation` (named constructors → path/method/body/files), `WorkspaceStore.perform(_:)`, route table tests
 - [x] Migrate the macOS call sites (`CustomerWorkspace`, `CustomerTaskDetail`, `CustomerNoteDetail`, `ApplicationWorkspace`)
-- [ ] Migrate the iOS call sites (`MobileRecordDetail`, `PortalHomeView`); remove the app-level `perform(path:method:)`
+- [x] Migrate the iOS call sites (`MobileRecordDetail`, `PortalHomeView`); remove the app-level `perform(path:method:)`
 - [ ] macOS editors use `WorkspaceDraftStore`/`WorkspaceDraftScope`; delete iOS `MobileDraftStore`
 - [ ] Tests: `WorkspaceEditor` validation, `StatusPresentation`, draft-scope isolation
 

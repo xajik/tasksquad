@@ -51,8 +51,8 @@ struct MobileRecordDetail: View {
                     Button("Reply") { reply() }
                     Button("Logs") { Task { await loadLogs() } }
                     Button("Forward to agent") { forward() }
-                    Button("Mark helpful") { Task { await perform(["tasks", id, "grade"], method: "PATCH", body: ["grade": .number(1)]) } }
-                    Button("Mark unhelpful") { Task { await perform(["tasks", id, "grade"], method: "PATCH", body: ["grade": .number(0)]) } }
+                    Button("Mark helpful") { Task { await run(.grade(task: id, 1)) } }
+                    Button("Mark unhelpful") { Task { await run(.grade(task: id, 0)) } }
                     Button("Cancel task", role: .destructive) { ask("Cancel task") }
                     Button("Delete task", role: .destructive) { ask("Delete item") }
                     if !(record?.text("session_id") ?? "").isEmpty { Button("Terminal") { terminalPresented = true } }
@@ -110,7 +110,7 @@ struct MobileRecordDetail: View {
                         } } }
                         if message.text("type") == "permission_request", message.text("interaction_status") == "pending" {
                             ForEach(permissionOptions(message), id: \.self) { option in
-                                Button(option) { Task { await perform(["tasks", id, "messages"], body: ["body": .string(option)]) } }.disabled(model.busy)
+                                Button(option) { Task { await run(.answerPermission(task: id, option: option)) } }.disabled(model.busy)
                             }
                         }
                         ForEach(message.records("attachments")) { attachment in MobileAttachment(api: model.api, path: ["tasks", id, "messages", message.id, "attachments", attachment.id], name: attachment.text("filename")) }
@@ -143,26 +143,25 @@ struct MobileRecordDetail: View {
                 if !record.flag("is_default") { Button("Edit") { edit(record) } }
             }
             if model.section == .notes {
-                Button(model.archived ? "Restore note" : "Archive note") { Task { await perform(model.path(.notes, id: id) + ["archive"], method: model.archived ? "DELETE" : "POST") } }
-                Button("Send to Inbox") { noteTask("convert") }
-                Button("Ask for critique") { noteTask("critique") }
+                Button(model.archived ? "Restore note" : "Archive note") { Task { await run(.archiveNote(project: model.projectID, note: id, restore: model.archived)) } }
+                Button("Send to Inbox") { noteTask(.convert) }
+                Button("Ask for critique") { noteTask(.critique) }
             }
             if model.canManage, [.conveyors, .planners, .agents].contains(model.section) {
                 Button(record.flag("paused") ? "Resume" : "Pause") { Task {
-                    let section = model.section
-                    await perform(model.path(section, id: id) + (section == .agents ? ["pause"] : []), method: section == .conveyors ? "PUT" : section == .planners ? "PATCH" : "POST", body: ["paused": .bool(!record.flag("paused"))])
+                    await run(.setPaused(model.section, project: model.projectID, id: id, paused: !record.flag("paused")))
                 } }
             }
             if model.section == .agents, model.canManage {
                 Button("Edit role") { editor = MobileEditorRequest(title: "Edit agent role", fields: [.init("role", "Role", .multiline, initial: .string(record.text("role")))]) { body, _ in
-                    guard await model.mutate(model.path(.agents, id: id), method: "PATCH", body: body) != nil else { return false }; await model.refresh(); await refresh(); return true
+                    guard await model.perform(.update(.agents, project: model.projectID, id: id, values: body)) != nil else { return false }; await model.refresh(); await refresh(); return true
                 } }
                 Button("Reset agent") { ask("Reset agent") }
             }
             if model.section == .notes || (model.canManage && !record.flag("is_default") && [.skills,.subAgents,.commands,.conveyors,.planners,.agents].contains(model.section)) || (model.section == .members && model.isOwner) {
                 Button("Delete", role: .destructive) { ask("Delete item") }
             }
-            if model.section == .planners { Button("Approve planner") { Task { await perform(model.path(.planners, id: id), method: "PATCH", body: ["planner_verdict": .number(1)]) } }; Button("Reject planner") { Task { await perform(model.path(.planners, id: id), method: "PATCH", body: ["planner_verdict": .number(0)]) } } }
+            if model.section == .planners { Button("Approve planner") { Task { await run(.plannerVerdict(project: model.projectID, planner: id, 1)) } }; Button("Reject planner") { Task { await run(.plannerVerdict(project: model.projectID, planner: id, 0)) } } }
         }
     }
     private func permissionOptions(_ message: CustomerRecord) -> [String] {
@@ -173,44 +172,51 @@ struct MobileRecordDetail: View {
         await detailStore.refresh(workspace: model, id: id)
         error = detailStore.error
     }
-    private func perform(_ path: [String], method: String = "POST", body: [String: JSONValue] = [:]) async {
-        if await model.mutate(path, method: method, body: body) != nil { await model.refresh(); await refresh() }
+    /// Sends the operation and refreshes the workspace and this record on success.
+    private func run(_ operation: WorkspaceOperation) async {
+        if await model.perform(operation) != nil { await model.refresh(); await refresh() }
     }
     private func confirmed(_ action: String?) async {
-        let section = model.section
-        let path = model.path(section, id: id) + (action == "Delete item" || action == "Cancel task" ? [] : action == "Reset agent" ? ["reset"] : ["close"])
-        let method = action == "Delete item" ? "DELETE" : action == "Cancel task" ? "PUT" : "POST"
-        let body: [String: JSONValue] = action == "Cancel task" ? ["status": .string("cancelled")] : [:]
-        if await model.mutate(path, method: method, body: body) != nil {
+        guard let action else { return }
+        let section = model.section, project = model.projectID
+        let operation: WorkspaceOperation = switch action {
+        case "Delete item": .delete(section, project: project, id: id)
+        case "Cancel task": .cancelTask(id)
+        case "Reset agent": .resetAgent(project: project, agent: id)
+        case "Close Portal": .closePortal(id)
+        default: .closeTask(id)
+        }
+        if await model.perform(operation) != nil {
             mutationError = nil; await model.refresh()
             if action == "Delete item" { dismiss() } else { await refresh() }
         } else { mutationError = model.error }
     }
     private func forward() {
         editor = MobileEditorRequest(title: "Forward task", fields: [.init("agent_id", "Agent", .agent, required: true), .init("instructions", "Instructions", .multiline)]) { body, _ in
-            guard await model.mutate(["tasks", id, "forward"], body: body) != nil else { return false }; await model.refresh(); return true
+            guard await model.perform(.forward(task: id, values: body)) != nil else { return false }; await model.refresh(); return true
         }
     }
     private func reply() {
         let project = model.projectID
         editor = MobileEditorRequest(title: "Reply", fields: [.init("body", "Message", .multiline, required: true), .init("scheduled_at", "Schedule reply", .date, initial: .null)], draftKey: "\(model.api.baseURL.absoluteString).\(model.profile?.id ?? "").\(project).reply.\(id)", attachments: true, submitLabel: "Send") { body, files in
-            guard await model.mutate(["tasks", id, "messages"], body: body, files: files) != nil else { return false }; await refresh(); return true
+            guard await model.perform(.reply(task: id, values: body, files: files)) != nil else { return false }; await refresh(); return true
         }
     }
     private func edit(_ record: CustomerRecord) {
         let section = model.section
         editor = MobileEditorRequest(title: "Edit " + section.rawValue, fields: WorkspaceField.fields(for: section, record: record)) { body, files in
-            guard await model.mutate(model.path(section, id: id), method: "PUT", body: body, files: files) != nil else { return false }; await model.refresh(); await refresh(); return true
+            guard await model.perform(.update(section, project: model.projectID, id: id, values: body, files: files)) != nil else { return false }; await model.refresh(); await refresh(); return true
         }
     }
     private func comment() {
         editor = MobileEditorRequest(title: "Add comment", fields: [.init("content", "Comment", .multiline, required: true)]) { body, _ in
-            guard await model.mutate(model.path(.notes, id: id) + ["comments"], body: body) != nil else { return false }; await refresh(); return true
+            guard await model.perform(.comment(project: model.projectID, note: id, content: body["content"]?.string ?? "")) != nil else { return false }; await refresh(); return true
         }
     }
-    private func noteTask(_ action: String) {
+    private func noteTask(_ kind: WorkspaceOperation.NoteTask) {
+        let action = kind.rawValue
         editor = MobileEditorRequest(title: action == "convert" ? "Send to Inbox" : "Request critique", fields: [.init("agent_id", "Agent", .agent, required: true), .init(action == "convert" ? "instructions" : "context", "Instructions", .multiline), .init("include_comments", "Include comments", .bool, initial: .bool(true))]) { body, _ in
-            guard await model.mutate(model.path(.notes, id: id) + [action], body: body) != nil else { return false }; await refresh(); return true
+            guard await model.perform(.noteTask(kind, project: model.projectID, note: id, values: body)) != nil else { return false }; await refresh(); return true
         }
     }
     private func loadLogs() async {

@@ -97,8 +97,7 @@ struct PortalHomeView: View {
         let section = model.section, project = model.projectID, context = model.context
         model.error = nil
         editor = MobileEditorRequest(title: section == .inbox ? "New task" : "New " + section.rawValue.lowercased(), fields: WorkspaceField.fields(for: section), draftKey: "\(model.api.baseURL.absoluteString).\(model.profile?.id ?? "").\(project).\(section.rawValue)", eligibleAgentsOnly: section == .portals, attachments: section == .inbox, phases: section == .planners, submitLabel: section == .inbox ? "Send" : "Create") { body, files in
-            let body = WorkspacePolicy.createPayload(body, section: section, project: project)
-            guard context == model.context, let result = await model.mutate(model.path(section, project: project), body: body, files: files) else { return false }
+            guard context == model.context, let result = await model.perform(.create(section, project: project, values: body, files: files)) else { return false }
             await model.refresh()
             let record = CustomerRecord(result)
             selectedID = record.id.isEmpty ? nil : record.id
@@ -118,7 +117,7 @@ struct PortalHomeView: View {
             Button("Sign out", role: .destructive) { Task { await auth.signOut() } }
         }
     }
-    private func setting(_ key: String) -> Binding<Bool> { Binding(get: { model.currentProject?.flag(key) ?? false }, set: { value in Task { if await model.mutate(["teams", model.projectID], method: "PATCH", body: [key: .bool(value)]) != nil { await model.connect() } } }) }
+    private func setting(_ key: String) -> Binding<Bool> { Binding(get: { model.currentProject?.flag(key) ?? false }, set: { value in Task { if await model.perform(.setProjectFlag(project: model.projectID, key: key, value)) != nil { await model.connect() } } }) }
     private var analytics: some View {
         Section("Last 30 days") {
             if let record = model.records.first {
