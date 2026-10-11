@@ -16,8 +16,8 @@ final class MobileAuthStore: ObservableObject {
 
     func signIn(presentation: MobileAuthPresenter) async {
         do {
-            let verifier = Self.randomString(count: 64)
-            let state = Self.randomString(count: 32)
+            let verifier = try Self.randomString(count: 64)
+            let state = try Self.randomString(count: 32)
             let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URLEncodedString()
             let callback = "tasksquad-portal://oauth/callback"
             var components = URLComponents(string: "https://tasksquad.ai/mobile/authorize")!
@@ -28,6 +28,7 @@ final class MobileAuthStore: ObservableObject {
             let session = ASWebAuthenticationSession(url: components.url!, callbackURLScheme: "tasksquad-portal") { [weak self] url, failure in
                 guard let self else { return }
                 Task { @MainActor in
+                    self.webSession = nil
                     if let failure { self.error = failure.localizedDescription; return }
                     guard let url, let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
                           parts.host == "oauth", parts.path == "/callback",
@@ -41,7 +42,6 @@ final class MobileAuthStore: ObservableObject {
                         let result = try await api.exchangeAuthorizationCode(code, verifier: verifier)
                         try self.keychain.save(result.token)
                         self.token = result.token
-                        self.webSession = nil
                     } catch { self.error = error.localizedDescription }
                 }
             }
@@ -62,9 +62,11 @@ final class MobileAuthStore: ObservableObject {
     }
 
     static var apiURL: URL { URL(string: Bundle.main.object(forInfoDictionaryKey: "TSQAPIBaseURL") as? String ?? "https://api.tasksquad.ai")! }
-    private static func randomString(count: Int) -> String {
-        let alphabet = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
-        return String((0..<count).compactMap { _ in alphabet.randomElement() })
+    private static func randomString(count: Int) throws -> String {
+        var bytes = [UInt8](repeating: 0, count: (count * 3 + 3) / 4)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+        return String(Data(bytes).base64URLEncodedString().prefix(count))
     }
 }
 
