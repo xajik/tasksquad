@@ -46,6 +46,20 @@ final class StorageTests: XCTestCase {
         XCTAssertFalse(entries.contains(""))
     }
 
+    /// Go appSearchPath("/Applications/TaskSquad.app/Contents/MacOS/tsq", "/Users/u", "/custom/bin:/usr/bin:relative"),
+    /// dumped from daemon/app_darwin.go. Swift adds only the Node version-manager folders.
+    func testSearchPathMatchesGoAppSearchPath() {
+        let go = "/Applications/TaskSquad.app/Contents/MacOS:/custom/bin:/usr/bin:/opt/homebrew/bin:/usr/local/bin:/Users/u/.local/bin:/Users/u/.bun/bin:/Users/u/.cargo/bin:/Users/u/.opencode/bin:/bin:/usr/sbin:/sbin"
+        let swift = TaskSquadPaths(home: URL(fileURLWithPath: "/Users/u"))
+            .searchPath(executable: "/Applications/TaskSquad.app/Contents/MacOS/tsq", inherited: "/custom/bin:/usr/bin:relative")
+        let nodeManagers = ["/Users/u/.volta/bin", "/Users/u/Library/pnpm", "/Users/u/.npm-global/bin", "/Users/u/.yarn/bin"]
+        XCTAssertEqual(swift.components(separatedBy: ":").filter { !nodeManagers.contains($0) }.joined(separator: ":"), go)
+        XCTAssertTrue(TaskSquadPaths.needsSearchPath(executable: "/Applications/TaskSquad Native.app/Contents/MacOS/tsq", parentPID: 4242))
+        XCTAssertTrue(TaskSquadPaths.needsSearchPath(executable: "/usr/local/bin/tsq", parentPID: 1))
+        XCTAssertFalse(TaskSquadPaths.needsSearchPath(executable: "/usr/local/bin/tsq", parentPID: 4242))
+        XCTAssertFalse(TaskSquadPaths.needsSearchPath(executable: "/opt/x.app/Contents/Resources/tsq", parentPID: 4242))
+    }
+
     func testAESGCMNonceLayoutAndTamperRejection() throws {
         let key = Data(repeating: 7, count: 32).base64EncodedString()
         let plaintext = Data("task transcript\nwith unicode 🐈".utf8)

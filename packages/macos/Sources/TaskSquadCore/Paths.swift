@@ -44,11 +44,21 @@ public struct TaskSquadPaths: Sendable {
         return home.appendingPathComponent(String(path.dropFirst(2))).standardizedFileURL.path
     }
 
+    /// Go's prepareAppEnvironment: the app bundle always widens PATH; the plain CLI
+    /// only when launchd started it (parent PID 1), keeping a terminal's PATH intact.
+    public static func needsSearchPath(executable: String, parentPID: pid_t) -> Bool {
+        let macOS = URL(fileURLWithPath: executable).deletingLastPathComponent()
+        let contents = macOS.deletingLastPathComponent()
+        let isBundle = macOS.lastPathComponent == "MacOS" && contents.lastPathComponent == "Contents"
+            && contents.deletingLastPathComponent().path.hasSuffix(".app")
+        return isBundle || parentPID == 1
+    }
+
     public func searchPath(executable: String, inherited: String) -> String {
         let candidates = [URL(fileURLWithPath: executable).deletingLastPathComponent().path]
             + inherited.components(separatedBy: ":")
             + ["/opt/homebrew/bin", "/usr/local/bin", home.path + "/.local/bin",
-               home.path + "/.bun/bin", home.path + "/.cargo/bin"]
+               home.path + "/.bun/bin", home.path + "/.cargo/bin", home.path + "/.opencode/bin"]
             + nodeToolPaths()
             + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         var seen = Set<String>()

@@ -109,7 +109,7 @@ Output text and exit codes must match Go byte-for-byte: agents and skills parse 
 |---|---|---|
 | `autostart` (login item) | done | Same `ai.tasksquad.tsq` LaunchAgent plist as Go (byte-golden), first-run enable marker, menu toggle; either app takes over the other's registration |
 | `ui/power_darwin.go` wake lock | done | `caffeinate -i` while pulling, released on pause/stop (also ends with the app) |
-| Finder/login PATH propagation | partial | `TaskSquadPaths.searchPath` exists; verify Finder and login-item launches |
+| Finder/login PATH propagation | done (golden); launch E2E in qualification | `TaskSquadPaths.searchPath` equals Go `appSearchPath` (incl. `~/.opencode/bin`) plus Node version-manager folders; `needsSearchPath` mirrors `prepareAppEnvironment` (app bundle always, plain `tsq` only under launchd). `StorageTests.testSearchPathMatchesGoAppSearchPath`. Real Finder/login-item launch still to be checked on a clean machine |
 | Automatic engine start, graceful quit/drain | done | Engine starts at launch when configured; with no config the app opens `tsq init` in Terminal and relaunches (Go `startAppSetup`) |
 | Menu: email, live stats, Pause/Resume Pulling, Run on OS Boot, Open Config, Logout | done | Deliberate difference: Go's pause flag is never read by its poller, so pausing does not stop task pickup there; Swift stops new pickup while heartbeats continue |
 | Go ↔ Swift switching after drain | partial | No duplicate task claims; config/history/credentials |

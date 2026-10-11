@@ -10,7 +10,7 @@ if let locale = setlocale(LC_CTYPE, ""), ["C", "POSIX"].contains(String(cString:
     setlocale(LC_CTYPE, "en_US.UTF-8")
 }
 let inheritedPath = ProcessInfo.processInfo.environment["PATH"] ?? ""
-setenv("PATH", TaskSquadPaths().searchPath(executable: CommandLine.arguments[0], inherited: inheritedPath), 1)
+setenv("PATH", TaskSquadPaths().searchPath(executable: Bundle.main.executablePath ?? CommandLine.arguments[0], inherited: inheritedPath), 1)
 // `--start-engine` starts the local daemon once configuration loads, for
 // unattended runs (E2E loops, login items). It only combines with `--config`.
 let startEngineAtLaunch = CommandLine.arguments.contains("--start-engine")
