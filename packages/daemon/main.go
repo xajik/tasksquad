@@ -12,6 +12,7 @@ import (
 	"github.com/tasksquad/daemon/autostart"
 	attachcmd "github.com/tasksquad/daemon/cmd/attach"
 	authcmd "github.com/tasksquad/daemon/cmd/auth"
+	customercli "github.com/tasksquad/daemon/cmd/customer"
 	hookscmd "github.com/tasksquad/daemon/cmd/hooks"
 	kbcmd "github.com/tasksquad/daemon/cmd/kb"
 	logscmd "github.com/tasksquad/daemon/cmd/logs"
@@ -37,6 +38,8 @@ func main() {
 	prepareAppEnvironment()
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "projects", "agents", "tasks", "portals", "resources", "doctor":
+			os.Exit(customercli.Run(os.Args[1:], version, os.Stdout, os.Stderr))
 		case "init":
 			authcmd.RunInit() //nolint:errcheck
 			return

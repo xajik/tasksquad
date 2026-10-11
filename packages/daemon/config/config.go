@@ -111,6 +111,24 @@ func DeviceID() string {
 }
 
 func Load(path string) (*Config, error) {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("config file not found at %s\nRun: tsq init", path)
+		}
+		return nil, fmt.Errorf("failed to read config: %w", err)
+	}
+	cfg, err := LoadCustomer(path)
+	if err != nil { return nil, err }
+	if len(cfg.Agents) == 0 { return nil, fmt.Errorf("at least one [[agents]] entry is required") }
+	for i, a := range cfg.Agents {
+		if a.ID == "" { return nil, fmt.Errorf("agents[%d].id is required", i) }
+	}
+	return cfg, nil
+}
+
+// LoadCustomer reads API settings for cloud CLI commands that do not require a
+// local daemon configuration. Missing files use the embedded server defaults.
+func LoadCustomer(path string) (*Config, error) {
 	// Start from embedded defaults so every field has a sensible value
 	// even if the user's config omits it.
 	cfg := &Config{}
@@ -121,18 +139,12 @@ func Load(path string) (*Config, error) {
 	// Overlay user config (only keys present in the file are overwritten).
 	if _, err := toml.DecodeFile(path, cfg); err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("config file not found at %s\nRun: tsq init", path)
+			return cfg, nil
 		}
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	if len(cfg.Agents) == 0 {
-		return nil, fmt.Errorf("at least one [[agents]] entry is required")
-	}
 	for i, a := range cfg.Agents {
-		if a.ID == "" {
-			return nil, fmt.Errorf("agents[%d].id is required", i)
-		}
 		cfg.Agents[i].WorkDir = expandHome(a.WorkDir)
 	}
 
