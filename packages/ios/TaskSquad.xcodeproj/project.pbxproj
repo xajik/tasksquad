@@ -13,13 +13,15 @@
 		41C90D7A2E7A4985C7B458C8 /* MobileEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A30AA7DDE6D278F84DDE19 /* MobileEditor.swift */; };
 		60CB3BFF7EF9CCAA1C7F89AE /* PortalTerminalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A24DFD7CDB332FEB0BFA475 /* PortalTerminalScreen.swift */; };
 		7F46BC20BF5BCE0D56C2CA47 /* MobileTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65F7AFFE10DF3D195DA20DF /* MobileTheme.swift */; };
-		84CB2C312440586E11EDA45A /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 55F351BEB49BF4FC2D89436E /* SwiftTerm */; };
+		84CB2C312440586E11EDA45A /* TaskSquadDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 2C0EF5DF0825B850D26E8199 /* TaskSquadDesign */; };
 		8EF7527A40FA26206736633A /* MobileAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B560839AB82BAC6A1E9EBAF9 /* MobileAuthTests.swift */; };
+		92EBC351345F794E119FF4DF /* TaskSquadPortalUI in Frameworks */ = {isa = PBXBuildFile; productRef = 35E29CAAA0FE9E179E7287E2 /* TaskSquadPortalUI */; };
 		A3081A9FB955E187348AB96E /* TaskSquadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1756F65F3A291F9D9547D06 /* TaskSquadApp.swift */; };
 		C377783D45D1AA5E610332E0 /* TaskSquadPortal in Frameworks */ = {isa = PBXBuildFile; productRef = 05923C9AD5D3F2A79B7BD7C8 /* TaskSquadPortal */; };
 		C689009D9255D34FD761F0C1 /* PortalFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D799CB7685A475963E63111 /* PortalFlowTests.swift */; };
 		CA47F52DC71791B5BC0FC5E1 /* MobileRecordDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 050DA99DEA779DFB9A29BA1E /* MobileRecordDetail.swift */; };
 		DD1759BF6E9091CD96AE1639 /* MobileDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EB4A702FA864462F5E6FE52 /* MobileDraftStore.swift */; };
+		E7289E78BAB1CD4FCA86E0EE /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 55F351BEB49BF4FC2D89436E /* SwiftTerm */; };
 		EB2FAADDABF1837AA0734CAD /* HTTPWorkflowBenchmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 672FC64D549067B18CE586FD /* HTTPWorkflowBenchmarkTests.swift */; };
 		F25664F1A0A1D0135E9DC0D9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EB207D857A43491B4B23528D /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -66,7 +68,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				C377783D45D1AA5E610332E0 /* TaskSquadPortal in Frameworks */,
-				84CB2C312440586E11EDA45A /* SwiftTerm in Frameworks */,
+				84CB2C312440586E11EDA45A /* TaskSquadDesign in Frameworks */,
+				92EBC351345F794E119FF4DF /* TaskSquadPortalUI in Frameworks */,
+				E7289E78BAB1CD4FCA86E0EE /* SwiftTerm in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -190,6 +194,8 @@
 			name = TaskSquad;
 			packageProductDependencies = (
 				05923C9AD5D3F2A79B7BD7C8 /* TaskSquadPortal */,
+				2C0EF5DF0825B850D26E8199 /* TaskSquadDesign */,
+				35E29CAAA0FE9E179E7287E2 /* TaskSquadPortalUI */,
 				55F351BEB49BF4FC2D89436E /* SwiftTerm */,
 			);
 			productName = TaskSquad;
@@ -605,6 +611,14 @@
 		05923C9AD5D3F2A79B7BD7C8 /* TaskSquadPortal */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TaskSquadPortal;
+		};
+		2C0EF5DF0825B850D26E8199 /* TaskSquadDesign */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TaskSquadDesign;
+		};
+		35E29CAAA0FE9E179E7287E2 /* TaskSquadPortalUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TaskSquadPortalUI;
 		};
 		4EE6F3CE0DA282A10A29DD08 /* TaskSquadPortal */ = {
 			isa = XCSwiftPackageProductDependency;

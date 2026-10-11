@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CryptoKit
 import SwiftUI
 import TaskSquadCore
@@ -18,37 +19,34 @@ extension WorkspaceSection {
 }
 
 @MainActor final class CustomerWorkspaceModel: ObservableObject {
-    @Published var section: CustomerSection = .inbox { didSet { if oldValue != section { resetSelection() } } }
-    @Published var teamID = "" {
-        didSet {
-            guard oldValue != teamID else { return }
-            defaults.set(teamID, forKey: "customer.team"); agents = []; resetSelection()
-            taskStatuses = [:]; didSeedNotificationStatuses = false
-        }
-    }
-    @Published var profile: CustomerRecord?
-    @Published var teams: [CustomerRecord] = []
-    @Published var agents: [CustomerRecord] = []
-    @Published var records: [CustomerRecord] = []
-    @Published var selectedID: String? { didSet { if oldValue != selectedID { detail = nil; messages = []; related = []; comments = [] } } }
-    @Published var detail: CustomerRecord?
-    @Published var messages: [CustomerRecord] = []
-    @Published var comments: [CustomerRecord] = []
-    @Published var related: [CustomerRecord] = []
-    @Published var rollups: [CustomerRecord] = []
-    @Published var error: String?
-    @Published var busy = false
-    @Published var loading = false
+    private(set) var workspace: WorkspaceStore!
+    let detailStore = RecordDetailStore()
+    private var subscriptions: Set<AnyCancellable> = []
+    var section: CustomerSection { get { workspace.section } set { if workspace.section != newValue { workspace.section = newValue; resetSelection() } } }
+    var teamID: String { get { workspace.projectID } set { if workspace.projectID != newValue { workspace.projectID = newValue; resetSelection(); taskStatuses = [:]; didSeedNotificationStatuses = false } } }
+    var profile: CustomerRecord? { workspace.profile }
+    var teams: [CustomerRecord] { workspace.projects }
+    var agents: [CustomerRecord] { workspace.agents }
+    var records: [CustomerRecord] { workspace.records }
+    @Published var selectedID: String? { didSet { if oldValue != selectedID { detailStore.reset() } } }
+    var detail: CustomerRecord? { detailStore.detail }
+    var messages: [CustomerRecord] { detailStore.messages }
+    var comments: [CustomerRecord] { detailStore.comments }
+    var related: [CustomerRecord] { detailStore.related }
+    var rollups: [CustomerRecord] { workspace.rollups }
+    var error: String? { get { workspace.error ?? detailStore.error } set { workspace.error = newValue } }
+    var busy: Bool { workspace.busy }
+    var loading: Bool { workspace.loading }
     @Published var signingIn = false
     @Published var active = false
-    @Published var search = ""
-    @Published var statusFilter = "all"
-    @Published var sourceFilter = "all"
-    @Published var archived = false
-    @Published var memoryCategory = "all"
-    @Published var memoryTag = ""
-    @Published var rollupPeriod = "daily"
-    @Published var hasMore = false
+    var search: String { get { workspace.search } set { workspace.search = newValue } }
+    var statusFilter: String { get { workspace.status } set { workspace.status = newValue } }
+    var sourceFilter: String { get { workspace.origin } set { workspace.origin = newValue } }
+    var archived: Bool { get { workspace.archived } set { workspace.archived = newValue } }
+    var memoryCategory: String { get { workspace.memoryCategory } set { workspace.memoryCategory = newValue } }
+    var memoryTag: String { get { workspace.memoryTag } set { workspace.memoryTag = newValue } }
+    var rollupPeriod: String { get { workspace.rollupPeriod } set { workspace.rollupPeriod = newValue } }
+    var hasMore: Bool { workspace.hasMore }
     @Published var apiURL: String
     @Published var dashboardURL: String
     @Published var firebaseAPIKey: String
@@ -57,7 +55,6 @@ extension WorkspaceSection {
     private var authentication: Authentication?
     private var loginTask: Task<Void, Never>?
     private var generation = UUID()
-    private var refreshing = false
     private var didRestore = false
     private var taskStatuses: [String: String] = [:]
     private var didSeedNotificationStatuses = false
@@ -71,36 +68,16 @@ extension WorkspaceSection {
         dashboardURL = defaults.string(forKey: "customer.dashboard") ?? "https://tasksquad.ai"
         firebaseAPIKey = defaults.string(forKey: "customer.firebase") ?? ""
         notifications = defaults.bool(forKey: "customer.notifications")
-        teamID = defaults.string(forKey: "customer.team") ?? ""
+        configureWorkspace()
     }
 
     var currentTeam: CustomerRecord? { teams.first { $0.id == teamID } }
     var isOwner: Bool { currentTeam?.text("role") == "owner" }
     var isMaintainer: Bool { isOwner || currentTeam?.text("role") == "maintainer" }
     var isPro: Bool { profile?.text("plan") == "pro" }
-    var selectionKey: String { "\(generation):\(teamID):\(section):\(selectedID ?? ""):\(archived):\(memoryCategory):\(rollupPeriod)" }
+    var selectionKey: String { "\(generation):\(workspace.context):\(teamID):\(section):\(selectedID ?? ""):\(archived):\(memoryCategory):\(rollupPeriod)" }
     var selected: CustomerRecord? { detail ?? records.first { $0.id == selectedID } }
-    var visibleRecords: [CustomerRecord] {
-        records.filter { record in
-            (search.isEmpty || [record.title, record.text("body"), record.text("description"), record.text("content"), agentName(record.text("agent_id")), record.strings("tags").joined(separator: " ")].contains { $0.localizedCaseInsensitiveContains(search) })
-            && (statusFilter == "all" || record.status == statusFilter)
-            && (memoryTag.isEmpty || record.strings("tags").contains(memoryTag))
-            && matchesSource(record)
-        }
-    }
-    private func matchesSource(_ record: CustomerRecord) -> Bool {
-        guard section == .inbox, sourceFilter != "all" else { return true }
-        switch sourceFilter {
-        case "mine": return record.text("sender_id") == profile?.id && record.text("first_message_type") != "note-to-inbox"
-        case "system": return record.text("first_message_role") == "system" && record.text("first_message_type") != "note-to-inbox"
-        case "scheduled": return record.status == "scheduled" || record.number("scheduled_at") > Date().timeIntervalSince1970 * 1000
-        case "planner": return !record.text("planner_id").isEmpty
-        case "conveyor": return !record.text("conveyor_id").isEmpty
-        case "from-note": return record.text("first_message_type") == "note-to-inbox"
-        case "note-critique": return record.text("first_message_type") == "note-critique"
-        default: return record.text("first_message_type") == sourceFilter
-        }
-    }
+    var visibleRecords: [CustomerRecord] { workspace.visibleRecords }
     func agentName(_ id: String) -> String { agents.first { $0.id == id }?.title ?? id }
     func teamPath(_ resource: String, id: String? = nil) -> [String] {
         ["teams", teamID, resource] + (id.map { [$0] } ?? [])
@@ -156,21 +133,17 @@ extension WorkspaceSection {
         }
     }
     func cancelLogin() { loginTask?.cancel() }
+    private func configureWorkspace() {
+        let client = (try? api()) ?? CustomerAPI(baseURL: URL(string: "https://invalid.invalid")!) { _ in throw ConfigurationError("Use a valid API address.") }
+        workspace = WorkspaceStore(api: client, preferences: defaults)
+        subscriptions.removeAll()
+        workspace.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &subscriptions)
+        detailStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &subscriptions)
+    }
     func connect() async {
-        let generation = generation
-        loading = true; defer { loading = false }
-        do {
-            let api = try api()
-            async let user = api.request(["me"])
-            async let teamList = api.request(["teams"])
-            let (u, t) = try await (user, teamList)
-            guard self.generation == generation else { return }
-            profile = CustomerRecord(u); teams = CustomerRecord(t).records("teams")
-            if !teams.contains(where: { $0.id == teamID }) { teamID = teams.first?.id ?? "" }
-            error = nil
-            startNotificationMonitor()
-        } catch where isCancellation(error) { }
-        catch { if self.generation == generation { self.error = error.localizedDescription } }
+        do { _ = try api() } catch { self.error = error.localizedDescription; return }
+        await workspace.connect(refresh: false)
+        if profile != nil { startNotificationMonitor() }
     }
     func signOut() async {
         notificationTask?.cancel(); notificationTask = nil
@@ -178,6 +151,7 @@ extension WorkspaceSection {
         generation = UUID(); clearAccount()
         do { try await auth().logout() } catch { self.error = error.localizedDescription }
         authentication = nil
+        configureWorkspace()
     }
     func saveConnection() async {
         guard profile == nil, !signingIn else { return }
@@ -185,82 +159,21 @@ extension WorkspaceSection {
         do { _ = try api() } catch { self.error = error.localizedDescription; return }
         defaults.set(apiURL, forKey: "customer.api"); defaults.set(dashboardURL, forKey: "customer.dashboard")
         defaults.set(firebaseAPIKey, forKey: "customer.firebase")
-        generation = UUID(); didRestore = false; clearAccount(); await restore()
+        generation = UUID(); didRestore = false; clearAccount(); configureWorkspace(); await restore()
     }
-    private func clearAccount() { profile = nil; teams = []; agents = []; resetSelection() }
+    private func clearAccount() { workspace.resetAccount(); resetSelection() }
     private func resetSelection() {
-        generation = UUID(); selectedID = nil; records = []; detail = nil; messages = []; comments = []; related = []; rollups = []
-        taskStatuses = [:]; search = ""; statusFilter = "all"; sourceFilter = "all"; memoryTag = ""; error = nil
+        generation = UUID(); selectedID = nil; detailStore.reset()
     }
     func refresh(loadMore: Bool = false) async {
-        guard !teamID.isEmpty, profile != nil, !refreshing else { return }
-        refreshing = true; loading = records.isEmpty
-        defer { refreshing = false; loading = false }
-        let key = selectionKey, section = section, team = teamID, id = selectedID
-        do {
-            let api = try api()
-            async let agentResponse = api.request(["teams", team, "agents"])
-            var query: [String: String] = [:]
-            if [.inbox, .supervisor, .portals].contains(section) { query["team_id"] = team }
-            if section == .notes { query = ["archived": archived ? "true" : "false", "limit": String(loadMore ? 100 : max(records.count, 100)), "offset": loadMore ? String(records.count) : "0"] }
-            if section == .memory, memoryCategory != "all" { query["category"] = memoryCategory }
-            var response: JSONValue = [.settings, .analytics].contains(section) ? .null : try await api.request(path(for: section, team: team), query: query)
-            let agentList = try await agentResponse
-            var values = CustomerRecord(response).records(section.envelope)
-            // Notes are capped at 100 per response. Refresh every already-loaded
-            // page so polling cannot silently collapse a paginated list.
-            if section == .notes, !loadMore {
-                while values.count < records.count, CustomerRecord(response).flag("has_more"), !values.isEmpty {
-                    query["offset"] = String(values.count)
-                    response = try await api.request(path(for: section, team: team), query: query)
-                    let page = CustomerRecord(response).records("notes")
-                    if page.isEmpty { break }
-                    values += page
-                }
-            }
-            if section == .supervisor {
-                values.sort { lhs, rhs in
-                    if (lhs.number("supervisor_report_count") > 0) != (rhs.number("supervisor_report_count") > 0) { return lhs.number("supervisor_report_count") > 0 }
-                    return max(lhs.number("last_supervisor_at"), lhs.number("created_at")) > max(rhs.number("last_supervisor_at"), rhs.number("created_at"))
-                }
-            }
-            var fetchedDetail: CustomerRecord?, fetchedMessages: [CustomerRecord] = [], fetchedComments: [CustomerRecord] = [], fetchedRelated: [CustomerRecord] = [], fetchedRollups: [CustomerRecord] = []
-            if let id, section != .settings {
-                if ![.agents, .members, .conveyors].contains(section) {
-                    fetchedDetail = CustomerRecord(try await api.request(path(for: section, id: id, team: team)))
-                }
-                if [.inbox, .supervisor].contains(section) { fetchedMessages = CustomerRecord(try await api.request(["tasks", id, "messages"])).records("messages") }
-                if section == .notes {
-                    fetchedComments = CustomerRecord(try await api.request(["teams", team, "notes", id, "comments"])).records("comments")
-                    fetchedRelated = CustomerRecord(try await api.request(["teams", team, "notes", id, "tasks"])).records("tasks")
-                }
-                if section == .conveyors { fetchedRelated = CustomerRecord(try await api.request(["teams", team, "conveyors", id, "tasks"])).records("tasks") }
-            }
-            if section == .memory { fetchedRollups = CustomerRecord(try await api.request(["teams", team, "rollups"], query: ["period": rollupPeriod])).records("rollups") }
-            guard selectionKey == key, !Task.isCancelled else { return }
-            agents = CustomerRecord(agentList).records("agents")
-            if loadMore {
-                let existing = Set(records.map(\.id)); records += values.filter { !existing.contains($0.id) }
-            } else { records = values }
-            hasMore = CustomerRecord(response).flag("has_more")
-            detail = fetchedDetail; messages = fetchedMessages; comments = fetchedComments; related = fetchedRelated; rollups = fetchedRollups
-            error = nil
-        } catch where isCancellation(error) { }
-        catch { if selectionKey == key { self.error = error.localizedDescription } }
+        guard profile != nil else { return }
+        let key = selectionKey, id = selectedID
+        await workspace.refresh(loadMore: loadMore)
+        guard selectionKey == key, !Task.isCancelled else { return }
+        if let id { await detailStore.refresh(workspace: workspace, id: id) }
     }
-    /// Capture the API and full path before starting a mutation. A project switch
-    /// can never retarget an already-submitted operation to the new project.
     @discardableResult func mutate(_ path: [String], method: String = "POST", body: [String: JSONValue] = [:], files: [CustomerUpload] = []) async -> JSONValue? {
-        guard !busy else { return nil }
-        busy = true; let key = generation
-        defer { busy = false }
-        do {
-            let result = try await api().request(path, method: method, body: method == "DELETE" ? nil : .object(body), files: files)
-            guard key == generation else { return nil }
-            error = nil
-            return result
-        } catch where isCancellation(error) { return nil }
-        catch { if key == generation { self.error = error.localizedDescription }; return nil }
+        await workspace.mutate(path, method: method, body: body, files: files)
     }
     func perform(_ path: [String], method: String = "POST", body: [String: JSONValue] = [:]) async {
         if await mutate(path, method: method, body: body) != nil { await refresh() }
@@ -304,7 +217,7 @@ extension WorkspaceSection {
             while !Task.isCancelled {
                 await self?.refreshNotificationSnapshot()
                 guard let self else { return }
-                do { try await Task.sleep(for: .seconds(self.isPro ? 2 : 5)) } catch { return }
+                do { try await Task.sleep(for: .seconds(WorkspacePolicy.pollInterval(isPro: self.isPro))) } catch { return }
             }
         }
     }

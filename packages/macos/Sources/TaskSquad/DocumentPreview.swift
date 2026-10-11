@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 import TaskSquadCore
+import TaskSquadDesign
+import TaskSquadPortalUI
 
 struct DocumentPreview: View {
     let url: URL
@@ -33,7 +35,7 @@ struct DocumentPreview: View {
             if let document {
                 if !source && document.isMarkdown {
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 18) { ForEach(blocks) { MarkdownBlockView(block: $0) } }
+                        LazyVStack(alignment: .leading, spacing: 18) { ForEach(blocks) { MarkdownBlockView(block: $0, copy: copyText) } }
                             .textSelection(.enabled).frame(maxWidth: 820, alignment: .leading).padding(32).frame(maxWidth: .infinity)
                     }.background(Color(nsColor: .textBackgroundColor))
                 } else if !source && document.isJSON && jsonError == nil { JSONTreeView(nodes: nodes).id(url) }
@@ -74,48 +76,6 @@ struct DocumentPreview: View {
     }
     private func banner(_ text: String) -> some View {
         Label(text, icon: .info).font(.callout).foregroundStyle(.secondary).padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary)
-    }
-}
-
-struct MarkdownBlockView: View {
-    let block: MarkdownBlock
-    var body: some View {
-        switch block.kind {
-        case .heading(let level):
-            inline(block.text).font(.system(size: [32.0, 25, 20, 17, 15, 14][level - 1], weight: .semibold)).padding(.top, level <= 2 ? 10 : 4).accessibilityAddTraits(.isHeader)
-        case .paragraph: inline(block.text).font(.system(size: 14)).lineSpacing(6)
-        case .code(let language):
-            VStack(alignment: .leading, spacing: 0) {
-                HStack { Text(language.isEmpty ? "Code" : language.uppercased()).font(.caption.weight(.medium)).foregroundStyle(.secondary); Spacer(); Button("Copy") { copyText(block.text) }.buttonStyle(.borderless) }.padding(12)
-                Divider()
-                ScrollView(.horizontal) { Text(block.text).font(.system(size: 12.5, design: .monospaced)).lineSpacing(4).padding(16).frame(maxWidth: .infinity, alignment: .leading) }
-            }.background(Color(nsColor: .controlBackgroundColor)).clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
-        case .quote:
-            HStack(alignment: .top, spacing: 14) { RoundedRectangle(cornerRadius: 2).fill(Color.accentColor.opacity(0.6)).frame(width: 3); inline(block.text).foregroundStyle(.secondary).lineSpacing(5).padding(.vertical, 10) }.fixedSize(horizontal: false, vertical: true).padding(.leading, 4)
-        case .list(let marker, let indent):
-            HStack(alignment: .firstTextBaseline, spacing: 10) { Text(marker).foregroundStyle(.secondary).frame(minWidth: 16, alignment: .trailing); inline(block.text).lineSpacing(4) }.padding(.leading, CGFloat(indent * 20))
-        case .task(let checked, let indent):
-            HStack(alignment: .firstTextBaseline, spacing: 10) { Icon(checked ? .circleCheck : .circle, size: 14).foregroundStyle(checked ? Theme.green : Theme.mutedForeground).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }; inline(block.text).lineSpacing(4) }.padding(.leading, CGFloat(indent * 20))
-        case .rule: Divider().padding(.vertical, 8)
-        case .table:
-            ScrollView(.horizontal) {
-                Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
-                    ForEach(Array(block.rows.enumerated()), id: \.offset) { index, row in
-                        GridRow { ForEach(Array(row.enumerated()), id: \.offset) { _, cell in inline(cell).fontWeight(index == 0 ? .semibold : .regular).padding(.vertical, 10).padding(.horizontal, 12) } }
-                            .background(index == 0 ? Color.accentColor.opacity(0.08) : Color.clear)
-                        Divider().gridCellUnsizedAxes(.horizontal)
-                    }
-                }.clipShape(RoundedRectangle(cornerRadius: 8)).overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
-            }
-        }
-    }
-    private func inline(_ source: String) -> Text {
-        var attributed = (try? AttributedString(markdown: source, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(source)
-        for run in attributed.runs {
-            if run.inlinePresentationIntent?.contains(.code) == true { attributed[run.range].font = .system(size: 13, design: .monospaced); attributed[run.range].foregroundColor = .purple }
-            if let link = run.link, !["https", "http", "mailto"].contains(link.scheme?.lowercased() ?? "") { attributed[run.range].link = nil }
-        }
-        return Text(attributed)
     }
 }
 

@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 import TaskSquadCore
+import TaskSquadDesign
+import TaskSquadPortalUI
 
 enum WindowID {
     static let main = "control-panel"

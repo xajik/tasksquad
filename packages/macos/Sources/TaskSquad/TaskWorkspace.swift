@@ -1,5 +1,7 @@
 import SwiftUI
 import TaskSquadCore
+import TaskSquadDesign
+import TaskSquadPortalUI
 
 struct TaskWorkspace: View {
     @ObservedObject var model: ControlPanelModel

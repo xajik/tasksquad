@@ -35,8 +35,7 @@ preview-customer: build
 	mkdir -p .build/CustomerPreview.app/Contents/MacOS .build/CustomerPreview.app/Contents/Resources
 	cp .build/debug/TaskSquad .build/CustomerPreview.app/Contents/MacOS/TaskSquad
 	cp scripts/customer-preview.plist .build/CustomerPreview.app/Contents/Info.plist
-	ditto .build/debug/SwiftTerm_SwiftTerm.bundle .build/CustomerPreview.app/Contents/Resources/SwiftTerm_SwiftTerm.bundle
-	ditto .build/debug/TaskSquad_TaskSquad.bundle .build/CustomerPreview.app/Contents/Resources/TaskSquad_TaskSquad.bundle
+	for bundle in .build/debug/*.bundle; do case $$bundle in *Tests.bundle) ;; *) ditto $$bundle .build/CustomerPreview.app/Contents/Resources/$$(basename $$bundle);; esac; done
 	codesign --force --sign - .build/CustomerPreview.app
 	open .build/CustomerPreview.app --args --preview-customer
 

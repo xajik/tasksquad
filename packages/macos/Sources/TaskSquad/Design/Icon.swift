@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import TaskSquadDesign
 
 /// Lucide icons shared with the web portal. The SVGs are vendored by
 /// `scripts/vendor-icons.mjs`; add a case there and here together.
@@ -19,8 +20,10 @@ enum LucideIcon: String, CaseIterable {
     @MainActor static func load(_ name: String, template: Bool = true) -> NSImage {
         if let image = cache[name] { return image }
         let parts = name.split(separator: "/").map(String.init)
-        let url = resourceBundle?.url(forResource: parts[parts.count - 1], withExtension: "svg",
-                                      subdirectory: (["Resources"] + parts.dropLast()).joined(separator: "/"))
+        let shared = name != "Brand/tray"
+        let bundle = shared ? TSQResources.bundle : resourceBundle
+        let url = bundle?.url(forResource: parts[parts.count - 1], withExtension: "svg",
+                              subdirectory: ([shared ? TSQResources.vectorFolder : "Resources"] + parts.dropLast()).joined(separator: "/"))
         let image = url.flatMap(NSImage.init(contentsOf:)) ?? NSImage(size: NSSize(width: 24, height: 24))
         image.isTemplate = template
         cache[name] = image

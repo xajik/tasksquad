@@ -19,6 +19,10 @@ targets:
         excludes: [Info.plist, TaskSquad.entitlements]
     dependencies:
       - package: TaskSquadPortal
+      - package: TaskSquadPortal
+        product: TaskSquadDesign
+      - package: TaskSquadPortal
+        product: TaskSquadPortalUI
       - package: SwiftTerm
     settings:
       base:

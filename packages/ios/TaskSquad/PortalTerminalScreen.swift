@@ -66,7 +66,7 @@ private struct IOSNativeTerminalView: UIViewRepresentable {
             view?.accessibilityValue = String(decoding: data.suffix(65536), as: UTF8.self).replacingOccurrences(of: "\u{1b}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
         }
         model.resize(cols: view.getTerminal().cols, rows: view.getTerminal().rows)
-        view.backgroundColor = MobileTheme.ink
+        view.backgroundColor = UIColor(MobileTheme.ink)
         return view
     }
     func updateUIView(_ uiView: SwiftTerm.TerminalView, context: Context) {

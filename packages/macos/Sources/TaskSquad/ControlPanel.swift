@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import TaskSquadCore
+import TaskSquadDesign
 
 @MainActor final class ControlPanelModel: ObservableObject {
     @Published var configuration: DaemonConfiguration?

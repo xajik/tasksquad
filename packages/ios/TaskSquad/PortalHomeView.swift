@@ -1,3 +1,4 @@
+import TaskSquadPortalUI
 import SwiftUI
 import Charts
 import TaskSquadPortal
@@ -27,7 +28,7 @@ struct PortalHomeView: View {
                     if model.section == .inbox {
                         Section("Filters") {
                             Picker("Status", selection: $model.status) { ForEach(["all", "pending", "running", "waiting_input", "scheduled", "wrapping_up", "done", "failed"], id: \.self) { Text($0.replacingOccurrences(of: "_", with: " ").capitalized).tag($0) } }.accessibilityIdentifier("status-filter")
-                            Picker("Origin", selection: $model.origin) { ForEach(["all", "mine", "system", "scheduled", "planner", "conveyor", "from-note"], id: \.self) { Text($0.capitalized).tag($0) } }
+                            Picker("Origin", selection: $model.origin) { ForEach(["all", "mine", "system", "scheduled", "planner", "conveyor", "from-note", "note-critique"], id: \.self) { Text($0.capitalized).tag($0) } }
                         }
                     }
                     if model.section == .portals {
@@ -37,7 +38,7 @@ struct PortalHomeView: View {
                     }
                     if model.section == .memory {
                         Picker("Category", selection: $model.memoryCategory) { ForEach(["all","personal","preferences","structure","architecture","events"], id: \.self) { Text($0.capitalized).tag($0) } }.onChange(of: model.memoryCategory) { _, _ in Task { await model.refresh() } }
-                        if !model.rollups.isEmpty { Section("Daily rollups") { ForEach(model.rollups) { rollup in DisclosureGroup(rollup.title) { Text(.init(rollup.text("content"))).textSelection(.enabled) } } } }
+                        if !model.rollups.isEmpty { Section("Daily rollups") { ForEach(model.rollups) { rollup in DisclosureGroup(rollup.title) { MarkdownContent(rollup.text("content")) } } } }
                     }
                     if model.section == .notes { Toggle("Archived notes", isOn: $model.archived).onChange(of: model.archived) { _, _ in Task { await model.refresh() } } }
                     if model.loading { ProgressView("Loading…") }
@@ -48,6 +49,7 @@ struct PortalHomeView: View {
                     } else {
                         Section(model.section.rawValue) { ForEach(model.visibleRecords) { record in row(record) } }
                     }
+                    if model.hasMore { Button("Load more") { Task { await model.refresh(loadMore: true) } }.disabled(model.loading) }
                     if let refreshedAt = model.refreshedAt { Text("Updated \(refreshedAt.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
                 }
 
@@ -64,11 +66,7 @@ struct PortalHomeView: View {
             .onChange(of: model.context) { _, _ in selectedID = nil }
             .task(id: "\(model.context):\(scenePhase)") {
                 guard scenePhase == .active else { return }
-                await model.refresh()
-                while !Task.isCancelled {
-                    do { try await Task.sleep(for: .seconds(5)) } catch { return }
-                    await model.refresh()
-                }
+                await model.poll()
             }
             .sheet(item: $editor) { MobileEditor(model: model, request: $0) }
             .navigationDestination(item: $selectedID) { id in
@@ -76,12 +74,7 @@ struct PortalHomeView: View {
             }
         }
     }
-    private var canCreate: Bool {
-        if [.inbox, .notes].contains(model.section) { return !model.projectID.isEmpty }
-        if model.section == .portals { return model.isPro && !model.eligibleAgents.isEmpty && model.records.filter { ["pending", "running"].contains($0.status) }.count < 3 }
-        if model.section == .members { return model.isOwner }
-        return model.canManage && ![.supervisor, .memory, .analytics, .settings].contains(model.section)
-    }
+    private var canCreate: Bool { model.canCreate }
     @ViewBuilder private func portalSection(_ title: String, live: Bool) -> some View {
         let values = model.visibleRecords.filter { ["pending", "running"].contains($0.status) == live }
         if !values.isEmpty { Section(title) { ForEach(values) { row($0) } } }
@@ -92,7 +85,7 @@ struct PortalHomeView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(model.section == .portals ? model.agentName(record.text("agent_id")) : record.title).font(.headline).foregroundStyle(MobileTheme.foreground)
-                    if !record.status.isEmpty { Text(record.status.replacingOccurrences(of: "_", with: " ").capitalized).font(.caption).foregroundStyle(record.status == "waiting_input" ? .orange : .secondary) }
+                    if !record.status.isEmpty { TSQBadge(status: record.status) }
                     if model.section == .agents { Text(record.flag("paused") ? "Paused" : "Available").font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
                     if record.number("created_at") > 0 { Text(record.date, style: .relative).font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
                 }
@@ -104,11 +97,7 @@ struct PortalHomeView: View {
         let section = model.section, project = model.projectID, context = model.context
         model.error = nil
         editor = MobileEditorRequest(title: section == .inbox ? "New task" : "New " + section.rawValue.lowercased(), fields: WorkspaceField.fields(for: section), draftKey: "\(model.api.baseURL.absoluteString).\(model.profile?.id ?? "").\(project).\(section.rawValue)", eligibleAgentsOnly: section == .portals, attachments: section == .inbox, phases: section == .planners, submitLabel: section == .inbox ? "Send" : "Create") { body, files in
-            var body = body
-            if [.inbox, .portals].contains(section) { body["team_id"] = .string(project) }
-            if section == .inbox {
-                body["save_tokens"] = .object(["enabled": body.removeValue(forKey: "save_tokens_enabled") ?? .bool(false), "level": body.removeValue(forKey: "save_tokens_level") ?? .string("full")])
-            }
+            let body = WorkspacePolicy.createPayload(body, section: section, project: project)
             guard context == model.context, let result = await model.mutate(model.path(section, project: project), body: body, files: files) else { return false }
             await model.refresh()
             let record = CustomerRecord(result)

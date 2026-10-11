@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 import TaskSquadCore
+import TaskSquadDesign
+import TaskSquadPortalUI
 
 struct AgentWorkspace: View {
     @ObservedObject var model: ControlPanelModel

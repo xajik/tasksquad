@@ -10,10 +10,12 @@ lipo "$binary" -verify_arch ${ARCHS:-$(lipo -archs "$binary")} || { echo "Unexpe
 test -s "$APP/Contents/Resources/AppIcon.icns"
 test -d "$APP/Contents/Resources/SwiftTerm_SwiftTerm.bundle"
 # SwiftPM emits a flat resource bundle on some toolchains and a Contents/ one on others.
-resources="$APP/Contents/Resources/TaskSquad_TaskSquad.bundle"
-[[ -d "$resources/Contents/Resources" ]] && resources="$resources/Contents/Resources"
-test -s "$resources/Resources/Icons/inbox.svg" || { echo "Missing icon resources in $resources" >&2; exit 1; }
-test -s "$resources/Resources/Brand/tray.svg" || { echo "Missing brand resources in $resources" >&2; exit 1; }
+bundle_resources() { local path="$APP/Contents/Resources/$1"; [[ -d "$path/Contents/Resources" ]] && path="$path/Contents/Resources"; echo "$path"; }
+resources=$(bundle_resources TaskSquad_TaskSquad.bundle)
+test -s "$resources/Resources/Brand/tray.svg" || { echo "Missing tray resources in $resources" >&2; exit 1; }
+design=$(bundle_resources TaskSquadPortal_TaskSquadDesign.bundle)
+test -s "$design/Vectors/Icons/inbox.svg" || { echo "Missing icon resources in $design" >&2; exit 1; }
+test -s "$design/Vectors/Brand/logo.svg" || { echo "Missing brand resources in $design" >&2; exit 1; }
 "$binary" --version
 "$binary" --check-config Tests/TaskSquadCoreTests/Fixtures/full.toml > /dev/null
 if "$binary" --check-config Tests/TaskSquadCoreTests/Fixtures/invalid-type.toml 2>/dev/null; then

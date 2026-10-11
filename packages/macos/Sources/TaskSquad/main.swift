@@ -1,7 +1,8 @@
 import AppKit
+import Darwin
 import SwiftUI
 import TaskSquadCore
-import Darwin
+import TaskSquadDesign
 
 if let locale = setlocale(LC_CTYPE, ""), ["C", "POSIX"].contains(String(cString: locale)) {
     // Finder can launch without LANG. Terminal wcwidth still needs UTF-8.

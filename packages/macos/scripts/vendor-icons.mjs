@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const source = join(here, '../../../node_modules/lucide-react/dist/esm/icons')
-const output = join(here, '../Sources/TaskSquad/Resources/Icons')
+const output = join(here, '../../mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons')
 const names = [
   'inbox', 'monitor', 'file-text', 'repeat', 'layers', 'shield-alert', 'book-open', 'database', 'bot', 'users',
   'settings', 'book-marked', 'log-out', 'plus', 'refresh-cw', 'search', 'terminal', 'folder', 'x', 'play', 'square',

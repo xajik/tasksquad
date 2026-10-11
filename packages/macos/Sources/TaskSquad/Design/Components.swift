@@ -1,75 +1,6 @@
+import TaskSquadPortalUI
+import TaskSquadDesign
 import SwiftUI
-
-/// shadcn `Button` variants from the web portal.
-struct TSQButtonStyle: ButtonStyle {
-    enum Variant { case `default`, secondary, ghost, outline, destructive }
-    enum Size { case `default`, sm, icon }
-    var variant: Variant = .default
-    var size: Size = .default
-    var fullWidth = false
-
-    func makeBody(configuration: Configuration) -> some View { StyledButton(configuration: configuration, style: self) }
-
-    private struct StyledButton: View {
-        let configuration: Configuration, style: TSQButtonStyle
-        @Environment(\.isEnabled) private var enabled
-        @State private var hovering = false
-        var body: some View {
-            configuration.label
-                .font(.system(size: style.size == .sm ? 12 : 13, weight: .medium))
-                .labelStyle(TSQLabelStyle(spacing: 6))
-                .lineLimit(1)
-                .padding(.horizontal, style.size == .icon ? 0 : style.size == .sm ? 10 : 14)
-                .frame(minWidth: style.size == .icon ? height : nil, maxWidth: style.fullWidth ? .infinity : nil,
-                       minHeight: height, alignment: style.fullWidth ? .leading : .center)
-                .foregroundStyle(foreground)
-                .background(background, in: RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous))
-                .overlay {
-                    if style.variant == .outline {
-                        RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous).strokeBorder(Theme.input)
-                    }
-                }
-                .contentShape(RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous))
-                .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.5)
-                .onHover { hovering = $0 }
-                .animation(.easeOut(duration: 0.12), value: hovering)
-        }
-        private var height: CGFloat { style.size == .sm ? 28 : 32 }
-        private var foreground: Color {
-            switch style.variant {
-            case .default: Theme.primaryForeground
-            case .destructive: Theme.destructiveForeground
-            default: Theme.foreground
-            }
-        }
-        private var background: Color {
-            let hover = hovering && enabled
-            switch style.variant {
-            case .default: return Theme.primary.opacity(hover ? 0.9 : 1)
-            case .destructive: return Theme.destructive.opacity(hover ? 0.9 : 1)
-            case .secondary: return Theme.muted.opacity(hover ? 0.8 : 1)
-            case .ghost, .outline: return hover ? Theme.muted : .clear
-            }
-        }
-    }
-}
-
-extension ButtonStyle where Self == TSQButtonStyle {
-    static var tsqPrimary: TSQButtonStyle { .init() }
-    static var tsqSecondary: TSQButtonStyle { .init(variant: .secondary) }
-    static var tsqOutline: TSQButtonStyle { .init(variant: .outline) }
-    static var tsqGhost: TSQButtonStyle { .init(variant: .ghost) }
-    static var tsqDestructive: TSQButtonStyle { .init(variant: .destructive) }
-    static var tsqIcon: TSQButtonStyle { .init(variant: .ghost, size: .icon) }
-    static func tsq(_ variant: TSQButtonStyle.Variant, size: TSQButtonStyle.Size = .sm) -> TSQButtonStyle { .init(variant: variant, size: size) }
-}
-
-struct TSQLabelStyle: LabelStyle {
-    var spacing: CGFloat = 8
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: spacing) { configuration.icon; configuration.title }
-    }
-}
 
 /// Web sidebar item: `Button variant={selected ? 'secondary' : 'ghost'} className="w-full justify-start"`.
 struct SidebarItem: View {
@@ -105,47 +36,7 @@ struct SidebarHeader: View {
     }
 }
 
-/// shadcn `Badge`; also used for task status, like the web inbox.
-struct Badge: View {
-    enum Variant { case `default`, secondary, outline, success, warning, danger }
-    let text: String
-    var variant: Variant = .secondary
-    init(_ text: String, variant: Variant = .secondary) { self.text = text; self.variant = variant }
-    init(status: String) {
-        text = status.replacingOccurrences(of: "_", with: " ").capitalized
-        switch status {
-        case "running", "done", "completed", "online", "active", "approved": variant = .success
-        case "failed", "rejected", "error": variant = .danger
-        case "waiting_input", "wrapping_up", "paused", "scheduled": variant = .warning
-        default: variant = .secondary
-        }
-    }
-    var body: some View {
-        Text(text).font(.system(size: 11, weight: .semibold)).lineLimit(1)
-            .padding(.horizontal, 8).padding(.vertical, 2)
-            .foregroundStyle(foreground).background(background, in: Capsule())
-            .overlay { if variant == .outline { Capsule().strokeBorder(Theme.border) } }
-    }
-    private var foreground: Color {
-        switch variant {
-        case .default: Theme.primaryForeground
-        case .secondary, .outline: Theme.foreground
-        case .success: Theme.green
-        case .warning: Theme.amber
-        case .danger: Theme.red
-        }
-    }
-    private var background: Color {
-        switch variant {
-        case .default: Theme.primary
-        case .secondary: Theme.muted
-        case .outline: .clear
-        case .success: Theme.green.opacity(0.12)
-        case .warning: Theme.amber.opacity(0.14)
-        case .danger: Theme.red.opacity(0.12)
-        }
-    }
-}
+typealias Badge = TSQBadge
 
 struct StatusDot: View {
     var active: Bool

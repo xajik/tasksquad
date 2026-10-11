@@ -26,7 +26,7 @@ struct MobileEditor: View {
     @State private var submitting = false
     @FocusState private var focusedField: String?
     @State private var validation: String?
-    @State private var phases: [MobilePhaseDraft] = [.init()]
+    @State private var phases: [PhaseDraft] = [.init()]
     @State private var subAgents: [CustomerRecord] = []
     init(model: WorkspaceStore, request: MobileEditorRequest) {
         self.model = model; self.request = request
@@ -117,42 +117,15 @@ struct MobileEditor: View {
         files.append(CustomerUpload(name: name, mimeType: mime, data: data))
     }
     private func submit() async {
-        var body = values; validation = nil
-        for field in request.fields {
-            if field.required, (body[field.id]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, body[field.id]?.number == nil { validation = "\(field.label) is required."; return }
-            switch field.kind {
-            case .integer, .optionalInteger:
-                let text = body[field.id]?.string ?? body[field.id]?.number.map { String(Int($0)) } ?? ""
-                if text.isEmpty, case .optionalInteger = field.kind { body[field.id] = .null; continue }
-                guard let number = Int(text) else { validation = "\(field.label) must be a whole number."; return }
-                body[field.id] = .number(Double(number))
-            case .date: if let date = body[field.id]?.number, date <= Date().timeIntervalSince1970*1000 { validation = "\(field.label) must be in the future."; return }
-            default: break
-            }
-        }
-        if request.phases {
-            guard phases.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { validation = "Give every phase a name."; return }
-            body["phases"] = .array(phases.map { phase in
-                var fields: [String: JSONValue] = ["name": .string(phase.name), "max_retries": .number(Double(phase.retries)), "auto_close": .bool(phase.autoClose)]
-                if !phase.agent.isEmpty { fields["harness_agent_id"] = .string(phase.agent) }
-                if !phase.subAgent.isEmpty { fields["sub_agent_id"] = .string(phase.subAgent) }
-                return .object(fields)
-            })
-            for key in ["default_sub_agent_id", "default_harness_agent_id"] where body[key] == .string("") { body.removeValue(forKey: key) }
-        }
-        for (key, range) in [("hour", 0...23), ("minute", 0...59), ("day_of_week", 0...6), ("day_of_month", 1...31)] {
-            if let value = body[key]?.number, !range.contains(Int(value)) { validation = "\(key.replacingOccurrences(of: "_", with: " ")) must be between \(range.lowerBound) and \(range.upperBound)."; return }
-        }
-        if let zone = body["timezone"]?.string, TimeZone(identifier: zone) == nil { validation = "Choose a valid time zone."; return }
+        guard !submitting else { return }
+        validation = nil
+        let body: [String: JSONValue]
+        do { body = try WorkspaceEditor.payload(fields: request.fields, values: values, phases: request.phases ? phases : nil, files: files) }
+        catch { validation = error.localizedDescription; return }
         submitting = true; defer { submitting = false }
         if await request.submit(body, files) { if let key = request.draftKey { MobileDraftStore.remove(key) }; dismiss() }
         else { validation = model.error ?? "The request did not complete. Your draft is retained." }
     }
 }
 
-private struct MobilePhaseDraft: Identifiable {
-    let id = UUID()
-    var name = "", agent = "", subAgent = ""
-    var retries = 3
-    var autoClose = true
-}
+

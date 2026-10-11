@@ -132,49 +132,17 @@ struct CustomerEditor: View {
         Binding(get: { values[key] == .bool(true) || values[key]?.number == 1 }, set: { values[key] = .bool($0) })
     }
     private func submit() async {
+        guard !submitting else { return }
         validation = nil
-        var body = values
-        for field in request.fields {
-            if field.required, (body[field.id]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               body[field.id]?.number == nil {
-                validation = "\(field.label) is required."; return
-            }
-            switch field.kind {
-            case .integer, .optionalInteger:
-                let text = body[field.id]?.string ?? body[field.id]?.number.map { String(Int($0)) } ?? ""
-                if text.isEmpty, case .optionalInteger = field.kind { body[field.id] = .null; continue }
-                guard let number = Int(text) else { validation = "\(field.label) must be a whole number."; return }
-                body[field.id] = .number(Double(number))
-            case .date:
-                if let value = body[field.id]?.number, value <= Date().timeIntervalSince1970 * 1000 {
-                    validation = "\(field.label) must be in the future."; return
-                }
-            default: break
-            }
-        }
-        if request.phases {
-            guard phaseRows.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
-                validation = "Give every phase a name."; return
-            }
-            body["phases"] = .array(phaseRows.map { phase in
-                var value: [String: JSONValue] = ["name": .string(phase.name), "max_retries": .number(Double(phase.retries)), "auto_close": .bool(phase.autoClose)]
-                if !phase.agent.isEmpty { value["harness_agent_id"] = .string(phase.agent) }
-                if !phase.subAgent.isEmpty { value["sub_agent_id"] = .string(phase.subAgent) }
-                return .object(value)
-            })
-            for key in ["default_sub_agent_id", "default_harness_agent_id"] where body[key] == .string("") { body.removeValue(forKey: key) }
-        }
+        let body: [String: JSONValue]
+        do { body = try WorkspaceEditor.payload(fields: request.fields, values: values, phases: request.phases ? phaseRows : nil, files: files) }
+        catch { validation = error.localizedDescription; return }
         submitting = true; defer { submitting = false }
         if await request.submit(body, files) { dismiss() }
     }
 }
 
-private struct PhaseDraft: Identifiable {
-    let id = UUID()
-    var name = "", agent = "", subAgent = ""
-    var retries = 3
-    var autoClose = true
-}
+
 
 @MainActor enum CustomerFiles {
     static func chooseImages() throws -> [CustomerUpload] {

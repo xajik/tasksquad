@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import TaskSquadCore
+import TaskSquadDesign
 
 @MainActor final class TerminalWorkspaceModel: ObservableObject {
     @Published var panes: [TmuxPane] = []

@@ -1,3 +1,4 @@
+import TaskSquadPortalUI
 import SwiftUI
 import TaskSquadPortal
 
@@ -6,9 +7,10 @@ struct MobileRecordDetail: View {
     let id: String
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var phase
-    @State private var detail: CustomerRecord?
-    @State private var messages: [CustomerRecord] = []
-    @State private var related: [CustomerRecord] = []
+    @StateObject private var detailStore = RecordDetailStore()
+    private var detail: CustomerRecord? { detailStore.detail }
+    private var messages: [CustomerRecord] { model.section == .notes ? detailStore.comments : detailStore.messages }
+    private var related: [CustomerRecord] { detailStore.related }
     @State private var mutationError: String?
     @State private var error: String?
     @State private var editor: MobileEditorRequest?
@@ -28,7 +30,7 @@ struct MobileRecordDetail: View {
                 if let record {
                     Section {
                         Text(record.title).font(.title3.bold()).textSelection(.enabled)
-                        if !record.status.isEmpty { Text(record.status.replacingOccurrences(of: "_", with: " ").capitalized).foregroundStyle(MobileTheme.mutedForeground).accessibilityIdentifier("record-status") }
+                        if !record.status.isEmpty { TSQBadge(status: record.status).accessibilityIdentifier("record-status") }
                         if !record.text("agent_id").isEmpty { Text(model.agentName(record.text("agent_id"))).font(.caption) }
                     }
                     if taskSection { conversation }
@@ -63,7 +65,7 @@ struct MobileRecordDetail: View {
             guard phase == .active else { return }
             await refresh()
             while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                do { try await Task.sleep(for: .seconds(WorkspacePolicy.pollInterval(isPro: model.isPro))) } catch { return }
                 await refresh()
             }
         }
@@ -100,7 +102,7 @@ struct MobileRecordDetail: View {
                 ForEach(messages) { message in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack { Text(message.text("role").capitalized).font(.caption.bold()); Spacer(); Text(message.date, style: .time).font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
-                        Text(.init(message.text("body"))).textSelection(.enabled).accessibilityIdentifier("message-" + message.id)
+                        MarkdownContent(message.text("body"), copy: { UIPasteboard.general.string = $0 }).accessibilityIdentifier("message-" + message.id)
                         if !message.text("type").isEmpty { Text(message.text("type").replacingOccurrences(of: "_", with: " ")).font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
                         if message.number("scheduled_at") > Date().timeIntervalSince1970*1000 { Text("Scheduled reply").font(.caption).foregroundStyle(MobileTheme.warning) }
                         if !message.text("transcript_key").isEmpty { Button("View transcript") { Task {
@@ -120,7 +122,7 @@ struct MobileRecordDetail: View {
     }
     @ViewBuilder private func contents(_ record: CustomerRecord) -> some View {
         ForEach(["description", "content", "body", "role", "category", "frequency", "timezone", "email"], id: \.self) { key in
-            if !record.text(key).isEmpty { Section(key.capitalized) { Text(.init(record.text(key))).textSelection(.enabled) } }
+            if !record.text(key).isEmpty { Section(key.capitalized) { MarkdownContent(record.text(key), copy: { UIPasteboard.general.string = $0 }) } }
         }
         if model.section == .agents {
             Section("Availability") {
@@ -168,21 +170,8 @@ struct MobileRecordDetail: View {
         return (payload["options"]?.array ?? []).compactMap(\.string)
     }
     private func refresh() async {
-        let key = model.context, section = model.section, project = model.projectID
-        do {
-            let next: CustomerRecord
-            if [.agents, .members, .conveyors].contains(section) { next = model.records.first { $0.id == id } ?? CustomerRecord(.null) }
-            else { next = CustomerRecord(try await model.api.request(model.path(section, id: id, project: project))) }
-            var nextMessages: [CustomerRecord] = [], nextRelated: [CustomerRecord] = []
-            if taskSection { nextMessages = CustomerRecord(try await model.api.request(["tasks", id, "messages"])).records("messages") }
-            if section == .notes {
-                nextMessages = CustomerRecord(try await model.api.request(["teams", project, "notes", id, "comments"])).records("comments")
-                nextRelated = CustomerRecord(try await model.api.request(["teams", project, "notes", id, "tasks"])).records("tasks")
-            }
-            if section == .conveyors { nextRelated = CustomerRecord(try await model.api.request(["teams", project, "conveyors", id, "tasks"])).records("tasks") }
-            guard key == model.context, !Task.isCancelled else { return }
-            detail = next; messages = nextMessages; related = nextRelated; error = nil
-        } catch { if key == model.context, !(error is CancellationError) { self.error = error.localizedDescription } }
+        await detailStore.refresh(workspace: model, id: id)
+        error = detailStore.error
     }
     private func perform(_ path: [String], method: String = "POST", body: [String: JSONValue] = [:]) async {
         if await model.mutate(path, method: method, body: body) != nil { await model.refresh(); await refresh() }

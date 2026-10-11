@@ -23,8 +23,12 @@ for arch in $ARCHS; do
     # SwiftTerm's Metal shaders are architecture-independent SwiftPM resources.
     # Its packaged-app lookup includes Contents/Resources.
     if [[ "$arch" == "$first" ]]; then
-        ditto "$path/SwiftTerm_SwiftTerm.bundle" "$APP/Contents/Resources/SwiftTerm_SwiftTerm.bundle"
-        ditto "$path/TaskSquad_TaskSquad.bundle" "$APP/Contents/Resources/TaskSquad_TaskSquad.bundle"
+        # Every SwiftPM resource bundle the app links (SwiftTerm, the app, and the
+        # shared TaskSquadPortal design product) must ship or Bundle.module traps.
+        for bundle in "$path"/*.bundle; do
+            [[ "$(basename "$bundle")" == *Tests.bundle ]] && continue
+            ditto "$bundle" "$APP/Contents/Resources/$(basename "$bundle")"
+        done
     fi
 done
 slices=(); for arch in $ARCHS; do slices+=("dist/TaskSquad-$arch"); done

@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 import TaskSquadCore
+import TaskSquadDesign
+import TaskSquadPortalUI
 
 struct CustomerWorkspace: View {
     @ObservedObject var model: CustomerWorkspaceModel
@@ -36,7 +38,7 @@ struct CustomerWorkspace: View {
             await model.restore()
             while !Task.isCancelled {
                 await model.refresh()
-                do { try await Task.sleep(for: .seconds(model.isPro ? 2 : 5)) } catch { return }
+                do { try await Task.sleep(for: .seconds(WorkspacePolicy.pollInterval(isPro: model.isPro))) } catch { return }
             }
         }
     }
@@ -123,16 +125,7 @@ struct CustomerWorkspace: View {
             }
         }
     }
-    private var canCreate: Bool {
-        guard !model.teamID.isEmpty else { return false }
-        switch model.section {
-        case .supervisor, .memory, .settings, .analytics: return false
-        case .agents: return model.isMaintainer
-        case .members: return model.isOwner
-        case .portals: return model.isPro
-        default: return true
-        }
-    }
+    private var canCreate: Bool { model.workspace.canCreate }
     private var recordList: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
@@ -462,7 +455,7 @@ struct CustomerMarkdown: View {
     let text: String
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ForEach(MarkdownBlock.parse(text)) { MarkdownBlockView(block: $0) }
+            ForEach(MarkdownBlock.parse(text)) { MarkdownBlockView(block: $0, copy: copyText) }
         }.textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
     }
 }

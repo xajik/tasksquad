@@ -3,6 +3,7 @@ import SwiftUI
 import XCTest
 @testable import TaskSquad
 @testable import TaskSquadCore
+import TaskSquadPortalUI
 
 @MainActor final class NativeUITests: XCTestCase {
     func testNativeSnapshotsOwnTerminalsAndClearFinishedSessions() {
