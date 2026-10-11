@@ -42,8 +42,11 @@ private final class PortalHomeModel: ObservableObject {
             guard !selectedProject.isEmpty else { portals = []; agents = []; return }
             async let nextPortals = api.portals(projectID: selectedProject)
             async let nextAgents = api.agents(projectID: selectedProject)
-            portals = try await nextPortals.map { PortalRow(id: $0.id, agent: $0.agentID, state: $0.status, sessionID: $0.sessionID ?? "") }
-            agents = try await nextAgents
+            let records = try await nextPortals
+            let projectAgents = try await nextAgents
+            agents = projectAgents
+            let names = Dictionary(uniqueKeysWithValues: projectAgents.map { ($0.id, $0.name) })
+            portals = records.map { PortalRow(id: $0.id, agent: names[$0.agentID] ?? $0.agentID, state: $0.status, sessionID: $0.sessionID ?? "") }
             error = nil
         } catch let failure { self.error = failure.localizedDescription }
     }
