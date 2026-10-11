@@ -517,6 +517,49 @@ private actor InteractiveWorker {
         await server.stop()
     }
 
+
+    /// Go agent/spawn_failure_test: a missing CLI (pipe provider) or missing tmux
+    /// (interactive provider) closes the server session "crashed", leaves the agent
+    /// idle and writes task_end — without waiting on an output reader that never opens.
+    func testSpawnFailureClosesSessionAndLeavesAgentIdle() async throws {
+        for (name, provider, tmuxPath) in [("missing-command", "stdout", "tmux"), ("missing-tmux", "codex", "/nonexistent/tmux")] {
+            let worker = InteractiveWorker()
+            await worker.setManual()
+            let server = try LocalHTTPServer { await worker.handle($0) }
+            let port = try await server.start()
+            let home = FileManager.default.temporaryDirectory.appendingPathComponent("tsq-spawn-" + UUID().uuidString)
+            try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+            let hooksPort = try await freePort()
+            let config = try DaemonConfiguration.parse("""
+            [server]
+            url = 'http://127.0.0.1:\(port)'
+            [hooks]
+            port = \(hooksPort)
+            [[agents]]
+            id = 'fixture-agent'
+            name = 'spawn-test'
+            command = 'missing-cli'
+            provider = '\(provider)'
+            work_dir = '\(home.path)'
+            """)
+            let engine = DaemonEngine(configuration: config, paths: TaskSquadPaths(home: home), tokens: FixtureTokens(),
+                                      environment: ["PATH": home.path], tmux: TmuxConnection(executable: tmuxPath))
+            let started = ContinuousClock.now
+            try await engine.start()
+            try await wait { await worker.close != nil }
+            XCTAssertLessThan(ContinuousClock.now - started, .seconds(12), "\(name): failure must not wait for output")
+            let close = await worker.close
+            XCTAssertEqual(close?["status"]?.string, "crashed", name)
+            XCTAssertEqual(close?["session_id"]?.string, "01FIXTURESESSION", name)
+            try await wait { await engine.snapshots().first?.mode == .idle }
+            let journal = try String(contentsOf: home.appendingPathComponent(".tasksquad/tasks/fixture-task.jsonl"), encoding: .utf8)
+            XCTAssertTrue(journal.contains(#""type":"task_end""#), "\(name): \(journal)")
+            await engine.stop()
+            await server.stop()
+            try? FileManager.default.removeItem(at: home)
+        }
+    }
+
 }
 
 private actor AttachErrors {

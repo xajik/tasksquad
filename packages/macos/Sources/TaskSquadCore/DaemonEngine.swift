@@ -671,6 +671,8 @@ public actor DaemonEngine {
                                         transcriptPath: transcriptPath, capture: capture)
             do { try await uploader.attachLog(sessionID: sessionID, content: log) } catch { self.report(error) }
         }
+        // The journal write above awaited: re-check before touching the session (Go holds the state lock).
+        guard agents[agentID]?.state.generation == generation, agents[agentID]?.completionRequested == false else { return }
         if response?["close"] == .bool(true) {
             agents[agentID]?.autoClosed = true
             if let session = latest.tmux { await session.kill() } else { tasks[agentID]?.cancel() }
