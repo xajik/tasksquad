@@ -13,6 +13,8 @@ private actor InteractiveWorker {
     var close: JSONValue?
     var statuses: [String] = []
     var uploads = 0
+    var imageMessages: [JSONValue] = []
+    var imageAttaches: [JSONValue] = []
     var base = ""
     func setBase(_ value: String) { base = value }
     func handle(_ request: LocalHTTPRequest) -> LocalHTTPResponse {
@@ -45,6 +47,12 @@ private actor InteractiveWorker {
         case "/upload":
             uploads += 1
             return .init()
+        case "/daemon/session/message":
+            imageMessages.append(body)
+            return .json(.object(["message_id": .string("img-msg")]))
+        case "/daemon/messages/img-msg/attach":
+            imageAttaches.append(body)
+            return .json(.object([:]))
         default:
             return .json(.object([:]))
         }
@@ -218,4 +226,55 @@ private actor InteractiveWorker {
         await engine.stop()
         await blocker.stop()
     }
+
+    /// `tsq send-image` → POST /hooks/attach: a message, then an encrypted image upload routed to image_key.
+    func testAttachHookSendsImageForCurrentTaskOnly() async throws {
+        let tmux = try tmuxConnection()
+        defer { Task { _ = try? await tmux.run(["kill-server"]) } }
+        let script = """
+        #!/bin/sh
+        settings=""
+        while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
+        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed 's/localhost/127.0.0.1/')
+        base=${url%%/hooks/*}
+        printf 'READY\\n'
+        IFS= read -r line
+        printf 'PNG' > shot.png
+        printf 'txt' > notes.txt
+        curl -s -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"stale\\",\\"path\\":\\"$PWD/shot.png\\"}" > codes
+        curl -s -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"$TSQ_TASK_ID\\",\\"path\\":\\"$PWD/notes.txt\\"}" >> codes
+        curl -s -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"$TSQ_TASK_ID\\"}" >> codes
+        curl -s -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"$TSQ_TASK_ID\\",\\"path\\":\\"$PWD/shot.png\\",\\"caption\\":\\"Look 猫\\"}" >> codes
+        curl -s -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"done"}' >/dev/null
+        sleep 30
+        """
+        let worker = InteractiveWorker()
+        let errors = AttachErrors()
+        let (engine, server, home) = try await makeEngine(script: script, worker: worker, tmux: tmux, errors: { message in Task { await errors.add(message) } })
+        defer { try? FileManager.default.removeItem(at: home) }
+        try await engine.start()
+        try await wait { await worker.notifies.count >= 1 }
+        await engine.stop()
+        await server.stop()
+        let codes = try String(contentsOf: home.appendingPathComponent("codes"), encoding: .utf8)
+        XCTAssertEqual(codes.split(separator: "\n"), ["404", "500", "400", "200"])
+        let messages = await worker.imageMessages
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.first?["message"]?.string, "Look 猫")
+        XCTAssertEqual(messages.first?["type"]?.string, "output")
+        XCTAssertEqual(messages.first?["session_id"]?.string, "01FIXTURESESSION")
+        let attaches = await worker.imageAttaches
+        XCTAssertEqual(attaches.first?["image_key"]?.string, "k")
+        XCTAssertEqual(attaches.first?["filename"]?.string, "shot.png")
+        XCTAssertEqual(attaches.first?["mime_type"]?.string, "image/png")
+        XCTAssertNil(attaches.first?["transcript_key"])
+        XCTAssertEqual(DaemonEngine.imageMIMEType(forExtension: "JPEG"), "image/jpeg")
+        XCTAssertNil(DaemonEngine.imageMIMEType(forExtension: "bmp"))
+    }
+
+}
+
+private actor AttachErrors {
+    var messages: [String] = []
+    func add(_ message: String) { messages.append(message) }
 }

@@ -692,6 +692,8 @@ public actor DaemonEngine {
             return await handleTerminal(request)
         case "/hooks/skill":
             return await handleSkill(request, agentParam: agentParam)
+        case "/hooks/attach":
+            return await handleAttach(request)
         default:
             return .init(status: 404)
         }
@@ -712,6 +714,49 @@ public actor DaemonEngine {
                 "name": .string(name), "description": .string(payload["description"]?.string ?? ""), "content": .string(content)]))
             return .json(response)
         } catch { return .init(status: 502, body: Data("upstream error: \(error.localizedDescription)".utf8)) }
+    }
+
+    /// POST /hooks/attach: `tsq send-image --task <id> <path>` sends an image back
+    /// as part of the agent's response (Go: handleAttach, Agent.AttachImage).
+    private func handleAttach(_ request: LocalHTTPRequest) async -> LocalHTTPResponse {
+        guard request.method == "POST" else { return .init(status: 405) }
+        guard let payload = try? JSONDecoder().decode(JSONValue.self, from: request.body),
+              let taskID = payload["task_id"]?.string, !taskID.isEmpty, let path = payload["path"]?.string, !path.isEmpty
+        else { return .init(status: 400, body: Data("invalid payload: task_id and path required".utf8)) }
+        guard let agentID = matchingAgent("", taskID) else { return .init(status: 404, body: Data("no active agent for task".utf8)) }
+        do {
+            try await attachImage(agentID: agentID, path: path, caption: payload["caption"]?.string ?? "")
+            return .json(.object(["status": .string("ok")]))
+        } catch {
+            onError("[hooks/attach] attach failed for task \(taskID): \(error.localizedDescription)")
+            return .init(status: 500, body: Data("attach failed: \(error.localizedDescription)".utf8))
+        }
+    }
+
+    static func imageMIMEType(forExtension ext: String) -> String? {
+        switch ext.lowercased() {
+        case "png": "image/png"
+        case "jpg", "jpeg": "image/jpeg"
+        case "webp": "image/webp"
+        case "gif": "image/gif"
+        default: nil
+        }
+    }
+
+    private func attachImage(agentID: String, path: String, caption: String) async throws {
+        guard let sessionID = agents[agentID]?.state.sessionID, !sessionID.isEmpty else { throw ConfigurationError("no active session") }
+        let url = URL(fileURLWithPath: path)
+        let content: Data
+        do { content = try Data(contentsOf: url) } catch { throw ConfigurationError("read image file: \(error.localizedDescription)") }
+        guard let mime = Self.imageMIMEType(forExtension: url.pathExtension) else {
+            throw ConfigurationError("unsupported image type: \(url.pathExtension.isEmpty ? "" : "." + url.pathExtension)")
+        }
+        let response = try await post(agentID: agentID, path: "/daemon/session/message", body: .object([
+            "session_id": .string(sessionID), "type": .string("output"),
+            "message": .string(caption.isEmpty ? "📎 Attached image" : caption)]))
+        guard let messageID = response["message_id"]?.string, !messageID.isEmpty else { throw ConfigurationError("no message_id in response") }
+        let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: agentID)
+        try await uploader.attach(sessionID: sessionID, messageID: messageID, filename: url.lastPathComponent, data: content, imageMIMEType: mime)
     }
 
     /// Hooks are routed by agent ID and rejected when their task is stale.
