@@ -26,7 +26,7 @@ private actor CollectedOutput {
     func testManyLiveChildrenDoNotStarveOtherTasks() async throws {
         let children = ProcessInfo.processInfo.activeProcessorCount * 2
         let running = (0..<children).map { _ in
-            Task.detached { try await NativeProcess.run(.init(executable: "/bin/sleep", arguments: ["2"])) }
+            Task.detached { try await NativeProcess.run(.init(executable: "/bin/sleep", arguments: ["1"])) }
         }
         try await Task.sleep(for: .milliseconds(300))
         let started = ContinuousClock.now

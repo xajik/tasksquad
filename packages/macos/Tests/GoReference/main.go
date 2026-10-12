@@ -55,12 +55,9 @@ func run() error {
         if err != nil { return err }
         os.Stdout.Write(plaintext)
     case "lock":
-        root := os.Args[2]
-        if err := os.MkdirAll(root, 0700); err != nil { return err }
-        f, err := os.OpenFile(filepath.Join(root, "daemon.lock"), os.O_CREATE|os.O_RDWR, 0600)
+        f, err := lockDaemon(os.Args[2])
         if err != nil { return err }
         defer f.Close()
-        if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil { return err }
         fmt.Println("locked")
         io.Copy(io.Discard, os.Stdin)
     case "daemon":
@@ -71,11 +68,9 @@ func run() error {
         keyring.MockInit()
         keyring.Set("tasksquad-daemon", "cli-token", "tsq_cli_go_oracle")
         keyring.Set("tasksquad-daemon", "cli-token-expiry", time.Now().Add(30*24*time.Hour).Format(time.RFC3339))
-        root := config.DefaultDir()
-        if err := os.MkdirAll(root, 0700); err != nil { return err }
-        f, err := os.OpenFile(filepath.Join(root, "daemon.lock"), os.O_CREATE|os.O_RDWR, 0600)
-        if err != nil { return err }
-        if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil { return fmt.Errorf("daemon.lock held: %w", err) }
+        lock, err := lockDaemon(config.DefaultDir())
+        if err != nil { return fmt.Errorf("daemon.lock held: %w", err) }
+        defer lock.Close() // keeps the lock reachable; os.File's finalizer would release it
         cfg, err := config.Load(os.Args[2])
         if err != nil { return err }
         raw := make([]*agent.Agent, 0, len(cfg.Agents))
@@ -119,4 +114,13 @@ func run() error {
         return fmt.Errorf("unknown oracle command")
     }
     return nil
+}
+
+// lockDaemon takes daemon.lock under root exclusively, as app_darwin.go does.
+func lockDaemon(root string) (*os.File, error) {
+    if err := os.MkdirAll(root, 0700); err != nil { return nil, err }
+    f, err := os.OpenFile(filepath.Join(root, "daemon.lock"), os.O_CREATE|os.O_RDWR, 0600)
+    if err != nil { return nil, err }
+    if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil { f.Close(); return nil, err }
+    return f, nil
 }

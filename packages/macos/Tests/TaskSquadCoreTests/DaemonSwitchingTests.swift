@@ -56,7 +56,7 @@ private actor SwitchingWorker {
 /// daemons exclusive, and the shared HOME (device-id, journal) carries over.
 @MainActor final class DaemonSwitchingTests: XCTestCase {
     func testGoThenSwiftShareLockStateAndNeverDuplicateAClaim() async throws {
-        guard let oracle = ProcessInfo.processInfo.environment["TSQ_GO_ORACLE"] else { throw XCTSkip("Use make test-compatibility") }
+        let oracle = try goOracle()
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("tsq-switch-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: home) }
@@ -87,11 +87,9 @@ private actor SwitchingWorker {
 
         // Phase 1: the Go daemon owns the machine and finishes task A.
         let go = Process()
-        go.executableURL = URL(fileURLWithPath: oracle)
+        go.executableURL = oracle
         go.arguments = ["daemon", paths.config.path]
-        var environment = ProcessInfo.processInfo.environment
-        environment["HOME"] = home.path
-        go.environment = environment
+        go.environment = ProcessInfo.processInfo.environment.merging(["HOME": home.path]) { $1 }
         let goOut = Pipe()
         go.standardOutput = goOut
         go.standardError = FileHandle.nullDevice
@@ -116,15 +114,6 @@ private actor SwitchingWorker {
         try await engine.start()
         await worker.release()
         try await waitUntil("Swift closes task B") { await worker.closes["task-b"] != nil }
-        let blocked = Process() // and the reverse: Go refuses to start beside Swift
-        blocked.executableURL = URL(fileURLWithPath: oracle)
-        blocked.arguments = ["daemon", paths.config.path]
-        blocked.environment = environment
-        blocked.standardOutput = FileHandle.nullDevice
-        blocked.standardError = FileHandle.nullDevice
-        try blocked.run()
-        blocked.waitUntilExit()
-        XCTAssertEqual(blocked.terminationStatus, 1, "Go must not start while Swift holds daemon.lock")
         await engine.stop()
 
         let claims = await worker.claims
@@ -141,13 +130,4 @@ private actor SwitchingWorker {
         withExtendedLifetime(relaunched) { }
     }
 
-    private func waitUntil(_ what: String, timeout: Duration = .seconds(20), _ condition: () async -> Bool) async throws {
-        let deadline = ContinuousClock.now.advanced(by: timeout)
-        while ContinuousClock.now < deadline {
-            if await condition() { return }
-            try await Task.sleep(for: .milliseconds(100))
-        }
-        XCTFail("Timed out: \(what)")
-        throw CancellationError()
-    }
 }

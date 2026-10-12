@@ -54,6 +54,13 @@ public struct TaskSquadPaths: Sendable {
         return isBundle || parentPID == 1
     }
 
+    /// Go's prepareAppEnvironment, called first by every entry point.
+    public static func prepareEnvironment() {
+        guard let executable = Bundle.main.executablePath, needsSearchPath(executable: executable, parentPID: getppid()) else { return }
+        let inherited = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        setenv("PATH", TaskSquadPaths().searchPath(executable: executable, inherited: inherited), 1)
+    }
+
     public func searchPath(executable: String, inherited: String) -> String {
         let candidates = [URL(fileURLWithPath: executable).deletingLastPathComponent().path]
             + inherited.components(separatedBy: ":")

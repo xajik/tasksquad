@@ -20,7 +20,7 @@ test-compatibility:
 	mkdir -p .build/reference
 	cd ../daemon && CGO_ENABLED=0 go build -o ../macos/.build/reference/go-daemon ../macos/Tests/GoReference/main.go
 	cd ../daemon && CGO_ENABLED=0 go build -o ../macos/.build/reference/tsq .
-	TSQ_GO_ORACLE="$(CURDIR)/.build/reference/go-daemon" TSQ_GO_TSQ="$(CURDIR)/.build/reference/tsq" $(SWIFT) test $(TEST_FLAGS)
+	TSQ_GO_ORACLE="$(CURDIR)/.build/reference/go-daemon" TSQ_GO_TSQ="$(CURDIR)/.build/reference/tsq" $(SWIFT) test
 
 test-keychain:
 	mkdir -p .build/reference

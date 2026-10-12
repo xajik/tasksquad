@@ -48,19 +48,17 @@ public enum NativeProcess {
                 for (channel, descriptor) in [(ProcessChannel.stdout, child.stdout), (.stderr, child.stderr)] {
                     group.addTask {
                         defer { child.outputFinished() }
-                        while true {
-                            // Cancellation terminates the process group; continue to
-                            // drain already-written output before reporting its exit.
-                            let data = try await blocking { try readChunk(descriptor) }
-                            if data.isEmpty { return nil }
-                            try await output(channel, data)
-                        }
+                        // Cancellation terminates the process group; continue to
+                        // drain already-written output before reporting its exit.
+                        try await blocking { try drain(descriptor) { try deliver($0) { try await output(channel, $0) } } }
+                        return nil
                     }
                 }
                 group.addTask {
+                    guard let input = specification.input else { child.closeInput(); return nil }
                     try await blocking {
                         defer { child.closeInput() }
-                        if let input = specification.input { try writeAll(input, descriptor: child.stdin) }
+                        try writeAll(input, descriptor: child.stdin)
                     }
                     return nil
                 }
@@ -101,13 +99,28 @@ public enum NativeProcess {
         }
     }
 
-    private static func readChunk(_ descriptor: Int32) throws -> Data {
+    /// Reads `descriptor` to EOF on the calling (dedicated) thread with one buffer.
+    private static func drain(_ descriptor: Int32, _ chunk: (Data) throws -> Void) throws {
         var bytes = [UInt8](repeating: 0, count: 64 * 1024)
         while true {
             let count = Darwin.read(descriptor, &bytes, bytes.count)
-            if count >= 0 { return Data(bytes.prefix(count)) }
-            if errno != EINTR { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            if count > 0 { try chunk(Data(bytes.prefix(count))) }
+            else if count == 0 { return }
+            else if errno != EINTR { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         }
+    }
+
+    /// Hands one chunk to the async consumer and blocks this I/O thread until it
+    /// is accepted, so a slow consumer backpressures the child.
+    private static func deliver(_ data: Data, to consumer: @escaping @Sendable (Data) async throws -> Void) throws {
+        final class Outcome: @unchecked Sendable { var error: Error? }
+        let outcome = Outcome(), accepted = DispatchSemaphore(value: 0)
+        Task {
+            do { try await consumer(data) } catch { outcome.error = error }
+            accepted.signal()
+        }
+        accepted.wait()
+        if let error = outcome.error { throw error }
     }
 
     private static func writeAll(_ data: Data, descriptor: Int32) throws {
