@@ -17,5 +17,9 @@ let package = Package(
         .target(name: "TaskSquadLinuxPlatform", dependencies: [.product(name: "TaskSquadCore", package: "tsq-core")]),
         .executableTarget(name: "tsq", dependencies: [.product(name: "TaskSquadCLI", package: "tsq-core"),
                                                     .product(name: "TaskSquadCore", package: "tsq-core"), "TaskSquadLinuxPlatform"]),
+        .testTarget(name: "TaskSquadCoreTests", dependencies: [.product(name: "TaskSquadCore", package: "tsq-core"), "TaskSquadLinuxPlatform"],
+                    resources: [.copy("Shared/Fixtures")]),
+        .testTarget(name: "TaskSquadCLITests", dependencies: [.product(name: "TaskSquadCLI", package: "tsq-core"),
+                                                            .product(name: "TaskSquadCore", package: "tsq-core"), "TaskSquadLinuxPlatform"]),
     ]
 )

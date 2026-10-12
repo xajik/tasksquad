@@ -44,3 +44,26 @@ jobs:
         run: |
           bin="$(swift build --package-path packages/linux --show-bin-path)/tsq"
           "$bin" --version
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: swift:6.4.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test dependencies
+        run: apt-get update && apt-get install -y --no-install-recommends tmux curl python3 procps
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/daemon/go.mod
+          cache: false
+      - name: Build Go reference oracle
+        working-directory: packages/daemon
+        run: |
+          mkdir -p "$RUNNER_TEMP/reference"
+          CGO_ENABLED=0 go build -buildvcs=false -o "$RUNNER_TEMP/reference/go-daemon" ../tsq-core/Tests/GoReference/main.go
+          CGO_ENABLED=0 go build -buildvcs=false -o "$RUNNER_TEMP/reference/tsq" .
+      - name: Shared tsq-core tests on LinuxPlatform
+        run: |
+          TSQ_GO_ORACLE="$RUNNER_TEMP/reference/go-daemon" TSQ_GO_TSQ="$RUNNER_TEMP/reference/tsq" \
+            swift test --package-path packages/linux
