@@ -59,12 +59,12 @@ actor Supervisor {
 
     /// ("", "") when unconfigured, empty, or the binary is not on PATH (supervisor disabled).
     static func resolveCLI(command: String?, searchPath: String) -> (String, String) {
-        guard let command else { NSLog("[supervisor] No [supervisor] section in config — supervisor disabled"); return ("", "") }
+        guard let command else { Log.info("[supervisor] No [supervisor] section in config — supervisor disabled"); return ("", "") }
         guard let first = command.split(whereSeparator: \.isWhitespace).first.map(String.init) else {
-            NSLog("[supervisor] supervisor.command is empty — supervisor disabled"); return ("", "")
+            Log.warn("[supervisor] supervisor.command is empty — supervisor disabled"); return ("", "")
         }
         guard let path = ExecutableLocator.find(first, environment: ["PATH": searchPath]) else {
-            NSLog("[supervisor] supervisor CLI %@ not found in PATH — supervisor disabled", first); return ("", "")
+            Log.warn("[supervisor] supervisor CLI \(first) not found in PATH — supervisor disabled"); return ("", "")
         }
         return (path, command)
     }
@@ -102,7 +102,7 @@ actor Supervisor {
                   !agent.tmuxSession.isEmpty, !activeForTask.contains(agent.taskID) else { continue }
             if let last = lastAttempt[agent.taskID], now.timeIntervalSince(last) < timing.inactivity.inSeconds { continue }
             guard let activity = agent.lastActivityAt, now.timeIntervalSince(activity) >= timing.inactivity.inSeconds else { continue }
-            NSLog("[supervisor] Agent %@ task %@ inactive — spawning supervisor", agent.name, agent.taskID)
+            Log.info("[supervisor] Agent \(agent.name) task \(agent.taskID) inactive — spawning supervisor")
             activeForTask.insert(agent.taskID)
             lastAttempt[agent.taskID] = now
             track("supervisor_spawned", ["task_id": .string(agent.taskID), "agent_name": .string(agent.name),
@@ -128,9 +128,9 @@ actor Supervisor {
     /// POST /hooks/supervisor delivers the verdict to the waiting spawn; duplicates are dropped.
     func handleVerdict(taskID: String, status: String, summary: String, found: String, action: String) {
         guard waitingVerdict.contains(taskID) else {
-            NSLog("[supervisor] HandleVerdict: no active session for task %@ (already done or unknown)", taskID); return
+            Log.warn("[supervisor] HandleVerdict: no active session for task \(taskID) (already done or unknown)"); return
         }
-        guard verdicts[taskID] == nil else { NSLog("[supervisor] HandleVerdict: duplicate verdict for task %@ — ignoring", taskID); return }
+        guard verdicts[taskID] == nil else { Log.warn("[supervisor] HandleVerdict: duplicate verdict for task \(taskID) — ignoring"); return }
         verdicts[taskID] = Verdict(status: status, summary: summary, found: found, action: action)
     }
 
@@ -141,7 +141,7 @@ actor Supervisor {
         let session = "tsq-sup-" + taskID.prefix(8)
         if (try? await tmux.run(["has-session", "-t", session])) != nil {
             _ = try? await tmux.run(["kill-session", "-t", session])
-            NSLog("[supervisor] CancelForTask: killed %@ (agent stop received for task %@)", session, taskID)
+            Log.info("[supervisor] CancelForTask: killed \(session) (agent stop received for task \(taskID))")
         }
         activeForTask.remove(taskID)
         failCount[taskID] = nil
@@ -174,11 +174,11 @@ actor Supervisor {
 
     private func spawn(_ agent: SupervisedAgent) async {
         let taskID = agent.taskID
-        guard Self.isSafeID(taskID) else { NSLog("[supervisor] Rejecting unsafe taskID %@", taskID); return }
+        guard Self.isSafeID(taskID) else { Log.error("[supervisor] Rejecting unsafe taskID \(taskID)"); return }
         let session = "tsq-sup-" + taskID
         let supLog = logPath(taskID: taskID)
         do { try FileManager.default.createDirectory(at: supLog.deletingLastPathComponent(), withIntermediateDirectories: true) }
-        catch { NSLog("[supervisor] Failed to create log dir: %@", error.localizedDescription); return }
+        catch { Log.error("[supervisor] Failed to create log dir: \(error.localizedDescription)"); return }
 
         let (snapshot, isImage) = await captureSnapshot(session: agent.tmuxSession, supLog: supLog, taskID: taskID)
         let context = Self.contextBlock(agentName: agent.name, taskID: taskID, tmuxSession: agent.tmuxSession, logPath: agent.logPath,
@@ -189,21 +189,21 @@ actor Supervisor {
 
         let prompt = FileManager.default.temporaryDirectory.appendingPathComponent("tsq-sup-\(UUID().uuidString).prompt")
         let formatted = ProviderKind.detect(command: fullCommand, override: "").formatPrompt(context)
-        do { try Data(formatted.utf8).write(to: prompt) } catch { NSLog("[supervisor] Failed to write prompt file: %@", error.localizedDescription); return }
+        do { try Data(formatted.utf8).write(to: prompt) } catch { Log.error("[supervisor] Failed to write prompt file: \(error.localizedDescription)"); return }
         defer { try? FileManager.default.removeItem(at: prompt) }
 
         let shell = Self.printModeCommand(cli: cli, fullCommand: fullCommand, promptFile: prompt.path, logFile: supLog.path, daemonBinDir: daemonBinDir)
         do {
             try paths.createRoot()
             _ = try await tmux.run(["new-session", "-d", "-s", session, "-c", paths.root.path, "sh", "-c", shell])
-        } catch { NSLog("[supervisor] Failed to start tmux session %@: %@", session, error.localizedDescription); return }
-        NSLog("[supervisor] Session %@ started for task %@", session, taskID)
+        } catch { Log.error("[supervisor] Failed to start tmux session \(session): \(error.localizedDescription)"); return }
+        Log.info("[supervisor] Session \(session) started for task \(taskID)")
 
         guard let verdict = await waitForVerdictOrKill(taskID: taskID, session: session) else {
             appendToLog(supLog, "\n--- SUPERVISOR TIMEOUT/EXIT: \(GoTime.rfc3339(Date())) ---\n")
             failCount[taskID, default: 0] += 1
             let count = failCount[taskID]!
-            NSLog("[supervisor] Session %@ ended without verdict (attempt %d/%d)", session, count, Self.maxFailures)
+            Log.warn("[supervisor] Session \(session) ended without verdict (attempt \(count)/\(Self.maxFailures))")
             track("supervisor_timeout", ["task_id": .string(taskID), "attempt_count": .number(Double(count))])
             // Post the raw CLI output so the thread reflects what the supervisor did without `tsq report`.
             if let output = Self.readOutput(supLog) { await reportToWorker(agent, body: output) }
@@ -238,14 +238,14 @@ actor Supervisor {
             }
             if clock.now >= deadline {
                 _ = try? await tmux.run(["kill-session", "-t", session])
-                NSLog("[supervisor] Session %@ timed out", session)
+                Log.warn("[supervisor] Session \(session) timed out")
                 return nil
             }
             if clock.now >= nextSessionCheck {
                 nextSessionCheck = clock.now.advanced(by: timing.sessionCheck)
                 // Print mode: the CLI exits when done, ending the session.
                 if (try? await tmux.run(["has-session", "-t", session])) == nil {
-                    NSLog("[supervisor] Session %@: process exited without calling /hooks/supervisor", session)
+                    Log.warn("[supervisor] Session \(session): process exited without calling /hooks/supervisor")
                     return nil
                 }
             }
@@ -262,7 +262,7 @@ actor Supervisor {
             let name = line.trimmingCharacters(in: .whitespaces)
             guard name.hasPrefix("tsq-sup-"), !activeForTask.contains(String(name.dropFirst(8))) else { continue }
             _ = try? await tmux.run(["kill-session", "-t", name])
-            NSLog("[supervisor] Orphan cleanup: killed %@", name)
+            Log.info("[supervisor] Orphan cleanup: killed \(name)")
         }
     }
 
@@ -417,16 +417,16 @@ actor Supervisor {
     private func reportToWorker(_ agent: SupervisedAgent, body: String) async {
         let response: JSONValue
         do { response = try await post(agent.agentID, "/daemon/supervisor/report", .object(["task_id": .string(agent.taskID), "body": .string(body)])) }
-        catch { NSLog("[supervisor] Failed to post report for task %@: %@", agent.taskID, error.localizedDescription); return }
+        catch { Log.error("[supervisor] Failed to post report for task \(agent.taskID): \(error.localizedDescription)"); return }
         guard let messageID = response["message_id"]?.string, !messageID.isEmpty, !agent.sessionID.isEmpty, !agent.tmuxSession.isEmpty,
               let png = await screenshot(agent.tmuxSession) else { return }
         do { try await attachScreenshot(agent.agentID, agent.sessionID, messageID, png) }
-        catch { NSLog("[supervisor] Failed to attach closing screenshot for task %@: %@", agent.taskID, error.localizedDescription) }
+        catch { Log.warn("[supervisor] Failed to attach closing screenshot for task \(agent.taskID): \(error.localizedDescription)") }
     }
 
     private func notifyProgress(taskID: String, agentID: String, message: String) async {
         do { _ = try await post(agentID, "/daemon/supervisor/report", .object(["task_id": .string(taskID), "body": .string("[Supervisor] " + message), "type": .string("progress")])) }
-        catch { NSLog("[supervisor] Failed to post progress for task %@: %@", taskID, error.localizedDescription) }
+        catch { Log.error("[supervisor] Failed to post progress for task \(taskID): \(error.localizedDescription)") }
     }
 
     private func escalate(taskID: String, agentID: String, attempts: Int) async {
@@ -435,7 +435,7 @@ actor Supervisor {
         let tail = Self.readLastLines(logPath(taskID: taskID), max: Self.maxEscalationLogLines)
         if !tail.isEmpty { body += "\n\nSupervisor log (last \(Self.maxEscalationLogLines) lines):\n```\n\(tail)\n```" }
         do { _ = try await post(agentID, "/daemon/supervisor/report", .object(["task_id": .string(taskID), "body": .string(body), "type": .string("escalation")])) }
-        catch { NSLog("[supervisor] Failed to post escalation for task %@: %@", taskID, error.localizedDescription) }
+        catch { Log.error("[supervisor] Failed to post escalation for task \(taskID): \(error.localizedDescription)") }
     }
 
     /// Go's Duration.String for whole minutes, e.g. 50m0s, 1h0m0s.

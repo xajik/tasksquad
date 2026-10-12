@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 public enum CredentialKey: String, CaseIterable, Sendable {
     case idToken = "id-token", refreshToken = "refresh-token", expiry, email
@@ -12,63 +11,65 @@ public protocol CredentialStore: Sendable {
     func delete(_ key: CredentialKey) throws
 }
 
+/// The login Keychain through /usr/bin/security, exactly as Go's go-keyring does.
+/// Items either daemon creates then trust the same tool, so neither daemon (nor a
+/// rebuilt, differently-signed Swift binary) triggers a macOS authorization prompt.
 public struct KeychainCredentialStore: CredentialStore {
     public static let service = "tasksquad-daemon"
+    static let tool = "/usr/bin/security"
     private let service: String
     public init(service: String = Self.service) { self.service = service }
 
-    private func query(_ key: CredentialKey) -> [String: Any] {
-        // Go uses the traditional login keychain via security(1), not the
-        // data-protection keychain. Do not add kSecUseDataProtectionKeychain.
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service, kSecAttrAccount as String: key.rawValue]
+    public func read(_ key: CredentialKey) throws -> String? {
+        let result = try Self.run(["find-generic-password", "-s", service, "-wa", key.rawValue])
+        if result.output.contains("could not be found") { return nil }
+        guard result.status == 0 else { throw CredentialError.keychain(result.output) }
+        return try Self.decode(Data(result.output.utf8))
     }
 
-    public func read(_ key: CredentialKey) throws -> String? { try read(key, allowInteraction: true) }
+    /// Same as read: items trusting /usr/bin/security never prompt.
+    public func readWithoutPrompt(_ key: CredentialKey) throws -> String? { try read(key) }
 
-    public func readWithoutPrompt(_ key: CredentialKey) throws -> String? { try read(key, allowInteraction: false) }
-
-    private func read(_ key: CredentialKey, allowInteraction: Bool) throws -> String? {
-        var query = query(key)
-        if !allowInteraction { query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail }
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
-        try check(status)
-        guard let data = result as? Data else { throw CredentialError.invalidEncoding }
-        return try Self.decode(data)
-    }
-
+    /// go-keyring's Set: the command goes over `security -i` stdin so the secret is never in argv.
     public func write(_ value: String, for key: CredentialKey) throws {
-        let data = Self.encode(value)
-        let query = query(key)
-        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        if status == errSecItemNotFound {
-            var attributes = query
-            attributes[kSecValueData as String] = data
-            // Go's keyring adapter reads these through Apple's security executable.
-            // Trust only this application and that system tool for newly created items.
-            var currentApp: SecTrustedApplication?
-            var securityTool: SecTrustedApplication?
-            try check(SecTrustedApplicationCreateFromPath(nil, &currentApp))
-            try check(SecTrustedApplicationCreateFromPath("/usr/bin/security", &securityTool))
-            if let currentApp, let securityTool {
-                var access: SecAccess?
-                try check(SecAccessCreate("TaskSquad credentials" as CFString, [currentApp, securityTool] as CFArray, &access))
-                attributes[kSecAttrAccess as String] = access
-            }
-            try check(SecItemAdd(attributes as CFDictionary, nil))
-        } else { try check(status) }
+        let password = String(decoding: Self.encode(value), as: UTF8.self)
+        let command = "add-generic-password -U -s \(Self.shellQuote(service)) -a \(Self.shellQuote(key.rawValue)) -w \(Self.shellQuote(password))\n"
+        guard command.utf8.count <= 4096 else { throw CredentialError.keychain("data passed to Set was too big") }
+        let result = try Self.run(["-i"], input: command)
+        guard result.status == 0 else { throw CredentialError.keychain(result.output) }
     }
 
     public func delete(_ key: CredentialKey) throws {
-        let status = SecItemDelete(query(key) as CFDictionary)
-        if status != errSecItemNotFound { try check(status) }
+        let result = try Self.run(["delete-generic-password", "-s", service, "-a", key.rawValue])
+        guard result.status == 0 || result.output.contains("could not be found") else { throw CredentialError.keychain(result.output) }
     }
 
-    // Match go-keyring v0.2.6, including its historical hex representation.
+    /// Go's exec.Command(...).CombinedOutput(): stdout and stderr together.
+    private static func run(_ arguments: [String], input: String? = nil) throws -> (status: Int32, output: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = arguments
+        let output = Pipe(), stdin = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        process.standardInput = stdin
+        try process.run()
+        if let input { stdin.fileHandleForWriting.write(Data(input.utf8)) }
+        try stdin.fileHandleForWriting.close()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, String(decoding: data, as: UTF8.self))
+    }
+
+    /// al.essio.dev/pkg/shellescape Quote, which go-keyring uses for `security -i`.
+    static func shellQuote(_ value: String) -> String {
+        if value.isEmpty { return "''" }
+        let safe = value.unicodeScalars.allSatisfy { scalar in
+            CharacterSet.alphanumerics.contains(scalar) && scalar.isASCII || "_@%+=:,./-".unicodeScalars.contains(scalar)
+        }
+        return safe ? value : "'" + value.replacingOccurrences(of: "'", with: #"'"'"'"#) + "'"
+    }
+
     static func encode(_ value: String) -> Data { Data(("go-keyring-base64:" + Data(value.utf8).base64EncodedString()).utf8) }
     static func decode(_ data: Data) throws -> String {
         guard let raw = String(data: data, encoding: .utf8) else { throw CredentialError.invalidEncoding }
@@ -91,18 +92,14 @@ public struct KeychainCredentialStore: CredentialStore {
         }
         return value
     }
-
-    private func check(_ status: OSStatus) throws {
-        guard status == errSecSuccess else { throw CredentialError.keychain(status) }
-    }
 }
 
 public enum CredentialError: LocalizedError {
-    case invalidEncoding, keychain(OSStatus), notLoggedIn
+    case invalidEncoding, keychain(String), notLoggedIn
     public var errorDescription: String? {
         switch self {
         case .invalidEncoding: "Invalid Keychain credential encoding"
-        case .keychain(let status): "Keychain: \(SecCopyErrorMessageString(status, nil) as String? ?? String(status))"
+        case .keychain(let message): "Keychain: \(message.trimmingCharacters(in: .whitespacesAndNewlines))"
         case .notLoggedIn: "Not logged in — run: tsq login"
         }
     }

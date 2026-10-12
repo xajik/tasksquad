@@ -35,7 +35,7 @@ actor PortalHost {
         catch { log("[portal] \(error.localizedDescription)"); await report(agent.id, portalID, "failed"); return }
         active[portalID] = session
         defer { active[portalID] = nil; closing.remove(portalID); session.removeFIFO() }
-        NSLog("[%@] portal %@: starting", agent.name, portalID)
+        Log.info("[\(agent.name)] portal \(portalID): starting")
 
         let stream: AsyncStream<Data>
         do {
@@ -72,7 +72,7 @@ actor PortalHost {
         input?.cancel()
         relay?.cancel(with: .normalClosure, reason: nil)
         await session.kill()
-        NSLog("[portal] %@: stream ended after %d bytes", portalID, total)
+        Log.info("[portal] \(portalID): stream ended after \(total) bytes")
         await report(agent.id, portalID, "done")
     }
 
@@ -81,7 +81,7 @@ actor PortalHost {
     func close(portalID: String) async -> Bool {
         guard let session = active[portalID] else { return false }
         closing.insert(portalID)
-        NSLog("[portal] %@: close requested, killing tmux", portalID)
+        Log.info("[portal] \(portalID): close requested, killing tmux")
         await session.kill()
         return true
     }

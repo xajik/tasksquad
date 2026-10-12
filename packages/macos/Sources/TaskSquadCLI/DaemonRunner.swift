@@ -6,35 +6,6 @@ import TaskSquadCore
 /// non-tray ui stub). Logs to stdout and ~/.tasksquad/logs/daemon-<date>.log like
 /// Go's logger, holds a wake lock, and stops cleanly on SIGINT/SIGTERM.
 public enum DaemonRunner {
-    /// Go's logger: "<RFC3339> [LEVEL] msg" to stdout and the day's daemon log, rotating daily.
-    final class DaemonLog: @unchecked Sendable {
-        private let lock = NSLock()
-        private let logs: URL
-        private let stdout: @Sendable (String) -> Void
-        private var day = ""
-        private var handle: FileHandle?
-        init(paths: TaskSquadPaths, stdout: @escaping @Sendable (String) -> Void) {
-            logs = paths.logs; self.stdout = stdout
-            try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-        }
-        func write(_ level: String, _ message: String) {
-            lock.lock(); defer { lock.unlock() }
-            let now = Date()
-            let today = now.formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day().dateSeparator(.dash))
-            if today != day {
-                try? handle?.close()
-                let url = logs.appendingPathComponent("daemon-\(today).log")
-                if !FileManager.default.fileExists(atPath: url.path) { FileManager.default.createFile(atPath: url.path, contents: nil) }
-                handle = try? FileHandle(forWritingTo: url); _ = try? handle?.seekToEnd()
-                day = today
-            }
-            let padded = level.padding(toLength: max(5, level.count), withPad: " ", startingAt: 0)
-            let line = "\(GoTime.rfc3339(now)) [\(padded)] \(message)\n"
-            stdout(line)
-            try? handle?.write(contentsOf: Data(line.utf8))
-        }
-    }
-
     public static func run(_ arguments: [String], context c: CLIContext = CLIContext()) async -> Int32 {
         let flags = GoFlagSet(c.programName, output: c.stderr)
         flags.string("config", c.paths.config.path, "path to config.toml")
@@ -59,28 +30,23 @@ public enum DaemonRunner {
             } catch { c.printError("login failed: \(error.localizedDescription)"); return 1 }
         }
 
-        let log = DaemonLog(paths: c.paths, stdout: c.stdout)
-        log.write("INFO", "TaskSquad daemon starting — tsq " + c.version)
-        log.write("INFO", "API: \(configuration.server.url)")
-        log.write("INFO", "Poll interval: \(configuration.server.pollInterval)s")
-        log.write("INFO", "Hooks port: \(configuration.hooks.port)")
-        for agent in configuration.agents {
-            log.write("INFO", "  - \(agent.name)  id=\(agent.id)  command=\(agent.command)  dir=\(agent.workDir)  provider=\(ProviderKind.detect(command: agent.command, override: agent.provider).rawValue)")
-        }
+        Log.configure(logs: c.paths.logs, stdout: c.stdout)
+        Log.daemonStarting(configuration, version: c.version, email: c.storedEmail())
+        // The engine logs its own errors; the app additionally shows them through this callback.
         let engine = DaemonEngine(configuration: configuration, paths: c.paths, tokens: c.tokenProvider(configuration), environment: c.environment,
-                                  appVersion: c.version) { message in log.write("ERROR", message) }
+                                  appVersion: c.version)
         do { try await engine.start() } catch { c.printError(error.localizedDescription); return 1 }
-        log.write("INFO", "Running — waiting for tasks...")
+        Log.info("Running — waiting for tasks...")
         let executable = URL(fileURLWithPath: CommandLine.arguments.first ?? "tsq").resolvingSymlinksInPath().path
         do {
             if try LaunchAgent(home: c.home).enableOnFirstRun(executable: executable, paths: c.paths) {
-                log.write("INFO", "[autostart] Enabled run-on-boot (first run)")
+                Log.info("[autostart] Enabled run-on-boot (first run)")
             }
-        } catch { log.write("WARN", "[autostart] first-run enable failed: \(error.localizedDescription)") }
+        } catch { Log.warn("[autostart] first-run enable failed: \(error.localizedDescription)") }
         let wakeLock = WakeLock()
         wakeLock.acquire()
         await waitForTermination()
-        log.write("INFO", "Shutting down — draining sessions...")
+        Log.info("Shutting down — draining sessions...")
         await engine.stop()
         wakeLock.release()
         return 0

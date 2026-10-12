@@ -8,10 +8,13 @@ public struct ArtifactUploader: Sendable {
         self.api = api; self.tokens = tokens; self.agentID = agentID
     }
 
-    public func attachLog(sessionID: String, content: String) async throws {
-        guard !sessionID.isEmpty, !content.isEmpty else { return }
+    /// Returns the R2 key, or nil when there was nothing to upload.
+    @discardableResult
+    public func attachLog(sessionID: String, content: String) async throws -> String? {
+        guard !sessionID.isEmpty, !content.isEmpty else { return nil }
         let key = try await upload(sessionID: sessionID, filename: "full.log", data: Data(content.utf8))
         _ = try await post("/daemon/sessions/\(sessionID)/attach", body: .object(["r2_log_key": .string(key)]))
+        return key
     }
 
     public func attach(sessionID: String, messageID: String, filename: String, data: Data,

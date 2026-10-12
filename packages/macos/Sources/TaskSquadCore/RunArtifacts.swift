@@ -15,6 +15,13 @@ public enum GoTime {
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssXXXXX"
         return formatter.string(from: date)
     }
+
+    /// time.Duration.String for whole seconds: 30s, 5m0s, 1h0m0s.
+    public static func duration(_ duration: Duration) -> String {
+        let total = duration.components.seconds
+        let h = total / 3600, m = total % 3600 / 60, s = total % 60
+        return h > 0 ? "\(h)h\(m)m\(s)s" : m > 0 ? "\(m)m\(s)s" : "\(s)s"
+    }
 }
 
 public actor RunArtifacts {

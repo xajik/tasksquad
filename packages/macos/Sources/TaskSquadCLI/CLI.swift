@@ -21,6 +21,8 @@ public struct CLIContext: Sendable {
     public var logout: @Sendable () async throws -> Void
     /// Go's auth.IsLoggedIn: an ID token is stored.
     public var isLoggedIn: @Sendable (_ environment: [String: String]) async -> Bool
+    /// Go's auth.GetEmail, for the daemon's "User:" line.
+    public var storedEmail: @Sendable () -> String = { (try? KeychainCredentialStore().read(.email)) ?? "" }
     /// Cloud orchestration never follows redirects (Go: CustomerClient).
     public var customerTransport: any HTTPTransport
     public var version: String

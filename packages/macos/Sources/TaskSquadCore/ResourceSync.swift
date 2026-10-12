@@ -13,6 +13,10 @@ public enum ManagedResource: String, CaseIterable, Sendable {
     var envelope: String {
         switch self { case .skills: "skills"; case .subAgents: "sub_agents"; case .commands: "commands" }
     }
+    /// The singular noun in Go's sync log lines.
+    var logNoun: String {
+        switch self { case .skills: "skill"; case .subAgents: "sub-agent"; case .commands: "command" }
+    }
     func detailPath(id: String, teamID: String) -> String {
         let segment = self == .subAgents ? "sub-agents" : rawValue
         return teamID.isEmpty ? "/daemon/\(segment)/\(id)" : "/teams/\(teamID)/\(segment)/\(id)"
@@ -93,7 +97,7 @@ public enum ResourceSyncNow {
     public static func run(configuration: DaemonConfiguration, agents: [DaemonConfiguration.Agent], tokens: any TokenProvider,
                            transport: any HTTPTransport, paths: TaskSquadPaths) async {
         let sync = ResourceSync(api: WorkerAPI(baseURL: configuration.server.url, transport: transport), tokens: tokens, paths: paths,
-                                agents: agents) { NSLog("%@", $0) }
+                                agents: agents) { Log.warn($0) }
         await sync.syncAll()
     }
 }
@@ -125,6 +129,9 @@ actor ResourceSync {
         let (stream, continuation) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
         trigger = continuation
         let interval = interval
+        Log.info("[agents] Sub-agent sync started (interval=1h)")
+        Log.info("[commands] Auto-install sync started (interval=1h)")
+        Log.info("[skills] Auto-install sync started (interval=1h)")
         loop = Task { [weak self] in
             await self?.syncAll()
             await withTaskGroup(of: Void.self) { group in
@@ -143,7 +150,10 @@ actor ResourceSync {
     }
 
     /// Non-blocking; coalesces with a pending request (Go: Syncer.ForceSync).
-    func forceSync() { trigger?.yield() }
+    func forceSync() {
+        for kind in ManagedResource.allCases { Log.info("[\(kind.rawValue)] force-sync triggered") }
+        trigger?.yield()
+    }
 
     func stop() async {
         trigger?.finish(); trigger = nil
@@ -151,7 +161,11 @@ actor ResourceSync {
     }
 
     func syncAll() async {
-        guard let token = try? await tokens.token(forceRotation: false) else { NSLog("[sync] no token; skipping resource sync"); return }
+        let token: String
+        do { token = try await tokens.token(forceRotation: false) } catch {
+            for kind in ManagedResource.allCases { Log.error("[\(kind.rawValue)] Sync auth failed: \(error.localizedDescription)") }
+            return
+        }
         for target in targets {
             for kind in ManagedResource.allCases {
                 guard !Task.isCancelled else { return }
@@ -165,13 +179,15 @@ actor ResourceSync {
         do {
             let result = try await api.send(method: "GET", path: kind.listPath + "?agent_id=" + target.agentID, token: token)
             list = try JSONDecoder().decode(JSONValue.self, from: result.data)
-        } catch { NSLog("[sync] %@ fetch failed for %@: %@", kind.rawValue, target.agentID, error.localizedDescription); return }
+        } catch { Log.error("[\(kind.rawValue)] Sync fetch failed for agent \(target.agentID): \(error.localizedDescription)"); return }
+        let items = list[kind.envelope]?.array ?? []
+        Log.debug("[\(kind.rawValue)] Sync found \(items.count) potential \(kind.logNoun)s for agent \(target.agentID)")
 
         let workDir = URL(fileURLWithPath: target.workDir, isDirectory: true)
         var lock = loadLock(kind, workDir: target.workDir)
         var serverNames = Set<String>()
         var installed = 0, removed = 0
-        for item in list[kind.envelope]?.array ?? [] {
+        for item in items {
             guard item["auto_install"]?.number ?? 0 != 0 || item["is_default"]?.number ?? 0 != 0,
                   let name = item["name"]?.string, HarnessLayout.isSafe(name) else { continue }
             serverNames.insert(name)
@@ -185,19 +201,23 @@ actor ResourceSync {
                     let full = try JSONDecoder().decode(JSONValue.self, from: result.data)
                     content = full["content"]?.string ?? ""
                     if let fresh = full["etag"]?.string, !fresh.isEmpty { etag = fresh }
-                } catch { NSLog("[sync] %@ %@ content fetch failed: %@", kind.rawValue, name, error.localizedDescription); continue }
+                } catch { Log.error("[\(kind.rawValue)] Failed to fetch \(kind.logNoun) \(Log.quote(name)) content: \(error.localizedDescription)"); continue }
             }
-            guard !content.isEmpty else { continue }
+            guard !content.isEmpty else { Log.warn("[\(kind.rawValue)] Skipping \(Log.quote(name)) — no content received"); continue }
             do {
                 try install(kind, name: name, description: item["description"]?.string ?? "", content: content, workDir: workDir, tracked: lock[name] != nil)
                 lock[name] = etag; installed += 1
-            } catch { report("Could not install \(kind.rawValue) \(name) into \(target.workDir): \(error.localizedDescription)") }
+                let version = Int(item["version"]?.number ?? 0)
+                Log.info("[\(kind.rawValue)] Installed \(kind == .subAgents ? "sub-agent " : "")\(Log.quote(name)) v\(version) → \(target.workDir)")
+            } catch { report("[\(kind.rawValue)] Failed to install \(Log.quote(name)): \(error.localizedDescription)") }
         }
         for name in lock.keys where !serverNames.contains(name) {
             remove(kind, name: name, workDir: workDir); lock[name] = nil; removed += 1
+            Log.info("[\(kind.rawValue)] Removed \(kind == .subAgents ? "sub-agent " : "")\(Log.quote(name)) from \(target.workDir) (deleted on server)")
         }
         saveLock(kind, workDir: target.workDir, lock)
-        if installed + removed > 0 { NSLog("[sync] %@ for %@: %d installed, %d removed", kind.rawValue, target.workDir, installed, removed) }
+        if installed + removed > 0 { Log.info("[\(kind.rawValue)] Sync complete for agent \(target.agentID): \(installed) installed, \(removed) removed") }
+        else { Log.debug("[\(kind.rawValue)] Sync complete for agent \(target.agentID): all up to date") }
     }
 
     private func canonical(_ kind: ManagedResource, name: String, workDir: URL) -> URL {

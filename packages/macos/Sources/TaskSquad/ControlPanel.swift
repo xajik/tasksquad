@@ -166,6 +166,10 @@ import TaskSquadDesign
         await startEngineInternal(configuration, document: text)
     }
     private func startEngineInternal(_ configuration: DaemonConfiguration, document: String) async {
+        // Same daemon log as Go's tray app (and the headless tsq).
+        Log.configure(logs: paths.logs) { FileHandle.standardOutput.write(Data($0.utf8)) }
+        let email = await Task.detached { (try? KeychainCredentialStore().readWithoutPrompt(.email)) ?? "" }.value
+        Log.daemonStarting(configuration, version: Bundle.main.object(forInfoDictionaryKey: "TSQVersion") as? String ?? "dev", email: email)
         let candidate = DaemonEngine(configuration: configuration, paths: paths, tokens: sharedAuthentication()) { [weak self] message in
             Task { @MainActor [weak self] in self?.error = message }
         }
@@ -176,6 +180,7 @@ import TaskSquadDesign
             appliedDocument = document
             engineRunning = true
             error = nil
+            Log.info("Running — waiting for tasks...")
             await candidate.setPullingPaused(pullingPaused)
             if !pullingPaused { wakeLock.acquire() }
             // Go registers run-on-boot once, on the first successful daemon start.

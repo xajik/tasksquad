@@ -13,6 +13,16 @@ final class StorageTests: XCTestCase {
         XCTAssertThrowsError(try KeychainCredentialStore.decode(Data("go-keyring-encoded:bad".utf8)))
     }
 
+    /// shellescape.Quote as go-keyring applies it to `security -i` arguments.
+    func testSecurityToolQuotingMatchesGoShellescape() {
+        XCTAssertEqual(KeychainCredentialStore.shellQuote(""), "''")
+        XCTAssertEqual(KeychainCredentialStore.shellQuote("tasksquad-daemon"), "tasksquad-daemon")
+        XCTAssertEqual(KeychainCredentialStore.shellQuote("go-keyring-base64:dHNx+/9="), "go-keyring-base64:dHNx+/9=")
+        XCTAssertEqual(KeychainCredentialStore.shellQuote("a b"), "'a b'")
+        XCTAssertEqual(KeychainCredentialStore.shellQuote("it's"), #"'it'"'"'s'"#)
+        XCTAssertEqual(KeychainCredentialStore.shellQuote("é"), "'é'")
+    }
+
     func testDeviceIdentityAndSharedLockInode() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let paths = TaskSquadPaths(home: home)

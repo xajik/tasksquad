@@ -36,7 +36,7 @@ public actor Analytics {
 
     func enqueue(_ event: String, _ properties: [String: JSONValue]?) {
         guard enabled else { return }
-        guard queue.count < 100 else { NSLog("[analytics] queue full, dropping event: %@", event); return }
+        guard queue.count < 100 else { Log.warn("[analytics] queue full, dropping event: \(event)"); return }
         if loop == nil {
             let interval = flushInterval
             loop = Task { [weak self] in

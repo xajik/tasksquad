@@ -72,7 +72,10 @@ public actor BatchPoller {
         continuation.yield()
     }
 
-    public func forcePoll() { trigger?.yield() }
+    public func forcePoll() {
+        Log.info("[batch] force-poll triggered")
+        trigger?.yield()
+    }
 
     public func stop() async {
         generation &+= 1
@@ -87,23 +90,39 @@ public actor BatchPoller {
         guard expected == generation, !Task.isCancelled else { return }
         timer?.cancel(); timer = nil
         var next = timing.interval
+        var logged = false // Go logs each failure once, with its own wording
         do {
-            let token = try await tokens.token(forceRotation: false)
+            let token: String
+            do { token = try await tokens.token(forceRotation: false) }
+            catch { Log.error("[batch] auth error: \(error.localizedDescription)"); logged = true; throw error }
             let list = await entries()
             guard expected == generation, !Task.isCancelled else { return }
             let response: HTTPResult
             do { response = try await api.batch(entries: list, token: token, etag: timing.etag) }
             catch let error as HTTPError where error.status == 401 {
-                let token = try await tokens.token(forceRotation: true)
+                Log.warn("[batch] received 401 — rotating token and retrying once...")
+                let token: String
+                do { token = try await tokens.token(forceRotation: true) } catch {
+                    Log.error("[batch] token rotation failed: \(error.localizedDescription)")
+                    Log.error("[batch] run: tsq login to re-authenticate")
+                    logged = true
+                    throw error
+                }
                 guard expected == generation, !Task.isCancelled else { return }
                 do { response = try await api.batch(entries: list, token: token, etag: timing.etag) }
-                catch let retry as HTTPError where retry.status == 401 {
-                    track("task_poll_auth_failed", nil) // still unauthorized: the user must run tsq login
-                    throw retry
+                catch {
+                    Log.error("[batch] heartbeat failed after token rotation: \(error.localizedDescription)")
+                    if let retry = error as? HTTPError, retry.status == 401 {
+                        Log.error("[batch] run: tsq login to re-authenticate")
+                        track("task_poll_auth_failed", nil) // still unauthorized: the user must run tsq login
+                    }
+                    logged = true
+                    throw error
                 }
             }
             guard expected == generation, !Task.isCancelled else { return }
             if response.status == 304 {
+                Log.debug("[batch] 304 — inbox unchanged, all agents idle")
                 next = timing.receive(status: 304)
             } else {
                 let body = try JSONDecoder().decode(JSONValue.self, from: response.data)
@@ -115,8 +134,11 @@ public actor BatchPoller {
             guard expected == generation, !Task.isCancelled else { return }
             if let http = error as? HTTPError {
                 next = timing.receive(status: http.status)
-                if http.status == 429 { track("task_poll_rate_limited", ["backoff_ms": .number(Double(next.components.seconds * 1000))]) }
-            }
+                if http.status == 429 {
+                    Log.warn("[batch] rate limited (429) — backing off \(GoTime.duration(next))")
+                    track("task_poll_rate_limited", ["backoff_ms": .number(Double(next.components.seconds * 1000))])
+                } else if !logged { Log.error("[batch] heartbeat failed: \(error.localizedDescription)") }
+            } else if !logged, !(error is CancellationError) { Log.error("[batch] heartbeat failed: \(error.localizedDescription)") }
             await onError(error)
         }
         guard expected == generation, !Task.isCancelled, let trigger else { return }

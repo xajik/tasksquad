@@ -95,7 +95,7 @@ public final class WakeLock: @unchecked Sendable {
         let caffeinate = Process()
         caffeinate.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
         caffeinate.arguments = ["-i", "-w", String(ProcessInfo.processInfo.processIdentifier)] // also ends if we crash
-        do { try caffeinate.run(); process = caffeinate } catch { NSLog("[ui] wakelock: caffeinate failed: %@", error.localizedDescription) }
+        do { try caffeinate.run(); process = caffeinate } catch { Log.warn("[ui] wakelock: caffeinate failed: \(error.localizedDescription)") }
     }
 
     public func release() {

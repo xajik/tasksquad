@@ -48,8 +48,8 @@ actor OrphanSweep {
 
     func clean() async {
         let sessionIDs = await listTaskSessions()
-        guard !sessionIDs.isEmpty else { return }
-        NSLog("[orphan] checking %d sessions", sessionIDs.count)
+        guard !sessionIDs.isEmpty else { Log.debug("[orphan] no tsq-* sessions found"); return }
+        Log.info("[orphan] checking \(sessionIDs.count) sessions")
         let states: [String: SessionState]
         do { states = try await sessionStates(sessionIDs) } catch {
             report("[orphan] failed to get session states: \(error.localizedDescription)")
@@ -59,7 +59,7 @@ actor OrphanSweep {
             if let state = states[id], !Self.isOrphan(state) { continue }
             await kill(id)
         }
-        NSLog("[orphan] cleanup complete: %d sessions checked", sessionIDs.count)
+        Log.info("[orphan] cleanup complete: \(sessionIDs.count) sessions checked")
     }
 
     /// Session IDs (without the `tsq-` prefix). A missing tmux server means none.
@@ -89,12 +89,12 @@ actor OrphanSweep {
 
     private func kill(_ sessionID: String) async {
         _ = try? await tmux.run(["kill-session", "-t", "=tsq-" + sessionID])
-        NSLog("[orphan] killed orphaned session: tsq-%@", sessionID)
+        Log.info("[orphan] killed orphaned session: tsq-\(sessionID)")
         guard let taskID = cachedStates[sessionID]?.taskID, !taskID.isEmpty else { return }
         let supervisor = "=tsq-sup-" + taskID
         if (try? await tmux.run(["has-session", "-t", supervisor])) != nil {
             _ = try? await tmux.run(["kill-session", "-t", supervisor])
-            NSLog("[orphan] killed orphaned supervisor: tsq-sup-%@", taskID)
+            Log.info("[orphan] killed orphaned supervisor: tsq-sup-\(taskID)")
         }
     }
 }

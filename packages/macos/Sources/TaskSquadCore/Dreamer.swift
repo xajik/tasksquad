@@ -97,10 +97,10 @@ actor Dreamer {
         let command: String
         if let dreamer = configuration.dreamer?.command, !dreamer.isEmpty { command = dreamer }
         else if let supervisor = configuration.supervisor?.command, !supervisor.isEmpty { command = supervisor }
-        else { NSLog("[dreamer] No dreamer.command or supervisor.command configured — Dreaming disabled"); return ("", "") }
+        else { Log.warn("[dreamer] No dreamer.command or supervisor.command configured — Dreaming disabled"); return ("", "") }
         guard let first = command.split(whereSeparator: \.isWhitespace).first.map(String.init),
               let path = ExecutableLocator.find(first, environment: ["PATH": searchPath]) else {
-            NSLog("[dreamer] Dreaming CLI for %@ not found in PATH — Dreaming disabled", command); return ("", "")
+            Log.warn("[dreamer] Dreaming CLI for \(command) not found in PATH — Dreaming disabled"); return ("", "")
         }
         return (path, command)
     }
@@ -130,16 +130,16 @@ actor Dreamer {
         guard Self.kbExists(workDir: agent.workDir), !hasRun(agent.agentID, today),
               now() >= Self.triggerTime(agentID: agent.agentID, date: today, windowStart: windowStart, windowEnd: windowEnd) else { return }
         guard let projectKey = await projectKey(workDir: agent.workDir), !projectKey.isEmpty else {
-            NSLog("[dreamer] %@: no git remote — skipping Dreaming", agent.name); return
+            Log.info("[dreamer] \(agent.name): no git remote — skipping Dreaming"); return
         }
         let claimed: Bool
         do {
             claimed = try await post(agent.agentID, "/daemon/dream/claim", .object(["project_key": .string(projectKey), "date": .string(today)]))["claimed"] == .bool(true)
-        } catch { NSLog("[dreamer] %@: claim request failed: %@", agent.name, error.localizedDescription); return } // retry later tonight
-        guard claimed else { NSLog("[dreamer] %@: another daemon already claimed tonight's Dreaming for %@", agent.name, projectKey); return }
+        } catch { Log.warn("[dreamer] \(agent.name): claim request failed: \(error.localizedDescription)"); return } // retry later tonight
+        guard claimed else { Log.info("[dreamer] \(agent.name): another daemon already claimed tonight's Dreaming for \(projectKey)"); return }
         var rollup = ""
         do { rollup = try await get(agent.agentID, "/daemon/memory/rollup?period=daily")["content"]?.string ?? "" }
-        catch { NSLog("[dreamer] %@: failed to fetch memory rollup, proceeding with an empty one: %@", agent.name, error.localizedDescription) }
+        catch { Log.warn("[dreamer] \(agent.name): failed to fetch memory rollup, proceeding with an empty one: \(error.localizedDescription)") }
         // This daemon owns tonight's run: mark it attempted whatever the outcome.
         await runDreamSession(agent, projectKey: projectKey, rollup: rollup)
         writeLastRun(agent.agentID, today)
@@ -208,15 +208,15 @@ actor Dreamer {
         let id = Self.shortID(), session = "tsq-dream-" + id
         let log = paths.logs.appendingPathComponent("dreamer/dream-\(id).log")
         do { try await spawnPrintMode(session: session, workDir: agent.workDir, prompt: Self.dreamPrompt(workDir: agent.workDir, projectKey: projectKey, rollup: rollup), log: log) }
-        catch { NSLog("[dreamer] %@: failed to start Dreaming session: %@", agent.name, error.localizedDescription); return }
+        catch { Log.error("[dreamer] \(agent.name): failed to start Dreaming session: \(error.localizedDescription)"); return }
         let clock = ContinuousClock(), deadline = clock.now.advanced(by: timing.sessionTimeout)
         while clock.now < deadline {
             try? await Task.sleep(for: timing.sessionCheck)
             if Task.isCancelled { break }
-            if (try? await tmux.run(["has-session", "-t", session])) == nil { NSLog("[dreamer] %@: Dreaming session %@ finished (exited)", agent.name, session); return }
+            if (try? await tmux.run(["has-session", "-t", session])) == nil { Log.info("[dreamer] \(agent.name): Dreaming session \(session) finished (exited)"); return }
         }
         _ = try? await tmux.run(["kill-session", "-t", session])
-        NSLog("[dreamer] %@: Dreaming session %@ finished (timeout)", agent.name, session)
+        Log.info("[dreamer] \(agent.name): Dreaming session \(session) finished (timeout)")
     }
 
     /// `tsq kb init`: starts the /tsq-kb-builder bootstrap and returns without waiting.
