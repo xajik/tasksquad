@@ -66,16 +66,16 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         switch self {
         case .claudeCode:
             let url = temporaryDirectory.appendingPathComponent("tsq-settings-\(agentID)-\(taskID).json")
-            try Self.json(Self.claudeHooks(port: hooksPort, agentID: agentID, taskID: taskID)).write(to: url)
+            try Self.claudeHooks(port: hooksPort, agentID: agentID, taskID: taskID).data.write(to: url)
             return ["--settings", url.path]
         case .codex:
-            var components = URLComponents(string: "http://127.0.0.1:\(hooksPort)/hooks/codex")!
-            components.queryItems = [URLQueryItem(name: "agent", value: agentID), URLQueryItem(name: "task_id", value: taskID)]
+            // url.Values.Encode: keys sorted, values query-escaped.
+            let endpoint = "http://127.0.0.1:\(hooksPort)/hooks/codex?agent=\(GoJSON.queryEscape(agentID))&task_id=\(GoJSON.queryEscape(taskID))"
             // The endpoint is an argument, never interpolated into shell code; the
             // timeout keeps a stopped daemon from holding up a Codex turn.
-            let argv = ["sh", "-c", "curl --silent --show-error --fail --max-time 5 -X POST \"$1\" -H 'Content-Type: application/json' --data-binary \"$2\" >/dev/null",
-                        "tsq-codex-notify", components.string!]
-            return ["-c", "notify=" + String(decoding: try Self.json(argv, pretty: false), as: UTF8.self)]
+            let argv: GoJSONValue = ["sh", "-c", "curl --silent --show-error --fail --max-time 5 -X POST \"$1\" -H 'Content-Type: application/json' --data-binary \"$2\" >/dev/null",
+                        "tsq-codex-notify", .string(endpoint)]
+            return ["-c", "notify=" + argv.marshal()]
         default:
             return []
         }
@@ -90,7 +90,7 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         case .gemini:
             // AfterAgent fires on every model turn: the completion signal, like Claude's Stop.
             let stop = "http://localhost:\(hooksPort)/hooks/stop?agent=\(agentID)&task_id=\(taskID)&provider=gemini"
-            var hooks: [String: [[String: Any]]] = ["AfterAgent": [Self.geminiGroup(name: "tasksquad-stop", url: stop)]]
+            var hooks: [String: [GoJSONValue]] = ["AfterAgent": [Self.geminiGroup(name: "tasksquad-stop", url: stop)]]
             let event = "http://localhost:\(hooksPort)/hooks/event?agent=\(agentID)&task_id=\(taskID)&provider=gemini"
             for name in Self.geminiLifecycleEvents { hooks[name, default: []].append(Self.geminiGroup(name: "tasksquad-analytics", url: event)) }
             try Self.writeHooks(root.appendingPathComponent(".gemini/settings.json"), hooks: hooks)
@@ -132,13 +132,13 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     /// daemon must never stall the session for Claude's 600s default.
     static let lifecycleHookTimeout = 5
 
-    static func claudeHooks(port: Int, agentID: String, taskID: String) -> [String: Any] {
+    static func claudeHooks(port: Int, agentID: String, taskID: String) -> GoJSONValue {
         let base = "http://localhost:\(port)/hooks"
         let query = "agent=\(agentID)&task_id=\(taskID)"
-        func tui(_ state: String) -> [[String: Any]] {
-            tuiBlockMatchers.map { ["matcher": $0, "hooks": [["type": "http", "url": "\(base)/tui-blocked?\(query)&state=\(state)"]]] }
+        func tui(_ state: String) -> [GoJSONValue] {
+            tuiBlockMatchers.map { ["matcher": .string($0), "hooks": [["type": "http", "url": .string("\(base)/tui-blocked?\(query)&state=\(state)")]]] }
         }
-        var hooks: [String: [[String: Any]]] = [
+        var hooks: [String: [GoJSONValue]] = [
             "Stop": [httpHook("\(base)/stop?\(query)")],
             "StopFailure": [httpHook("\(base)/stop?\(query)&failure=true")],
             "PreToolUse": tui("on"),
@@ -146,16 +146,16 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         ]
         let eventURL = "\(base)/event?\(query)"
         for event in claudeLifecycleEvents {
-            var hook: [String: Any] = ["type": "http", "url": eventURL, "timeout": lifecycleHookTimeout]
+            var hook: GoJSONValue = ["type": "http", "url": .string(eventURL), "timeout": .int(lifecycleHookTimeout)]
             if event == "SessionStart" {
                 // SessionStart doesn't deliver to http hooks, and a command hook's
                 // stdout is injected into the model's context: discard curl's output.
-                hook = ["type": "command", "timeout": lifecycleHookTimeout, "command":
-                    "curl -s -m \(lifecycleHookTimeout) -X POST -H 'Content-Type: application/json' --data-binary @- '\(eventURL)' >/dev/null 2>&1 || true"]
+                hook = ["type": "command", "timeout": .int(lifecycleHookTimeout), "command":
+                    .string("curl -s -m \(lifecycleHookTimeout) -X POST -H 'Content-Type: application/json' --data-binary @- '\(eventURL)' >/dev/null 2>&1 || true")]
             }
             hooks[event, default: []].append(["matcher": "*", "hooks": [hook]])
         }
-        return ["hooks": hooks]
+        return ["hooks": .object(hooks.mapValues(GoJSONValue.array))]
     }
 
     /// Gemini analytics events; AfterModel is left out as it fires per streamed chunk.
@@ -163,10 +163,10 @@ public enum ProviderKind: String, CaseIterable, Sendable {
                                         "Notification", "PreCompress", "SessionEnd"]
 
     /// POSTs the hook payload and answers `{}`, as Gemini's command-hook contract requires.
-    private static func geminiGroup(name: String, url: String) -> [String: Any] {
+    private static func geminiGroup(name: String, url: String) -> GoJSONValue {
         ["matcher": "*", "hooks": [[
-            "name": name, "type": "command", "timeout": 5000,
-            "command": "curl -sS -X POST \"\(url)\" -H \"Content-Type: application/json\" -d @- > /dev/null 2>&1; printf '{}'",
+            "name": .string(name), "type": "command", "timeout": 5000,
+            "command": .string("curl -sS -X POST \"\(url)\" -H \"Content-Type: application/json\" -d @- > /dev/null 2>&1; printf '{}'"),
         ]]]
     }
 
@@ -224,24 +224,18 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         try Data((rest + block).utf8).write(to: url)
     }
 
-    private static func httpHook(_ url: String) -> [String: Any] {
-        ["matcher": "*", "hooks": [["type": "http", "url": url]]]
+    private static func httpHook(_ url: String) -> GoJSONValue {
+        ["matcher": "*", "hooks": [["type": "http", "url": .string(url)]]]
     }
 
-    private static func json(_ value: Any, pretty: Bool = false) throws -> Data {
-        var options: JSONSerialization.WritingOptions = [.sortedKeys, .withoutEscapingSlashes]
-        if pretty { options.insert(.prettyPrinted) }
-        return try JSONSerialization.data(withJSONObject: value, options: options)
-    }
-
-    /// Merges into an existing settings file, replacing only its "hooks" key.
-    private static func writeHooks(_ url: URL, hooks: [String: Any]) throws {
+    /// Merges into an existing settings file, replacing only its "hooks" key
+    /// (Go: provider/settings.go, json.Unmarshal into a map then MarshalIndent).
+    private static func writeHooks(_ url: URL, hooks: [String: [GoJSONValue]]) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        var existing: [String: Any] = [:]
-        if let data = try? Data(contentsOf: url),
-           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { existing = object }
-        existing["hooks"] = hooks
-        try json(existing, pretty: true).write(to: url)
+        var existing: [String: GoJSONValue] = [:]
+        if let data = try? Data(contentsOf: url), let object = try? GoJSONValue.parse(data, strict: true).float64.object { existing = object }
+        existing["hooks"] = .object(hooks.mapValues(GoJSONValue.array))
+        try Data(GoJSONValue.object(existing).marshal(indent: "  ").utf8).write(to: url)
     }
 }
 

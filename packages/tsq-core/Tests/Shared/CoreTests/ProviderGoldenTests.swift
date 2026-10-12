@@ -56,15 +56,7 @@ final class ProviderGoldenTests: PlatformTestCase {
 
     private func assertSameContent(_ swift: Data?, _ go: Data?, _ label: String) {
         guard let swift, let go else { return XCTFail("\(label): missing on one side") }
-        if label.hasSuffix(".json") {
-            // Go escapes &<> as &…; compare the decoded JSON.
-            let a = try? JSONSerialization.jsonObject(with: swift) as? NSDictionary
-            let b = try? JSONSerialization.jsonObject(with: go) as? NSDictionary
-            XCTAssertNotNil(a, label)
-            XCTAssertEqual(a, b, label)
-        } else {
-            XCTAssertEqual(String(decoding: swift, as: UTF8.self), String(decoding: go, as: UTF8.self), label)
-        }
+        XCTAssertEqual(String(decoding: swift, as: UTF8.self), String(decoding: go, as: UTF8.self), label)
     }
 
     func testEveryProviderMatchesGo() throws {
@@ -92,18 +84,10 @@ final class ProviderGoldenTests: PlatformTestCase {
             XCTAssertEqual(kind.interactive, !go.stdin.isEmpty, "\(command): typed-input (stdin) providers")
             XCTAssertEqual(kind.initialPromptArguments(formatted), go.initial_prompt_args ?? [], command)
 
-            // Arguments: temp paths differ by root, and Codex's notify JSON differs only in escaping.
+            // Arguments: temp paths differ only by root.
             let goArgs = (go.setup_args ?? []).map { $0.replacingOccurrences(of: goTmp.path, with: "$TMP") }
             let swiftArgs = args.map { $0.replacingOccurrences(of: swiftTmp.path, with: "$TMP") }
-            XCTAssertEqual(swiftArgs.count, goArgs.count, command)
-            for (a, b) in zip(swiftArgs, goArgs) {
-                if a.hasPrefix("notify="), b.hasPrefix("notify=") {
-                    let decode = { (s: String) in try? JSONSerialization.jsonObject(with: Data(s.dropFirst(7).utf8)) as? [String] }
-                    XCTAssertEqual(decode(a), decode(b), command)
-                } else {
-                    XCTAssertEqual(a.replacingOccurrences(of: "//", with: "/"), b.replacingOccurrences(of: "//", with: "/"), command)
-                }
-            }
+            XCTAssertEqual(swiftArgs.map { $0.replacingOccurrences(of: "//", with: "/") }, goArgs.map { $0.replacingOccurrences(of: "//", with: "/") }, command)
 
             for (label, swiftRoot, goRoot) in [("work", swiftWork, goWork), ("tmp", swiftTmp, goTmp)] {
                 let swiftFiles = files(swiftRoot), goFiles = files(goRoot)

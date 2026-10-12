@@ -18,16 +18,16 @@ public struct ManagedTerminalClient: Sendable {
         self.port = port; self.transport = transport
     }
     public func send(_ bytes: Data, submit: Bool, pane: String, target: ManagedTerminalTarget) async throws {
-        try await request("input", target: target, extra: ["data": bytes.base64EncodedString(), "pane": pane, "submit": submit])
+        try await request("input", target: target, extra: ["data": .string(bytes.base64EncodedString()), "pane": .string(pane), "submit": .bool(submit)])
     }
     public func close(_ target: ManagedTerminalTarget) async throws { try await request("close", target: target) }
-    private func request(_ action: String, target: ManagedTerminalTarget, extra: [String: Any] = [:]) async throws {
+    private func request(_ action: String, target: ManagedTerminalTarget, extra: [String: GoJSONValue] = [:]) async throws {
         guard (1...65535).contains(port) else { throw URLError(.badURL) }
         var body = extra
-        body["agent_id"] = target.agentID; body["task_id"] = target.taskID; body["session"] = target.session
+        body["agent_id"] = .string(target.agentID); body["task_id"] = .string(target.taskID); body["session"] = .string(target.session)
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/hooks/terminal/\(action)")!, timeoutInterval: 5)
         request.httpMethod = "POST"; request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = GoJSONValue.object(body).data
         let result = try await transport.send(request)
         if result.status == 404 || result.status == 501 { throw ManagedTerminalError.updateRequired }
         if result.status == 409 { throw ManagedTerminalError.sessionChanged }

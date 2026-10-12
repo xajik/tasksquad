@@ -52,7 +52,7 @@ final class CloseSequenceTests: PlatformTestCase {
         #!/bin/sh
         settings=""
         while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
-        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed 's/localhost/127.0.0.1/')
+        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed -e 's/localhost/127.0.0.1/' -e 's/\\\\u0026/\\&/g')
         while IFS= read -r line; do printf '%s\\n' "$line" >> typed.log; curl -s -X POST "$url" --data-binary '{"session_id":"","stop_reason":"end_turn","last_assistant_message":"ok"}' >/dev/null; done
         """.utf8).write(to: claude)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: claude.path)

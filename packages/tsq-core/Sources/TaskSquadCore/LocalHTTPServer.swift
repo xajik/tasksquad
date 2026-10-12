@@ -32,8 +32,9 @@ public struct LocalHTTPResponse: Sendable {
     public init(status: Int = 200, headers: [String: String] = [:], body: Data = Data(), onSent: (@Sendable () -> Void)? = nil) {
         self.status = status; self.headers = headers; self.body = body; self.onSent = onSent
     }
+    /// Go's writeJSON: json.NewEncoder(w).Encode(body), trailing newline included.
     public static func json(_ value: JSONValue, status: Int = 200) -> Self {
-        Self(status: status, headers: ["Content-Type": "application/json"], body: (try? JSONEncoder().encode(value)) ?? Data())
+        Self(status: status, headers: ["Content-Type": "application/json"], body: Data(GoJSONValue(value).encoded(indent: "").utf8))
     }
     /// The full HTTP/1.1 response; every connection closes after one exchange.
     public var encoded: Data {

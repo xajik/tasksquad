@@ -141,7 +141,7 @@ enum HookCommands {
         var request = URLRequest(url: URL(string: "http://localhost:\(port)\(path)")!, timeoutInterval: 60)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys, .withoutEscapingSlashes])
+        request.httpBody = GoJSONValue.object(body.mapValues(GoJSONValue.string)).data // Go: json.Marshal(payload)
         let data: Data, response: URLResponse
         do { (data, response) = try await URLSession.shared.data(for: request) }
         catch { c.printError("error \(what): Post \"http://localhost:\(port)\(path)\": \(error.localizedDescription)"); return 1 }

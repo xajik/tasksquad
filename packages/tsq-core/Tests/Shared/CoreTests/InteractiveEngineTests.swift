@@ -129,7 +129,7 @@ private actor InteractiveWorker {
         #!/bin/sh
         settings=""
         while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
-        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed 's/localhost/127.0.0.1/')
+        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed -e 's/localhost/127.0.0.1/' -e 's/\\\\u0026/\\&/g')
         [ -n "$url" ] || exit 9
         printf 'READY %s\\n' "$TSQ_TASK_ID"
         n=0
@@ -272,7 +272,7 @@ private actor InteractiveWorker {
         #!/bin/sh
         settings=""
         while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
-        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed 's/localhost/127.0.0.1/')
+        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed -e 's/localhost/127.0.0.1/' -e 's/\\\\u0026/\\&/g')
         base=${url%%/hooks/*}
         printf 'READY\\n'
         IFS= read -r line
@@ -319,8 +319,8 @@ private actor InteractiveWorker {
         #!/bin/sh
         settings=""
         while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
-        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed 's/localhost/127.0.0.1/')
-        event=$(grep -o 'http://localhost:[0-9]*/hooks/event?agent=[^"]*' "$settings" | head -1 | sed 's/localhost/127.0.0.1/')
+        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed -e 's/localhost/127.0.0.1/' -e 's/\\\\u0026/\\&/g')
+        event=$(grep -o 'http://localhost:[0-9]*/hooks/event?agent=[^"]*' "$settings" | head -1 | sed -e 's/localhost/127.0.0.1/' -e 's/\\\\u0026/\\&/g')
         stale=$(printf '%s' "$event" | sed 's/task_id=[^&]*/task_id=stale/')
         printf 'READY\\n'
         IFS= read -r line
@@ -363,7 +363,7 @@ private actor InteractiveWorker {
         #!/bin/sh
         settings=""
         while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
-        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed 's/localhost/127.0.0.1/')
+        url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed -e 's/localhost/127.0.0.1/' -e 's/\\\\u0026/\\&/g')
         printf 'RELAY-OUT \\342\\234\\223\\n'
         IFS= read -r line
         printf 'prompt:%s\\n' "$line"
@@ -406,7 +406,7 @@ private actor InteractiveWorker {
         defer { Task { _ = try? await tmux.run(["kill-server"]) } }
         let script = """
         #!/bin/sh
-        url=$(printf '%s ' "$@" | grep -o 'http://127.0.0.1:[0-9]*/hooks/codex?[^" ]*' | head -1)
+        url=$(printf '%s ' "$@" | grep -o 'http://127.0.0.1:[0-9]*/hooks/codex?[^" ]*' | head -1 | sed 's/\\\\u0026/\\&/g')
         post() { curl -s -X POST "$url" -H 'Content-Type: application/json' --data-binary "$1" >/dev/null; }
         printf 'READY\\n'
         post '{"type":"agent-turn-complete","thread-id":"title-thread","turn-id":"t1","input-messages":["Generate a concise, single-line task title of at most 36 characters."],"last-assistant-message":"{\\"title\\":\\"x\\"}"}'
@@ -462,7 +462,7 @@ private actor InteractiveWorker {
         defer { Task { _ = try? await tmux.run(["kill-server"]) } }
         let script = """
         #!/bin/sh
-        url=$(printf '%s ' "$@" | grep -o 'http://127.0.0.1:[0-9]*/hooks/codex?[^" ]*' | head -1)
+        url=$(printf '%s ' "$@" | grep -o 'http://127.0.0.1:[0-9]*/hooks/codex?[^" ]*' | head -1 | sed 's/\\\\u0026/\\&/g')
         post() { curl -s -X POST "$url" -H 'Content-Type: application/json' --data-binary "{\\"type\\":\\"agent-turn-complete\\",\\"thread-id\\":\\"thread\\",\\"turn-id\\":\\"$1\\",\\"last-assistant-message\\":\\"$2\\"}" >/dev/null; }
         post 1 FIRST
         while IFS= read -r line; do post 2 "SECOND $line"; post 2 DUPLICATE; done

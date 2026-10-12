@@ -110,6 +110,16 @@ func run() error {
             out["initial_prompt_args"] = initial.InitialPromptArgs(prompt)
         }
         return json.NewEncoder(os.Stdout).Encode(out)
+    case "json":
+        // json <indent>: stdin → json.Unmarshal into any → json.MarshalIndent (Marshal when indent is "").
+        data, err := io.ReadAll(os.Stdin)
+        if err != nil { return err }
+        var value any
+        if err := json.Unmarshal(data, &value); err != nil { return err }
+        var out []byte
+        if os.Args[2] == "" { out, err = json.Marshal(value) } else { out, err = json.MarshalIndent(value, "", os.Args[2]) }
+        if err != nil { return err }
+        os.Stdout.Write(out)
     default:
         return fmt.Errorf("unknown oracle command")
     }

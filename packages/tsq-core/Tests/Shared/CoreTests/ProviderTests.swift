@@ -45,7 +45,7 @@ final class ProviderTests: PlatformTestCase {
         XCTAssertEqual(arguments.first, "-c")
         let argv = try JSONSerialization.jsonObject(with: Data(arguments[1].dropFirst("notify=".count).utf8)) as? [String]
         XCTAssertEqual(argv?.prefix(2), ["sh", "-c"])
-        XCTAssertEqual(argv?.last, "http://127.0.0.1:9000/hooks/codex?agent=A1&task_id=T%201")
+        XCTAssertEqual(argv?.last, "http://127.0.0.1:9000/hooks/codex?agent=A1&task_id=T+1") // Go url.Values.Encode
         XCTAssertFalse(arguments[1].contains("\\/"), "TOML has no \\/ escape")
         XCTAssertEqual(ProviderKind.codex.formatPrompt("run /tsq-attach-image now, not a/tsq-x"), "run $tsq-attach-image now, not a/tsq-x")
         XCTAssertEqual(ProviderKind.claudeCode.formatPrompt("/tsq-x"), "/tsq-x")
