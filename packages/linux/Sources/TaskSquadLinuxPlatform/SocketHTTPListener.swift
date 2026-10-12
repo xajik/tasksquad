@@ -75,8 +75,11 @@ final class SocketHTTPListener: LocalHTTPListener, @unchecked Sendable {
 
     private func acceptPending() {
         while true {
-            let fd = accept4(listenFD, nil, nil, Int32(SOCK_CLOEXEC.rawValue) | Int32(SOCK_NONBLOCK.rawValue))
+            // accept4 needs _GNU_SOURCE; children close every fd >= 3 anyway (LinuxProcess).
+            let fd = accept(listenFD, nil, nil)
             guard fd >= 0 else { return } // EAGAIN: drained
+            _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
+            _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
             guard !stopped, clients.count < LocalHTTPServer.maxClients else { close(fd); continue }
             let client = Client(fd: fd)
             clients[fd] = client
