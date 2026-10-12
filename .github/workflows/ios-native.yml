@@ -23,13 +23,15 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: macos-15
+    # The shared TaskSquadPortal package needs swift-tools 6.2 (Xcode 26+).
+    runs-on: macos-26
     timeout-minutes: 45
     defaults:
       run:
         working-directory: packages/ios
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/select-xcode
       - name: Install XcodeGen
         run: command -v xcodegen || brew install xcodegen
       # Never fall back silently: fail when no iPhone simulator is installed, and
