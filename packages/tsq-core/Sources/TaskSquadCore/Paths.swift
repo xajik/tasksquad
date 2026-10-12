@@ -2,8 +2,16 @@ import Foundation
 
 public struct TaskSquadPaths: Sendable {
     public let home: URL
-    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    public init(home: URL = TaskSquadPaths.userHome()) {
         self.home = home
+    }
+
+    /// Go's os.UserHomeDir: $HOME. The account's passwd entry is only a fallback for
+    /// an unset HOME (where Go has no home at all); it differs from $HOME in
+    /// containers and under sudo, and Go expands `~` and finds ~/.tasksquad via $HOME.
+    public static func userHome(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+        if let home = environment["HOME"], !home.isEmpty { return URL(fileURLWithPath: home, isDirectory: true) }
+        return FileManager.default.homeDirectoryForCurrentUser
     }
     public var root: URL { home.appendingPathComponent(".tasksquad", isDirectory: true) }
     public var config: URL { root.appendingPathComponent("config.toml") }

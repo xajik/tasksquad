@@ -276,8 +276,9 @@ final class NoRedirectTransport: NSObject, HTTPTransport, URLSessionTaskDelegate
         configuration.httpCookieStorage = nil
         return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }()
+    // The completion-handler form: swift-corelibs URLSession (Linux) never calls the async one.
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest) async -> URLRequest? { nil }
+                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) { completionHandler(nil) }
     func send(_ request: URLRequest) async throws -> HTTPResult {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }

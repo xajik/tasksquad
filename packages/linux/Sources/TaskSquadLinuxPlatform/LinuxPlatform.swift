@@ -32,11 +32,7 @@ public struct LinuxPlatform: PlatformServices {
         throw ConfigurationError("terminal screenshots are not supported on Linux yet")
     }
 
-    public func dialWebSocket(_ request: URLRequest) -> (any WebSocketConnection)? {
-        let task = URLSession.shared.webSocketTask(with: request)
-        task.resume()
-        return URLSessionWebSocket(task: task)
-    }
+    public func dialWebSocket(_ request: URLRequest) -> (any WebSocketConnection)? { URLSessionWebSocket(request: request) }
 
     public func autostart(home: URL) -> any Autostart { XDGAutostart(home: home) }
     public func makeWakeLock() -> any WakeLock { SystemdInhibitWakeLock() }
@@ -58,17 +54,68 @@ public struct LinuxPlatform: PlatformServices {
     }
 }
 
-/// URLSessionWebSocketTask (FoundationNetworking on Linux); text frames arrive as their UTF-8 bytes.
-final class URLSessionWebSocket: WebSocketConnection, @unchecked Sendable {
-    private let task: URLSessionWebSocketTask
-    init(task: URLSessionWebSocketTask) { self.task = task }
-    func send(_ data: Data) async throws { try await task.send(.data(data)) }
+/// URLSessionWebSocketTask (FoundationNetworking, libcurl). Unlike Apple's, it
+/// fails sends made before the upgrade completes instead of queueing them, so
+/// send/receive first wait for the open handshake (as Go's websocket.Dial returns
+/// only once connected). Text frames arrive as their UTF-8 bytes.
+final class URLSessionWebSocket: NSObject, WebSocketConnection, URLSessionWebSocketDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var session: URLSession?
+    private var task: URLSessionWebSocketTask?
+    private var opened: Bool? // nil while connecting
+    private var waiters: [CheckedContinuation<Void, Error>] = []
+
+    init(request: URLRequest) {
+        super.init()
+        // The session retains its delegate until close() invalidates it.
+        let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+        let task = session.webSocketTask(with: request)
+        lock.withLock { self.session = session; self.task = task }
+        task.resume()
+    }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) { settle(true) }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) { settle(false) }
+
+    private func settle(_ open: Bool) {
+        let ready = lock.withLock { () -> [CheckedContinuation<Void, Error>] in
+            if opened == nil || !open { opened = open }
+            defer { waiters = [] }
+            return waiters
+        }
+        for waiter in ready { open ? waiter.resume() : waiter.resume(throwing: URLError(.networkConnectionLost)) }
+    }
+
+    private func connected() async throws -> URLSessionWebSocketTask {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let state = lock.withLock { () -> Bool? in
+                if opened == nil { waiters.append(continuation) }
+                return opened
+            }
+            switch state {
+            case .some(true): continuation.resume()
+            case .some(false): continuation.resume(throwing: URLError(.networkConnectionLost))
+            case .none: break
+            }
+        }
+        guard let task = lock.withLock({ task }) else { throw URLError(.cancelled) }
+        return task
+    }
+
+    func send(_ data: Data) async throws { try await connected().send(.data(data)) }
+
     func receive() async throws -> Data {
-        switch try await task.receive() {
+        switch try await connected().receive() {
         case .string(let text): Data(text.utf8)
         case .data(let bytes): bytes
         @unknown default: Data()
         }
     }
-    func close() { task.cancel(with: .normalClosure, reason: nil) }
+
+    func close() {
+        let (task, session) = lock.withLock { (self.task, self.session) }
+        task?.cancel(with: .normalClosure, reason: nil)
+        session?.finishTasksAndInvalidate()
+        settle(false)
+    }
 }

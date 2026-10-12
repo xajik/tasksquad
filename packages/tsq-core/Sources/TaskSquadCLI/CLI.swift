@@ -86,7 +86,7 @@ public struct CLIContext: Sendable {
         return configuration.agents.first { !$0.workDir.isEmpty && ($0.workDir as NSString).standardizingPath == cwd }?.id ?? ""
     }
 
-    public var home: URL { URL(fileURLWithPath: environment["HOME"] ?? FileManager.default.homeDirectoryForCurrentUser.path) }
+    public var home: URL { TaskSquadPaths.userHome(environment: environment) }
     public var paths: TaskSquadPaths { TaskSquadPaths(home: home) }
     /// Go formats local times with $TZ from its environment.
     public var timeZone: TimeZone { GoTime.local(environment: environment) }

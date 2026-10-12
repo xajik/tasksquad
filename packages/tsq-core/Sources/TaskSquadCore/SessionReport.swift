@@ -135,7 +135,7 @@ public enum SessionReportParser {
 
     /// Best-effort transcript for a session; nil when the harness keeps none we know.
     public static func transcript(provider: ProviderKind, workDir: String, hookTranscript: String, codexThread: String,
-                                  since: Date, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {
+                                  since: Date, home: URL = TaskSquadPaths.userHome()) -> URL? {
         let fm = FileManager.default
         if !hookTranscript.isEmpty, fm.fileExists(atPath: hookTranscript) { return URL(fileURLWithPath: hookTranscript) }
         func newest(in directory: URL, recursive: Bool = false, matching: (URL) -> Bool) -> URL? {

@@ -634,7 +634,7 @@ public actor DaemonEngine {
             var full = report
             var lifecycle = taken
             let transcript = hookTranscript.isEmpty ? (lifecycle?.transcriptPath ?? "") : hookTranscript
-            let home = FileManager.default.homeDirectoryForCurrentUser
+            let home = TaskSquadPaths.userHome()
             if let url = SessionReportParser.transcript(provider: provider, workDir: workDir, hookTranscript: transcript,
                                                         codexThread: thread, since: opened, home: home) {
                 SessionReportParser.read(url, provider: provider, into: &full)
