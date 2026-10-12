@@ -192,8 +192,10 @@ public struct TerminalScreen: Sendable, Equatable {
 public enum TmuxTerminal {
     public static func screen(client: TmuxControlClient, paneID: String, history: Int = 0) async throws -> TerminalScreen {
         guard TmuxPane.validID(paneID, prefix: "%") else { throw ConfigurationError("Invalid pane ID") }
-        let metadata = try await client.command("display-message -p -t \(paneID) '\(TerminalScreen.metadataFormat)'")
+        // Text first: a program sets modes (mouse, cursor) before drawing, so flags read
+        // afterwards are never older than the text they describe.
         let screen = try await client.command("capture-pane -p -e -N -t \(paneID) -S \(-max(0, min(history, 5000)))")
+        let metadata = try await client.command("display-message -p -t \(paneID) '\(TerminalScreen.metadataFormat)'")
         return TerminalScreen(text: screen, metadata: metadata)
     }
     public static func send(_ bytes: Data, client: TmuxControlClient, paneID: String) async throws {
