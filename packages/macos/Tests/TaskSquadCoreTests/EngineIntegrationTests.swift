@@ -154,6 +154,15 @@ private actor WorkerFixture {
         let log = try String(contentsOf: paths.logs.appendingPathComponent("Test-agent/fixture-task.log"), encoding: .utf8)
         XCTAssertTrue(log.contains("result é猫"))
         XCTAssertFalse(log.contains("\u{1b}"))
+        if control == nil, !stopEarly {
+            // Go's run log: `# started=`, timestamped running/exit events, outcome and `# ended=`.
+            let ts = #"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(Z|[+-]\d\d:\d\d)"#
+            let outcome = exitCode == 0 ? "event=success" : "event=failure status=crashed"
+            for pattern in ["(?m)^# started=\(ts)$", "(?m)^\(ts) \\[EVENT\\] event=running via=pipe pid=\\d+$",
+                            "(?m)^\(ts) \\[EVENT\\] event=exit code=\(exitCode)$", "\n\n\\[EVENT\\] \(outcome)\n# ended=\(ts)\n$"] {
+                XCTAssertNotNil(log.range(of: pattern, options: .regularExpression), "\(pattern)\n\(log)")
+            }
+        }
         let released = try DaemonLock(paths: paths)
         withExtendedLifetime(released) { }
         // Go's analytics events for the same lifecycle, flushed as one JSON array.

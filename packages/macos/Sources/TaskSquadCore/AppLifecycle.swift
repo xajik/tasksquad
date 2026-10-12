@@ -70,12 +70,15 @@ public struct LaunchAgent: Sendable {
     }
 
     /// Go enables run-on-boot once, on the first daemon start, recording `config.toml.autostart-set`.
-    public func enableOnFirstRun(executable: String, paths: TaskSquadPaths) throws {
+    /// Returns false when an earlier run already did.
+    @discardableResult
+    public func enableOnFirstRun(executable: String, paths: TaskSquadPaths) throws -> Bool {
         let marker = URL(fileURLWithPath: paths.config.path + ".autostart-set")
-        guard !FileManager.default.fileExists(atPath: marker.path) else { return }
+        guard !FileManager.default.fileExists(atPath: marker.path) else { return false }
         try enable(executable: executable)
         try paths.createRoot()
         try Data().write(to: marker)
+        return true
     }
 }
 

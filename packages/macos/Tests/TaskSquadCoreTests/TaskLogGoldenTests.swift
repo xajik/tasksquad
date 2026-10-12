@@ -23,6 +23,15 @@ final class TaskLogGoldenTests: XCTestCase {
         XCTAssertEqual(normalized, try String(contentsOf: url, encoding: .utf8))
         // ts is Go's time.RFC3339 in local time.
         let ts = try XCTUnwrap(written.range(of: #""ts":"([^"]+)""#, options: .regularExpression).map { String(written[$0]).dropFirst(6).dropLast() })
-        XCTAssertNotNil(try? Date(String(ts), strategy: Date.ISO8601FormatStyle(timeZone: .current)))
+        XCTAssertNotNil(ts.range(of: #"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(Z|[+-]\d\d:\d\d)$"#, options: .regularExpression), String(ts))
+    }
+
+    /// Go's time.RFC3339 puts a colon in the offset; Go cannot parse ISO8601FormatStyle's +0800.
+    func testTimestampsUseGoRFC3339Offsets() throws {
+        let date = Date(timeIntervalSince1970: 1_791_727_800) // 2026-10-11T14:10:00Z
+        XCTAssertEqual(GoTime.rfc3339(date, timeZone: try XCTUnwrap(TimeZone(identifier: "Asia/Singapore"))), "2026-10-11T22:10:00+08:00")
+        XCTAssertEqual(GoTime.rfc3339(date, timeZone: try XCTUnwrap(TimeZone(identifier: "Asia/Kolkata"))), "2026-10-11T19:40:00+05:30")
+        XCTAssertEqual(GoTime.rfc3339(date, timeZone: try XCTUnwrap(TimeZone(identifier: "America/New_York"))), "2026-10-11T10:10:00-04:00")
+        XCTAssertEqual(GoTime.rfc3339(date, timeZone: try XCTUnwrap(TimeZone(identifier: "UTC"))), "2026-10-11T14:10:00Z")
     }
 }

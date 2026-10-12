@@ -350,7 +350,8 @@ public actor DaemonEngine {
         do {
             artifacts = try RunArtifacts(paths: paths, agentName: agent.configuration.name, taskID: taskID)
             agents[agentID]?.artifacts = artifacts
-            try await artifacts?.writeLines(["# TaskSquad run log", "# agent=\(agent.configuration.name)  task_id=\(taskID)  subject=\(subject)", ""])
+            try await artifacts?.writeLines(["# TaskSquad run log", "# agent=\(agent.configuration.name)  task_id=\(taskID)  subject=\(subject)",
+                                             "# started=\(GoTime.rfc3339(Date()))", ""])
             let opened: JSONValue
             do { opened = try await post(agentID: agentID, path: "/daemon/session/open", body: .object(["task_id": .string(taskID)])) }
             catch {
@@ -396,15 +397,19 @@ public actor DaemonEngine {
             } else {
                 let process = ProcessSpecification(executable: executable, arguments: arguments + ["-p", prompt],
                     directory: agent.configuration.workDir, environment: environment)
-                try await artifacts?.writeLines(["[EVENT] event=running via=pipe"])
                 trackStarted(agent, taskID: taskID, via: "pipe")
-                let result = try await NativeProcess.run(process) { [weak self] channel, data in
+                let result = try await NativeProcess.run(process, output: { [weak self] channel, data in
                     switch channel {
                     case .stdout: try await self?.output(agentID: agentID, generation: generation, data: data)
                     case .stderr: await self?.recordStderr(agentID: agentID, generation: generation, data: data)
                     }
-                }
-                status = result.code == 0 ? .closed : .crashed
+                }, started: { [artifacts] pid in
+                    try? await artifacts?.writeTimestamped("[EVENT] event=running via=pipe pid=\(pid)")
+                })
+                // Go's ExitCode(): -1 when a signal ended the process.
+                let code = result.signal == nil ? result.code : -1
+                try? await artifacts?.writeTimestamped("[EVENT] event=exit code=\(code)")
+                status = code == 0 ? .closed : .crashed
             }
         } catch is CancellationError { status = .cancelled }
         catch { if Task.isCancelled { status = .cancelled } else { report(error) } }
@@ -448,7 +453,7 @@ public actor DaemonEngine {
                 await TerminalRelay.forwardInput(from: relay, to: session) { [weak self] in await self?.relayInputAllowed(agentID) ?? false }
             }
         }
-        try? await artifacts?.writeLines(["[EVENT] event=running via=tmux session=\(session.name)"])
+        try? await artifacts?.writeTimestamped("[EVENT] event=running via=tmux")
         trackStarted(agent, taskID: agent.state.taskID, via: "tmux")
         let reader = Task {
             for await chunk in stream {
@@ -512,9 +517,9 @@ public actor DaemonEngine {
         if agents[agentID]?.serverClosed == true || agents[agentID]?.autoClosed == true {
             let reset = agents[agentID]?.resetRequested == true || agents[agentID]?.autoClosed == true
             if agents[agentID]?.autoClosed == true {
-                try? await agents[agentID]?.artifacts?.writeLines(["[EVENT] event=success"])
+                try? await agents[agentID]?.artifacts?.writeEnd("[EVENT] event=success")
             } else if agents[agentID]?.resetRequested != true {
-                try? await agents[agentID]?.artifacts?.writeLines(["[EVENT] event=closed_by_user"])
+                try? await agents[agentID]?.artifacts?.writeEnd("[EVENT] event=closed_by_user")
             }
             try? await agents[agentID]?.artifacts?.close()
             agents[agentID]?.artifacts = nil
@@ -550,7 +555,7 @@ public actor DaemonEngine {
             finalText = "Agent process failed:\n" + lines.suffix(40).joined(separator: "\n")
             try? await agent.artifacts?.writeLines(["", "# --- stderr ---"] + lines)
         }
-        try? await agent.artifacts?.writeLines(status == .closed ? ["", "[EVENT] event=success"] : ["", "[EVENT] event=failure status=\(status.rawValue)"])
+        try? await agent.artifacts?.writeEnd(status == .closed ? "[EVENT] event=success" : "[EVENT] event=failure status=\(status.rawValue)")
         if !capture.isEmpty { try? await agent.artifacts?.writeLines(["", "# --- terminal scrollback ---", capture]) }
         var messageID = "", r2LogKey = ""
         do {

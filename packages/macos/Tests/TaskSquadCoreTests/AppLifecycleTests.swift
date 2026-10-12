@@ -14,13 +14,13 @@ final class AppLifecycleTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: home) }
         let agent = LaunchAgent(home: home), paths = TaskSquadPaths(home: home)
         XCTAssertFalse(agent.isEnabled)
-        try agent.enableOnFirstRun(executable: "/x/tsq", paths: paths)
+        XCTAssertTrue(try agent.enableOnFirstRun(executable: "/x/tsq", paths: paths))
         XCTAssertTrue(agent.isEnabled)
         XCTAssertTrue(FileManager.default.fileExists(atPath: paths.config.path + ".autostart-set"))
         try agent.disable()
         XCTAssertFalse(agent.isEnabled)
         try agent.disable() // already gone is fine
-        try agent.enableOnFirstRun(executable: "/x/tsq", paths: paths)
+        XCTAssertFalse(try agent.enableOnFirstRun(executable: "/x/tsq", paths: paths))
         XCTAssertFalse(agent.isEnabled, "first-run enable happens once; a user's later opt-out sticks")
     }
 

@@ -29,7 +29,7 @@ public enum DaemonRunner {
                 day = today
             }
             let padded = level.padding(toLength: max(5, level.count), withPad: " ", startingAt: 0)
-            let line = "\(now.formatted(Date.ISO8601FormatStyle(timeZone: .current))) [\(padded)] \(message)\n"
+            let line = "\(GoTime.rfc3339(now)) [\(padded)] \(message)\n"
             stdout(line)
             try? handle?.write(contentsOf: Data(line.utf8))
         }
@@ -72,9 +72,11 @@ public enum DaemonRunner {
         do { try await engine.start() } catch { c.printError(error.localizedDescription); return 1 }
         log.write("INFO", "Running — waiting for tasks...")
         let executable = URL(fileURLWithPath: CommandLine.arguments.first ?? "tsq").resolvingSymlinksInPath().path
-        if (try? LaunchAgent(home: c.home).enableOnFirstRun(executable: executable, paths: c.paths)) != nil {
-            log.write("INFO", "[autostart] Run-on-boot registered (first run only)")
-        }
+        do {
+            if try LaunchAgent(home: c.home).enableOnFirstRun(executable: executable, paths: c.paths) {
+                log.write("INFO", "[autostart] Enabled run-on-boot (first run)")
+            }
+        } catch { log.write("WARN", "[autostart] first-run enable failed: \(error.localizedDescription)") }
         let wakeLock = WakeLock()
         wakeLock.acquire()
         await waitForTermination()

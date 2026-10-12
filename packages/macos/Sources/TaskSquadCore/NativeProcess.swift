@@ -38,9 +38,11 @@ public enum ExecutableLocator {
 /// of dropping bytes or growing an unbounded in-memory output queue.
 public enum NativeProcess {
     public static func run(_ specification: ProcessSpecification,
-                           output: @escaping @Sendable (ProcessChannel, Data) async throws -> Void = { _, _ in }) async throws -> ProcessExit {
+                           output: @escaping @Sendable (ProcessChannel, Data) async throws -> Void = { _, _ in },
+                           started: @Sendable (pid_t) async -> Void = { _ in }) async throws -> ProcessExit {
         try Task.checkCancellation()
         let child = try ChildProcess(specification)
+        await started(child.pid)
         return try await withTaskCancellationHandler {
             // Always create the wait task, even if cancellation raced with spawn,
             // so the child is reaped after the cancellation handler terminates it.

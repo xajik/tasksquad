@@ -160,7 +160,7 @@ private actor InteractiveWorker {
         XCTAssertTrue(journal.contains("\"agent_turn\""))
         XCTAssertTrue(journal.contains("\"user_reply\""))
         let log = try String(contentsOf: home.appendingPathComponent(".tasksquad/logs/Claude-fixture/fixture-task.log"), encoding: .utf8)
-        XCTAssertTrue(log.contains("[EVENT] event=running via=tmux session=tsq-01FIXTURESESSION"), log)
+        XCTAssertNotNil(log.range(of: #"(?m)^\S+ \[EVENT\] event=running via=tmux$"#, options: .regularExpression), log)
         XCTAssertTrue(log.contains("READY fixture-task"), log)
         XCTAssertTrue(log.contains("got:first é猫"), log)
         XCTAssertFalse(FileManager.default.fileExists(atPath: "/tmp/tsq-01FIXTURESESSION.fifo"))

@@ -233,7 +233,7 @@ actor Dreamer {
     private func spawnPrintMode(session: String, workDir: String, prompt: String, log: URL) async throws {
         guard Supervisor.isSafeID(session) else { throw ConfigurationError("dreamer: unsafe session name \(session)") }
         try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data("# TaskSquad Dreaming log\n# session=\(session)  work_dir=\(workDir)\n# started=\(Supervisor.rfc3339(Date()))\n\n".utf8).write(to: log)
+        try Data("# TaskSquad Dreaming log\n# session=\(session)  work_dir=\(workDir)\n# started=\(GoTime.rfc3339(Date()))\n\n".utf8).write(to: log)
         let promptFile = FileManager.default.temporaryDirectory.appendingPathComponent("tsq-dream-\(Self.shortID()).prompt")
         try Data(ProviderKind.detect(command: fullCommand, override: "").formatPrompt(prompt).utf8).write(to: promptFile)
         let shell = Supervisor.printModeCommand(cli: cli, fullCommand: fullCommand, promptFile: promptFile.path, logFile: log.path, daemonBinDir: daemonBinDir)

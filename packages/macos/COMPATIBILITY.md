@@ -124,6 +124,7 @@ Output text and exit codes must match Go byte-for-byte: agents and skills parse 
 ### Qualification (exit criteria for the migration decision)
 
 - [ ] Differential E2E, Go then Swift, on the Pi agent: task → waiting_input → reply → done; deliberate close; crash; attachments in/out; Portal open/close; web live terminal; supervisor trigger; daemon switching.
+  - 2026-10-12, Pi on a local oMLX model (Qwen3.8-27B), production API, Pi-only `--config`, both daemons built from source and run headless one after the other (see "Pi differential E2E" below): plain reply ✓, tool use ✓, server close mid-run ✓. Pi runs in pipe mode in both daemons (one turn per task, ends `done`), so waiting_input → reply does not apply to Pi.
 - [ ] Real Claude Code and Codex runs with Unicode input.
 - [ ] Native setup, Agents, Supervisor, Sessions, Tasks, Logs and Tools UI parity; no inert placeholder controls.
 - [x] Platform floor: macOS 26 and the latest Xcode/Swift; swift-tools 6.2 (the first with `.v26`) so the newest stable Xcode on hosted `macos-26` (26.6 / Swift 6.3 as of Oct 2026) builds it. The app stays universal (macOS 26 still runs on some Intel Macs), but hosted CI has no Intel macOS 26 runner, so x86_64 is built, not run.
@@ -131,6 +132,25 @@ Output text and exit codes must match Go byte-for-byte: agents and skills parse 
 - [ ] Remote CI green; signed draft release validated. CI: `Native macOS` validate + intel green since `c65b1fb`. Signed draft release not yet run.
 
 ## Evidence and next work
+
+### Pi differential E2E (2026-10-12)
+
+Agent `pi` (`01KR2SYJJHR4MS9BJ98HYAA6Y0`), `command = "pi"` with `defaultProvider = omlx`, `poll_interval = 10`, scratch work dirs. Go = `go build` of `packages/daemon` (CGO off, headless); Swift = `swift build -c release --product tsq`. Same device-id and state dir; never both at once.
+
+| Case | Go | Swift |
+|---|---|---|
+| 1. "Reply with exactly one line" (Unicode `café 猫`) | `done`, exact reply, log uploaded | `done`, exact reply |
+| 2. Bash tool writes a file, reply quotes it | `done`, `FILE_OK heron-go-2`, file written | `done`, `FILE_OK heron-swift-2`, file written |
+| 3. `sleep 300` then server close | `failed` (cancelled), no reply. Close seen ~60 s later, then a 15 s "Timed out waiting for stdout drain"; **Pi's `sleep 300` child left running** | `failed` (cancelled), no reply, done ~30 s after the close; process group killed, no orphan |
+
+Swift authenticated with the Go-created login-Keychain credentials (an unsigned dev build; whether macOS showed an authorization prompt was not observable from the harness, so the real-Keychain auth row stays open).
+
+Differences found and fixed in Swift:
+- Journal `ts`, daemon log and supervisor/dreamer logs wrote `+0800` (`ISO8601FormatStyle`), which Go's RFC3339 parser rejects; now `GoTime.rfc3339` writes `+08:00` (`TaskLogGoldenTests.testTimestampsUseGoRFC3339Offsets`; the old golden test ran in UTC and normalized `ts` away).
+- Run log lacked `# started=`/`# ended=`, timestamps on event lines, `pid=` and `event=exit code=N`, and the tmux line had an extra `session=`; now laid out like Go's (`EngineIntegrationTests` checks the layout).
+- `[autostart] Run-on-boot registered` was logged on every start; now Go's `[autostart] Enabled run-on-boot (first run)` only when it registers, and a WARN on failure.
+
+Still different (not fixed): the Swift daemon log has no per-task lines (Go: task received, started/running, process exited, completing, session close, R2 upload), no `User: <email>` line, and supervisor/dreamer/sync lines go through NSLog to stderr instead of the `[LEVEL]` log.
 
 ### Implementation checkpoint (2026-10-10)
 

@@ -183,7 +183,7 @@ actor Supervisor {
         let (snapshot, isImage) = await captureSnapshot(session: agent.tmuxSession, supLog: supLog, taskID: taskID)
         let context = Self.contextBlock(agentName: agent.name, taskID: taskID, tmuxSession: agent.tmuxSession, logPath: agent.logPath,
                                         troubleshootingPath: troubleshootingFile(workDir: agent.workDir), snapshot: snapshot, isImage: isImage)
-        let started = Self.rfc3339(Date())
+        let started = GoTime.rfc3339(Date())
         let header = "# TaskSquad Supervisor Log\n# agent=\(agent.name)  task_id=\(taskID)\n# started=\(started)\n\n--- CONTEXT ---\n\(context)\n\n--- OUTPUT ---\n"
         try? Data(header.utf8).write(to: supLog)
 
@@ -200,7 +200,7 @@ actor Supervisor {
         NSLog("[supervisor] Session %@ started for task %@", session, taskID)
 
         guard let verdict = await waitForVerdictOrKill(taskID: taskID, session: session) else {
-            appendToLog(supLog, "\n--- SUPERVISOR TIMEOUT/EXIT: \(Self.rfc3339(Date())) ---\n")
+            appendToLog(supLog, "\n--- SUPERVISOR TIMEOUT/EXIT: \(GoTime.rfc3339(Date())) ---\n")
             failCount[taskID, default: 0] += 1
             let count = failCount[taskID]!
             NSLog("[supervisor] Session %@ ended without verdict (attempt %d/%d)", session, count, Self.maxFailures)
@@ -214,7 +214,7 @@ actor Supervisor {
             }
             return
         }
-        appendToLog(supLog, "\n--- SUPERVISOR COMPLETE: \(Self.rfc3339(Date())) ---\n")
+        appendToLog(supLog, "\n--- SUPERVISOR COMPLETE: \(GoTime.rfc3339(Date())) ---\n")
         failCount[taskID] = 0
         track("supervisor_verdict", ["task_id": .string(taskID), "verdict": .string(verdict.status)])
         if verdict.status == VerdictStatus.workingFine.rawValue {
@@ -436,11 +436,6 @@ actor Supervisor {
         if !tail.isEmpty { body += "\n\nSupervisor log (last \(Self.maxEscalationLogLines) lines):\n```\n\(tail)\n```" }
         do { _ = try await post(agentID, "/daemon/supervisor/report", .object(["task_id": .string(taskID), "body": .string(body), "type": .string("escalation")])) }
         catch { NSLog("[supervisor] Failed to post escalation for task %@: %@", taskID, error.localizedDescription) }
-    }
-
-    /// Go's time.RFC3339 in local time, e.g. 2026-10-11T22:10:00+08:00.
-    static func rfc3339(_ date: Date) -> String {
-        date.formatted(Date.ISO8601FormatStyle(timeZone: .current))
     }
 
     /// Go's Duration.String for whole minutes, e.g. 50m0s, 1h0m0s.
