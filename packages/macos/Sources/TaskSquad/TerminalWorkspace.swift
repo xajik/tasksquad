@@ -190,10 +190,10 @@ struct TerminalWorkspace: View {
                 }
             }.frame(minWidth: 420)
         }
-        .onChange(of: model.selectedID) { id in
+        .onChange(of: model.selectedID) { _, id in
             if let pane = model.panes.first(where: { $0.id == id }) { model.attach(pane) }
         }
-        .onChange(of: model.fitWindow) { _ in model.fittingChanged() }
+        .onChange(of: model.fitWindow) { model.fittingChanged() }
         .task {
             while !Task.isCancelled { await model.refresh(); do { try await Task.sleep(for: .seconds(2)) } catch { return } }
         }

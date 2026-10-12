@@ -48,7 +48,7 @@ struct MainWindow: View {
             customer.active = true
         }
         .onDisappear { customer.active = false }
-        .onChange(of: customer.section) { UserDefaults.standard.set($0.rawValue, forKey: Self.selectionKey) }
+        .onChange(of: customer.section) { _, value in UserDefaults.standard.set(value.rawValue, forKey: Self.selectionKey) }
         .sheet(item: $projectEditor) { CustomerEditor(model: customer, request: $0) }
     }
 
@@ -152,7 +152,7 @@ struct ThisMacWindow: View {
         .navigationTitle(section.rawValue)
         .toolbar { ToolbarItem(placement: .primaryAction) { DaemonControl(control: control) } }
         .tint(Theme.primary)
-        .onChange(of: section) { UserDefaults.standard.set($0.rawValue, forKey: Self.selectionKey) }
+        .onChange(of: section) { _, value in UserDefaults.standard.set(value.rawValue, forKey: Self.selectionKey) }
         .onReceive(NotificationCenter.default.publisher(for: .showLocalSection)) { note in
             if let value = note.object as? PanelSection { section = value }
         }

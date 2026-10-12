@@ -62,7 +62,7 @@ struct CustomerEditor: View {
             }.padding(20).edgeBorder(.top)
         }.frame(width: 620, height: request.phases ? 750 : 630).background(Theme.background)
         .interactiveDismissDisabled(submitting)
-        .onChange(of: values) { value in if let key = request.draftKey { model.drafts.save(value, key: key) } }
+        .onChange(of: values) { _, value in if let key = request.draftKey { model.drafts.save(value, key: key) } }
         .task {
             guard request.phases else { return }
             do { subAgents = CustomerRecord(try await model.api().request(WorkspacePolicy.path(.subAgents, project: model.teamID))).records("sub_agents") }

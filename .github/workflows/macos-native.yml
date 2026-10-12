@@ -25,13 +25,18 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 25
     defaults:
       run:
         working-directory: packages/macos
     steps:
       - uses: actions/checkout@v4
+      - name: Select the latest Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_[0-9]*.app | grep -vi beta | sort -V | tail -1)"
+          xcodebuild -version
+          swift --version
       - uses: actions/setup-go@v5
         with:
           go-version-file: packages/daemon/go.mod
@@ -66,30 +71,3 @@ jobs:
             packages/macos/dist/TaskSquad-Native-*.dmg
             packages/macos/dist/TaskSquad-Native-*.dmg.sha256
 
-  intel:
-    # Intel runtime: the full Go-differential suite and the standalone CLI on x86_64.
-    runs-on: macos-15-intel
-    timeout-minutes: 40
-    defaults:
-      run:
-        working-directory: packages/macos
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: packages/daemon/go.mod
-      - name: Install terminal test dependency
-        run: command -v tmux || brew install tmux
-      - name: Test native implementation against Go (x86_64)
-        run: |
-          test "$(uname -m)" = x86_64
-          # Hosted Intel VMs expose no Metal device architecture, so offscreen
-          # SwiftUI renders abort in MTLLoader; the arm64 job covers UI renders.
-          make test-compatibility TEST_FLAGS="--skip TaskSquadUITests"
-      - name: Build and run the standalone tsq CLI (x86_64)
-        run: |
-          swift build -c release --product tsq
-          bin=$(swift build -c release --show-bin-path)
-          file "$bin/tsq" | grep -q x86_64
-          "$bin/tsq" --version
-          "$bin/tsq" -h 2>&1 | head -5

@@ -141,7 +141,7 @@ struct AgentWorkspace: View {
             if model.selectedAgentID == nil { model.selectedAgentID = model.configuration?.agents.first?.id }
             while !Task.isCancelled { await model.refreshLogs(); do { try await Task.sleep(for: .seconds(2)) } catch { return } }
         }
-        .onChange(of: model.configuration?.agents.first?.id) { first in
+        .onChange(of: model.configuration?.agents.first?.id) { _, first in
             if model.selectedAgentID == nil { model.selectedAgentID = first }
         }
         .confirmationDialog("Stop this task?", isPresented: $cancelling, titleVisibility: .visible) {
@@ -182,7 +182,7 @@ private struct TaskActivityView: View {
                         Color.clear.frame(height: 1).id("end")
                     }.padding(24)
                 }.background(Theme.background)
-                .onChange(of: records) { _ in if follow { proxy.scrollTo("end", anchor: .bottom) } }
+                .onChange(of: records) { if follow { proxy.scrollTo("end", anchor: .bottom) } }
             }
             HStack { Text("Task activity").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground); Spacer(); Toggle("Follow latest", isOn: $follow).toggleStyle(.checkbox).font(.system(size: 12)) }
                 .padding(.horizontal, 16).padding(.vertical, 10).edgeBorder(.top)

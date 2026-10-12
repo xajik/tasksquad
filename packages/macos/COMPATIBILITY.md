@@ -126,7 +126,7 @@ Output text and exit codes must match Go byte-for-byte: agents and skills parse 
 - [ ] Differential E2E, Go then Swift, on the Pi agent: task → waiting_input → reply → done; deliberate close; crash; attachments in/out; Portal open/close; web live terminal; supervisor trigger; daemon switching.
 - [ ] Real Claude Code and Codex runs with Unicode input.
 - [ ] Native setup, Agents, Supervisor, Sessions, Tasks, Logs and Tools UI parity; no inert placeholder controls.
-- [ ] Intel runtime and minimum-supported-macOS tests. Intel: green on `macos-15-intel` (full Go-differential suite + x86_64 `tsq`; UI renders skipped because hosted Intel VMs have no Metal device). Still open: macOS 13 (no hosted runner) and UI on real Intel hardware.
+- [x] Platform floor: macOS 26 and the latest Xcode/Swift (tools 6.4); CI on `macos-26` with the newest stable Xcode. The app stays universal (macOS 26 still runs on some Intel Macs), but hosted CI has no Intel macOS 26 runner, so x86_64 is built, not run.
 - [ ] Developer ID signing, notarization, Gatekeeper and clean-machine install.
 - [ ] Remote CI green; signed draft release validated. CI: `Native macOS` validate + intel green since `c65b1fb`. Signed draft release not yet run.
 

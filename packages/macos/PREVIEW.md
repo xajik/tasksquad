@@ -1,4 +1,4 @@
-Native Swift macOS development preview. Requires macOS 13 or later; includes Apple Silicon and Intel binaries.
+Native Swift macOS development preview. Requires macOS 26 or later; includes Apple Silicon and Intel binaries.
 
 **What's new in this preview**
 

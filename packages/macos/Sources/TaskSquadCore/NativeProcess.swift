@@ -175,7 +175,7 @@ private final class ChildProcess: @unchecked Sendable {
             try Self.check(posix_spawn_file_actions_adddup2(&actions, source, target))
         }
         if let directory = spec.directory, !directory.isEmpty {
-            try Self.check(posix_spawn_file_actions_addchdir_np(&actions, directory))
+            try Self.check(posix_spawn_file_actions_addchdir(&actions, directory))
         }
         let argv = arguments.map { strdup($0) } + [nil]
         let envp = environment.map { strdup($0) } + [nil]

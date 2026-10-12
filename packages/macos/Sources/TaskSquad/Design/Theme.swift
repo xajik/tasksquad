@@ -43,6 +43,6 @@ struct AppearancePicker: View {
             }
         }
         .padding(3).background(Theme.muted, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .onChange(of: appearance) { $0.apply() }
+        .onChange(of: appearance) { _, value in value.apply() }
     }
 }

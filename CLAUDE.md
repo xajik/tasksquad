@@ -54,7 +54,7 @@ bun run dev                    # vite, localhost:5173
 bun run build                  # SEO manifest + tsc -b + vite build — fails hard on any TS error
 bun run test | bun run lint
 
-# macOS native (packages/macos) — Darwin only
+# macOS native (packages/macos) — Darwin only; minimum macOS 26, latest Xcode/Swift (swift-tools 6.4)
 make build | make dev          # swift build / run debug binary
 make test                      # swift test;  swift test --filter TestClassName for one
 make test-compatibility        # builds Go reference oracle, then Swift tests

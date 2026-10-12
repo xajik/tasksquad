@@ -1,9 +1,9 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.4
 import PackageDescription
 
 let package = Package(
     name: "TaskSquadPortal",
-    platforms: [.iOS(.v17), .macOS(.v13)],
+    platforms: [.iOS(.v17), .macOS(.v26)],
     products: [
         .library(name: "TaskSquadPortal", targets: ["TaskSquadPortal"]),
         .library(name: "TaskSquadDesign", targets: ["TaskSquadDesign"]),

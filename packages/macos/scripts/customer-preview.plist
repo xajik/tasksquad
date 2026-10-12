@@ -5,7 +5,7 @@
     <key>CFBundleExecutable</key><string>TaskSquad</string>
     <key>CFBundleIdentifier</key><string>ai.tasksquad.customer-preview</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>LSMinimumSystemVersion</key><string>13.0</string>
+    <key>LSMinimumSystemVersion</key><string>26.0</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

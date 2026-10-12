@@ -75,7 +75,7 @@ public struct TSQStatusDot: View {
             .opacity(active && pulse ? 0.45 : 1)
             .animation(active ? .easeInOut(duration: 1).repeatForever(autoreverses: true) : .default, value: pulse)
             .onAppear { pulse = active }
-            .onChange(of: active) { pulse = $0 }
+            .onChange(of: active) { _, value in pulse = value }
             .accessibilityHidden(true)
     }
 }

@@ -31,8 +31,8 @@ struct CustomerWorkspace: View {
         .alert(item: $confirmation) { value in
             Alert(title: Text(value.title), message: Text(value.message), primaryButton: .destructive(Text(value.action)) { Task { await value.perform() } }, secondaryButton: .cancel())
         }
-        .onChange(of: model.teamID) { _ in editor = nil; confirmation = nil; presentedText = nil }
-        .onChange(of: model.profile?.id) { _ in editor = nil; confirmation = nil; presentedText = nil }
+        .onChange(of: model.teamID) { editor = nil; confirmation = nil; presentedText = nil }
+        .onChange(of: model.profile?.id) { editor = nil; confirmation = nil; presentedText = nil }
         .task(id: "\(model.active):\(model.selectionKey)") {
             guard model.active else { return }
             await model.restore()

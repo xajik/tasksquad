@@ -73,7 +73,7 @@ struct CustomerTaskDetail: View {
                         if shownMessages.isEmpty { Text(supervisorOnly ? "No supervisor reports yet." : "No messages yet.").font(.system(size: 13)).foregroundStyle(Theme.mutedForeground) }
                         Color.clear.frame(height: 1).id("bottom")
                     }.padding(20)
-                }.background(Theme.muted.opacity(0.25)).onChange(of: shownMessages.count) { _ in if follow { reader.scrollTo("bottom", anchor: .bottom) } }
+                }.background(Theme.muted.opacity(0.25)).onChange(of: shownMessages.count) { if follow { reader.scrollTo("bottom", anchor: .bottom) } }
             }
             if let pendingReply {
                 HStack {
@@ -229,7 +229,7 @@ struct CustomerTaskDetail: View {
             VStack(spacing: 0) {
                 TextEditor(text: $reply).font(.system(size: 13)).scrollContentBackground(.hidden)
                     .onAppear { reply = model.drafts.load(replyDraft)?["body"]?.string ?? reply }
-                    .onChange(of: reply) { text in if text.isEmpty { model.drafts.remove(replyDraft) } else { model.drafts.save(["body": .string(text)], scope: replyDraft) } }
+                    .onChange(of: reply) { _, text in if text.isEmpty { model.drafts.remove(replyDraft) } else { model.drafts.save(["body": .string(text)], scope: replyDraft) } }
                     .frame(minHeight: 64, maxHeight: 120).padding(.horizontal, 10).padding(.top, 8)
                     .overlay(alignment: .topLeading) {
                         if reply.isEmpty { Text("Write your reply…").font(.system(size: 13)).foregroundStyle(Theme.mutedForeground).padding(.horizontal, 15).padding(.top, 8).allowsHitTesting(false) }

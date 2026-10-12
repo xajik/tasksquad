@@ -112,8 +112,8 @@ struct CustomerAnalytics: View {
                         .onContinuousHover { phase in
                             switch phase {
                             case .active(let point):
-                                let x = point.x - geometry[proxy.plotAreaFrame].origin.x
-                                hoveredDay = proxy.value(atX: x, as: String.self)
+                                guard let plot = proxy.plotFrame else { hoveredDay = nil; return }
+                                hoveredDay = proxy.value(atX: point.x - geometry[plot].origin.x, as: String.self)
                             case .ended: hoveredDay = nil
                             }
                         }

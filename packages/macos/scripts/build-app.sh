@@ -53,7 +53,7 @@ with open(sys.argv[1], 'wb') as output:
         'CFBundleVersion': version.split('-')[0],
         'TSQVersion': version,
         'CFBundleIconFile': 'AppIcon',
-        'LSMinimumSystemVersion': '13.0',
+        'LSMinimumSystemVersion': '26.0',
         'NSHighResolutionCapable': True,
         'NSPrincipalClass': 'NSApplication',
     }, output)
