@@ -348,6 +348,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 		}
 	} else {
 		// Non-interactive providers use a regular stdout pipe.
+		newProcessGroup(cmd)
 		stdout, serr := cmd.StdoutPipe()
 		if serr != nil {
 			logger.Error(fmt.Sprintf("[%s] StdoutPipe error: %v", a.Config.Name, serr))

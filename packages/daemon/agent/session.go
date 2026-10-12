@@ -39,6 +39,7 @@ func (a *Agent) completeScoped(cfg *config.Config, status, transcriptPath, expec
 	taskID := a.st.taskID
 	pw := a.st.stdinWrite
 	a.st.stdinWrite = nil
+	pid := processPID(a.st.proc)
 	runLog := a.st.runLog
 	a.st.runLog = nil
 	outputDone := a.st.outputDone
@@ -52,7 +53,7 @@ func (a *Agent) completeScoped(cfg *config.Config, status, transcriptPath, expec
 	a.st.transcriptPath = ""
 	a.st.mu.Unlock()
 
-	go a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath, wasLearning)
+	go a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, pid, runLog, outputDone, sess, fifo, transcriptPath, wasLearning)
 	return true
 }
 

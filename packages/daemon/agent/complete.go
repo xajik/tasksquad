@@ -30,6 +30,7 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	taskID := a.st.taskID
 	pw := a.st.stdinWrite
 	a.st.stdinWrite = nil
+	pid := processPID(a.st.proc)
 	runLog := a.st.runLog
 	a.st.runLog = nil
 	outputDone := a.st.outputDone
@@ -41,7 +42,7 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	a.st.transcriptPath = ""
 	a.st.mu.Unlock()
 
-	a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, runLog, outputDone, sess, fifo, transcriptPath, false)
+	a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, pid, runLog, outputDone, sess, fifo, transcriptPath, false)
 }
 
 const tmuxCaptureFallbackFile = ".tasksquad-tmux-capture.txt"
@@ -68,11 +69,18 @@ func (a *Agent) captureTerminalState(sess string) (content string, path string) 
 	return "", ""
 }
 
-func (a *Agent) closeProcessResources(sess, fifo string, pw io.WriteCloser, outputDone chan struct{}) {
+// closeProcessResources ends the task's process. A pipe provider (pid > 0)
+// gets until its output drains to exit on its own; a cancelled task, or one
+// whose output is still held open after the wait (by the provider or a tool it
+// spawned), has its whole process group terminated.
+func (a *Agent) closeProcessResources(status, sess, fifo string, pw io.WriteCloser, pid int, outputDone chan struct{}) {
 	if sess != "" {
 		exec.Command(tmuxBin, "kill-session", "-t", sess).Run()
 	} else if pw != nil {
 		pw.Close()
+	}
+	if pid > 0 && status == string(agentmode.StatusCancelled) {
+		terminateProcessGroup(pid)
 	}
 
 	if outputDone != nil {
@@ -80,6 +88,13 @@ func (a *Agent) closeProcessResources(sess, fifo string, pw io.WriteCloser, outp
 		case <-outputDone:
 		case <-time.After(15 * time.Second):
 			logger.Warn(fmt.Sprintf("[%s] Timed out waiting for stdout drain", a.Config.Name))
+			if pid > 0 {
+				terminateProcessGroup(pid)
+				select {
+				case <-outputDone:
+				case <-time.After(5 * time.Second):
+				}
+			}
 		}
 	}
 
@@ -136,8 +151,7 @@ func (a *Agent) uploadTaskArtifacts(cfg *config.Config, sessionID, msgID, logCon
 	}
 }
 
-
-func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string, wasLearning bool) {
+func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID, taskID string, pw io.WriteCloser, pid int, runLog *os.File, outputDone chan struct{}, sess, fifo, transcriptPath string, wasLearning bool) {
 	logger.Info(fmt.Sprintf("[%s] internalComplete called — status=%q taskID=%s transcriptPath=%q", a.Config.Name, status, taskID, transcriptPath))
 	if status == "" {
 		status = string(agentmode.StatusClosed)
@@ -154,7 +168,7 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 	a.st.lastTmuxCapturePath = tmuxCapturePath
 	a.st.mu.Unlock()
 
-	a.closeProcessResources(sess, fifo, pw, outputDone)
+	a.closeProcessResources(status, sess, fifo, pw, pid, outputDone)
 
 	// Close terminal relay after output is fully drained.
 	if a.relayConn != nil {
@@ -245,4 +259,12 @@ func (a *Agent) internalComplete(cfg *config.Config, status, sessionID, agentID,
 	a.st.proc = nil
 	a.st.completing = false
 	a.st.mu.Unlock()
+}
+
+// processPID is the pipe provider's pid, or 0 on the tmux path.
+func processPID(cmd *exec.Cmd) int {
+	if cmd == nil || cmd.Process == nil {
+		return 0
+	}
+	return cmd.Process.Pid
 }
