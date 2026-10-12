@@ -74,6 +74,9 @@ public indirect enum GoJSONValue: Equatable, Sendable {
                 while i < bytes.count, bytes[i] != UInt8(ascii: "\"") { i += bytes[i] == UInt8(ascii: "\\") ? 2 : 1 }
                 guard i < bytes.count else { throw ParseError() }
                 i += 1
+                // Fast path for transcripts: no escapes and no raw control characters.
+                let body = bytes[(start + 1)..<(i - 1)]
+                if !body.contains(where: { $0 == UInt8(ascii: "\\") || $0 < 0x20 }) { return .string(String(decoding: body, as: UTF8.self)) }
                 guard let decoded = try? JSONDecoder().decode(String.self, from: Data(bytes[start..<i])) else { throw ParseError() }
                 return .string(decoded)
             case UInt8(ascii: "t"): try expect("true"); return .bool(true)

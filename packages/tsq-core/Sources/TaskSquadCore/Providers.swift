@@ -249,14 +249,15 @@ public struct HookStopEvent: Equatable, Sendable {
 }
 
 public enum HookAdapter {
-    private static func object(_ body: Data) -> [String: Any] {
-        (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
+    /// json.Unmarshal of a hook body into a map; anything else is an empty payload.
+    static func object(_ body: Data) -> [String: GoJSONValue] {
+        (try? GoJSONValue.parse(body, strict: true))?.object ?? [:]
     }
 
     /// `provider` is the hook URL's `provider` query value; unknown/empty is Claude.
     public static func parseStop(provider: String, body: Data, isFailure: Bool) -> HookStopEvent {
         let p = object(body)
-        func s(_ key: String) -> String { p[key] as? String ?? "" }
+        func s(_ key: String) -> String { p[key]?.string ?? "" }
         switch provider {
         case "stdout":
             return HookStopEvent()
@@ -281,13 +282,13 @@ public enum HookAdapter {
 
     public static func parseNotification(body: Data) -> (message: String, transcriptPath: String) {
         let p = object(body)
-        return (p["message"] as? String ?? "", p["transcript_path"] as? String ?? "")
+        return (p["message"]?.string ?? "", p["transcript_path"]?.string ?? "")
     }
 
     public static func parseAfterAgent(provider: String, body: Data) -> (response: String, transcriptPath: String) {
         guard provider == "gemini" else { return ("", "") }
         let p = object(body)
-        return (p["prompt_response"] as? String ?? "", p["transcript_path"] as? String ?? "")
+        return (p["prompt_response"]?.string ?? "", p["transcript_path"]?.string ?? "")
     }
 
     /// Returns the last assistant message in the provider's transcript, or "".
@@ -301,9 +302,9 @@ public enum HookAdapter {
         }
     }
 
-    private static func texts(_ content: Any?) -> [String] {
-        (content as? [[String: Any]] ?? []).compactMap { block in
-            guard block["type"] as? String == "text", let text = block["text"] as? String, !text.isEmpty else { return nil }
+    private static func texts(_ content: GoJSONValue?) -> [String] {
+        (content?.array ?? []).compactMap { block in
+            guard block["type"]?.string == "text", let text = block["text"]?.string, !text.isEmpty else { return nil }
             return text
         }
     }
@@ -311,22 +312,22 @@ public enum HookAdapter {
     private static func claudeTranscript(_ data: Data) -> String {
         var last = ""
         for line in data.split(separator: 10) {
-            guard let entry = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
-            let message = entry["message"] as? [String: Any] ?? [:]
-            guard entry["type"] as? String == "assistant" || message["role"] as? String == "assistant" else { continue }
-            let parts = texts(message["content"])
+            guard let entry = try? GoJSONValue.parse(Data(line), strict: true), entry.object != nil else { continue }
+            let message = entry["message"]
+            guard entry["type"]?.string == "assistant" || message?["role"]?.string == "assistant" else { continue }
+            let parts = texts(message?["content"])
             if !parts.isEmpty { last = parts.joined(separator: "\n") }
         }
         return last.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func geminiTranscript(_ data: Data) -> String {
-        guard let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let messages = document["messages"] as? [[String: Any]] else { return "" }
-        for message in messages.reversed() where ["gemini", "assistant"].contains(message["type"] as? String ?? "") {
-            if let text = message["content"] as? String { return text.trimmingCharacters(in: .whitespacesAndNewlines) }
-            let parts = (message["content"] as? [[String: Any]] ?? []).compactMap { block -> String? in
-                guard let text = block["text"] as? String, !text.isEmpty else { return nil }
+        guard let document = try? GoJSONValue.parse(data, strict: true),
+              let messages = document["messages"]?.array else { return "" }
+        for message in messages.reversed() where ["gemini", "assistant"].contains(message["type"]?.string ?? "") {
+            if let text = message["content"]?.string { return text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let parts = (message["content"]?.array ?? []).compactMap { block -> String? in
+                guard let text = block["text"]?.string, !text.isEmpty else { return nil }
                 return text
             }
             if !parts.isEmpty { return parts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -336,10 +337,10 @@ public enum HookAdapter {
 
     private static func piTranscript(_ data: Data) -> String {
         for line in data.split(separator: 10).reversed() {
-            guard let entry = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
-                  entry["type"] as? String == "message",
-                  let message = entry["message"] as? [String: Any], message["role"] as? String == "assistant" else { continue }
-            if let text = message["content"] as? String { return text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            guard let entry = try? GoJSONValue.parse(Data(line), strict: true),
+                  entry["type"]?.string == "message",
+                  let message = entry["message"], message["role"]?.string == "assistant" else { continue }
+            if let text = message["content"]?.string { return text.trimmingCharacters(in: .whitespacesAndNewlines) }
             let parts = texts(message["content"])
             if !parts.isEmpty { return parts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) }
         }

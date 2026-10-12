@@ -846,17 +846,17 @@ public actor DaemonEngine {
         case "/hooks/codex":
             guard request.method == "POST" else { return .init(status: 405) }
             guard !agentParam.isEmpty, !taskParam.isEmpty else { return .init(status: 400) }
-            let payload = (try? JSONSerialization.jsonObject(with: request.body)) as? [String: Any] ?? [:]
-            guard let thread = payload["thread-id"] as? String, !thread.isEmpty else { return .init(status: 400) }
-            guard payload["type"] as? String == "agent-turn-complete" else { return .json(.object(["status": .string("ignored")])) }
+            let payload = HookAdapter.object(request.body)
+            guard let thread = payload["thread-id"]?.string, !thread.isEmpty else { return .init(status: 400) }
+            guard payload["type"]?.string == "agent-turn-complete" else { return .json(.object(["status": .string("ignored")])) }
             // Codex titles the thread in an auxiliary thread that also completes a turn; letting it
             // through would pin the wrong thread and post {"title":…} as the reply (Go: isCodexTitleTurn).
-            if let inputs = payload["input-messages"] as? [String], inputs.count == 1,
-               inputs[0].hasPrefix("Generate a concise, single-line task title") {
+            if let inputs = payload["input-messages"]?.array?.map(\.string), inputs.count == 1,
+               let first = inputs[0], first.hasPrefix("Generate a concise, single-line task title") {
                 Log.debug("[hooks] Ignoring codex title-generation turn (thread=\(thread))")
                 return .json(.object(["status": .string("ignored")]))
             }
-            guard claimCodexTurn(agentID: agentParam, taskID: taskParam, thread: thread, turn: payload["turn-id"] as? String ?? "") else {
+            guard claimCodexTurn(agentID: agentParam, taskID: taskParam, thread: thread, turn: payload["turn-id"]?.string ?? "") else {
                 return .json(.object(["status": .string("ignored")]))
             }
             let event = HookAdapter.parseStop(provider: "codex", body: request.body, isFailure: false)

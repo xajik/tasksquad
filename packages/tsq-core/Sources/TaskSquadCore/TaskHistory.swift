@@ -86,9 +86,9 @@ public actor TaskHistoryIndex {
         let lines = String(decoding: data, as: UTF8.self).split(separator: "\n")
         if kind == .task {
             for line in lines {
-                guard let event = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any], event["type"] as? String == "task_start" else { continue }
-                return Header(taskID: event["task_id"] as? String ?? "", title: event["subject"] as? String ?? "",
-                    agent: event["agent"] as? String ?? "", agentID: event["agent_id"] as? String ?? "", project: event["work_dir"] as? String ?? "")
+                guard let event = try? GoJSONValue.parse(Data(line.utf8), strict: true), event["type"]?.string == "task_start" else { continue }
+                return Header(taskID: event["task_id"]?.string ?? "", title: event["subject"]?.string ?? "",
+                    agent: event["agent"]?.string ?? "", agentID: event["agent_id"]?.string ?? "", project: event["work_dir"]?.string ?? "")
             }
         } else {
             // Only inspect the generated header, never CLI output or user prose.
