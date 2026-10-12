@@ -18,9 +18,7 @@ public struct MacPlatform: PlatformServices {
 
     public func credentialStore(service: String) -> any CredentialStore { KeychainCredentialStore(service: service) }
 
-    public func screenshot(session: String, scrollbackLines: Int, tmux: TmuxConnection) async throws -> Data {
-        try await MacTerminalScreenshot.capture(session: session, scrollbackLines: scrollbackLines, tmux: tmux)
-    }
+    public func renderScreenshot(_ grid: [[TerminalScreenshot.Cell]]) throws -> Data { try MacTerminalScreenshot.render(grid) }
 
     public func dialWebSocket(_ request: URLRequest) -> (any WebSocketConnection)? {
         let task = URLSession.shared.webSocketTask(with: request)

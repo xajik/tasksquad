@@ -27,7 +27,7 @@ public struct LinuxPlatform: PlatformServices {
 
     public func credentialStore(service: String) -> any CredentialStore { SecretServiceCredentialStore(service: service) }
 
-    public func screenshot(session: String, scrollbackLines: Int, tmux: TmuxConnection) async throws -> Data {
+    public func renderScreenshot(_ grid: [[TerminalScreenshot.Cell]]) throws -> Data {
         // TODO(linux): port Go's PNG renderer (packages/daemon/screenshot); Go renders on Linux too.
         throw ConfigurationError("terminal screenshots are not supported on Linux yet")
     }

@@ -1,11 +1,10 @@
-import ImageIO
 import XCTest
 @testable import TaskSquadCore
-@testable import TaskSquadMacPlatform
 
 /// Ported from packages/daemon/screenshot/{sgr,render}_test.go, plus a real tmux capture.
+/// Rendering goes through the installed platform's rasterizer.
 final class TerminalScreenshotTests: PlatformTestCase {
-    typealias S = MacTerminalScreenshot
+    typealias S = TerminalScreenshot
 
     func testPlainTextPadsWithDefaults() {
         let grid = S.parseGrid("hi", columns: 4)
@@ -41,16 +40,26 @@ final class TerminalScreenshotTests: PlatformTestCase {
         XCTAssertEqual(S.color256(232), S.RGBA(8, 8, 8)); XCTAssertEqual(S.color256(255), S.RGBA(238, 238, 238))
     }
 
+    /// Width and height from the PNG signature + IHDR chunk.
     private func size(_ png: Data) throws -> (Int, Int) {
-        let source = try XCTUnwrap(CGImageSourceCreateWithData(png as CFData, nil))
-        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
-        return (image.width, image.height)
+        let bytes = [UInt8](png)
+        XCTAssertEqual(Array(bytes.prefix(8)), [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], "PNG signature")
+        guard bytes.count >= 24, Array(bytes[12..<16]) == Array("IHDR".utf8) else { throw XCTSkip("not a PNG") }
+        func be(_ at: Int) -> Int { bytes[at..<at + 4].reduce(0) { $0 << 8 | Int($1) } }
+        return (be(16), be(20))
+    }
+
+    private func render(_ grid: [[S.Cell]]) throws -> Data {
+        do { return try Platform.current.renderScreenshot(grid) }
+        catch where "\(error)".contains("not supported on Linux yet") {
+            throw XCTSkip("LinuxPlatform has no PNG renderer yet (Go renders one on Linux): port packages/daemon/screenshot")
+        }
     }
 
     func testRenderDimensionsMatchGoCells() throws {
-        let (w, h) = try size(try S.render(S.parseGrid("hi\nyo", columns: 2)))
+        let (w, h) = try size(try render(S.parseGrid("hi\nyo", columns: 2)))
         XCTAssertEqual(w, 2 * 10); XCTAssertEqual(h, 2 * 22)
-        XCTAssertEqual(try size(try S.render([])).0, 10)
+        XCTAssertEqual(try size(try render([])).0, 10)
     }
 
     func testCapturesARealTmuxPane() async throws {
@@ -60,7 +69,11 @@ final class TerminalScreenshotTests: PlatformTestCase {
         _ = try await tmux.run(["-f", "/dev/null", "new-session", "-d", "-s", "shot", "-x", "40", "-y", "6", "/bin/sh", "-c",
                                 "printf '\\033[1;32mREADY\\033[0m café \\033[44m blue \\033[0m\\n\\033[4munder\\033[0m'; sleep 30"])
         try await Task.sleep(for: .milliseconds(300))
-        let png = try await S.capture(session: "shot", tmux: tmux)
+        let grid = try await S.grid(session: "shot", tmux: tmux)
+        XCTAssertEqual(grid.first?.count, 40)
+        XCTAssertTrue(grid[0][0].bold && grid[0][0].fg == S.ansi16[2])
+        let png: Data
+        do { png = try render(grid) } catch { _ = try? await tmux.run(["kill-server"]); throw error }
         _ = try? await tmux.run(["kill-server"])
         let (w, h) = try size(png)
         // capture-pane ends with a newline, so Go's parser adds an empty seventh row too.

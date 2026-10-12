@@ -1,7 +1,4 @@
 import Foundation
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
 
 /// The OS services the shared engine and CLI need. Everything here behaves
 /// differently per OS; everything else in TaskSquadCore is the same source on
@@ -17,8 +14,8 @@ public protocol PlatformServices: Sendable {
     func makeHTTPListener(port: UInt16, bodyLimit: Int, handler: @escaping LocalHTTPServer.Handler) throws -> any LocalHTTPListener
     /// The OS secret store Go's go-keyring uses for the same service name.
     func credentialStore(service: String) -> any CredentialStore
-    /// Go's tmux pane PNG (packages/daemon/screenshot).
-    func screenshot(session: String, scrollbackLines: Int, tmux: TmuxConnection) async throws -> Data
+    /// Rasterizes a captured pane to PNG in Go's cells (packages/daemon/screenshot render.go).
+    func renderScreenshot(_ grid: [[TerminalScreenshot.Cell]]) throws -> Data
     /// An open WebSocket, or nil when it can't be created.
     func dialWebSocket(_ request: URLRequest) -> (any WebSocketConnection)?
     /// Run-on-login registration for the headless daemon.
