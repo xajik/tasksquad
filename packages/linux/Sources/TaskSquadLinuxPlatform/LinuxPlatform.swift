@@ -76,6 +76,8 @@ final class URLSessionWebSocket: NSObject, WebSocketConnection, URLSessionWebSoc
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) { settle(true) }
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) { settle(false) }
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
+                    didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) { settle(false) }
 
     private func settle(_ open: Bool) {
         let ready = lock.withLock { () -> [CheckedContinuation<Void, Error>] in
