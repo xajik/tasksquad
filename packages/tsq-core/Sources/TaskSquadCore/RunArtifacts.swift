@@ -4,9 +4,21 @@ import Foundation
 /// task journals while each run log is truncated just as in the Go daemon.
 /// Go's time formats, so files either daemon writes parse in the other.
 public enum GoTime {
+    /// time.Local for this process.
+    public static var local: TimeZone { local(environment: ProcessInfo.processInfo.environment) }
+
+    /// Go's initLocal: TZ unset is the system zone; TZ="" or a zone Go cannot load
+    /// is UTC; a leading ":" is dropped and a zoneinfo path names its zone.
+    public static func local(environment: [String: String]) -> TimeZone {
+        guard var tz = environment["TZ"] else { return .current }
+        if tz.hasPrefix(":") { tz.removeFirst() }
+        if tz.hasPrefix("/"), let range = tz.range(of: "/zoneinfo/") { tz = String(tz[range.upperBound...]) }
+        return TimeZone(identifier: tz).flatMap { tz.isEmpty ? nil : $0 } ?? TimeZone(identifier: "UTC")!
+    }
+
     /// time.RFC3339 in local time, e.g. 2026-10-11T22:10:00+08:00 (Z in UTC).
     /// ISO8601FormatStyle writes +0800, which Go's RFC3339 parser rejects.
-    public static func rfc3339(_ date: Date, timeZone: TimeZone = .current) -> String {
+    public static func rfc3339(_ date: Date, timeZone: TimeZone = GoTime.local) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)

@@ -89,7 +89,7 @@ public struct CLIContext: Sendable {
     public var home: URL { URL(fileURLWithPath: environment["HOME"] ?? FileManager.default.homeDirectoryForCurrentUser.path) }
     public var paths: TaskSquadPaths { TaskSquadPaths(home: home) }
     /// Go formats local times with $TZ from its environment.
-    public var timeZone: TimeZone { environment["TZ"].flatMap { TimeZone(identifier: $0) } ?? .current }
+    public var timeZone: TimeZone { GoTime.local(environment: environment) }
     /// Go execs the bare `tmux` on PATH against the default server.
     public var tmux: TmuxConnection {
         TmuxConnection(executable: ExecutableLocator.find("tmux", environment: environment) ?? "tmux", environment: environment)

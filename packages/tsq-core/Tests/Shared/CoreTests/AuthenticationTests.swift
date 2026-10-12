@@ -73,6 +73,9 @@ private actor SuspendedMint: HTTPTransport {
         XCTAssertEqual(requests[1].url?.absoluteString, "https://worker.example/api/auth/cli-token")
         XCTAssertEqual(requests[1].value(forHTTPHeaderField: "Authorization"), "Bearer fresh-id")
         XCTAssertEqual(String(data: requests[1].httpBody!, encoding: .utf8), "{}")
+        // Go: time.UnixMilli(expires_at).Format(time.RFC3339) and time.Now().Add(…).Format(time.RFC3339), local time.
+        XCTAssertEqual(try store.read(.cliTokenExpiry), GoTime.rfc3339(Date(timeIntervalSince1970: 1_900_000_000)))
+        XCTAssertEqual(try store.read(.expiry), GoTime.rfc3339(now.addingTimeInterval(3600)))
     }
 
     func testMintFailureFallsBackToValidFirebase() async throws {

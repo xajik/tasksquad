@@ -110,6 +110,11 @@ func run() error {
             out["initial_prompt_args"] = initial.InitialPromptArgs(prompt)
         }
         return json.NewEncoder(os.Stdout).Encode(out)
+    case "rfc3339":
+        // rfc3339 <unix seconds>: time.Local (from $TZ) formatted as Go writes timestamps.
+        var seconds int64
+        fmt.Sscanf(os.Args[2], "%d", &seconds)
+        fmt.Print(time.Unix(seconds, 0).Format(time.RFC3339))
     case "json":
         // json <indent>: stdin → json.Unmarshal into any → json.MarshalIndent (Marshal when indent is "").
         data, err := io.ReadAll(os.Stdin)

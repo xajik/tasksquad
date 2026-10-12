@@ -34,4 +34,28 @@ final class TaskLogGoldenTests: PlatformTestCase {
         XCTAssertEqual(GoTime.rfc3339(date, timeZone: try XCTUnwrap(TimeZone(identifier: "America/New_York"))), "2026-10-11T10:10:00-04:00")
         XCTAssertEqual(GoTime.rfc3339(date, timeZone: try XCTUnwrap(TimeZone(identifier: "UTC"))), "2026-10-11T14:10:00Z")
     }
+
+    /// time.Local follows $TZ the way Go's initLocal does, including its UTC fallbacks.
+    func testLocalZoneFollowsGoTZRules() throws {
+        let oracle = try goOracle()
+        let seconds = 1_791_727_800
+        let base = ProcessInfo.processInfo.environment.filter { $0.key != "TZ" }
+        let values: [String?] = [nil, "", "UTC", "Asia/Kolkata", ":Asia/Singapore", "America/New_York", "Bogus/Zone",
+                                 "/usr/share/zoneinfo/Asia/Kolkata"]
+        for value in values {
+            var environment = base
+            environment["TZ"] = value
+            let process = Process()
+            process.executableURL = oracle
+            process.arguments = ["rfc3339", String(seconds)]
+            process.environment = environment
+            let output = Pipe()
+            process.standardOutput = output
+            try process.run()
+            let go = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            process.waitUntilExit()
+            let swift = GoTime.rfc3339(Date(timeIntervalSince1970: TimeInterval(seconds)), timeZone: GoTime.local(environment: environment))
+            XCTAssertEqual(swift, go, "TZ=\(value ?? "<unset>")")
+        }
+    }
 }

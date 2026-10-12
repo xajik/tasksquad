@@ -121,7 +121,7 @@ actor Dreamer {
     // MARK: Eligibility (Go: maybeDream)
 
     static func today(_ date: Date) -> String {
-        date.formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day().dateSeparator(.dash))
+        date.formatted(Date.ISO8601FormatStyle(timeZone: GoTime.local).year().month().day().dateSeparator(.dash))
     }
 
     func maybeDream(_ agent: DreamAgent) async {
@@ -179,7 +179,7 @@ actor Dreamer {
 
     /// FNV-1a 64 of agentID+date seeds Go's math/rand: the same (agent, date) always picks
     /// the same second in [start, end) — on both daemons, across restarts.
-    static func triggerTime(agentID: String, date: String, windowStart: String, windowEnd: String, timeZone: TimeZone = .current) -> Date {
+    static func triggerTime(agentID: String, date: String, windowStart: String, windowEnd: String, timeZone: TimeZone = GoTime.local) -> Date {
         func clock(_ value: String, _ fallback: String) -> (Int, Int) {
             let parts = value.split(separator: ":")
             if parts.count == 2, (1...2).contains(parts[0].count), parts[1].count == 2, let h = Int(parts[0]), let m = Int(parts[1]), (0..<24).contains(h), (0..<60).contains(m) { return (h, m) }

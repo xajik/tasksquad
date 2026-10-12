@@ -137,5 +137,6 @@ public actor Authentication {
         parser.formatOptions.insert(.withFractionalSeconds)
         return parser.date(from: value)
     }
-    private static func format(_ date: Date) -> String { ISO8601DateFormatter().string(from: date) }
+    /// Go stores expiry.Format(time.RFC3339): local time, whole seconds.
+    private static func format(_ date: Date) -> String { GoTime.rfc3339(date) }
 }

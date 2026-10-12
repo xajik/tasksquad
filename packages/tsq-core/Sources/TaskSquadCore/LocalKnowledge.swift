@@ -110,7 +110,7 @@ public enum LocalKnowledge {
 
     /// `.tsq/memory/<category>/<date>-<slug>[-N].md` with frontmatter (Go: memory.WriteLocal).
     public static func writeMemory(workDir: String, category: String, title: String, content: String, tags: [String], now: Date = Date(),
-                                   timeZone: TimeZone = .current) throws -> String {
+                                   timeZone: TimeZone = GoTime.local) throws -> String {
         let dir = (workDir as NSString).appendingPathComponent(".tsq/memory/\(category)")
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let date = now.formatted(Date.ISO8601FormatStyle(timeZone: timeZone).year().month().day().dateSeparator(.dash))
