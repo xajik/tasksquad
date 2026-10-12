@@ -1,0 +1,38 @@
+name: tsq-core Linux
+
+# tsq-core is the same source on macOS and Linux. Until packages/linux supplies
+# the Linux platform layer (and runs Tests/Shared), this keeps the core and CLI
+# compiling on Linux so macOS work cannot silently break the port.
+
+on:
+  pull_request:
+    paths:
+      - 'packages/tsq-core/**'
+      - 'packages/mobile/TaskSquadPortal/Package.swift'
+      - 'packages/mobile/TaskSquadPortal/Sources/TaskSquadPortalAPI/**'
+      - '.github/workflows/tsq-core-linux.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/tsq-core/**'
+      - 'packages/mobile/TaskSquadPortal/Package.swift'
+      - 'packages/mobile/TaskSquadPortal/Sources/TaskSquadPortalAPI/**'
+      - '.github/workflows/tsq-core-linux.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tsq-core-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container: swift:6.4.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build TaskSquadCore + TaskSquadCLI
+        run: swift build --package-path packages/tsq-core
