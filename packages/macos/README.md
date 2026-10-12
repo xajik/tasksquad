@@ -38,8 +38,10 @@ Changes saved in the configuration editor are changes to the same file that Go u
 ## Source layout
 
 - `TaskSquad`: SwiftUI window, menu bar, app lifecycle, command dispatch.
-- `TaskSquadCore`: actor-isolated engine/state/polling; POSIX subprocesses with exact Unicode argv and cancellation; Foundation configuration/filesystem support; Security credentials; CryptoKit encryption; URLSession transport/authentication/uploads; Network.framework loopback HTTP/login callback server.
-- `Tests/GoReference`: test-only oracle linked to the real `packages/daemon` configuration and crypto packages. No Go executable is bundled in the application.
+- `TaskSquadCore`, `TaskSquadCLI` (in `../tsq-core`): actor-isolated engine/state/polling, configuration, crypto (`swift-crypto`, which is CryptoKit on Apple platforms), URLSession transport/authentication/uploads and every `tsq` command. The same source builds for Linux; OS services come through `PlatformServices`.
+- `TaskSquadMacPlatform`: the macOS `PlatformServices` — posix_spawn subprocesses with exact Unicode argv and cancellation, Network.framework loopback HTTP/login callback server, Keychain through `/usr/bin/security`, CoreText screenshots, URLSession WebSockets, the LaunchAgent, `caffeinate`, and the config file watcher. Executables call `Platform.install(MacPlatform())` first.
+- `Tests/TaskSquadCoreTests`, `Tests/TaskSquadCLITests`: macOS-only tests plus `Shared/`, a link to `../tsq-core/Tests/Shared` (the suite every OS build runs).
+- `../tsq-core/Tests/GoReference`: test-only oracle linked to the real `packages/daemon` configuration and crypto packages. No Go executable is bundled in the application.
 
 ## Release tooling
 

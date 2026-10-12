@@ -1,8 +1,9 @@
 import XCTest
 @testable import TaskSquadCore
+@testable import TaskSquadMacPlatform
 
 /// Go autostart/power behaviour; Fixtures/launchagent-golden.plist is Go's autostart.Enable output (HOME=/tmp/tsq-plist-home).
-final class AppLifecycleTests: XCTestCase {
+final class AppLifecycleTests: PlatformTestCase {
     func testLaunchAgentPlistMatchesGoByteForByte() throws {
         let fixture = try XCTUnwrap(Bundle.module.url(forResource: "Fixtures", withExtension: nil)?.appendingPathComponent("launchagent-golden.plist"))
         let agent = LaunchAgent(home: URL(fileURLWithPath: "/tmp/tsq-plist-home"))
@@ -25,7 +26,7 @@ final class AppLifecycleTests: XCTestCase {
     }
 
     func testWakeLockRunsCaffeinateWhileHeld() throws {
-        let lock = WakeLock()
+        let lock = CaffeinateWakeLock()
         lock.acquire(); lock.acquire()
         XCTAssertTrue(lock.isHeld)
         lock.release()

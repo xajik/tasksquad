@@ -7,25 +7,27 @@ let package = Package(
     products: [
         .executable(name: "TaskSquad", targets: ["TaskSquad"]),
         .executable(name: "tsq", targets: ["tsq"]),
-        .library(name: "TaskSquadCore", targets: ["TaskSquadCore"]),
     ],
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", exact: "1.20.0"),
         .package(path: "../mobile/TaskSquadPortal"),
+        // Engine and CLI shared with the Linux build.
+        .package(path: "../tsq-core"),
     ],
     targets: [
-        .target(name: "TaskSquadCore", dependencies: [.product(name: "TaskSquadPortal", package: "TaskSquadPortal")],
-                resources: [.copy("Resources/Fonts")]),
-        .target(name: "TaskSquadCLI", dependencies: ["TaskSquadCore"]),
-        .executableTarget(name: "tsq", dependencies: ["TaskSquadCLI", "TaskSquadCore"]),
-        .executableTarget(name: "TaskSquad", dependencies: ["TaskSquadCore", "TaskSquadCLI", .product(name: "SwiftTerm", package: "SwiftTerm"),
+        // macOS implementations of `PlatformServices` (Network, Keychain, CoreText, launchd).
+        .target(name: "TaskSquadMacPlatform", dependencies: [.product(name: "TaskSquadCore", package: "tsq-core")], resources: [.copy("Resources/Fonts")]),
+        .executableTarget(name: "tsq", dependencies: [.product(name: "TaskSquadCLI", package: "tsq-core"), .product(name: "TaskSquadCore", package: "tsq-core"), "TaskSquadMacPlatform"]),
+        .executableTarget(name: "TaskSquad", dependencies: [.product(name: "TaskSquadCore", package: "tsq-core"), .product(name: "TaskSquadCLI", package: "tsq-core"), "TaskSquadMacPlatform",
+                                                             .product(name: "SwiftTerm", package: "SwiftTerm"),
                                                              .product(name: "TaskSquadPortal", package: "TaskSquadPortal"),
                                                              .product(name: "TaskSquadDesign", package: "TaskSquadPortal"),
                                                              .product(name: "TaskSquadPortalUI", package: "TaskSquadPortal")],
                           resources: [.copy("Resources")]),
-        .testTarget(name: "TaskSquadUITests", dependencies: ["TaskSquad", "TaskSquadCore", .product(name: "TaskSquadPortalUI", package: "TaskSquadPortal")]),
-        .testTarget(name: "TaskSquadCLITests", dependencies: ["TaskSquadCLI", "TaskSquadCore"]),
-        .testTarget(name: "TaskSquadCoreTests", dependencies: ["TaskSquadCore"],
-                    resources: [.copy("Fixtures")]),
+        .testTarget(name: "TaskSquadUITests", dependencies: ["TaskSquad", .product(name: "TaskSquadCore", package: "tsq-core"), "TaskSquadMacPlatform", .product(name: "TaskSquadPortalUI", package: "TaskSquadPortal")]),
+        .testTarget(name: "TaskSquadCLITests", dependencies: [.product(name: "TaskSquadCLI", package: "tsq-core"), .product(name: "TaskSquadCore", package: "tsq-core"), "TaskSquadMacPlatform"]),
+        // Core and CLI tests: Tests/*/Shared links to packages/tsq-core/Tests/Shared, run here on macOS services.
+        .testTarget(name: "TaskSquadCoreTests", dependencies: [.product(name: "TaskSquadCore", package: "tsq-core"), "TaskSquadMacPlatform", .product(name: "TaskSquadPortal", package: "TaskSquadPortal")],
+                    resources: [.copy("Shared/Fixtures")]),
     ]
 )

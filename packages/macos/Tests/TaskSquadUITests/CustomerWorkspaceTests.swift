@@ -41,7 +41,7 @@ private actor WorkspaceTransport: HTTPTransport {
     }
 }
 
-@MainActor final class CustomerWorkspaceTests: XCTestCase {
+@MainActor final class CustomerWorkspaceTests: PlatformTestCase {
     private func fixture(_ transport: WorkspaceTransport = .init()) -> CustomerWorkspaceModel {
         let defaults = UserDefaults(suiteName: "ai.tasksquad.customer-tests." + UUID().uuidString)!
         let api = CustomerAPI(baseURL: URL(string: "https://fixture.invalid")!, transport: transport) { _ in "fixture-token" }

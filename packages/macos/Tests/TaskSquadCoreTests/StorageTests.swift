@@ -1,8 +1,9 @@
 import XCTest
 import Darwin
 @testable import TaskSquadCore
+@testable import TaskSquadMacPlatform
 
-final class StorageTests: XCTestCase {
+final class StorageTests: PlatformTestCase {
     func testCredentialFormats() throws {
         XCTAssertEqual(try KeychainCredentialStore.decode(Data("go-keyring-base64:dHNxX3Rva2Vu".utf8)), "tsq_token")
         XCTAssertEqual(try KeychainCredentialStore.decode(Data("go-keyring-encoded:7473715f746f6b656e".utf8)), "tsq_token")

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import TaskSquadCore
+import TaskSquadMacPlatform
 import TaskSquadDesign
 
 @MainActor final class ControlPanelModel: ObservableObject {
@@ -21,7 +22,7 @@ import TaskSquadDesign
     /// Menu "Pause Pulling": stops new task pickup and lets the Mac sleep (Go: ui.go toggle + wakelock).
     @Published var pullingPaused = false
     @Published var runOnLogin = LaunchAgent().isEnabled
-    private let wakeLock = WakeLock()
+    private let wakeLock = CaffeinateWakeLock()
     var configurationRestartRequired: Bool { engineRunning && appliedDocument != nil && appliedDocument != savedDocument }
     @Published var agentSnapshots: [AgentSnapshot] = []
     @Published var observedAgents: [ObservedAgent] = []

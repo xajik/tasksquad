@@ -1,6 +1,7 @@
 import Charts
 import SwiftUI
 import TaskSquadCore
+import TaskSquadPortal
 
 /// Project statistics, mirroring the web Analytics page (GET /teams/:id/stats).
 struct CustomerAnalytics: View {

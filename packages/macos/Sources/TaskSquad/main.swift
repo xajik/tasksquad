@@ -4,7 +4,9 @@ import SwiftUI
 import TaskSquadCLI
 import TaskSquadCore
 import TaskSquadDesign
+import TaskSquadMacPlatform
 
+Platform.install(MacPlatform())
 if let locale = setlocale(LC_CTYPE, ""), ["C", "POSIX"].contains(String(cString: locale)) {
     // Finder can launch without LANG. Terminal wcwidth still needs UTF-8.
     setlocale(LC_CTYPE, "en_US.UTF-8")

@@ -1,10 +1,11 @@
 import ImageIO
 import XCTest
 @testable import TaskSquadCore
+@testable import TaskSquadMacPlatform
 
 /// Ported from packages/daemon/screenshot/{sgr,render}_test.go, plus a real tmux capture.
-final class TerminalScreenshotTests: XCTestCase {
-    typealias S = TerminalScreenshot
+final class TerminalScreenshotTests: PlatformTestCase {
+    typealias S = MacTerminalScreenshot
 
     func testPlainTextPadsWithDefaults() {
         let grid = S.parseGrid("hi", columns: 4)

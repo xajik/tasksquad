@@ -1,9 +1,11 @@
 import Foundation
 import TaskSquadCLI
 import TaskSquadCore
+import TaskSquadMacPlatform
 
 // The standalone `tsq` command-line build: Go's `tsq` subcommands, and with no
 // subcommand the headless daemon. No AppKit or SwiftUI is linked.
+Platform.install(MacPlatform())
 TaskSquadPaths.prepareEnvironment()
 let arguments = Array(CommandLine.arguments.dropFirst())
 // Inside TaskSquad.app the bundle's Info.plist carries the release version.

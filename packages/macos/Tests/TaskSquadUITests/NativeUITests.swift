@@ -3,9 +3,10 @@ import SwiftUI
 import XCTest
 @testable import TaskSquad
 @testable import TaskSquadCore
+import TaskSquadPortal
 import TaskSquadPortalUI
 
-@MainActor final class NativeUITests: XCTestCase {
+@MainActor final class NativeUITests: PlatformTestCase {
     func testNativeSnapshotsOwnTerminalsAndClearFinishedSessions() {
         let model = ControlPanelModel(loadSavedAccount: false)
         model.applyNativeSnapshots([AgentSnapshot(id: "a", name: "A", mode: .waitingInput, taskID: "t", sessionID: "s")])

@@ -1,7 +1,8 @@
 import XCTest
 @testable import TaskSquadCore
+@testable import TaskSquadMacPlatform
 
-@MainActor final class KeychainIntegrationTests: XCTestCase {
+@MainActor final class KeychainIntegrationTests: PlatformTestCase {
     func testGoAndSwiftReadEachOthersKeychainUpdates() async throws {
         guard ProcessInfo.processInfo.environment["TSQ_TEST_KEYCHAIN"] == "1",
               let oracle = ProcessInfo.processInfo.environment["TSQ_GO_ORACLE"] else {

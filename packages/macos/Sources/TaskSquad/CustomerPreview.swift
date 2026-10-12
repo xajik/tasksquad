@@ -1,6 +1,7 @@
 #if DEBUG
 import SwiftUI
 import TaskSquadCore
+import TaskSquadPortal
 
 /// A disposable native preview: no Keychain, daemon, or network access. The
 /// separate preview bundle identifier also isolates window/user preferences.

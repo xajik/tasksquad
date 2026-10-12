@@ -1,5 +1,6 @@
 import XCTest
 @testable import TaskSquadCore
+import TaskSquadPortal
 
 private actor CustomerTransport: HTTPTransport {
     var requests: [URLRequest] = []
@@ -12,7 +13,7 @@ private actor CustomerTransport: HTTPTransport {
     }
 }
 
-final class CustomerAPITests: XCTestCase, @unchecked Sendable {
+final class CustomerAPITests: PlatformTestCase, @unchecked Sendable {
     func testCustomerRequestsEncodeScopeAndNeverCarryDaemonAgentHeader() async throws {
         let transport = CustomerTransport([.init(data: Data(#"{"notes":[]}"#.utf8), status: 200)])
         let api = CustomerAPI(baseURL: URL(string: "https://worker.example/api/")!, transport: transport) { _ in "user-token" }

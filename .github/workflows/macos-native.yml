@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'packages/macos/**'
+      - 'packages/tsq-core/**'
       - 'packages/daemon/**'
       - 'packages/mobile/**'
       - '.github/workflows/macos-native.yml'
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - 'packages/macos/**'
+      - 'packages/tsq-core/**'
       - 'packages/daemon/**'
       - 'packages/mobile/**'
       - '.github/workflows/macos-native.yml'
@@ -57,7 +59,7 @@ jobs:
         run: |
           make install
           "$APP_DIR/TaskSquad Native.app/Contents/MacOS/TaskSquad" --version
-          "$APP_DIR/TaskSquad Native.app/Contents/MacOS/TaskSquad" --check-config Tests/TaskSquadCoreTests/Fixtures/full.toml
+          "$APP_DIR/TaskSquad Native.app/Contents/MacOS/TaskSquad" --check-config ../tsq-core/Tests/Shared/CoreTests/Fixtures/full.toml
       - name: Package development artifact
         run: make package
       - uses: actions/upload-artifact@v4

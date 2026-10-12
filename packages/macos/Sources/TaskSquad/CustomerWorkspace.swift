@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import TaskSquadCore
+import TaskSquadPortal
 import TaskSquadDesign
 import TaskSquadPortalUI
 

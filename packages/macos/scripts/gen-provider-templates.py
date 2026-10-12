@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerates Sources/TaskSquadCore/ProviderTemplates.swift from the Go
+"""Regenerates ../tsq-core/Sources/TaskSquadCore/ProviderTemplates.swift from the Go
 provider templates (packages/daemon/provider/{opencode,pi}.go) so the files
 both daemons write into work directories stay byte-identical.
 
@@ -58,4 +58,4 @@ source = (
 }
 """
 )
-open(os.path.join(ROOT, "Sources", "TaskSquadCore", "ProviderTemplates.swift"), "w").write(source)
+open(os.path.join(ROOT, "..", "tsq-core", "Sources", "TaskSquadCore", "ProviderTemplates.swift"), "w").write(source)

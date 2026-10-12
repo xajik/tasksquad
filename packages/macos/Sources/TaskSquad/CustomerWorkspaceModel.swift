@@ -3,6 +3,8 @@ import Combine
 import CryptoKit
 import SwiftUI
 import TaskSquadCore
+import TaskSquadPortal
+import TaskSquadMacPlatform
 import UserNotifications
 
 typealias CustomerSection = WorkspaceSection

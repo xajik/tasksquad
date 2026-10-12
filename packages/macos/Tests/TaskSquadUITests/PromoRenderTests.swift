@@ -46,7 +46,7 @@ private actor SampleTransport: HTTPTransport {
 
 /// Renders launch screenshots of the real macOS windows from the sample workspace.
 /// Runs only from `launch/media/native/capture.sh`, which sets `TSQ_UI_ARTIFACTS` and either `TSQ_PROMO_API` or `TSQ_PROMO_SEED`.
-@MainActor final class PromoRenderTests: XCTestCase {
+@MainActor final class PromoRenderTests: PlatformTestCase {
     func testRenderLaunchScreens() async throws {
         let env = ProcessInfo.processInfo.environment
         guard let directory = env["TSQ_UI_ARTIFACTS"], env["TSQ_PROMO_API"] != nil || env["TSQ_PROMO_SEED"] != nil else {

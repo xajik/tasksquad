@@ -1,5 +1,6 @@
 import SwiftUI
 import TaskSquadCore
+import TaskSquadPortal
 
 struct CustomerNoteDetail: View {
     @ObservedObject var model: CustomerWorkspaceModel

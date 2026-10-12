@@ -22,8 +22,8 @@ lipo "$cli" -verify_arch ${ARCHS:-$(lipo -archs "$binary")}
 ! otool -L "$cli" | grep -qiE 'AppKit|SwiftUI' || { echo "tsq must not link UI frameworks" >&2; exit 1; }
 "$cli" --version
 "$cli" sessions > /dev/null
-"$binary" --check-config Tests/TaskSquadCoreTests/Fixtures/full.toml > /dev/null
-if "$binary" --check-config Tests/TaskSquadCoreTests/Fixtures/invalid-type.toml 2>/dev/null; then
+"$binary" --check-config ../tsq-core/Tests/Shared/CoreTests/Fixtures/full.toml > /dev/null
+if "$binary" --check-config ../tsq-core/Tests/Shared/CoreTests/Fixtures/invalid-type.toml 2>/dev/null; then
     echo "App accepted invalid configuration" >&2
     exit 1
 fi

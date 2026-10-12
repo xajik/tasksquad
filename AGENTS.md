@@ -13,16 +13,17 @@ packages/
   daemon/   Go — `tsq`, the daemon users install (CLI + Go macOS menu-bar app). Linux/production reference implementation.
   worker/   TypeScript — Cloudflare Worker API (D1, R2, KV, Durable Objects). Every client talks to this.
   portal/   TypeScript/React — web portal at tasksquad.ai (Vite + Tailwind v4 + shadcn/Radix, Cloudflare Pages)
-  macos/    Swift — native macOS app = daemon engine + portal UI in one process ("TaskSquad Native.app")
+  tsq-core/ Swift — daemon engine + `tsq` CLI (TaskSquadCore, TaskSquadCLI): identical source on macOS and Linux
+  macos/    Swift — native macOS app = tsq-core engine + macOS platform layer + portal UI in one process ("TaskSquad Native.app")
   ios/      Swift — iOS portal app (XcodeGen project; no daemon)
   mobile/TaskSquadPortal/  Swift package shared by ios/ and macos/: portal API client, workspace store, terminal session
 ```
 
 How the pieces relate:
 
-- **Two daemons.** `packages/daemon` (Go) is the shipping daemon and the compatibility oracle. `packages/macos` is an independent Swift reimplementation of the daemon (`TaskSquadCore`: engine, polling, providers, tmux, credentials, crypto) **plus** a native portal UI (`TaskSquad` target: `Customer*.swift` files mirror the web portal's sections). It is still work in progress — see `packages/macos/COMPATIBILITY.md` for parity gates. Do not retire or diverge from Go behaviour based on the Swift build.
-- **Both daemons share on-disk state**: `~/.tasksquad/config.toml`, `device-id`, `daemon.lock` (BSD `flock`, never unlink it), `logs/`, `tasks/`, and the login Keychain service `tasksquad-daemon`. Swift must write values the Go daemon can read. `make test-compatibility` builds `macos/Tests/GoReference` against the real Go config/crypto packages to verify this.
-- **Three portal clients** — web (`portal/`), macOS (`macos/Sources/TaskSquad/Customer*`), iOS (`ios/`) — all hit the same worker API. The two Swift clients share `mobile/TaskSquadPortal` (both `packages/ios/project.yml` and `packages/macos/Package.swift` reference it by path), so changes there affect both apps. The package has three products — `TaskSquadPortal` (API, stores, policy), `TaskSquadDesign` (tokens, icons) and `TaskSquadPortalUI` (shared SwiftUI). The iOS/macOS unification is in progress; `packages/mobile/TaskSquadPortal/MIGRATION.md` tracks status and resume steps.
+- **Two daemons.** `packages/daemon` (Go) is the shipping daemon and the compatibility oracle. `packages/tsq-core` is an independent Swift reimplementation of the daemon (`TaskSquadCore`: engine, polling, providers, tmux, crypto; `TaskSquadCLI`: every `tsq` command). It has no OS-specific code: anything that differs per OS (process spawn, loopback HTTP, secret store, screenshots, WebSocket, autostart, wake lock) goes through `PlatformServices` (`Platform.swift`), which each OS layer installs at launch — `packages/macos/Sources/TaskSquadMacPlatform` for macOS. Its tests live in `tsq-core/Tests/Shared` and are compiled by the OS package through the `Tests/*/Shared` symlinks. `packages/macos` adds that platform layer **plus** a native portal UI (`TaskSquad` target: `Customer*.swift` files mirror the web portal's sections). It is still work in progress — see `packages/macos/COMPATIBILITY.md` for parity gates. Do not retire or diverge from Go behaviour based on the Swift build.
+- **Both daemons share on-disk state**: `~/.tasksquad/config.toml`, `device-id`, `daemon.lock` (BSD `flock`, never unlink it), `logs/`, `tasks/`, and the login Keychain service `tasksquad-daemon`. Swift must write values the Go daemon can read. `make test-compatibility` (in `packages/macos`) builds `tsq-core/Tests/GoReference` against the real Go config/crypto packages to verify this.
+- **Three portal clients** — web (`portal/`), macOS (`macos/Sources/TaskSquad/Customer*`), iOS (`ios/`) — all hit the same worker API. The two Swift clients share `mobile/TaskSquadPortal` (both `packages/ios/project.yml` and `packages/macos/Package.swift` reference it by path), so changes there affect both apps. The package has four products — `TaskSquadPortalAPI` (HTTP transport + `JSONValue`, plain Foundation, used by tsq-core), `TaskSquadPortal` (API, stores, policy), `TaskSquadDesign` (tokens, icons) and `TaskSquadPortalUI` (shared SwiftUI). The iOS/macOS unification is in progress; `packages/mobile/TaskSquadPortal/MIGRATION.md` tracks status and resume steps.
 - **`DESIGN.md`** at the repo root is the shared design spec (colors, type, spacing, radius, light + dark themes) for every UI. Web tokens live in `portal/src/index.css`; macOS tokens in `macos/Sources/TaskSquad/Design/Theme.swift`.
 
 ## Commands
@@ -71,7 +72,7 @@ GitHub Actions, gated by path filters — a commit only triggers workflows for p
 - **Worker** (`deploy-worker.yml`, push to `main` on `packages/worker/**`) → `wrangler deploy`. Apply D1 migrations (`make migrate`) **before** pushing worker code that depends on them.
 - **Portal** (`portal.yml`, `packages/portal/**`) → build then `wrangler pages deploy`. **Any TypeScript error fails the deploy silently** — the site keeps serving the previous build. Always run `bun run build` locally before trusting a portal change is live.
 - **Go daemon** (`daemon.yml`) → GoReleaser on `v*` tag push only. Merging to `main` does not reach installed `tsq` binaries until a tag is cut.
-- **macOS native** (`macos-native.yml` on PR/push for `packages/macos/**` or `packages/daemon/**`; preview/stable are manual `workflow_dispatch` with `X.Y.Z-preview.N` / `X.Y.Z`) → separate `macos-v*` releases. They never touch Go `v*` releases or the Homebrew cask.
+- **macOS native** (`macos-native.yml` on PR/push for `packages/macos/**`, `packages/tsq-core/**`, `packages/mobile/**` or `packages/daemon/**`; preview/stable are manual `workflow_dispatch` with `X.Y.Z-preview.N` / `X.Y.Z`) → separate `macos-v*` releases. They never touch Go `v*` releases or the Homebrew cask.
 - **iOS** has no CI deploy.
 
 ## Architecture facts worth knowing before touching daemon↔worker↔client code
