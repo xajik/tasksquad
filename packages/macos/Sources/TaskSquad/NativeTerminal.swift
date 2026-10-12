@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import TaskSquadCore
+import TaskSquadMacPlatform
 
 struct NativeTerminal: NSViewRepresentable {
     let screen: TerminalScreen

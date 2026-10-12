@@ -1,5 +1,6 @@
 import XCTest
 @testable import TaskSquadCore
+@testable import TaskSquadMacPlatform
 
 @MainActor final class TmuxIntegrationTests: PlatformTestCase {
     private func connection() throws -> TmuxConnection {

@@ -12,7 +12,5 @@
 @_exported import FoundationNetworking
 #endif
 
-/// POSIX read/write/open, for code inside types that shadow those names.
-func posixRead(_ fd: Int32, _ buffer: UnsafeMutableRawPointer?, _ count: Int) -> Int { read(fd, buffer, count) }
-func posixWrite(_ fd: Int32, _ buffer: UnsafeRawPointer?, _ count: Int) -> Int { write(fd, buffer, count) }
+/// POSIX open, for code inside types that shadow the name.
 func posixOpen(_ path: String, _ flags: Int32) -> Int32 { open(path, flags) }

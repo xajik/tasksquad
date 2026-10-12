@@ -1,4 +1,5 @@
 import Foundation
+import TaskSquadCore
 
 public enum TerminalColor: Sendable, Equatable { case indexed(Int), rgb(Int, Int, Int) }
 public struct TerminalStyle: Sendable, Equatable {

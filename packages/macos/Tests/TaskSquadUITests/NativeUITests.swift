@@ -3,6 +3,7 @@ import SwiftUI
 import XCTest
 @testable import TaskSquad
 @testable import TaskSquadCore
+import TaskSquadMacPlatform
 import TaskSquadPortal
 import TaskSquadPortalUI
 
