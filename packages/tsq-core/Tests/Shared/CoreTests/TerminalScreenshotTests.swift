@@ -49,12 +49,7 @@ final class TerminalScreenshotTests: PlatformTestCase {
         return (be(16), be(20))
     }
 
-    private func render(_ grid: [[S.Cell]]) throws -> Data {
-        do { return try Platform.current.renderScreenshot(grid) }
-        catch where "\(error)".contains("not supported on Linux yet") {
-            throw XCTSkip("LinuxPlatform has no PNG renderer yet (Go renders one on Linux): port packages/daemon/screenshot")
-        }
-    }
+    private func render(_ grid: [[S.Cell]]) throws -> Data { try Platform.current.renderScreenshot(grid) }
 
     func testRenderDimensionsMatchGoCells() throws {
         let (w, h) = try size(try render(S.parseGrid("hi\nyo", columns: 2)))

@@ -14,7 +14,11 @@ let package = Package(
         .package(path: "../tsq-core"),
     ],
     targets: [
-        .target(name: "TaskSquadLinuxPlatform", dependencies: [.product(name: "TaskSquadCore", package: "tsq-core")]),
+        // Fonts -> packages/daemon/screenshot/assets (the files Go embeds), compiled in so the
+        // static binary needs no resource bundle.
+        .target(name: "TaskSquadLinuxPlatform", dependencies: [.product(name: "TaskSquadCore", package: "tsq-core")],
+                exclude: ["Fonts/OFL.txt"],
+                resources: [.embedInCode("Fonts/JetBrainsMono-Regular.ttf"), .embedInCode("Fonts/JetBrainsMono-Bold.ttf")]),
         .executableTarget(name: "tsq", dependencies: [.product(name: "TaskSquadCLI", package: "tsq-core"),
                                                     .product(name: "TaskSquadCore", package: "tsq-core"), "TaskSquadLinuxPlatform"]),
         .testTarget(name: "TaskSquadCoreTests", dependencies: [.product(name: "TaskSquadCore", package: "tsq-core"), "TaskSquadLinuxPlatform"],

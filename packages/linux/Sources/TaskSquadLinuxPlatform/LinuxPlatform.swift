@@ -27,10 +27,7 @@ public struct LinuxPlatform: PlatformServices {
 
     public func credentialStore(service: String) -> any CredentialStore { SecretServiceCredentialStore(service: service) }
 
-    public func renderScreenshot(_ grid: [[TerminalScreenshot.Cell]]) throws -> Data {
-        // TODO(linux): port Go's PNG renderer (packages/daemon/screenshot); Go renders on Linux too.
-        throw ConfigurationError("terminal screenshots are not supported on Linux yet")
-    }
+    public func renderScreenshot(_ grid: [[TerminalScreenshot.Cell]]) throws -> Data { try LinuxTerminalScreenshot.render(grid) }
 
     public func dialWebSocket(_ request: URLRequest) -> (any WebSocketConnection)? { URLSessionWebSocket(request: request) }
 

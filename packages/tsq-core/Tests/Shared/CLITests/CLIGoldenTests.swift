@@ -141,9 +141,6 @@ final class CLIGoldenTests: PlatformTestCase {
         _ = try await tmux.run(["-f", "/dev/null", "new-session", "-d", "-s", "tsq-shot", "-x", "30", "-y", "4", "/bin/sh", "-c", "printf 'hi'; sleep 30"])
         let goOut = root.appendingPathComponent("go.png").path, swiftOut = root.appendingPathComponent("swift.png").path
         let g = try go(["screenshot", "tsq-shot", "--out", goOut]), s = await swift(["screenshot", "tsq-shot", "--out", swiftOut])
-        if s.2.contains("not supported on Linux yet") {
-            throw XCTSkip("LinuxPlatform has no PNG renderer yet (Go renders one on Linux): port packages/daemon/screenshot")
-        }
         XCTAssertEqual(g.0, 0); XCTAssertEqual(s.0, 0)
         XCTAssertEqual(g.1, goOut + "\n"); XCTAssertEqual(s.1, swiftOut + "\n")
         XCTAssertTrue(FileManager.default.fileExists(atPath: swiftOut))
