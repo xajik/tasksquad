@@ -4,7 +4,7 @@ import {
   authorizationErrorRedirect,
   type ConsentDescription,
 } from '@cloudflare/workers-oauth-provider'
-import type { Env, Props } from './env.js'
+import { apiFetch, type Env, type Props } from './env.js'
 
 // OAuth front door for MCP clients. TaskSquad has no session of its own here:
 // after per-client consent we hand the browser to the portal's existing PKCE
@@ -151,14 +151,14 @@ function home(env: Env, url: string): Response {
 <p><a href="${escapeHtml(env.PORTAL_BASE)}">Open TaskSquad</a></p>`), { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
 
-export function createAuthHandler(fetchImpl: typeof fetch = (i, init) => fetch(i, init)): ExportedHandler<Env> {
+export function createAuthHandler(fetchImpl?: typeof fetch): ExportedHandler<Env> {
   return {
     async fetch(req, env) {
       const url = new URL(req.url)
       try {
         if (url.pathname === '/oauth/authorize' && req.method === 'GET') return await authorizeGet(req, env)
         if (url.pathname === '/oauth/authorize' && req.method === 'POST') return await authorizePost(req, env)
-        if (url.pathname === '/oauth/callback' && req.method === 'GET') return await callback(req, env, fetchImpl)
+        if (url.pathname === '/oauth/callback' && req.method === 'GET') return await callback(req, env, fetchImpl ?? apiFetch(env))
         if (url.pathname === '/' && req.method === 'GET') return home(env, req.url)
         return new Response('Not found', { status: 404 })
       } catch (error) {

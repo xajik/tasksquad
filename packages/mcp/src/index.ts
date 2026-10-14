@@ -1,7 +1,7 @@
 import OAuthProvider from '@cloudflare/workers-oauth-provider'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { REFRESH_TOKEN_TTL, createAuthHandler } from './auth-handler.js'
-import type { Env, Props } from './env.js'
+import { apiFetch, type Env, type Props } from './env.js'
 import { publicOrigin } from './origin.js'
 import { buildServer } from './server.js'
 
@@ -10,7 +10,7 @@ import { buildServer } from './server.js'
 const mcpHandler: ExportedHandler<Env> = {
   async fetch(req, env, ctx) {
     const props = (ctx as ExecutionContext & { props: Props }).props
-    const server = buildServer(env, props, undefined, new URL(req.url).origin)
+    const server = buildServer(env, props, apiFetch(env), new URL(req.url).origin)
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
     await server.connect(transport)
     return transport.handleRequest(req)

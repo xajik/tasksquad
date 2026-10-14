@@ -9,6 +9,12 @@ compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 binding = "OAUTH_KV"
 id      = "b53c92574dd6439493bf210fa05bc196"
 
+# Worker API (packages/worker) over a service binding. The global_fetch_strictly_public flag
+# (needed for CIMD) would otherwise send API calls through the zone's bot challenge.
+[[services]]
+binding = "API"
+service = "tasksquad-api"
+
 [vars]
 # Public origin of this worker. Its /oauth/callback must be in the worker's MCP_REDIRECT_URIS.
 PUBLIC_URL  = "https://tasksquad-mcp.xajik0.workers.dev"
