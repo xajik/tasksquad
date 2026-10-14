@@ -45,6 +45,11 @@ codex mcp add tasksquad --url https://tasksquad.ai/mcp
 codex mcp login tasksquad
 ```
 
+**ChatGPT** — open the [TaskSquad plugin](https://chatgpt.com/plugins/plugin_asdk_app_6acef16012c4819196f4de152ef2ea03),
+install it and sign in. Then switch to **Work**, start a chat and type `@TaskSquad`. To add it by
+hand instead: ChatGPT → Plugins → **+** → *Add custom MCP server*, URL `https://tasksquad.ai/mcp`,
+authentication **OAuth**, client registration **CIMD** (or DCR).
+
 **Other clients** — add a remote (Streamable HTTP) server with the URL above. The client
 discovers the OAuth endpoints on its own; there is no API key to paste.
 
@@ -73,6 +78,7 @@ expired — reconnect the MCP server"* and the client asks you to sign in again.
 | Skills, sub-agents, commands | `list_library`, `get_library_item`, `create_library_item`, `update_library_item` |
 | Memory | `list_memory`, `get_memory`, `list_memory_rollups`, `list_tags` |
 | Planner | `list_planners`, `get_planner`, `create_planner`, `update_planner` |
+| Monitor | `open_monitor` — in ChatGPT and other MCP Apps hosts, shows a live view of agents and of tasks that need input, are running, queued or recently finished |
 | Portals & terminal | `list_portals`, `get_portal`, `open_portal`, `close_portal`, `read_live_terminal`, `send_terminal_input` |
 
 ```screenshot

@@ -4,7 +4,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { trackEvent } from '../lib/analytics'
 import Header from '../components/Header'
 import { useRouteMeta } from '../lib/useRouteMeta'
-import { MACOS_DOWNLOAD_URL } from '../lib/downloads'
+import { CHATGPT_PLUGIN_URL, MACOS_DOWNLOAD_URL, MCP_SERVER_URL } from '../lib/downloads'
 
 const HOW_IT_WORKS = [
   'Create a team and a project for each codebase — add agents and invite teammates.',
@@ -146,6 +146,46 @@ export default function Landing() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="mt-16 sm:mt-24">
+        <h2 className="text-2xl font-bold mb-2">Use it from ChatGPT, Claude, and any MCP client</h2>
+        <p className="text-muted-foreground mb-6">
+          Send tasks, check on your agents, and answer their questions without leaving your assistant.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="rounded-lg border p-5 flex flex-col">
+            <h3 className="font-semibold mb-1">ChatGPT plugin</h3>
+            <p className="text-muted-foreground text-sm mb-4 flex-1">
+              Install TaskSquad in ChatGPT, sign in once, and type @TaskSquad in a Work chat.
+            </p>
+            <a
+              href={CHATGPT_PLUGIN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => trackEvent('cta_clicked', { label: 'chatgpt_plugin' })}
+              className={`${buttonVariants({ variant: 'outline' })} w-full sm:w-auto self-start`}
+            >
+              Add to ChatGPT →
+            </a>
+          </div>
+          <div className="rounded-lg border p-5 flex flex-col">
+            <h3 className="font-semibold mb-1">MCP server</h3>
+            <p className="text-muted-foreground text-sm mb-3">
+              Claude Code, Codex, Cursor, Claude Desktop: add a remote server and sign in with OAuth.
+            </p>
+            <div className="bg-muted rounded-md px-3 py-2 mb-4 overflow-x-auto max-w-full">
+              <code className="text-xs sm:text-sm">{MCP_SERVER_URL}</code>
+            </div>
+            <Link
+              to="/docs/api/mcp"
+              onClick={() => trackEvent('cta_clicked', { label: 'mcp_docs' })}
+              className="text-sm underline self-start"
+            >
+              Connect your client →
+            </Link>
+          </div>
+        </div>
       </section>
 
       <section className="mt-16 sm:mt-24">

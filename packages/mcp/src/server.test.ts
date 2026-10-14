@@ -86,8 +86,11 @@ describe('TaskSquad MCP server', () => {
     await client.listTools()
     const raw = sent.map(m => (m as { result?: { tools?: Array<Record<string, unknown>> } }).result?.tools).find(Boolean)!
     expect(raw.length).toBeGreaterThan(0)
-    for (const t of raw) expect(t.securitySchemes).toEqual([{ type: 'oauth2' }])
-    expect(raw.find(t => t.name === 'whoami')!._meta).toEqual({ 'openai/profile': true })
+    for (const t of raw) {
+      expect(t.securitySchemes).toEqual([{ type: 'oauth2' }])
+      expect((t._meta as Record<string, unknown>).securitySchemes).toEqual([{ type: 'oauth2' }])
+    }
+    expect((raw.find(t => t.name === 'whoami')!._meta as Record<string, unknown>)['openai/profile']).toBe(true)
   })
 
   it('returns objects and arrays as structuredContent too', async () => {

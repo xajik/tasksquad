@@ -31,7 +31,7 @@ cd launch/openai-plugin && zip -r ../tasksquad-openai-plugin-1.0.0.zip . -x '.*'
   when the stored TaskSquad token is rejected, `openai/profile` on `whoami`, CIMD enabled
   alongside DCR, `structuredContent` on object/array results.
 - Destructive, membership and credential tools always return "do this in the portal".
-- `/privacy` and `/terms` pages exist.
+- `/policy` and `/terms` pages exist.
 
 ## Must do before submitting
 

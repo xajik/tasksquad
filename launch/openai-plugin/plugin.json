@@ -20,6 +20,7 @@
         "developerName": "TaskSquad",
         "category": "Productivity",
         "capabilities": [
+          "Live monitor of agents and tasks needing input",
           "List projects, agents and tasks",
           "Send tasks to AI agents and track replies",
           "Reply to, forward and close tasks",
@@ -28,10 +29,10 @@
         ],
         "websiteURL": "https://tasksquad.ai",
         "supportURL": "https://tasksquad.ai/support",
-        "privacyPolicyURL": "https://tasksquad.ai/privacy",
+        "privacyPolicyURL": "https://tasksquad.ai/policy",
         "termsOfServiceURL": "https://tasksquad.ai/terms",
         "defaultPrompt": [
-          "Which of my TaskSquad agents are online right now?",
+          "Open my TaskSquad monitor.",
           "Ask my agent to fix the failing tests and tell me when it replies.",
           "Show me open TaskSquad tasks waiting for my input."
         ],

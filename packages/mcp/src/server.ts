@@ -8,6 +8,7 @@ import { registerBlocked } from './tools/blocked.js'
 import { registerConveyors } from './tools/conveyors.js'
 import { registerLibrary } from './tools/library.js'
 import { registerMemory } from './tools/memory.js'
+import { registerMonitor } from './tools/monitor.js'
 import { registerNotes } from './tools/notes.js'
 import { registerPlanners } from './tools/planners.js'
 import { registerPortals } from './tools/portals.js'
@@ -31,7 +32,7 @@ export function buildServer(env: Env, props: Props, fetchImpl?: typeof fetch, or
   const ctx: ToolContext = { api: new TaskSquadApi(env.API_BASE, props.apiToken, fetchImpl), env, props }
   for (const register of [
     registerProjects, registerAgents, registerTasks, registerConveyors, registerNotes,
-    registerLibrary, registerMemory, registerPlanners, registerPortals, registerBlocked,
+    registerLibrary, registerMemory, registerPlanners, registerPortals, registerMonitor, registerBlocked,
   ]) register(server, ctx)
   addOpenAIAuth(server, `${origin}/.well-known/oauth-protected-resource/mcp`)
   return server
@@ -52,7 +53,8 @@ function addOpenAIAuth(server: McpServer, resourceMetadata: string) {
   }
   wrap('tools/list', r => {
     const res = r as ListToolsResult
-    return { ...res, tools: res.tools.map(t => ({ ...t, securitySchemes: SECURITY_SCHEMES })) }
+    // _meta.securitySchemes mirrors it for clients that only read _meta.
+    return { ...res, tools: res.tools.map(t => ({ ...t, securitySchemes: SECURITY_SCHEMES, _meta: { ...t._meta, securitySchemes: SECURITY_SCHEMES } })) }
   })
   const challenge = `Bearer resource_metadata="${resourceMetadata}", error="invalid_token", ` +
     'error_description="Your TaskSquad session expired. Sign in again to continue."'
