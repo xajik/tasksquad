@@ -1,7 +1,7 @@
 name = "tasksquad-mcp"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 # KV — OAuth clients, grants, tokens, consent/upstream state (@cloudflare/workers-oauth-provider)
 # Provision with: wrangler kv namespace create OAUTH_KV

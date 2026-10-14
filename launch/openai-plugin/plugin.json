@@ -1,0 +1,45 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "tasksquad",
+  "version": "1.0.0",
+  "description": "TaskSquad is a coordination layer for teams of humans and AI agents. Send tasks to AI coding agents (Claude Code, Codex, Gemini and others) running on your own machines, follow their progress, reply to their questions and close finished work, all from ChatGPT.",
+  "author": {
+    "name": "TaskSquad",
+    "url": "https://tasksquad.ai"
+  },
+  "homepage": "https://tasksquad.ai",
+  "license": "Proprietary",
+  "keywords": ["agents", "tasks", "coding agents", "delegation", "team inbox"],
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/setup/SKILL.md",
+      "interface": {
+        "displayName": "TaskSquad",
+        "shortDescription": "Delegate work to AI agents",
+        "longDescription": "TaskSquad connects ChatGPT to your team's AI agents. Each agent is a daemon running on a machine you control and executing work through a CLI such as Claude Code, Codex, Gemini or OpenCode.\n\nWith this plugin you can:\n- List your projects and the agents in them, including whether each agent is online.\n- Send a task to an agent and follow it until the agent replies or finishes.\n- Answer an agent's questions, forward a task to another agent, or close it.\n- Read a running agent's live terminal and, when you ask, send it input.\n- Create and update notes, library items, planners and conveyors (task pipelines), and read project memory.\n\nWho it is for: developers and teams who already run TaskSquad agents and want to delegate and track that work from ChatGPT.\n\nLimitations: you need a TaskSquad account and at least one connected agent; agents run on your machines, so tasks only start when the daemon is online (it polls about once a minute). Deleting things, managing project members and creating agent tokens are deliberately not available here; do those in the TaskSquad portal.",
+        "developerName": "TaskSquad",
+        "category": "Productivity",
+        "capabilities": [
+          "List projects, agents and tasks",
+          "Send tasks to AI agents and track replies",
+          "Reply to, forward and close tasks",
+          "Read and send input to an agent's live terminal",
+          "Manage notes, library items, planners and conveyors"
+        ],
+        "websiteURL": "https://tasksquad.ai",
+        "supportURL": "https://tasksquad.ai/support",
+        "privacyPolicyURL": "https://tasksquad.ai/privacy",
+        "termsOfServiceURL": "https://tasksquad.ai/terms",
+        "defaultPrompt": [
+          "Which of my TaskSquad agents are online right now?",
+          "Ask my agent to fix the failing tests and tell me when it replies.",
+          "Show me open TaskSquad tasks waiting for my input."
+        ],
+        "brandColor": "#2563EB",
+        "brandColorDark": "#2563EB",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png"
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { READ, WRITE, run, type Register } from './util.js'
+import { DESTRUCTIVE, READ, WRITE, run, type Register } from './util.js'
 
 const teamId = z.string().describe('Project ID (from list_projects).')
 const agentId = z.string().describe('Agent ID (from list_agents).')
@@ -37,6 +37,7 @@ export const registerAgents: Register = (server, { api }) => {
     title: 'Reset agent',
     description: "Ask the agent's daemon to reset its session state on the next poll (use when an agent is stuck).",
     inputSchema: { team_id: teamId, agent_id: agentId },
-    annotations: WRITE,
+    // Discards the agent's current session, which can't be restored.
+    annotations: DESTRUCTIVE,
   }, ({ team_id, agent_id }) => run(() => api.resetAgent(team_id, agent_id)))
 }

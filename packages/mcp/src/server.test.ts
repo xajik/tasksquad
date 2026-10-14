@@ -7,9 +7,12 @@ import { BLOCKED_TOOLS } from './tools/blocked.js'
 
 const env = { API_BASE: 'https://api.test', PORTAL_BASE: 'https://portal.test', PUBLIC_URL: 'https://mcp.test' } as Env
 
-async function connect(fetchImpl: typeof fetch) {
+async function connect(fetchImpl: typeof fetch, sent: unknown[] = []) {
   const server = buildServer(env, { apiToken: 'tsq_cli_x', userId: 'u1', email: 'u@test' }, fetchImpl)
   const [a, b] = InMemoryTransport.createLinkedPair()
+  // Record the raw messages the server sends: the client's schema strips fields MCP doesn't define.
+  const send = a.send.bind(a)
+  a.send = async (message, options) => { sent.push(structuredClone(message)); return send(message, options) }
   const client = new Client({ name: 'test', version: '0' })
   await Promise.all([server.connect(a), client.connect(b)])
   return client
@@ -59,11 +62,38 @@ describe('TaskSquad MCP server', () => {
     expect(JSON.parse(String(fetchImpl.mock.calls[0]![1]!.body)).scheduled_at).toBe(Date.parse('2026-10-12T09:00:00Z'))
   })
 
-  it('reports an expired TaskSquad token as a reconnect instruction', async () => {
+  it('reports an expired TaskSquad token as a reconnect instruction with an auth challenge', async () => {
     const client = await connect(vi.fn(async () => Response.json({ error: 'token_expired' }, { status: 401 })))
     const result = await client.callTool({ name: 'whoami', arguments: {} })
     expect(result.isError).toBe(true)
     expect(text(result)).toContain('reconnect')
+    expect(result._meta).toEqual({ 'mcp/www_authenticate': [
+      'Bearer resource_metadata="https://mcp.test/.well-known/oauth-protected-resource/mcp", error="invalid_token", ' +
+      'error_description="Your TaskSquad session expired. Sign in again to continue."',
+    ] })
+  })
+
+  it('leaves other errors without an auth challenge', async () => {
+    const client = await connect(vi.fn(async () => Response.json({ error: 'nope' }, { status: 403 })))
+    const result = await client.callTool({ name: 'whoami', arguments: {} })
+    expect(result.isError).toBe(true)
+    expect(result._meta).toBeUndefined()
+  })
+
+  it('declares OAuth securitySchemes on every tool and marks whoami as the profile tool', async () => {
+    const sent: unknown[] = []
+    const client = await connect(vi.fn(), sent)
+    await client.listTools()
+    const raw = sent.map(m => (m as { result?: { tools?: Array<Record<string, unknown>> } }).result?.tools).find(Boolean)!
+    expect(raw.length).toBeGreaterThan(0)
+    for (const t of raw) expect(t.securitySchemes).toEqual([{ type: 'oauth2' }])
+    expect(raw.find(t => t.name === 'whoami')!._meta).toEqual({ 'openai/profile': true })
+  })
+
+  it('returns objects and arrays as structuredContent too', async () => {
+    const client = await connect(vi.fn(async () => Response.json({ teams: [{ id: 't1', name: 'Core' }] })))
+    const result = await client.callTool({ name: 'list_projects', arguments: {} })
+    expect(result.structuredContent).toEqual({ teams: [{ id: 't1', name: 'Core' }] })
   })
 
   it('get_task merges the task and its thread', async () => {

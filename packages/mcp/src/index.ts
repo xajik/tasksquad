@@ -10,7 +10,7 @@ import { buildServer } from './server.js'
 const mcpHandler: ExportedHandler<Env> = {
   async fetch(req, env, ctx) {
     const props = (ctx as ExecutionContext & { props: Props }).props
-    const server = buildServer(env, props)
+    const server = buildServer(env, props, undefined, new URL(req.url).origin)
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
     await server.connect(transport)
     return transport.handleRequest(req)
@@ -27,6 +27,9 @@ function createProvider(origin: string) {
     tokenEndpoint: '/oauth/token',
     clientRegistrationEndpoint: '/oauth/register',
     refreshTokenTTL: REFRESH_TOKEN_TTL,
+    // ChatGPT prefers CIMD (its client_id is a metadata URL) over dynamic registration.
+    // Needs the global_fetch_strictly_public compatibility flag (wrangler.toml).
+    clientIdMetadataDocumentEnabled: true,
   })
 }
 

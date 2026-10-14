@@ -11,9 +11,17 @@ export interface ToolContext {
 
 export type Register = (server: McpServer, ctx: ToolContext) => void
 
+// _meta marker on tool errors caused by an invalid TaskSquad token; replaced in server.ts.
+export const AUTH_REQUIRED = 'tasksquad/auth-required'
+
+// ok returns data as JSON text for the model plus, for objects and arrays, the same
+// data as structuredContent (an object, so arrays are wrapped as { items }).
 export function ok(data: unknown): CallToolResult {
-  const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
-  return { content: [{ type: 'text', text }] }
+  if (typeof data === 'string') return { content: [{ type: 'text', text: data }] }
+  const result: CallToolResult = { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
+  if (Array.isArray(data)) result.structuredContent = { items: data }
+  else if (data && typeof data === 'object') result.structuredContent = data as Record<string, unknown>
+  return result
 }
 
 export function errorResult(message: string): CallToolResult {
@@ -23,7 +31,12 @@ export function errorResult(message: string): CallToolResult {
 export function toolError(e: unknown): CallToolResult {
   if (e instanceof ApiError) {
     if (e.status === 401) {
-      return errorResult('TaskSquad session expired or was revoked. Ask the user to reconnect (re-authenticate) the TaskSquad MCP server.')
+      // The grant's stored TaskSquad token expired or was revoked. The marker makes
+      // server.ts attach an mcp/www_authenticate challenge so the client re-links.
+      return {
+        ...errorResult('TaskSquad session expired or was revoked. Ask the user to reconnect (re-authenticate) the TaskSquad MCP server.'),
+        _meta: { [AUTH_REQUIRED]: true },
+      }
     }
     if (e.status === 403 || e.status === 404) {
       return errorResult(`${e.message}. Check the IDs (use the list_* tools) and that the user can access this project.`)

@@ -8,6 +8,8 @@ export const registerProjects: Register = (server, { api }) => {
     title: 'Current user',
     description: 'Return the signed-in TaskSquad user (id, email, plan). Pro plan unlocks Portals and faster polling.',
     annotations: READ,
+    // Lets ChatGPT identify which TaskSquad account is connected.
+    _meta: { 'openai/profile': true },
   }, () => run(() => api.me()))
 
   server.registerTool('list_projects', {
