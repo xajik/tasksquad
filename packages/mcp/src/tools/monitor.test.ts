@@ -40,6 +40,18 @@ describe('open_monitor', () => {
     const res = await client.readResource({ uri: MONITOR_URI })
     expect(res.contents[0]!.mimeType).toBe(MCP_APP_MIME)
     expect(String((res.contents[0] as { text: string }).text)).toContain('ui/initialize')
+    expect(res.contents[0]!._meta).toMatchObject({ ui: { domain: 'https://portal.test' }, 'openai/ui': { availableDisplayModes: ['inline', 'fullscreen'] } })
+  })
+
+  it('exposes get_work_status as a data tool without a UI template', async () => {
+    const client = await connect()
+    const tool = (await client.listTools()).tools.find(t => t.name === 'get_work_status')!
+    expect(tool.outputSchema).toBeDefined()
+    expect(tool._meta).not.toHaveProperty('ui')
+    expect(tool._meta).not.toHaveProperty('openai/outputTemplate')
+    const result = await client.callTool({ name: 'get_work_status', arguments: {} })
+    expect(result.isError).toBeFalsy()
+    expect((result.structuredContent as unknown as MonitorSnapshot).project).toEqual({ id: 't1', name: 'Core' })
   })
 
   it('groups tasks by what needs attention and drops private fields', async () => {

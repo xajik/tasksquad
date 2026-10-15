@@ -50,7 +50,7 @@ button, select { font: inherit; color: inherit; }
 .agents { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 12px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted-fg); flex: none; }
-.dot.idle { background: var(--live); }
+.dot.idle, .dot.online { background: var(--live); }
 .dot.running, .dot.wrapping_up { background: var(--brand); }
 .dot.waiting_input { background: var(--amber); }
 .dot.done { background: var(--green); }
@@ -104,8 +104,8 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: 
     }
     if (m.method === 'ui/notifications/tool-result') applyResult(m.params);
     else if (m.method === 'ui/notifications/tool-input') {
-      var args = m.params && m.params.arguments;
-      if (args && args.team_id) state.teamId = args.team_id;
+      var args = m.params && (m.params.arguments || m.params);
+      if (args && args.team_id && !state.teamId) state.teamId = args.team_id;
     } else if (m.method === 'ui/notifications/host-context-changed') applyContext(m.params);
     else if (m.id != null) post({ jsonrpc: '2.0', id: m.id, result: {} });
   });
@@ -133,6 +133,20 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: 
     request('ui/request-display-mode', { mode: 'fullscreen' }).catch(function () {});
   }
 
+  // Selected project: kept per widget instance (ChatGPT widgetState) and shared with the
+  // model so follow-up questions refer to the project on screen.
+  function selectProject(teamId) {
+    state.teamId = teamId;
+    if (openai() && openai().setWidgetState) openai().setWidgetState({ teamId: teamId });
+    var p = state.snap && state.snap.projects.filter(function (x) { return x.id === teamId; })[0];
+    if (p) {
+      request('ui/update-model-context', {
+        content: [{ type: 'text', text: 'The user is viewing TaskSquad project "' + p.name + '" (team_id ' + p.id + ') in the monitor.' }]
+      }).catch(function () {});
+    }
+    refresh(true);
+  }
+
   function applyContext(ctx) {
     if (ctx && (ctx.theme === 'light' || ctx.theme === 'dark')) document.documentElement.setAttribute('data-theme', ctx.theme);
   }
@@ -144,7 +158,9 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: 
     } else if (result.structuredContent) {
       state.snap = result.structuredContent;
       state.error = null;
-      if (state.snap.project) state.teamId = state.snap.project.id;
+      if (state.snap.project && !state.teamId) state.teamId = state.snap.project.id;
+      // A project restored from widget state wins over the snapshot the host rendered first.
+      if (state.snap.project && state.snap.project.id !== state.teamId && !state.loading) setTimeout(function () { refresh(false); }, 0);
     }
     state.updatedAt = Date.now();
     render();
@@ -155,7 +171,7 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: 
     if (manual) state.autoUntil = Date.now() + AUTO_REFRESH_FOR_MS;
     state.loading = true;
     render();
-    callTool('open_monitor', state.teamId ? { team_id: state.teamId } : {})
+    callTool('get_work_status', state.teamId ? { team_id: state.teamId } : {})
       .then(applyResult)
       .catch(function (err) { state.error = err.message; })
       .then(function () { state.loading = false; render(); });
@@ -168,13 +184,16 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: 
     if (text != null) n.textContent = text;
     return n;
   }
+  // The host mirrors the user's locale to <html lang>.
+  var rtf = null;
+  try { rtf = new Intl.RelativeTimeFormat(document.documentElement.lang || undefined, { numeric: 'auto', style: 'short' }); } catch (e) {}
   function ago(ms) {
     if (!ms) return '';
     var s = Math.max(0, Math.round((Date.now() - ms) / 1000));
-    if (s < 60) return s + 's ago';
-    if (s < 3600) return Math.round(s / 60) + 'm ago';
-    if (s < 86400) return Math.round(s / 3600) + 'h ago';
-    return Math.round(s / 86400) + 'd ago';
+    var v = s < 60 ? [-s, 'second'] : s < 3600 ? [-Math.round(s / 60), 'minute'] :
+      s < 86400 ? [-Math.round(s / 3600), 'hour'] : [-Math.round(s / 86400), 'day'];
+    if (rtf) return rtf.format(v[0], v[1]);
+    return -v[0] + v[1].charAt(0) + ' ago';
   }
   var LABELS = {
     offline: 'offline', idle: 'online', running: 'running', waiting_input: 'needs input',
@@ -227,10 +246,10 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: 
       snap.projects.forEach(function (p) {
         var o = el('option', null, p.name);
         o.value = p.id;
-        if (snap.project && p.id === snap.project.id) o.selected = true;
+        if (p.id === (state.teamId || (snap.project && snap.project.id))) o.selected = true;
         sel.appendChild(o);
       });
-      sel.onchange = function () { state.teamId = sel.value; refresh(true); };
+      sel.onchange = function () { selectProject(sel.value); };
       top.appendChild(sel);
     } else if (snap && snap.project) {
       top.appendChild(el('span', 'meta', snap.project.name));
@@ -301,6 +320,8 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: 
   });
   if (openai()) {
     applyContext({ theme: openai().theme });
+    var saved = openai().widgetState;
+    if (saved && saved.teamId) state.teamId = saved.teamId;
     if (openai().toolOutput) applyResult({ structuredContent: openai().toolOutput });
   }
 

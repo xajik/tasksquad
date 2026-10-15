@@ -4,7 +4,7 @@ import { MONITOR_HTML } from '../widget/monitor-html.js'
 import { READ, run, type Register } from './util.js'
 
 // The UI resource URI is the client's cache key: bump the version on breaking HTML changes.
-export const MONITOR_URI = 'ui://tasksquad/monitor-v1.html'
+export const MONITOR_URI = 'ui://tasksquad/monitor-v2.html'
 export const MCP_APP_MIME = 'text/html;profile=mcp-app'
 
 const RECENT_LIMIT = 8
@@ -89,7 +89,35 @@ export function summary(s: MonitorSnapshot): string {
   return lines.join('\n')
 }
 
+const task = z.object({
+  id: z.string(), subject: z.string(), status: z.string(), agent_id: z.string(),
+  agent_name: z.string(), updated_at: z.number(), url: z.string(),
+})
+const project = z.object({ id: z.string(), name: z.string() })
+// outputSchema of both monitor tools; mirrors MonitorSnapshot.
+const SNAPSHOT_SCHEMA = {
+  projects: z.array(project),
+  project: project.nullable(),
+  agents: z.array(z.object({
+    id: z.string(), name: z.string(), status: z.string(), paused: z.boolean(), last_seen: z.number().nullable(),
+  })),
+  needs_input: z.array(task),
+  running: z.array(task),
+  queued: z.array(task),
+  recent: z.array(task),
+  portal_url: z.string(),
+  generated_at: z.number(),
+}
+const teamIdInput = { team_id: z.string().optional().describe('Project ID (from list_projects). Omit for the first project.') }
+
+// Data tool (get_work_status) and render tool (open_monitor) share one snapshot. The monitor
+// UI refreshes through the data tool, so a refresh doesn't re-render the widget.
 export const registerMonitor: Register = (server, { api, env }) => {
+  const snapshot = (teamId?: string) => run(async () => {
+    const snap = await buildSnapshot(api, env.PORTAL_BASE, teamId)
+    return { content: [{ type: 'text' as const, text: summary(snap) }], structuredContent: { ...snap } }
+  })
+
   server.registerResource('tasksquad-monitor', MONITOR_URI, {
     title: 'TaskSquad monitor',
     description: 'Live view of a project\'s agents and tasks.',
@@ -100,28 +128,42 @@ export const registerMonitor: Register = (server, { api, env }) => {
       mimeType: MCP_APP_MIME,
       text: MONITOR_HTML,
       _meta: {
-        ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } },
+        // No network access or external assets: the widget only talks to the host bridge.
+        ui: { prefersBorder: true, domain: env.PORTAL_BASE, csp: { connectDomains: [], resourceDomains: [] } },
+        'openai/widgetDomain': env.PORTAL_BASE,
         'openai/widgetDescription': 'Live dashboard of the project\'s agents and the tasks that need input, are running, queued or recently finished.',
         'openai/widgetPrefersBorder': true,
         'openai/widgetCSP': { connect_domains: [], resource_domains: [] },
+        'openai/ui': { availableDisplayModes: ['inline', 'fullscreen'] },
       },
     }],
   }))
 
+  server.registerTool('get_work_status', {
+    title: 'Get work status',
+    description: 'Summarise what a TaskSquad project\'s agents are doing: which agents are online, and which tasks need input, are running, queued or recently finished (subject, agent, status, time, portal link). Use to answer status questions; use open_monitor to show it visually.',
+    inputSchema: teamIdInput,
+    outputSchema: SNAPSHOT_SCHEMA,
+    annotations: READ,
+    _meta: {
+      'openai/widgetAccessible': true,
+      'openai/toolInvocation/invoking': 'Checking on your agents…',
+      'openai/toolInvocation/invoked': 'Checked on your agents',
+    },
+  }, ({ team_id }) => snapshot(team_id))
+
   server.registerTool('open_monitor', {
     title: 'Open work monitor',
-    description: 'Show a live monitor of a TaskSquad project inside the chat: which agents are online and busy, and which tasks need input, are running, queued or recently finished. Use when the user wants to monitor, watch or check on their agents\' work. Defaults to the first project.',
-    inputSchema: { team_id: z.string().optional().describe('Project ID (from list_projects). Omit for the first project.') },
+    description: 'Show a live, auto-refreshing monitor of a TaskSquad project inside the chat: agents online and busy, and tasks that need input, are running, queued or recently finished. Use when the user wants to monitor, watch or see their agents\' work. Defaults to the first project.',
+    inputSchema: teamIdInput,
+    outputSchema: SNAPSHOT_SCHEMA,
     annotations: READ,
     _meta: {
       ui: { resourceUri: MONITOR_URI },
       'openai/outputTemplate': MONITOR_URI,
       'openai/widgetAccessible': true,
-      'openai/toolInvocation/invoking': 'Checking on your agents…',
+      'openai/toolInvocation/invoking': 'Opening the monitor…',
       'openai/toolInvocation/invoked': 'Monitor ready',
     },
-  }, ({ team_id }) => run(async () => {
-    const snapshot = await buildSnapshot(api, env.PORTAL_BASE, team_id)
-    return { content: [{ type: 'text' as const, text: summary(snapshot) }], structuredContent: { ...snapshot } }
-  }))
+  }, ({ team_id }) => snapshot(team_id))
 }

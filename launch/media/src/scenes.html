@@ -101,6 +101,33 @@
   .x-label img { width: 14px; height: 14px; opacity: .7; }
   svg text { font-family: 'DM Sans', sans-serif; }
   svg .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ChatGPT poster: the open_monitor UI (packages/mcp/src/widget) inside a ChatGPT chat */
+  .gpt { background: #212121; color: #ECECEC; border-color: #303030; }
+  .gpt .bar { background: #181818; border-color: #303030; }
+  .gpt .bar span { color: #8F8F8F; }
+  .gpt .chat { padding: 22px 26px 0; font-size: 14px; }
+  .gpt .ask { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+  .gpt .ask span { background: #303030; border-radius: 18px; padding: 9px 16px; font-size: 14.5px; }
+  .gpt .ask b { color: #7AA7FF; font-weight: 600; }
+  .gpt .tool { color: #9B9B9B; font-size: 13px; margin-bottom: 10px; display: flex; align-items: center; gap: 7px; }
+  .mon { background: #17191E; border: 1px solid #2E323B; border-radius: 14px; padding: 14px 16px; color: #E7E9ED; font-size: 13px; }
+  .mon .row { display: flex; align-items: center; gap: 8px; }
+  .mon .sel { border: 1px solid #2E323B; border-radius: 6px; padding: 1px 8px; font-size: 12.5px; }
+  .mon .meta { color: #A0A7B4; font-size: 11.5px; }
+  .mon .btn { border: 1px solid #2E323B; border-radius: 6px; padding: 2px 9px; font-size: 11.5px; }
+  .mon .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+  .mon .stat { border: 1px solid #2E323B; border-radius: 8px; padding: 7px 10px; }
+  .mon .stat b { display: block; font-size: 17px; }
+  .mon .stat span { color: #A0A7B4; font-size: 11.5px; }
+  .mon .stat.warn { background: rgba(245,158,11,.15); border-color: rgba(245,158,11,.3); }
+  .mon .chips { display: flex; gap: 6px; margin-bottom: 4px; }
+  .mon .ch { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #2E323B; border-radius: 999px; padding: 2px 9px; font-size: 11.5px; }
+  .mon i { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+  .mon h5 { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: #A0A7B4; margin: 12px 0 4px; }
+  .mon .t { display: flex; align-items: center; gap: 9px; padding: 7px 0; border-top: 1px solid #2E323B; }
+  .mon .t div { flex: 1; }
+  .mon .t strong { display: block; font-size: 13px; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -112,13 +139,13 @@
     <div style="display:flex;gap:8px"><span class="chip"><span class="dot"></span>Claude Code</span><span class="chip">Codex</span><span class="chip">Gemini</span><span class="chip">OpenCode</span><span class="chip">Pi</span></div>
   </div>
   <h1 style="font-size:58px;margin-top:30px;max-width:1120px;position:relative;z-index:2">One creative workspace for <em>teams and agents.</em></h1>
-  <p class="sub" style="font-size:20px;margin-top:14px;max-width:900px;position:relative;z-index:2">Bring any harness and your own servers. See every agent at work, learn together, and track every run.</p>
+  <p class="sub" style="font-size:20px;margin-top:14px;max-width:900px;position:relative;z-index:2">Bring any harness to your Mac and Linux machines. Work from the web, Mac or iPhone, and let your AI assistant join over MCP.</p>
   <div style="position:relative;flex:1;margin-top:30px">
     <div class="window" style="position:absolute;left:470px;top:-6px;width:700px;transform:rotate(1.4deg);transform-origin:top left"><div class="bar"><i></i><i></i><i></i><span>Thread</span></div><img src="../shots/crop/thread.jpg"></div>
     <div class="window" style="position:absolute;left:0;top:26px;width:640px"><div class="bar"><i></i><i></i><i></i><span>Inbox</span></div><img src="../shots/crop/inbox.jpg"></div>
-    <div class="card" style="position:absolute;right:20px;top:190px;padding:16px 18px;width:300px;box-shadow:0 18px 40px -10px rgba(15,17,23,.22);z-index:3">
+    <div class="card" style="position:absolute;right:20px;top:150px;padding:16px 18px;width:310px;box-shadow:0 18px 40px -10px rgba(15,17,23,.22);z-index:3">
       <div style="font-weight:700;font-size:15px;margin-bottom:10px;display:flex;gap:8px;align-items:center">🔐 Secure, open, observable</div>
-      <ul class="checks" style="gap:8px"><li style="font-size:14px">Any harness, even your own</li><li style="font-size:14px">Runs on your servers</li><li style="font-size:14px">Governed and observable</li></ul>
+      <ul class="checks" style="gap:8px"><li style="font-size:14px">Any harness, even your own</li><li style="font-size:14px">Agents on your macOS and Linux machines</li><li style="font-size:14px">Web, Mac and iPhone apps</li><li style="font-size:14px">MCP server for your AI assistant</li><li style="font-size:14px">Governed and observable</li></ul>
     </div>
   </div>
   <div class="sample">Sample workspace</div>
@@ -136,31 +163,42 @@
 <!-- ===================== 03 · Distributed ===================== -->
 <section class="scene bg wide" id="p03">
   <div class="top"><span class="eyebrow">🧩 Bring your own harness</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
-  <h1>Your harness. Your servers. <em>One workspace.</em></h1>
-  <p class="sub">Claude Code, Codex, Gemini, OpenCode, Pi, or the agent you built yourself. If it runs in a terminal, it can join the squad.</p>
+  <h1>Your harness. Your machines. <em>Every screen.</em></h1>
+  <p class="sub">Claude Code, Codex, Gemini, OpenCode, Pi or your own agent, on macOS and Linux. Drive it from the web, Mac, iPhone, or your AI assistant over MCP.</p>
   <div class="shot">
-    <svg viewBox="0 0 1158 380" width="100%" height="100%">
+    <svg viewBox="0 0 1158 452" width="100%" height="100%">
       <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker></defs>
-      <rect x="404" y="18" width="350" height="104" rx="14" fill="#fff" stroke="#2563EB" stroke-width="2"/>
-      <text x="579" y="62" text-anchor="middle" fill="#0F1117" font-size="23" font-weight="700">TaskSquad inbox</text>
-      <text x="579" y="94" text-anchor="middle" fill="#5B6475" font-size="15">projects · tasks · team · live output</text>
-      <g stroke="#2563EB" stroke-width="2" stroke-dasharray="6 6" fill="none" marker-end="url(#ar)">
-        <path d="M160,222 C160,160 430,160 470,126"/><path d="M579,222 L579,128"/><path d="M998,222 C998,160 728,160 688,126"/>
+      <text x="20" y="14" fill="#2563EB" font-size="12.5" font-weight="700" letter-spacing="1.4">WORK FROM ANY SCREEN</text>
+      <g font-size="17" font-weight="700" fill="#0F1117">
+        <rect x="20" y="26" width="263" height="56" rx="12" fill="#fff" stroke="#E2E4EA"/><text x="40" y="60">🌐 Web</text><text x="265" y="60" text-anchor="end" fill="#8A93A6" font-size="13" font-weight="400" class="mono">tasksquad.ai</text>
+        <rect x="311" y="26" width="263" height="56" rx="12" fill="#fff" stroke="#E2E4EA"/><text x="331" y="60">💻 Mac app</text><text x="556" y="60" text-anchor="end" fill="#8A93A6" font-size="13" font-weight="400">native</text>
+        <rect x="602" y="26" width="263" height="56" rx="12" fill="#fff" stroke="#E2E4EA"/><text x="622" y="60">📱 iPhone app</text><text x="847" y="60" text-anchor="end" fill="#8A93A6" font-size="13" font-weight="400">on the go</text>
+        <rect x="893" y="26" width="245" height="56" rx="12" fill="#EAF1FE" stroke="#2563EB"/><text x="913" y="60">🤖 MCP</text><text x="1120" y="60" text-anchor="end" fill="#2563EB" font-size="13" font-weight="400">for AI assistants</text>
       </g>
-      <text x="300" y="172" fill="#5B6475" font-size="13" class="mono">HTTPS · authenticated</text>
+      <g stroke="#2563EB" stroke-width="2" stroke-dasharray="6 6" fill="none" marker-end="url(#ar)">
+        <path d="M151,84 C151,120 400,118 440,150"/><path d="M442,84 L512,150"/><path d="M733,84 L646,150"/><path d="M1015,84 C1015,120 758,118 718,150"/>
+      </g>
+      <rect x="404" y="154" width="350" height="96" rx="14" fill="#fff" stroke="#2563EB" stroke-width="2"/>
+      <text x="579" y="194" text-anchor="middle" fill="#0F1117" font-size="23" font-weight="700">TaskSquad inbox</text>
+      <text x="579" y="224" text-anchor="middle" fill="#5B6475" font-size="15">projects · tasks · team · live output</text>
+      <g stroke="#2563EB" stroke-width="2" stroke-dasharray="6 6" fill="none" marker-end="url(#ar)">
+        <path d="M272,320 C272,284 440,284 480,254"/><path d="M579,320 L579,256"/><path d="M886,320 C886,284 718,284 678,254"/>
+      </g>
+      <text x="592" y="294" fill="#5B6475" font-size="13" class="mono">HTTPS · authenticated</text>
+      <text x="20" y="312" fill="#16A34A" font-size="12.5" font-weight="700" letter-spacing="1.4">RUN ON YOUR MACHINES</text>
       <g>
-        <rect x="20" y="222" width="280" height="130" rx="14" fill="#fff" stroke="#E2E4EA"/>
-        <text x="42" y="258" fill="#0F1117" font-size="20" font-weight="700">💻 MacBook Pro</text>
-        <text x="42" y="290" fill="#8A93A6" class="mono" font-size="14">tsq daemon</text>
-        <text x="42" y="324" fill="#0F1117" font-size="16">Claude Code · Pi</text>
-        <rect x="439" y="222" width="280" height="130" rx="14" fill="#fff" stroke="#E2E4EA"/>
-        <text x="461" y="258" fill="#0F1117" font-size="20" font-weight="700">🖥 Linux server</text>
-        <text x="461" y="290" fill="#8A93A6" class="mono" font-size="14">tsq daemon</text>
-        <text x="461" y="324" fill="#0F1117" font-size="16">Codex · OpenCode</text>
-        <rect x="858" y="222" width="280" height="130" rx="14" fill="#fff" stroke="#E2E4EA"/>
-        <text x="880" y="258" fill="#0F1117" font-size="20" font-weight="700">🪟 Windows (WSL)</text>
-        <text x="880" y="290" fill="#8A93A6" class="mono" font-size="14">tsq daemon</text>
-        <text x="880" y="324" fill="#0F1117" font-size="16">Gemini · your own agent</text>
+        <rect x="20" y="322" width="280" height="122" rx="14" fill="#fff" stroke="#E2E4EA"/>
+        <text x="42" y="356" fill="#0F1117" font-size="20" font-weight="700">💻 MacBook Pro</text>
+        <text x="42" y="386" fill="#8A93A6" class="mono" font-size="14">tsq daemon · Mac app</text>
+        <text x="42" y="420" fill="#0F1117" font-size="16">Claude Code · Pi</text>
+        <rect x="439" y="322" width="280" height="122" rx="14" fill="#fff" stroke="#E2E4EA"/>
+        <text x="461" y="356" fill="#0F1117" font-size="20" font-weight="700">🐧 Linux server</text>
+        <text x="461" y="386" fill="#8A93A6" class="mono" font-size="14">tsq daemon</text>
+        <text x="461" y="420" fill="#0F1117" font-size="16">Codex · OpenCode</text>
+        <rect x="858" y="322" width="280" height="122" rx="14" fill="#fff" stroke="#E2E4EA"/>
+        <text x="880" y="356" fill="#0F1117" font-size="20" font-weight="700">☁️ Linux cloud VM</text>
+        <text x="880" y="386" fill="#8A93A6" class="mono" font-size="14">tsq daemon</text>
+        <text x="880" y="420" fill="#0F1117" font-size="16">Gemini · your own agent</text>
       </g>
     </svg>
   </div>
@@ -267,6 +305,7 @@
   <div class="card mono" style="margin-top:30px;padding:20px 28px;font-size:19px;text-align:left;line-height:1.9;position:relative">
     <div><span style="color:var(--accent)">$</span> brew tap xajik/tap &amp;&amp; brew install tsq</div>
     <div><span style="color:var(--accent)">$</span> tsq login &amp;&amp; tsq</div>
+    <div><span style="color:var(--accent)">$</span> claude mcp add --transport http tasksquad https://tasksquad.ai/mcp</div>
   </div>
   <div style="display:flex;gap:16px;margin-top:24px;position:relative">
     <div class="card" style="padding:16px 20px;text-align:left;width:250px"><div style="font-size:13px;font-weight:700;color:var(--accent)">STEP 1</div><div style="font-size:18px;font-weight:700;margin-top:4px">Create a team</div><div style="font-size:14px;color:var(--muted);margin-top:4px">Add agents and invite teammates</div></div>
@@ -274,7 +313,7 @@
     <div class="card" style="padding:16px 20px;text-align:left;width:250px"><div style="font-size:13px;font-weight:700;color:var(--accent)">STEP 3</div><div style="font-size:18px;font-weight:700;margin-top:4px">Send a task</div><div style="font-size:14px;color:var(--muted);margin-top:4px">Watch it work, reply, close</div></div>
   </div>
   <div style="display:flex;gap:8px;margin-top:22px;position:relative"><span class="chip"><span class="dot"></span>Claude Code</span><span class="chip">Codex</span><span class="chip">Gemini</span><span class="chip">OpenCode</span><span class="chip">Pi</span><span class="chip">any CLI</span></div>
-  <div style="margin-top:16px;color:var(--muted);font-size:16px;position:relative">tasksquad.ai · macOS · Linux · Windows (WSL)</div>
+  <div style="margin-top:16px;color:var(--muted);font-size:16px;position:relative">tasksquad.ai · Agents on macOS and Linux · Web, Mac and iPhone apps · MCP for AI assistants</div>
 </section>
 
 <!-- ===================== Overview 1 · Run the work ===================== -->
@@ -345,7 +384,7 @@
   <h1 style="font-size:58px;margin-top:28px;max-width:740px;position:relative;z-index:2">One secure place to run all your <em>AI agents</em>, with your team.</h1>
   <p class="sub" style="font-size:21px;margin-top:16px;max-width:600px;position:relative;z-index:2">Agents run on your machines. Your repo is never uploaded. Transcripts are encrypted.</p>
   <div class="window" style="position:absolute;left:770px;top:130px;width:620px;transform:rotate(-2deg)"><div class="bar"><i></i><i></i><i></i><span>Inbox</span></div><img src="../shots/crop/inbox.jpg"></div>
-  <span class="chip" style="position:absolute;left:70px;bottom:46px;border-color:var(--accent);color:var(--accent)">tasksquad.ai</span>
+  <div style="position:absolute;left:70px;bottom:46px;display:flex;gap:8px"><span class="chip" style="border-color:var(--accent);color:var(--accent)">tasksquad.ai</span><span class="chip">macOS · Linux</span><span class="chip">Web · Mac · iPhone · MCP</span></div>
 </section>
 
 <!-- ===================== Teaser (1600×900 and 1080×1080) ===================== -->
@@ -354,16 +393,17 @@
   <div style="position:relative"><span class="eyebrow" style="color:var(--ph);background:#FDEDE8;font-size:2.1vh">🚀 Launching on Product Hunt</span></div>
   <h1 style="font-size:8.6vh;max-width:92%;position:relative">One creative workspace for <em>teams and agents.</em></h1>
   <p class="sub" style="font-size:2.9vh;max-width:85%;position:relative">Bring any harness and your own servers. Observe, govern and learn together.</p>
+  <div style="display:flex;gap:1vh;flex-wrap:wrap;position:relative"><span class="chip" style="font-size:2.1vh">Agents on macOS · Linux</span><span class="chip" style="font-size:2.1vh">Web · Mac · iPhone</span><span class="chip" style="font-size:2.1vh;border-color:var(--accent);color:var(--accent)">MCP for AI assistants</span></div>
   <div style="font-size:2.6vh;font-weight:700;position:relative">tasksquad.ai <span style="color:var(--muted);font-weight:400">· Claude Code · Codex · Gemini · OpenCode · Pi</span></div>
 </section>
 
 <!-- ===================== x1 · Every screen (hero) ===================== -->
 <section class="scene bg" id="x1" style="flex-direction:column;padding:44px 56px 0;">
   <div style="display:flex;justify-content:space-between;align-items:center;position:relative;z-index:2">
-    <div class="brand"><img src="logo.svg">TaskSquad</div><div class="platforms"><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/monitor.svg">Web</span><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/laptop.svg">macOS</span><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/message-square.svg">iOS</span></div>
+    <div class="brand"><img src="logo.svg">TaskSquad</div><div class="platforms"><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/monitor.svg">Web</span><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/laptop.svg">macOS</span><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/message-square.svg">iOS</span><span class="chip" style="border-color:var(--accent);color:var(--accent)"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/bot.svg">MCP</span></div>
   </div>
   <h1 style="font-size:54px;margin-top:28px;max-width:760px;position:relative;z-index:2">Your squad, <em>on every screen.</em></h1>
-  <p class="sub" style="font-size:19px;margin-top:12px;max-width:640px;position:relative;z-index:2">Web, a native Mac app and an iPhone app share one workspace. Start a task at your desk, answer the agent from your phone.</p>
+  <p class="sub" style="font-size:19px;margin-top:12px;max-width:640px;position:relative;z-index:2">Web, a native Mac app and an iPhone app share one workspace, and your AI assistant joins over MCP. Start a task at your desk, answer the agent from your phone.</p>
   <div style="position:relative;flex:1;margin-top:24px">
     <div class="window" style="position:absolute;left:0;top:40px;width:560px"><div class="bar"><i></i><i></i><i></i><span class="url">tasksquad.ai</span></div><img src="../shots/crop/inbox.jpg"></div>
     <div class="window mac" style="position:absolute;left:330px;top:0;width:640px;z-index:2"><div class="bar"><i></i><i></i><i></i><span>TaskSquad for Mac</span></div><img src="../shots/native/mac-inbox-light.jpg"></div>
@@ -374,25 +414,30 @@
 
 <!-- ===================== x2 · One backend ===================== -->
 <section class="scene bg wide" id="x2">
-  <div class="top"><span class="eyebrow"><img class="icon" style="width:16px;height:16px" src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/network.svg">One workspace, three apps</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
-  <h1>Every app talks to <em>the same TaskSquad servers.</em></h1>
-  <p class="sub">A reply from your phone lands in the thread your team reads on the web. Live terminals stream to whichever screen you open.</p>
+  <div class="top"><span class="eyebrow"><img class="icon" style="width:16px;height:16px" src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/network.svg">One workspace, every client</span><div class="brand"><img src="logo.svg">TaskSquad</div></div>
+  <h1>Web, Mac, iPhone and MCP. <em>One workspace.</em></h1>
+  <p class="sub">A reply from your phone or your AI assistant lands in the thread your team reads on the web. Live terminals stream to whichever screen you open.</p>
   <div class="shot" style="display:flex;flex-direction:column;margin-top:24px">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;height:290px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:22px;height:290px">
       <div class="tile" style="padding:14px 16px 0;overflow:hidden"><div class="head"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/monitor.svg">Web<span style="font-weight:400;color:var(--muted);font-size:14px;margin-left:auto">tasksquad.ai</span></div>
         <img src="../shots/crop/thread.jpg" style="margin-top:8px;width:100%;height:236px;object-fit:cover;object-position:left top;border-radius:8px 8px 0 0;border:1px solid var(--border)"></div>
       <div class="tile" style="padding:14px 16px 0;overflow:hidden"><div class="head"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/laptop.svg">macOS<span style="font-weight:400;color:var(--muted);font-size:14px;margin-left:auto">native app</span></div>
         <img src="../shots/native/mac-waiting-light.jpg" style="margin-top:8px;width:100%;height:236px;object-fit:cover;object-position:left top;border-radius:8px 8px 0 0;border:1px solid var(--border)"></div>
       <div class="tile" style="padding:14px 16px 0;overflow:hidden;position:relative"><div class="head"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/message-square.svg">iOS<span style="font-weight:400;color:var(--muted);font-size:14px;margin-left:auto">iPhone app</span></div>
         <div class="phone" style="position:relative;margin:8px auto 0;width:170px;padding:6px;border-radius:30px 30px 0 0;box-shadow:none"><img src="../shots/native/ios-task-light.jpg" style="border-radius:25px 25px 0 0"></div></div>
+      <div class="tile" style="padding:14px 16px 0;overflow:hidden;border-color:var(--accent)"><div class="head"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/bot.svg">MCP<span style="font-weight:400;color:var(--muted);font-size:14px;margin-left:auto">AI assistants</span></div>
+        <div class="mono" style="margin-top:8px;flex:1;background:#0F1117;color:#C9D1E0;border-radius:8px 8px 0 0;padding:12px 12px;font-size:11.5px;line-height:1.75">
+          <div style="color:#8A93A6">&gt; ask codex to fix</div><div style="color:#8A93A6">&nbsp;&nbsp;the flaky checkout test</div>
+          <div style="margin-top:6px"><span style="color:#4ADE80">●</span> list_agents</div><div><span style="color:#4ADE80">●</span> create_task</div><div><span style="color:#4ADE80">●</span> get_task <span style="color:#8A93A6">→ done</span></div><div><span style="color:#4ADE80">●</span> reply_to_task</div>
+          <div style="margin-top:6px;color:#93B4FA">Same inbox, same thread.</div></div></div>
     </div>
     <svg viewBox="0 0 1158 70" style="width:100%;height:70px;flex:none"><g stroke="#2563EB" stroke-width="2" stroke-dasharray="6 6" fill="none">
-      <path d="M186,0 C186,40 520,30 560,68"/><path d="M579,0 L579,68"/><path d="M972,0 C972,40 638,30 598,68"/></g>
-      <text x="610" y="40" fill="#5B6475" font-size="13" class="mono">HTTPS · WebSocket</text></svg>
+      <path d="M137,0 C137,40 520,30 556,68"/><path d="M432,0 C432,36 560,36 572,68"/><path d="M727,0 C727,36 598,36 586,68"/><path d="M1022,0 C1022,40 638,30 602,68"/></g>
+      <text x="760" y="56" fill="#5B6475" font-size="13" class="mono">HTTPS · WebSocket · OAuth</text></svg>
     <div class="tile" style="flex-direction:row;align-items:center;justify-content:space-between;border-color:var(--accent);border-width:2px;padding:16px 26px">
       <div class="head" style="font-size:21px"><img src="logo.svg" style="width:30px;height:30px;border-radius:22%">TaskSquad servers</div>
       <p style="font-size:15px">projects · tasks · threads · notes · planners · analytics · live terminal relay</p>
-      <div class="platforms"><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/terminal.svg">tsq daemons on your machines</span></div>
+      <div class="platforms"><span class="chip"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/terminal.svg">tsq daemons on macOS and Linux</span></div>
     </div>
   </div>
   <div class="sample">Sample workspace</div>
@@ -445,6 +490,98 @@
     <div class="phone" style="left:975px;top:-20px;width:200px;background:#2A2D36"><img src="../shots/native/ios-task-dark.jpg"></div>
   </div>
   <div class="sample" style="background:rgba(15,17,23,.8);color:#8A93A6">Sample workspace</div>
+</section>
+
+<!-- ===================== mcp · MCP server for AI assistants ===================== -->
+<section class="scene bg split" id="mcp">
+  <div class="copy">
+    <div class="brand"><img src="logo.svg">TaskSquad</div>
+    <div style="margin-top:34px"><span class="eyebrow"><img src="../../../packages/mobile/TaskSquadPortal/Sources/TaskSquadDesign/Vectors/Icons/bot.svg" style="width:15px;height:15px">MCP server</span></div>
+    <h1>Your AI assistant <em>joins the squad.</em></h1>
+    <p class="sub">Connect Claude Code or any MCP client. It works the inbox the way you do, signed in as you.</p>
+    <ul class="checks">
+      <li>Send tasks, follow them, reply in the thread</li>
+      <li>Notes, Planner, Conveyors, Memory and Skills</li>
+      <li>Read and type into live terminals</li>
+      <li>Deletes and membership stay manual</li>
+    </ul>
+  </div>
+  <div class="shot">
+    <div class="window" style="position:absolute;left:0;top:40px;width:720px;background:#0F1117;border-color:#2A2D36">
+      <div class="bar" style="background:#1B1D24;border-color:#2A2D36"><i></i><i></i><i></i><span style="color:#8A93A6">Terminal · claude</span></div>
+      <div class="mono" style="padding:26px 26px 30px;color:#C9D1E0;font-size:15.5px;line-height:1.95">
+        <div><span style="color:#93B4FA">$</span> claude mcp add --transport http tasksquad \</div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;https://tasksquad.ai/mcp</div>
+        <div style="color:#8A93A6">Added HTTP MCP server tasksquad · sign in with Google or GitHub</div>
+        <div style="height:16px"></div>
+        <div style="color:#fff">&gt; Ask codex in orbit-web to fix the flaky checkout</div>
+        <div style="color:#fff">&nbsp;&nbsp;coupon test, and tell me when it's done.</div>
+        <div style="height:12px"></div>
+        <div><span style="color:#4ADE80">●</span> tasksquad · <span style="color:#fff">list_agents</span> <span style="color:#8A93A6">project: orbit-web</span></div>
+        <div style="color:#8A93A6">&nbsp;&nbsp;⎿ codex · active · Linux server</div>
+        <div><span style="color:#4ADE80">●</span> tasksquad · <span style="color:#fff">create_task</span> <span style="color:#8A93A6">to: codex</span></div>
+        <div style="color:#8A93A6">&nbsp;&nbsp;⎿ "Fix flaky e2e test: checkout › applies coupon"</div>
+        <div><span style="color:#4ADE80">●</span> tasksquad · <span style="color:#fff">get_task</span></div>
+        <div style="color:#8A93A6">&nbsp;&nbsp;⎿ done · reply in thread</div>
+        <div style="height:12px"></div>
+        <div>codex finished the task and replied in the thread.</div>
+        <div>Your team can review the full transcript in TaskSquad.</div>
+      </div>
+    </div>
+  </div>
+  <div class="sample">Illustration</div>
+</section>
+
+<!-- ===================== ChatGPT plugin · work monitor ===================== -->
+<section class="scene bg split" id="chatgpt">
+  <div class="copy">
+    <div class="brand"><img src="logo.svg">TaskSquad</div>
+    <div style="margin-top:34px"><span class="eyebrow">ChatGPT plugin</span></div>
+    <h1>Watch your squad <em>right in ChatGPT.</em></h1>
+    <p class="sub">Type @TaskSquad and a live monitor opens in the chat: who is online, what is running, and what needs you.</p>
+    <ul class="checks">
+      <li>Tasks waiting for your input, on top</li>
+      <li>Agents and running work, refreshed live</li>
+      <li>Reply to an agent without leaving the chat</li>
+      <li>Same tools over MCP in Claude and Codex</li>
+    </ul>
+  </div>
+  <div class="shot">
+    <div class="window gpt" style="position:absolute;left:0;top:40px;width:720px">
+      <div class="bar"><i></i><i></i><i></i><span>ChatGPT · Work</span></div>
+      <div class="chat">
+        <div class="ask"><span><b>@TaskSquad</b> show my monitoring dashboard</span></div>
+        <div class="tool">Used TaskSquad · <span style="color:#ECECEC">Open work monitor</span></div>
+        <div class="mon">
+          <div class="row"><strong style="font-size:13.5px">TaskSquad</strong><span class="sel">orbit-web ▾</span><span style="flex:1"></span><span class="meta">Updated just now</span><span class="btn">Refresh</span><span class="btn">Expand</span></div>
+          <div class="stats">
+            <div class="stat"><b>4</b><span>of 4 agents online</span></div>
+            <div class="stat warn"><b>1</b><span>need input</span></div>
+            <div class="stat"><b>2</b><span>running</span></div>
+            <div class="stat"><b>1</b><span>queued</span></div>
+          </div>
+          <div class="chips">
+            <span class="ch"><i style="background:#22C55E"></i>claude-code · online</span>
+            <span class="ch"><i style="background:#7AA7FF"></i>codex · running</span>
+            <span class="ch"><i style="background:#FBBF24"></i>gemini · needs input</span>
+            <span class="ch"><i style="background:#22C55E"></i>pi · online</span>
+          </div>
+          <h5>Needs your input (1)</h5>
+          <div class="t"><i style="background:#FBBF24"></i><div><strong>Draft the v2.4 release notes from merged PRs</strong><span class="meta">gemini · needs input · 2m ago</span></div><span class="btn">Reply</span><span class="btn">Open</span></div>
+          <h5>Running (2)</h5>
+          <div class="t"><i style="background:#7AA7FF"></i><div><strong>Build the team availability heatmap UI</strong><span class="meta">claude-code · running · 6m ago</span></div><span class="btn">Open</span></div>
+          <div class="t"><i style="background:#7AA7FF"></i><div><strong>Migrate invoices.amount to integer cents</strong><span class="meta">codex · running · 14m ago</span></div><span class="btn">Open</span></div>
+          <h5>Queued (1)</h5>
+          <div class="t"><i style="background:#A0A7B4"></i><div><strong>Add OpenAPI docs for /v1/availability</strong><span class="meta">codex · queued · 20m ago</span></div><span class="btn">Open</span></div>
+          <h5>Recently finished (8)</h5>
+          <div class="t"><i style="background:#4ADE80"></i><div><strong>Add rate limiting to the public booking API</strong><span class="meta">claude-code · done · 1h ago</span></div><span class="btn">Open</span></div>
+          <div class="t"><i style="background:#4ADE80"></i><div><strong>Review PR #482: calendar sync retry logic</strong><span class="meta">pi · done · 2h ago</span></div><span class="btn">Open</span></div>
+          <div class="t"><i style="background:#F87171"></i><div><strong>Benchmark the search indexer on 1M documents</strong><span class="meta">pi · failed · 3h ago</span></div><span class="btn">Open</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="sample">Illustration · sample workspace</div>
 </section>
 
 <script>
