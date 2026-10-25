@@ -9,7 +9,7 @@ import { getCombinedInboxVersion } from '../inbox_version.js'
 import { calculateNextRun, type ConveyorRow } from './conveyors.js'
 import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
 import { onTaskDone } from '../planner/hook.js'
-import { readMessageAttachment, fetchAttachmentsForMessages, ATTACHMENT_MAX_PER_MESSAGE } from './helpers.js'
+import { readMessageAttachment, fetchAttachmentsForMessages, ATTACHMENT_MAX_PER_MESSAGE, agentKeyPrefix, sanitizeFilename, isAgentUploadKey } from './helpers.js'
 
 function truncate(text: string, maxLen = 80): string {
   return text.slice(0, maxLen) + (text.length > maxLen ? '…' : '')
@@ -799,7 +799,7 @@ export async function presignUpload(req: Request, env: Env, _ctx: unknown, daemo
     }
   }
 
-  const key = `${agentId.substring(0, 16)}/${session_id}/${filename}`
+  const key = `${agentKeyPrefix(agentId)}${session_id}/${sanitizeFilename(filename, 'file')}`
 
   const s3 = new S3Client({
     region: 'auto',
@@ -842,6 +842,11 @@ export async function messageAttach(req: Request, env: Env, _ctx: unknown, daemo
     .bind(msgId, daemon.teamId, daemon.agentId)
     .first()
   if (!msg) return err('not_found', 404)
+
+  // Only keys presignUpload issued to this agent may be recorded.
+  for (const key of [body.transcript_key, body.image_key]) {
+    if (key && !(await isAgentUploadKey(env.DB, daemon.agentId, key))) return err('invalid_key', 400)
+  }
 
   if (body.transcript_key) {
     await env.DB.prepare('UPDATE messages SET transcript_key = ? WHERE id = ?')
@@ -909,6 +914,8 @@ export async function sessionAttach(req: Request, env: Env, _ctx: unknown, daemo
     .bind(sessionId, daemon.agentId, daemon.teamId)
     .first()
   if (!session) return err('not_found', 404)
+  if (!body.r2_log_key.startsWith(`${agentKeyPrefix(daemon.agentId)}${sessionId}/`) ||
+      !(await isAgentUploadKey(env.DB, daemon.agentId, body.r2_log_key))) return err('invalid_key', 400)
 
   await env.DB.prepare('UPDATE sessions SET r2_log_key = ? WHERE id = ?')
     .bind(body.r2_log_key, sessionId)

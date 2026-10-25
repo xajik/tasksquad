@@ -5,6 +5,7 @@ import { importMasterKey, unwrapDEK, decrypt } from '../crypto.js'
 import { bumpInboxVersion } from '../inbox_version.js'
 import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
 import {
+  isAgentKey,
   readMessageAttachment,
   fetchAttachmentsForMessages,
   storeAttachments,
@@ -79,6 +80,8 @@ export async function getTranscript(req: Request, env: Env, _ctx: unknown, auth:
     .bind(msgId, taskId)
     .first<{ transcript_key: string | null; agent_id: string }>()
   if (!msg?.transcript_key) return err('not_found', 404)
+  // Rows recorded before daemon keys were validated may point outside this agent's prefix.
+  if (!isAgentKey(msg.agent_id, msg.transcript_key)) return err('not_found', 404)
 
   const obj = await env.LOGS.get(msg.transcript_key)
   if (!obj) return err('not_found', 404)

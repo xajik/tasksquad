@@ -17,6 +17,43 @@ export async function contentEtag(content: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+// ─── R2 object keys ───────────────────────────────────────────────────────────
+//
+// Every object an agent writes lives under its own prefix: <agentId[:16]>/<sessionId>/<file>
+// for daemon uploads (presignUpload) and <agentId[:16]>/inbox/<messageId>/<file> for portal
+// uploads. Keys reported back by a daemon, and keys read on behalf of a task, must stay
+// under that agent's prefix — otherwise a daemon could record another tenant's key on its
+// own message and read the object back through the transcript/attachment routes.
+
+export function agentKeyPrefix(agentId: string): string {
+  return `${agentId.substring(0, 16)}/`
+}
+
+// sanitizeFilename keeps a filename to one safe R2 key segment.
+export function sanitizeFilename(filename: string, fallback: string): string {
+  const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 128)
+  return sanitized && sanitized !== '.' && sanitized !== '..' ? sanitized : fallback
+}
+
+// isAgentKey reports whether key is a well-formed key under the agent's prefix.
+export function isAgentKey(agentId: string, key: unknown): key is string {
+  if (typeof key !== 'string' || !key.startsWith(agentKeyPrefix(agentId))) return false
+  return key.split('/').every(segment => segment !== '' && segment !== '.' && segment !== '..')
+}
+
+// isAgentUploadKey reports whether key is exactly what presignUpload issues to this agent:
+// <prefix><sessionId>/<file>, where the session belongs to the agent.
+export async function isAgentUploadKey(db: D1Database, agentId: string, key: unknown): Promise<boolean> {
+  if (!isAgentKey(agentId, key)) return false
+  const parts = key.split('/')
+  if (parts.length !== 3) return false
+  const session = await db
+    .prepare('SELECT 1 FROM sessions WHERE id = ? AND agent_id = ?')
+    .bind(parts[1], agentId)
+    .first()
+  return !!session
+}
+
 // ─── Message attachments (images) ─────────────────────────────────────────────
 //
 // One message_attachments row per image, regardless of who attached it
@@ -56,8 +93,8 @@ export async function storeMessageAttachment(
   if ((count?.n ?? 0) >= ATTACHMENT_MAX_PER_MESSAGE) return { error: 'too_many_attachments' }
 
   const id = ulid()
-  const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 128) || 'image'
-  const r2Key = `${agentId.substring(0, 16)}/inbox/${messageId}/${id}-${sanitized}`
+  const sanitized = sanitizeFilename(filename, 'image')
+  const r2Key = `${agentKeyPrefix(agentId)}inbox/${messageId}/${id}-${sanitized}`
 
   let toStore = bytes
   const agent = await env.DB
@@ -96,6 +133,8 @@ export async function readMessageAttachment(
     .bind(attachmentId, messageId)
     .first<{ r2_key: string; mime_type: string; filename: string }>()
   if (!row) return null
+  // Rows recorded before daemon keys were validated may point outside this agent's prefix.
+  if (!isAgentKey(agentId, row.r2_key)) return null
 
   const obj = await env.LOGS.get(row.r2_key)
   if (!obj) return null
