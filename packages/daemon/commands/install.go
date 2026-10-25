@@ -9,9 +9,13 @@ import (
 
 	"github.com/tasksquad/daemon/harness"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/util"
 )
 
 func installCommand(workDir string, cmd remoteCommand) error {
+	if !util.ValidResourceName(cmd.Name) {
+		return fmt.Errorf("unsafe command name %q", cmd.Name)
+	}
 	// Write the canonical copy under .tsq/commands/<name>.md
 	dir := filepath.Join(workDir, ".tsq", "commands")
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -36,6 +40,9 @@ func installCommand(workDir string, cmd remoteCommand) error {
 }
 
 func removeCommand(workDir, name string) {
+	if !util.ValidResourceName(name) {
+		return
+	}
 	src := filepath.Join(workDir, ".tsq", "commands", name+".md")
 	previous, _ := os.ReadFile(src)
 	harness.RemoveCodexCommand(workDir, name)

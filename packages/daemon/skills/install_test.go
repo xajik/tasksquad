@@ -102,3 +102,37 @@ func TestLoadSaveLock(t *testing.T) {
 		t.Errorf("reloaded etag = %q, want etag-abc", reloaded["tsq-foo"])
 	}
 }
+
+func TestInstallSkill_RejectsEscapingName(t *testing.T) {
+	root := t.TempDir()
+	workDir := filepath.Join(root, "project")
+	lock := make(skillsLock)
+
+	if err := installSkill(workDir, remoteSkill{Name: "../../escaped", Content: "x"}, lock); err == nil {
+		t.Fatal("installSkill accepted an escaping name")
+	}
+	if _, err := os.Stat(filepath.Join(root, "escaped")); !os.IsNotExist(err) {
+		t.Errorf("escaping name wrote outside the work dir: %v", err)
+	}
+	if len(lock) != 0 {
+		t.Errorf("lock recorded the rejected skill: %v", lock)
+	}
+}
+
+func TestRemoveSkill_IgnoresEscapingName(t *testing.T) {
+	root := t.TempDir()
+	workDir := filepath.Join(root, "project")
+	victim := filepath.Join(root, "victim")
+	if err := os.MkdirAll(victim, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(victim, "SKILL.md"), []byte("keep"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	removeSkill(workDir, "../../../victim")
+
+	if _, err := os.Stat(filepath.Join(victim, "SKILL.md")); err != nil {
+		t.Errorf("removeSkill touched a file outside the work dir: %v", err)
+	}
+}

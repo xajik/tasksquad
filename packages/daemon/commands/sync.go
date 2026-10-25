@@ -9,6 +9,7 @@ import (
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/util"
 )
 
 type Syncer struct {
@@ -89,6 +90,11 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 		}
 		cmd := remoteCommandFromMap(m)
 		if cmd.AutoInstall == 0 && cmd.IsDefault == 0 {
+			continue
+		}
+		// Names become path segments on disk; never act on one that could escape them.
+		if !util.ValidResourceName(cmd.Name) {
+			logger.Warn(fmt.Sprintf("[commands] Skipping %q — unsafe name", cmd.Name))
 			continue
 		}
 		serverNames[cmd.Name] = true

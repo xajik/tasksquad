@@ -9,12 +9,16 @@ import (
 
 	"github.com/tasksquad/daemon/harness"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/util"
 )
 
 // installAgent writes content to <workDir>/.tsq/agents/<name>.md
 // and copies it to .claude/agents/<name>.md, .agents/agents/<name>.md, and .gemini/agents/<name>.md
 // for compatibility with various agent tools.
 func installAgent(workDir string, agent remoteAgent) error {
+	if !util.ValidResourceName(agent.Name) {
+		return fmt.Errorf("unsafe sub-agent name %q", agent.Name)
+	}
 	dir := filepath.Join(workDir, ".tsq", "agents")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -38,6 +42,9 @@ func installAgent(workDir string, agent remoteAgent) error {
 
 // removeAgent deletes the sub-agent from .tsq/agents and its provider copies.
 func removeAgent(workDir, name string) {
+	if !util.ValidResourceName(name) {
+		return
+	}
 	src := filepath.Join(workDir, ".tsq", "agents", name+".md")
 	previous, _ := os.ReadFile(src)
 	harness.RemoveCodexAgent(workDir, name)

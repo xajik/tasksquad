@@ -9,12 +9,16 @@ import (
 
 	"github.com/tasksquad/daemon/harness"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/util"
 )
 
 // installSkill writes content to <workDir>/.tsq/skills/<name>/SKILL.md
 // and copies it to .claude/skills/<name>, .agents/skills/<name>, and .gemini/skills/<name>
 // for compatibility with various agent tools.
 func installSkill(workDir string, skill remoteSkill, lock skillsLock) error {
+	if !util.ValidResourceName(skill.Name) {
+		return fmt.Errorf("unsafe skill name %q", skill.Name)
+	}
 
 	dir := skillDir(workDir, skill.Name)
 	if info, lErr := os.Lstat(dir); lErr == nil {
@@ -55,6 +59,9 @@ func installSkill(workDir string, skill remoteSkill, lock skillsLock) error {
 // Only server-managed skills (tracked in the lock file) are ever passed here,
 // so user-created skills in provider directories are never touched.
 func removeSkill(workDir, name string) {
+	if !util.ValidResourceName(name) {
+		return
+	}
 	previous, _ := os.ReadFile(filepath.Join(skillDir(workDir, name), "SKILL.md"))
 	_ = os.Remove(filepath.Join(skillDir(workDir, name), "SKILL.md"))
 	_ = os.Remove(skillDir(workDir, name))

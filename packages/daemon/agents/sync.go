@@ -9,6 +9,7 @@ import (
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/util"
 )
 
 // Syncer allows external code to trigger an immediate sub-agents sync.
@@ -94,6 +95,11 @@ func syncWorkDir(cfg *config.Config, token, agentID, workDir string) {
 		}
 		agent := remoteAgentFromMap(m)
 		if agent.AutoInstall == 0 && agent.IsDefault == 0 {
+			continue
+		}
+		// Names become path segments on disk; never act on one that could escape them.
+		if !util.ValidResourceName(agent.Name) {
+			logger.Warn(fmt.Sprintf("[agents] Skipping sub-agent %q — unsafe name", agent.Name))
 			continue
 		}
 		serverNames[agent.Name] = true

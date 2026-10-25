@@ -9,6 +9,7 @@ import (
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/logger"
+	"github.com/tasksquad/daemon/util"
 )
 
 // Syncer allows external code to trigger an immediate skills sync.
@@ -94,6 +95,11 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 		}
 		skill := remoteSkillFromMap(m)
 		if skill.AutoInstall == 0 && skill.IsDefault == 0 {
+			continue
+		}
+		// Names become path segments on disk; never act on one that could escape them.
+		if !util.ValidResourceName(skill.Name) {
+			logger.Warn(fmt.Sprintf("[skills] Skipping %q — unsafe name", skill.Name))
 			continue
 		}
 		serverNames[skill.Name] = true
