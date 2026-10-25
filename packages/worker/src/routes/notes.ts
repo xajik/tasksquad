@@ -208,6 +208,12 @@ export async function unarchive(req: Request, env: Env, _ctx: unknown, auth: Aut
 
 // ─── Comments ─────────────────────────────────────────────────────────────────
 
+// Comment routes take the note id from the URL; membership of the URL's team only
+// counts if the note actually belongs to that team.
+async function noteInTeam(db: D1Database, noteId: string, teamId: string): Promise<boolean> {
+  return !!(await db.prepare('SELECT 1 FROM notes WHERE id = ? AND team_id = ?').bind(noteId, teamId).first())
+}
+
 export async function listComments(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const url = new URL(req.url)
   const parts = url.pathname.split('/')
@@ -215,6 +221,7 @@ export async function listComments(req: Request, env: Env, _ctx: unknown, auth: 
   const noteId = parts[4]
 
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
+  if (!(await noteInTeam(env.DB, noteId, teamId))) return err('not_found', 404)
 
   const comments = await env.DB
     .prepare('SELECT * FROM note_comments WHERE note_id = ? ORDER BY created_at ASC')
@@ -231,6 +238,7 @@ export async function createComment(req: Request, env: Env, _ctx: unknown, auth:
   const noteId = parts[4]
 
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
+  if (!(await noteInTeam(env.DB, noteId, teamId))) return err('not_found', 404)
 
   const body = await req.json<{ content: string }>()
   if (!body.content) return err('content_required', 400)
@@ -249,11 +257,13 @@ export async function deleteComment(req: Request, env: Env, _ctx: unknown, auth:
   const url = new URL(req.url)
   const parts = url.pathname.split('/')
   const teamId = parts[2]
+  const noteId = parts[4]
   const commentId = parts[6] // /teams/:teamId/notes/:noteId/comments/:commentId
 
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
+  if (!(await noteInTeam(env.DB, noteId, teamId))) return err('not_found', 404)
 
-  const comment = await env.DB.prepare('SELECT author_id FROM note_comments WHERE id = ?').bind(commentId).first<{ author_id: string }>()
+  const comment = await env.DB.prepare('SELECT author_id FROM note_comments WHERE id = ? AND note_id = ?').bind(commentId, noteId).first<{ author_id: string }>()
   if (!comment) return err('not_found', 404)
   if (comment.author_id !== auth.userId) return err('forbidden', 403)
 
