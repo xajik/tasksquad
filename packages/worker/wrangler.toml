@@ -38,18 +38,8 @@ id      = "69da9d69e08049cc863f98af59ce144a"
 name         = "IP_LIMITER"
 namespace_id = "1001"
 simple       = { limit = 3000, period = 60 }
-
-# Strict cap on sign-in and token endpoints.
-[[ratelimits]]
-name         = "AUTH_LIMITER"
-namespace_id = "1002"
-simple       = { limit = 20, period = 60 }
-
-# Failed authentications per IP; past the limit, further failures answer 429.
-[[ratelimits]]
-name         = "AUTH_FAIL_LIMITER"
-namespace_id = "1003"
-simple       = { limit = 10, period = 60 }
+# Its counts are approximate (cached per machine), so the strict limits on failed
+# sign-ins and token endpoints use the AuthLimiter Durable Object below instead.
 
 # Durable Object migration — remove AgentRelay class (relay removed in security refactor)
 [[migrations]]
@@ -64,6 +54,16 @@ new_classes = ["TerminalRelay"]
 [[durable_objects.bindings]]
 name = "TERMINAL_RELAY"
 class_name = "TerminalRelay"
+
+# Durable Object migration — add AuthLimiter: exact per-IP counters for failed sign-ins
+# and token endpoints (src/middleware/authLimiter.ts, rateLimit.ts)
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["AuthLimiter"]
+
+[[durable_objects.bindings]]
+name = "AUTH_LIMITS"
+class_name = "AuthLimiter"
 
 # OAuth callbacks of the TaskSquad MCP server (packages/mcp) allowed to receive
 # /mobile/authorization codes. Exact match, comma-separated.

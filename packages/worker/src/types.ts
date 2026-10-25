@@ -23,11 +23,11 @@ export interface Env {
   MCP_REDIRECT_URIS?: string
   // KV namespace for the hourly CLI token minting limit (optional — skipped if not bound)
   CB_KV?: KVNamespace
-  // Workers Rate Limiting bindings (wrangler.toml [[ratelimits]]); optional so local
-  // tests and dev without them still run.
+  // Approximate per-IP cap on all traffic (wrangler.toml [[ratelimits]]); optional so
+  // local tests and dev without it still run.
   IP_LIMITER?: RateLimit
-  AUTH_LIMITER?: RateLimit
-  AUTH_FAIL_LIMITER?: RateLimit
+  // Exact per-IP counters for failed sign-ins and token endpoints (AuthLimiter DO).
+  AUTH_LIMITS?: DurableObjectNamespace
   // Durable Object namespace for live terminal relay
   TERMINAL_RELAY: DurableObjectNamespace
 }

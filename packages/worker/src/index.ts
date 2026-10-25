@@ -1,6 +1,7 @@
 import { Router, IRequest } from 'itty-router'
 import { withFirebaseAuth, withDaemonAgentAuth, mintCliToken, revokeCliToken, err, json } from './auth.js'
 export { TerminalRelay } from './terminal/relay.js'
+export { AuthLimiter } from './middleware/authLimiter.js'
 import { resolveRelaySession } from './terminal/access.js'
 import { checkCliTokenRateLimit } from './middleware/circuitBreaker.js'
 import { checkRateLimit } from './middleware/rateLimit.js'
