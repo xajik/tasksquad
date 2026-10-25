@@ -127,6 +127,9 @@ export async function daemonPoll(_req: Request, env: Env, _ctx: unknown, d: Daem
 export async function daemonOpen(req: Request, env: Env, _ctx: unknown, d: DaemonContext): Promise<Response> {
   const body = await req.json<{ portal_id?: string; session_id?: string }>().catch(() => ({} as { portal_id?: string; session_id?: string }))
   if (!body.portal_id || !body.session_id) return err('missing_fields', 400)
+  // A portal's relay session is the portal itself (both daemons send portal_id). Any other
+  // value would let a daemon attach its portal to another tenant's relay session.
+  if (body.session_id !== body.portal_id) return err('invalid_session_id', 400)
 
   const portal = await env.DB
     .prepare(`SELECT id, agent_id FROM portals WHERE id = ? AND status = 'pending'`)
@@ -138,7 +141,7 @@ export async function daemonOpen(req: Request, env: Env, _ctx: unknown, d: Daemo
   const now = Date.now()
   await env.DB
     .prepare('UPDATE portals SET status = ?, session_id = ?, started_at = ? WHERE id = ?')
-    .bind('running', body.session_id, now, body.portal_id)
+    .bind('running', portal.id, now, portal.id)
     .run()
 
   return json({ ok: true })

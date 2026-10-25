@@ -1,6 +1,7 @@
 import { Router, IRequest } from 'itty-router'
 import { withFirebaseAuth, withDaemonAgentAuth, mintCliToken, revokeCliToken, err, json } from './auth.js'
 export { TerminalRelay } from './terminal/relay.js'
+import { resolveRelaySession } from './terminal/access.js'
 import { checkCircuitBreaker, checkCliTokenRateLimit } from './middleware/circuitBreaker.js'
 import * as teams    from './routes/teams.js'
 import * as agents   from './routes/agents.js'
@@ -213,26 +214,14 @@ router.post('/terminal/ticket', firebaseRoute(async (req, env, _ctx, auth) => {
   const body = await (req as Request).json<{ session_id?: string }>().catch(() => ({} as { session_id?: string }))
   if (!body.session_id) return err('missing_fields', 400)
 
-  // Accept portal relay sessions (portals.session_id set by daemonOpen) and task session IDs.
-  // Only match portals.session_id — not portals.id — so pending portals (session_id IS NULL)
-  // cannot receive a ticket that would fail at WebSocket upgrade time.
-  const [portalRow, sessionRow] = await Promise.all([
-    env.DB
-      .prepare('SELECT p.team_id FROM portals p WHERE p.session_id = ?')
-      .bind(body.session_id)
-      .first<{ team_id: string }>(),
-    env.DB
-      .prepare('SELECT t.team_id FROM sessions s JOIN tasks t ON t.id = s.task_id WHERE s.id = ?')
-      .bind(body.session_id)
-      .first<{ team_id: string }>(),
-  ])
-
-  const teamId = portalRow?.team_id ?? sessionRow?.team_id
-  if (!teamId) return err('not_found', 404)
+  // Accept running portals and task sessions. Pending portals (session_id IS NULL)
+  // don't resolve, so they cannot receive a ticket that would fail at upgrade time.
+  const relay = await resolveRelaySession(env, body.session_id)
+  if (!relay) return err('not_found', 404)
 
   const isMember = await env.DB
     .prepare('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?')
-    .bind(teamId, auth.userId)
+    .bind(relay.teamId, auth.userId)
     .first()
   if (!isMember) return err('forbidden', 403)
 
@@ -250,21 +239,10 @@ router.get('/terminal/:sessionId', async (req: IRequest, env: Env) => {
 
   if ((req as Request).headers.has('X-TSQ-Agent')) {
     // Daemon path — validate daemon CLI token + confirm session ownership.
-    // Check both portals table (session_id set by daemonOpen) and sessions table
-    // (task relay sessions from lifecycle.go use the sessions table, not portals).
+    // Portal relays and task relays (lifecycle.go) both resolve through resolveRelaySession.
     const d = await withDaemonAgentAuth(req as Request, env)
     if (d instanceof Response) return d
-    const [portalRow, sessionRow] = await Promise.all([
-      env.DB
-        .prepare('SELECT agent_id FROM portals WHERE session_id = ?')
-        .bind(sessionId)
-        .first<{ agent_id: string }>(),
-      env.DB
-        .prepare('SELECT agent_id FROM sessions WHERE id = ?')
-        .bind(sessionId)
-        .first<{ agent_id: string }>(),
-    ])
-    const owner = portalRow?.agent_id ?? sessionRow?.agent_id
+    const owner = (await resolveRelaySession(env, sessionId))?.agentId
     if (!owner || owner !== d.agentId) return err('forbidden', 403)
   } else {
     // Browser path — one-time ticket issued by POST /terminal/ticket.
