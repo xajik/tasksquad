@@ -43,7 +43,7 @@ function makeEnv(db: FakeDB): Env {
   return { DB: db as unknown as D1Database } as unknown as Env
 }
 
-const DAEMON: DaemonContext = { teamId: 'team-1', agentId: 'agent-1', tokenId: '' }
+const DAEMON: DaemonContext = { teamId: 'team-1', agentId: 'agent-1', userId: 'user-1', tokenId: '' }
 
 function claimRequest(body: unknown): Request {
   return new Request('https://api.example.com/daemon/dream/claim', {

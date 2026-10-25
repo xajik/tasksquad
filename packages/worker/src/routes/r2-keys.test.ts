@@ -52,7 +52,7 @@ class FakeDB {
 const AGENT = '01JABCDEFGHJKMNPQRSTVWXYZ0'
 const OTHER_AGENT = '01JZZZZZZZZZZZZZZZZZZZZZZ9'
 const PREFIX = agentKeyPrefix(AGENT)
-const DAEMON: DaemonContext = { teamId: 'team-1', agentId: AGENT, tokenId: '' }
+const DAEMON: DaemonContext = { teamId: 'team-1', agentId: AGENT, userId: 'user-1', tokenId: '' }
 
 function seed(): FakeDB {
   const db = new FakeDB()

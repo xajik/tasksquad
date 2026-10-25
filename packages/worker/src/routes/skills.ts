@@ -1,7 +1,7 @@
 import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext, DaemonContext } from '../types.js'
-import { requireMember, contentEtag } from './helpers.js'
+import { requireMember, requireMaintainer, contentEtag, validResourceName, INVALID_NAME, MAINTAINER_REQUIRED } from './helpers.js'
 
 // ─── Skills ──────────────────────────────────────────────────────────────────
 
@@ -33,6 +33,7 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   const body = await req.json<{ name: string; description: string; content: string; auto_install?: boolean }>()
   const { name, description, content, auto_install } = body
   if (!name || !content) return err('missing_fields', 400)
+  if (!validResourceName(name)) return err(INVALID_NAME, 400)
 
   const now = Date.now()
   const etag = await contentEtag(content)
@@ -40,9 +41,13 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   // Check if skill already exists for this team
   const existing = await env.DB
-    .prepare('SELECT id, version FROM skills WHERE team_id = ? AND name = ?')
+    .prepare('SELECT id, version, auto_install FROM skills WHERE team_id = ? AND name = ?')
     .bind(teamId, name)
-    .first<{ id: string; version: number }>()
+    .first<{ id: string; version: number; auto_install: number }>()
+
+  if ((auto_install || existing?.auto_install) && !(await requireMaintainer(env.DB, teamId, auth.userId))) {
+    return err(MAINTAINER_REQUIRED, 403)
+  }
 
   if (existing) {
     // Update existing skill
@@ -102,14 +107,18 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
   const existing = await env.DB
-    .prepare('SELECT id, is_default, team_id FROM skills WHERE id = ?')
+    .prepare('SELECT id, is_default, team_id, auto_install FROM skills WHERE id = ?')
     .bind(skillId)
-    .first<{ id: string; is_default: number; team_id: string | null }>()
+    .first<{ id: string; is_default: number; team_id: string | null; auto_install: number }>()
   if (!existing) return err('not_found', 404)
   if (existing.is_default) return err('cannot_modify_default', 403)
   if (existing.team_id !== teamId) return err('not_found', 404)
 
   const body = await req.json<{ name?: string; description?: string; content?: string; auto_install?: boolean }>()
+  if (body.name !== undefined && !validResourceName(body.name)) return err(INVALID_NAME, 400)
+  if ((existing.auto_install || body.auto_install) && !(await requireMaintainer(env.DB, teamId, auth.userId))) {
+    return err(MAINTAINER_REQUIRED, 403)
+  }
   const now = Date.now()
 
   let etag: string | undefined
@@ -153,12 +162,13 @@ export async function remove(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
   const existing = await env.DB
-    .prepare('SELECT is_default, team_id FROM skills WHERE id = ?')
+    .prepare('SELECT is_default, team_id, auto_install FROM skills WHERE id = ?')
     .bind(skillId)
-    .first<{ is_default: number; team_id: string | null }>()
+    .first<{ is_default: number; team_id: string | null; auto_install: number }>()
   if (!existing) return err('not_found', 404)
   if (existing.is_default) return err('cannot_delete_default', 403)
   if (existing.team_id !== teamId) return err('not_found', 404)
+  if (existing.auto_install && !(await requireMaintainer(env.DB, teamId, auth.userId))) return err(MAINTAINER_REQUIRED, 403)
 
   await env.DB.prepare('DELETE FROM skills WHERE id = ?').bind(skillId).run()
   return new Response(null, { status: 204 })
@@ -242,6 +252,7 @@ export async function daemonUpsert(req: Request, env: Env, _ctx: unknown, daemon
 
   if (!name || !content) return err('missing_fields', 400)
   if (!name.startsWith('tsq-')) return err('name_must_start_with_tsq', 400)
+  if (!validResourceName(name)) return err(INVALID_NAME, 400)
 
   const { teamId, agentId } = daemon
   const now = Date.now()
@@ -249,11 +260,14 @@ export async function daemonUpsert(req: Request, env: Env, _ctx: unknown, daemon
 
   // If a team-scoped skill with this name already exists, update it.
   const existing = await env.DB
-    .prepare('SELECT id, version FROM skills WHERE name = ? AND team_id = ?')
+    .prepare('SELECT id, version, auto_install FROM skills WHERE name = ? AND team_id = ?')
     .bind(name, teamId)
-    .first<{ id: string; version: number }>()
+    .first<{ id: string; version: number; auto_install: number }>()
 
   if (existing) {
+    // Auto-install skills reach every teammate's machine; only maintainers may change them.
+    if (existing.auto_install && !(await requireMaintainer(env.DB, teamId, daemon.userId))) return err(MAINTAINER_REQUIRED, 403)
+
     await env.DB
       .prepare(`
         UPDATE skills SET
@@ -276,6 +290,7 @@ export async function daemonUpsert(req: Request, env: Env, _ctx: unknown, daemon
     .first<{ id: string }>()
 
   const finalName = defaultCollision ? `${name}-${now}` : name
+  if (!validResourceName(finalName)) return err(INVALID_NAME, 400)
 
   const id = ulid()
   await env.DB

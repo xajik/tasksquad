@@ -11,6 +11,27 @@ export async function requireMember(db: D1Database, teamId: string, userId: stri
   return !!row
 }
 
+// ─── Team library (skills, commands, sub-agents) ──────────────────────────────
+
+// Library names become file and directory names on every synced machine. Same rule as
+// util.ValidResourceName in the Go daemon and HarnessLayout.isSafe in tsq-core.
+export const INVALID_NAME = 'Names may use letters, digits, "-" and "_" (up to 100 characters) and must start with a letter or digit.'
+export const MAINTAINER_REQUIRED = 'Only project owners and maintainers can add, change or remove auto-install items.'
+
+export function validResourceName(name: unknown): name is string {
+  return typeof name === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/.test(name)
+}
+
+// Auto-install library items are written into every teammate's agent work dir on the
+// next sync, so only owners and maintainers may create, change or remove them.
+export async function requireMaintainer(db: D1Database, teamId: string, userId: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ? AND role IN ('owner', 'maintainer')")
+    .bind(teamId, userId)
+    .first()
+  return !!row
+}
+
 export async function contentEtag(content: string): Promise<string> {
   const enc = new TextEncoder()
   const buf = await crypto.subtle.digest('SHA-256', enc.encode(content))

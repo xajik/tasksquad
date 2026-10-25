@@ -76,7 +76,7 @@ function seed(): FakeDB {
   return db
 }
 
-const ATTACKER: DaemonContext = { teamId: 'attacker-team', agentId: 'attacker-agent', tokenId: '' }
+const ATTACKER: DaemonContext = { teamId: 'attacker-team', agentId: 'attacker-agent', userId: 'attacker', tokenId: '' }
 
 function openRequest(body: unknown): Request {
   return new Request('https://api.example.com/daemon/portal/open', { method: 'POST', body: JSON.stringify(body) })

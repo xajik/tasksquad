@@ -1,7 +1,7 @@
 import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
-import { requireMember, contentEtag } from './helpers.js'
+import { requireMember, requireMaintainer, contentEtag, validResourceName, INVALID_NAME, MAINTAINER_REQUIRED } from './helpers.js'
 
 // ─── Browser Routes ───────────────────────────────────────────────────────────
 
@@ -33,15 +33,20 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   const body = await req.json<{ name: string; description: string; content: string; auto_install?: boolean }>()
   const { name, description, content, auto_install } = body
   if (!name || !content) return err('missing_fields', 400)
+  if (!validResourceName(name)) return err(INVALID_NAME, 400)
 
   const now = Date.now()
   const etag = await contentEtag(content)
   const autoInstallVal = auto_install ? 1 : 0
 
   const existing = await env.DB
-    .prepare('SELECT id, version FROM commands WHERE team_id = ? AND name = ?')
+    .prepare('SELECT id, version, auto_install FROM commands WHERE team_id = ? AND name = ?')
     .bind(teamId, name)
-    .first<{ id: string; version: number }>()
+    .first<{ id: string; version: number; auto_install: number }>()
+
+  if ((auto_install || existing?.auto_install) && !(await requireMaintainer(env.DB, teamId, auth.userId))) {
+    return err(MAINTAINER_REQUIRED, 403)
+  }
 
   if (existing) {
     await env.DB
@@ -99,14 +104,18 @@ export async function update(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
   const existing = await env.DB
-    .prepare('SELECT id, is_default, team_id FROM commands WHERE id = ?')
+    .prepare('SELECT id, is_default, team_id, auto_install FROM commands WHERE id = ?')
     .bind(commandId)
-    .first<{ id: string; is_default: number; team_id: string | null }>()
+    .first<{ id: string; is_default: number; team_id: string | null; auto_install: number }>()
   if (!existing) return err('not_found', 404)
   if (existing.is_default) return err('cannot_modify_default', 403)
   if (existing.team_id !== teamId) return err('not_found', 404)
 
   const body = await req.json<{ name?: string; description?: string; content?: string; auto_install?: boolean }>()
+  if (body.name !== undefined && !validResourceName(body.name)) return err(INVALID_NAME, 400)
+  if ((existing.auto_install || body.auto_install) && !(await requireMaintainer(env.DB, teamId, auth.userId))) {
+    return err(MAINTAINER_REQUIRED, 403)
+  }
   const now = Date.now()
 
   let etag: string | undefined
@@ -150,12 +159,13 @@ export async function remove(req: Request, env: Env, _ctx: unknown, auth: AuthCo
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
   const existing = await env.DB
-    .prepare('SELECT is_default, team_id FROM commands WHERE id = ?')
+    .prepare('SELECT is_default, team_id, auto_install FROM commands WHERE id = ?')
     .bind(commandId)
-    .first<{ is_default: number; team_id: string | null }>()
+    .first<{ is_default: number; team_id: string | null; auto_install: number }>()
   if (!existing) return err('not_found', 404)
   if (existing.is_default) return err('cannot_delete_default', 403)
   if (existing.team_id !== teamId) return err('not_found', 404)
+  if (existing.auto_install && !(await requireMaintainer(env.DB, teamId, auth.userId))) return err(MAINTAINER_REQUIRED, 403)
 
   await env.DB.prepare('DELETE FROM commands WHERE id = ?').bind(commandId).run()
   return new Response(null, { status: 204 })

@@ -158,7 +158,7 @@ function makeEnv(db: FakeDB): Env {
 }
 
 const AUTH: AuthContext = { uid: 'fb-1', email: 'user@example.com', userId: 'user-1', plan: 'free' }
-const DAEMON: DaemonContext = { teamId: 'team-1', agentId: 'agent-1', tokenId: '' }
+const DAEMON: DaemonContext = { teamId: 'team-1', agentId: 'agent-1', userId: 'user-1', tokenId: '' }
 
 let db: FakeDB
 beforeEach(() => {
@@ -491,6 +491,6 @@ describe('withDaemonAgentAuth (gates /daemon/memory)', () => {
       headers: { Authorization: `Bearer ${RAW_TOKEN}`, 'X-TSQ-Agent': 'agent-1' },
     })
     const result = await withDaemonAgentAuth(req, makeEnv(db))
-    expect(result).toEqual({ teamId: 'team-1', agentId: 'agent-1', tokenId: '' })
+    expect(result).toEqual({ teamId: 'team-1', agentId: 'agent-1', userId: 'user-1', tokenId: '' })
   })
 })

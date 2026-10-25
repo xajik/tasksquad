@@ -171,7 +171,7 @@ export async function withDaemonAgentAuth(
     })
   }
 
-  return { teamId: row.team_id, agentId, tokenId: '' }
+  return { teamId: row.team_id, agentId, userId: firebaseResult.userId, tokenId: '' }
 }
 
 // withDaemonBatchAuth authenticates a batch heartbeat using a Firebase ID token
@@ -216,6 +216,7 @@ export async function withDaemonBatchAuth(
   return (rows as { id: string; team_id: string }[]).map(r => ({
     teamId: r.team_id,
     agentId: r.id,
+    userId: firebaseResult.userId,
     tokenId: '',
   }))
 }

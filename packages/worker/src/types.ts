@@ -38,5 +38,7 @@ export interface AuthContext {
 export interface DaemonContext {
   teamId: string
   agentId: string
+  // The user whose token authenticated the daemon request.
+  userId: string
   tokenId: string
 }
