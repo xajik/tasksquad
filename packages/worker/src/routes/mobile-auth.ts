@@ -1,5 +1,6 @@
 import { json, err, sha256, mintCliToken } from '../auth.js'
 import type { AuthContext, Env } from '../types.js'
+import { authFailureResponse } from '../middleware/rateLimit.js'
 
 const CODE_TTL_MS = 5 * 60 * 1000
 const MOBILE_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -57,7 +58,7 @@ export async function exchangeCode(req: Request, env: Env): Promise<Response> {
     WHERE code_hash = ? AND code_challenge = ? AND consumed_at IS NULL AND expires_at > ?
     RETURNING user_id
   `).bind(now, await sha256(body.code), challenge, now).first<{ user_id: string }>()
-  if (!row) return err('invalid_authorization_code', 401)
+  if (!row) return (await authFailureResponse(req, env)) ?? err('invalid_authorization_code', 401)
 
   // Mobile access uses the existing revocable user-token table, with a shorter
   // lifetime and a distinct label. The app revokes it on logout.

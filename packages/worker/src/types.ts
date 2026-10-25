@@ -21,9 +21,13 @@ export interface Env {
   ALLOWED_ORIGINS?: string
   // Comma-separated MCP server OAuth callbacks accepted by /mobile/authorization/codes
   MCP_REDIRECT_URIS?: string
-  // KV namespace for circuit breaker rate limiting (optional — gracefully skipped if not provisioned)
-  // Provision with: wrangler kv namespace create CB_CACHE
+  // KV namespace for the hourly CLI token minting limit (optional — skipped if not bound)
   CB_KV?: KVNamespace
+  // Workers Rate Limiting bindings (wrangler.toml [[ratelimits]]); optional so local
+  // tests and dev without them still run.
+  IP_LIMITER?: RateLimit
+  AUTH_LIMITER?: RateLimit
+  AUTH_FAIL_LIMITER?: RateLimit
   // Durable Object namespace for live terminal relay
   TERMINAL_RELAY: DurableObjectNamespace
 }

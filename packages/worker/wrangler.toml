@@ -26,12 +26,30 @@ id      = "2fd5d9c6fb734e07940c1d825c7d1411"
 binding = "POLL_CACHE"
 id      = "60e989c16f6d4ce4946df7393a6031ce"
 
-# KV — circuit breaker: IP rate limiting, auth failure tracking, token minting limits
-# Provision with: wrangler kv namespace create CB_CACHE
-# Then replace the id below with the output from that command.
-# [[kv_namespaces]]
-# binding = "CB_KV"
-# id      = "REPLACE_WITH_ID_FROM_wrangler_kv_namespace_create_CB_CACHE"
+# KV — CLI token minting limit, 5 per user per hour (src/middleware/circuitBreaker.ts)
+[[kv_namespaces]]
+binding = "CB_KV"
+id      = "69da9d69e08049cc863f98af59ce144a"
+
+# Rate limiting (src/middleware/rateLimit.ts), keyed by client IP and counted per
+# Cloudflare location. Applies on every hostname the worker serves, workers.dev included.
+# Generous cap on all traffic — stops floods and id enumeration, not normal use.
+[[ratelimits]]
+name         = "IP_LIMITER"
+namespace_id = "1001"
+simple       = { limit = 3000, period = 60 }
+
+# Strict cap on sign-in and token endpoints.
+[[ratelimits]]
+name         = "AUTH_LIMITER"
+namespace_id = "1002"
+simple       = { limit = 20, period = 60 }
+
+# Failed authentications per IP; past the limit, further failures answer 429.
+[[ratelimits]]
+name         = "AUTH_FAIL_LIMITER"
+namespace_id = "1003"
+simple       = { limit = 10, period = 60 }
 
 # Durable Object migration — remove AgentRelay class (relay removed in security refactor)
 [[migrations]]

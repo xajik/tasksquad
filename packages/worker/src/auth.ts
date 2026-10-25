@@ -1,7 +1,7 @@
 import { CloudFireAuth } from 'cloudfire-auth'
 import { ulid } from 'ulidx'
 import type { Env, AuthContext, DaemonContext } from './types.js'
-import { trackAuthFailure } from './middleware/circuitBreaker.js'
+import { authFailureResponse } from './middleware/rateLimit.js'
 
 const CLI_TOKEN_PREFIX = 'tsq_cli_'
 const CLI_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000 // 90 days
@@ -27,7 +27,7 @@ export async function withFirebaseAuth(
 
   // Long-lived CLI tokens are handled by a dedicated path — no Firebase call needed.
   if (token.startsWith(CLI_TOKEN_PREFIX)) {
-    return withUserTokenAuth(token, env)
+    return withUserTokenAuth(req, token, env)
   }
 
   let decoded: { uid?: string; sub?: string; email?: string }
@@ -37,7 +37,8 @@ export async function withFirebaseAuth(
     decoded = await auth.verifyIdToken(token)
   } catch {
     console.warn('[auth] Firebase ID token verification failed')
-    trackAuthFailure(req, env).catch(() => {})
+    const limited = await authFailureResponse(req, env)
+    if (limited) return limited
     return new Response(JSON.stringify({ error: 'invalid_token' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
@@ -55,7 +56,7 @@ export async function withFirebaseAuth(
 }
 
 // withUserTokenAuth validates a tsq_cli_* token stored in user_cli_tokens.
-async function withUserTokenAuth(token: string, env: Env): Promise<AuthContext | Response> {
+async function withUserTokenAuth(req: Request, token: string, env: Env): Promise<AuthContext | Response> {
   const hash = await sha256(token)
   const row = await env.DB.prepare(`
     SELECT t.id, t.user_id, t.expires_at, u.firebase_uid, u.email, u.plan
@@ -66,6 +67,9 @@ async function withUserTokenAuth(token: string, env: Env): Promise<AuthContext |
 
   if (!row) {
     console.warn('[auth] CLI token not found — invalid or revoked')
+    // Expired tokens are not counted: they are known tokens, typically a daemon still polling.
+    const limited = await authFailureResponse(req, env)
+    if (limited) return limited
     return new Response(JSON.stringify({ error: 'invalid_token' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },

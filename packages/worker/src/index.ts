@@ -2,7 +2,8 @@ import { Router, IRequest } from 'itty-router'
 import { withFirebaseAuth, withDaemonAgentAuth, mintCliToken, revokeCliToken, err, json } from './auth.js'
 export { TerminalRelay } from './terminal/relay.js'
 import { resolveRelaySession } from './terminal/access.js'
-import { checkCircuitBreaker, checkCliTokenRateLimit } from './middleware/circuitBreaker.js'
+import { checkCliTokenRateLimit } from './middleware/circuitBreaker.js'
+import { checkRateLimit } from './middleware/rateLimit.js'
 import * as teams    from './routes/teams.js'
 import * as agents   from './routes/agents.js'
 import * as tasks    from './routes/tasks.js'
@@ -279,8 +280,8 @@ function addCors(res: Response, req: Request, env: Env): Response {
 export default {
   fetch: async (req: Request, env: Env, ctx: ExecutionContext): Promise<Response> => {
     try {
-      const blocked = await checkCircuitBreaker(req, env)
-      if (blocked) return addCors(blocked, req, env)
+      const limited = await checkRateLimit(req, env)
+      if (limited) return addCors(limited, req, env)
 
       const res = await router.fetch(req, env, ctx)
       return addCors(res, req, env)
