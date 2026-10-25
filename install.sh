@@ -25,7 +25,7 @@ case "$ARCH_RAW" in
 esac
 
 # Get latest release tag
-VERSION=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+VERSION=$(curl --proto '=https' --proto-redir '=https' -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 
 if [ -z "$VERSION" ]; then
     echo "Error: Could not find latest version for $REPO"
@@ -46,7 +46,24 @@ TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 # Download
-curl -L "$URL" -o "$TMP_DIR/$FILENAME"
+curl --proto '=https' --proto-redir '=https' -fsSL "$URL" -o "$TMP_DIR/$FILENAME"
+curl --proto '=https' --proto-redir '=https' -fsSL \
+    "https://github.com/$REPO/releases/download/$VERSION/checksums.txt" -o "$TMP_DIR/checksums.txt"
+
+# Verify the archive before extracting or installing anything.
+EXPECTED=$(awk -v filename="$FILENAME" '$2 == filename { print $1 }' "$TMP_DIR/checksums.txt")
+if [ "${#EXPECTED}" -ne 64 ] || printf '%s' "$EXPECTED" | LC_ALL=C grep -q '[^0-9a-fA-F]'; then
+    echo "Error: missing or invalid checksum for $FILENAME" >&2
+    exit 1
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$TMP_DIR" && printf '%s  %s\n' "$EXPECTED" "$FILENAME" | sha256sum -c -)
+elif command -v shasum >/dev/null 2>&1; then
+    (cd "$TMP_DIR" && printf '%s  %s\n' "$EXPECTED" "$FILENAME" | shasum -a 256 -c -)
+else
+    echo "Error: sha256sum or shasum is required to verify the download" >&2
+    exit 1
+fi
 
 # Extract
 if [ "$EXT" = "tar.gz" ]; then

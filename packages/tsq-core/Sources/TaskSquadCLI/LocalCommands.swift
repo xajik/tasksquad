@@ -140,6 +140,8 @@ enum HookCommands {
     private static func post(_ path: String, port: Int, body: [String: String], what: String, _ c: CLIContext) async -> Int32 {
         var request = URLRequest(url: URL(string: "http://localhost:\(port)\(path)")!, timeoutInterval: 60)
         request.httpMethod = "POST"
+        do { request.setValue("Bearer " + (try LocalHookAuth.read(port: port, paths: c.paths)), forHTTPHeaderField: "Authorization") }
+        catch { c.printError("error reading daemon hook capability: \(error.localizedDescription)"); return 1 }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = GoJSONValue.object(body.mapValues(GoJSONValue.string)).data // Go: json.Marshal(payload)
         let data: Data, response: URLResponse

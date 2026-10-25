@@ -283,6 +283,7 @@ struct CustomerTaskDetail: View {
         guard let port = Int(supervisorPort), (1024...65535).contains(port) else { model.error = "Enter a valid local hooks port."; return }
         do {
             var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/hooks/trigger-supervisor")!)
+            request.setValue("Bearer " + (try LocalHookAuth.read(port: port)), forHTTPHeaderField: "Authorization")
             request.httpMethod = "POST"; request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(JSONValue.object(["task_id": .string(record.id)]))
             let response = try await NativeHTTPTransport().send(request)

@@ -129,12 +129,23 @@ func hooksJSON(hooksPort int, agentID, taskID string) ([]byte, error) {
 			// A SessionStart command hook's stdout is injected into the model's
 			// context, so curl's output must go nowhere.
 			hook = map[string]any{"type": "command", "timeout": lifecycleHookTimeout, "command": fmt.Sprintf(
-				"curl -s -m %d -X POST -H 'Content-Type: application/json' --data-binary @- '%s' >/dev/null 2>&1 || true",
+				"curl -s -m %d -X POST -H 'Content-Type: application/json' -H \"Authorization: Bearer $TSQ_HOOK_TOKEN\" --data-binary @- '%s' >/dev/null 2>&1 || true",
 				lifecycleHookTimeout, eventURL)}
 		}
 		group := map[string]any{"matcher": "*", "hooks": []any{hook}}
 		existing, _ := hooks[event].([]any)
 		hooks[event] = append(existing, group)
+	}
+	for _, value := range hooks {
+		for _, group := range value.([]any) {
+			for _, entry := range group.(map[string]any)["hooks"].([]any) {
+				h := entry.(map[string]any)
+				if h["type"] == "http" {
+					h["headers"] = map[string]string{"Authorization": "Bearer $TSQ_HOOK_TOKEN"}
+					h["allowedEnvVars"] = []string{"TSQ_HOOK_TOKEN"}
+				}
+			}
+		}
 	}
 	return json.Marshal(map[string]any{"hooks": hooks})
 }

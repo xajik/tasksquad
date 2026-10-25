@@ -15,8 +15,11 @@ final class Captured: @unchecked Sendable {
 actor HookFixture {
     var requests: [(path: String, body: JSONValue)] = []
     var status = 200
+    var capability = ""
+    func setCapability(_ value: String) { capability = value }
     func setStatus(_ value: Int) { status = value }
     func handle(_ request: LocalHTTPRequest) -> LocalHTTPResponse {
+        guard !capability.isEmpty, request.headers["authorization"] == "Bearer " + capability else { return .init(status: 401) }
         requests.append((request.path, (try? JSONDecoder().decode(JSONValue.self, from: request.body)) ?? .null))
         // A fixed body: both binaries must print exactly what the daemon answered.
         return LocalHTTPResponse(status: status, body: Data("{\"status\":\"ok\",\"path\":\"\(request.path)\"}\n".utf8))
@@ -111,10 +114,26 @@ final class CLIGoldenTests: PlatformTestCase {
         try await assertSame(["logs", "../Coder", "01TASKB"])
     }
 
+    func testHookCommandsFailWithoutLocalCapability() async throws {
+        for args in [
+            ["report", "--task", "T1", "--status", "resolved", "--summary", "x", "--port", "65532"],
+            ["send-image", "--task", "T1", "--port", "65532", "/tmp/a.png"],
+            ["skill", "--name", "tsq-x", "--description", "d", "--port", "65532"],
+        ] {
+            let g = try go(args, stdin: "fixture"), s = await swift(args, stdin: "fixture")
+            XCTAssertEqual(g.0, 1); XCTAssertEqual(s.0, 1)
+            XCTAssertEqual(g.1, ""); XCTAssertEqual(s.1, "")
+            XCTAssertTrue(g.2.contains("capability"), g.2)
+            XCTAssertTrue(s.2.contains("capability"), s.2)
+        }
+    }
+
     func testHookCommandsAgainstAFixtureServer() async throws {
         let fixture = HookFixture()
         let server = try LocalHTTPServer { await fixture.handle($0) }
         let port = String(try await server.start())
+        let capability = try LocalHookAuth.loadOrCreate(port: Int(port)!, paths: .init(home: root))
+        await fixture.setCapability(capability)
         defer { Task { await server.stop() } }
         try await assertSame(["report"])
         try await assertSame(["report", "--bogus"])

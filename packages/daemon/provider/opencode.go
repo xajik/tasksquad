@@ -113,7 +113,7 @@ export const TaskSquadPlugin = async ({ client }) => {
   const post = async (path, body) => {
     try {
       await fetch("http://localhost:%d" + path, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (process.env.TSQ_HOOK_TOKEN ?? "") },
         body: JSON.stringify(body)
       })
     } catch (e) {

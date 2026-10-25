@@ -116,10 +116,11 @@ func TestCodexLiveTwoTurns(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Server.URL = api.URL
 	a := New(config.AgentConfig{ID: id, Name: id, Command: wrapper, Provider: "codex", WorkDir: dir})
-	hook := httptest.NewServer(hooks.NewHandler(cfg, []hooks.Agent{a}, nil, nil))
+	hook := httptest.NewServer(hooks.NewHandler(cfg, []hooks.Agent{a}, nil, nil, "test-hook-token"))
 	defer hook.Close()
 	_, port, _ := net.SplitHostPort(strings.TrimPrefix(hook.URL, "http://"))
 	cfg.Hooks.Port, _ = strconv.Atoi(port)
+	t.Setenv("TSQ_HOOK_TOKEN", "test-hook-token")
 	done := make(chan struct{})
 	go func() {
 		a.startTask(cfg, map[string]any{"id": id, "subject": "Reply exactly TSQ_ONE. Do not use tools."}, "")

@@ -91,3 +91,23 @@ The daemon also exposes hooks for internal components to report progress:
 - [Gemini CLI Hooks](https://geminicli.com/docs/hooks/)
 - [Claude Code Hooks](https://code.claude.com/docs/en/hooks#notification)
 - [OpenClaw Automation](https://docs.openclaw.ai/automation/hooks)
+
+
+## Local hook authentication
+
+Hook callbacks are native local requests. Both daemons reject browser Origins,
+non-loopback Host headers and methods other than POST before dispatch. Every
+callback also needs the per-port capability in `~/.tasksquad/hooks-<port>.token`
+(owner-only, mode `0600`). The file is shared by the Go and Swift daemons.
+Generated provider hooks and the native/CLI clients attach it automatically;
+custom clients must send `Authorization: Bearer <capability>`. Never send a
+Firebase or cloud CLI token to this local server.
+
+Restart the daemon after updating so it creates the capability, then start new
+provider sessions. The web portal cannot invoke local hooks; use the native app
+for manual supervisor runs. Automatic supervision is unchanged.
+
+Claude HTTP hooks resolve `TSQ_HOOK_TOKEN` from their process environment using
+`headers` and `allowedEnvVars`. Shell and plugin callbacks use that same variable.
+Claw's body-less callbacks use a query capability in its owner-only
+`.agent/settings.local.toml`; never commit that local file or log its URLs.

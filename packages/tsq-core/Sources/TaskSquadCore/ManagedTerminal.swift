@@ -27,6 +27,7 @@ public struct ManagedTerminalClient: Sendable {
         body["agent_id"] = .string(target.agentID); body["task_id"] = .string(target.taskID); body["session"] = .string(target.session)
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/hooks/terminal/\(action)")!, timeoutInterval: 5)
         request.httpMethod = "POST"; request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = try? LocalHookAuth.read(port: port) { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
         request.httpBody = GoJSONValue.object(body).data
         let result = try await transport.send(request)
         if result.status == 404 || result.status == 501 { throw ManagedTerminalError.updateRequired }

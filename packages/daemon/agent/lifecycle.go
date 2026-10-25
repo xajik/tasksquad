@@ -13,6 +13,7 @@ import (
 	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/auth"
 	"github.com/tasksquad/daemon/config"
+	"github.com/tasksquad/daemon/hookauth"
 	"github.com/tasksquad/daemon/kb"
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/provider"
@@ -238,6 +239,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	// (see the tsq-attach-image system skill) without the task ID ever needing
 	// to appear in the prompt text itself.
 	provEnv := append(a.prov.Env(cfg.Hooks.Port), fmt.Sprintf("TSQ_TASK_ID=%s", taskID))
+	provEnv = append(provEnv, hookauth.Env(cfg.Hooks.Port)...)
 	if len(provEnv) > 0 {
 		cmd.Env = append(os.Environ(), provEnv...)
 	} else {
@@ -274,8 +276,12 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 		}
 
 		cmdParts := append([]string{parts[0]}, args...)
-		newSessionArgs := append([]string{"new-session", "-d", "-s", sessionName,
-			"-c", a.Config.WorkDir, "--"}, cmdParts...)
+		newSessionArgs := []string{"new-session", "-d", "-s", sessionName, "-c", a.Config.WorkDir}
+		for _, entry := range provEnv {
+			newSessionArgs = append(newSessionArgs, "-e", entry)
+		}
+		newSessionArgs = append(newSessionArgs, "--")
+		newSessionArgs = append(newSessionArgs, cmdParts...)
 		tmuxCmd := exec.Command(tmuxBin, newSessionArgs...)
 		if len(provEnv) > 0 {
 			tmuxCmd.Env = append(os.Environ(), provEnv...)

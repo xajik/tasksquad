@@ -27,7 +27,7 @@ func (p *Codex) SetupArgs(port int, agentID, taskID string) []string {
 func codexNotifyArgs(endpoint string) []string {
 	// The endpoint is passed as an argument, never interpolated into shell code.
 	// Bound the callback so a stopped daemon cannot hold up a Codex turn.
-	argv := []string{"sh", "-c", `curl --silent --show-error --fail --max-time 5 -X POST "$1" -H 'Content-Type: application/json' --data-binary "$2" >/dev/null`, "tsq-codex-notify", endpoint}
+	argv := []string{"sh", "-c", `curl --silent --show-error --fail --max-time 5 -X POST "$1" -H 'Content-Type: application/json' -H "Authorization: Bearer $TSQ_HOOK_TOKEN" --data-binary "$2" >/dev/null`, "tsq-codex-notify", endpoint}
 	encoded, _ := json.Marshal(argv)
 	return []string{"-c", "notify=" + string(encoded)}
 }

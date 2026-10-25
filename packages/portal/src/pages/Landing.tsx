@@ -98,7 +98,7 @@ export default function Landing() {
 
         <div className="inline-block bg-muted rounded-md px-3 py-2 overflow-x-auto max-w-full">
           <code className="text-xs sm:text-sm">
-            curl -sSL install.tasksquad.ai | bash
+            curl --proto '=https' --proto-redir '=https' -fsSL https://install.tasksquad.ai | bash
           </code>
         </div>
 

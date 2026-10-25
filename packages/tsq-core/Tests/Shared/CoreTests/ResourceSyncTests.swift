@@ -141,6 +141,7 @@ final class ResourceSyncTests: PlatformTestCase {
         func post(_ body: String, agent: String = "hook-agent") async throws -> Int {
             var request = URLRequest(url: URL(string: "http://127.0.0.1:\(hooksPort)/hooks/skill?agent=\(agent)")!)
             request.httpMethod = "POST"; request.httpBody = Data(body.utf8)
+            request.setValue("Bearer " + (try LocalHookAuth.read(port: Int(hooksPort), paths: .init(home: home))), forHTTPHeaderField: "Authorization")
             return try await NativeHTTPTransport().send(request).status
         }
         let invalidName = try await post(#"{"name":"learned","content":"x"}"#)

@@ -74,11 +74,13 @@ func TestManagedTerminalTwoTurnsAndScopedClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := hooks.NewHandler(cfg, []hooks.Agent{a}, nil, nil)
+	h := hooks.NewHandler(cfg, []hooks.Agent{a}, nil, nil, "test-hook-token")
 	call := func(path string, body any, origin string) int {
 		t.Helper()
 		data, _ := json.Marshal(body)
 		req := httptest.NewRequest("POST", path, bytes.NewReader(data))
+		req.Host = "127.0.0.1"
+		req.Header.Set("Authorization", "Bearer test-hook-token")
 		req.Header.Set("Content-Type", "application/json")
 		if origin != "" {
 			req.Header.Set("Origin", origin)

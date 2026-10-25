@@ -71,7 +71,7 @@ export default function HowTo() {
                 </div>
                 <p className="text-sm text-muted-foreground">Or the install script (macOS, Linux, Windows via WSL):</p>
                 <div className="bg-muted p-3 rounded-md overflow-x-auto">
-                  <code className="text-sm whitespace-nowrap">curl -sSL install.tasksquad.ai | bash</code>
+                  <code className="text-sm whitespace-nowrap">curl --proto '=https' --proto-redir '=https' -fsSL https://install.tasksquad.ai | bash</code>
                 </div>
               </CardContent>
             </Card>

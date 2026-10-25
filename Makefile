@@ -1,7 +1,10 @@
-.PHONY: test bump patch minor major
+.PHONY: test test-installer bump patch minor major
 
 test:
 	$(MAKE) -C packages test
+
+test-installer:
+	python3 scripts/test_install.py
 
 # Bump every product's version, commit, tag the daemon release vX.Y.Z and push both:
 # `make bump` (patch), `make bump minor`, `make bump major`; MSG="…" annotates the tag.

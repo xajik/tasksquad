@@ -90,7 +90,7 @@ func geminiHookCmd(url string) string {
 	if runtime.GOOS == "windows" {
 		// cmd.exe syntax: NUL instead of /dev/null, & to chain, echo for JSON output.
 		// We use -sS to keep curl quiet but still show errors in stderr if they occur.
-		return fmt.Sprintf(`curl -sS -X POST "%s" -H "Content-Type: application/json" -d @- > NUL 2>&1 & echo {}`, url)
+		return fmt.Sprintf(`curl -sS -X POST "%s" -H "Content-Type: application/json" -H "Authorization: Bearer %%TSQ_HOOK_TOKEN%%" -d @- > NUL 2>&1 & echo {}`, url)
 	}
-	return fmt.Sprintf(`curl -sS -X POST "%s" -H "Content-Type: application/json" -d @- > /dev/null 2>&1; printf '{}'`, url)
+	return fmt.Sprintf(`curl -sS -X POST "%s" -H "Content-Type: application/json" -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -d @- > /dev/null 2>&1; printf '{}'`, url)
 }

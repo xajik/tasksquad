@@ -68,13 +68,22 @@ func main() {
 			tmuxcmd.RunSend(os.Args[2:])
 			return
 		case "report":
-			hookscmd.RunReport(os.Args[2:]) //nolint:errcheck
+			if err := hookscmd.RunReport(os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				os.Exit(1)
+			}
 			return
 		case "send-image":
-			attachcmd.RunAttach(os.Args[2:]) //nolint:errcheck
+			if err := attachcmd.RunAttach(os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				os.Exit(1)
+			}
 			return
 		case "skill":
-			hookscmd.RunSkill(os.Args[2:]) //nolint:errcheck
+			if err := hookscmd.RunSkill(os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				os.Exit(1)
+			}
 			return
 		case "memory":
 			memorycmd.RunMemory(os.Args[2:]) //nolint:errcheck
@@ -179,7 +188,10 @@ func runDaemon() {
 
 	sup := supervisor.New(cfg)
 	batchCtrl := agent.NewBatchController()
-	hooks.StartHookServer(cfg, agentList, sup, batchCtrl)
+	if err := hooks.StartHookServer(cfg, agentList, sup, batchCtrl); err != nil {
+		logger.Error(fmt.Sprintf("Cannot start hook server: %v", err))
+		os.Exit(1)
+	}
 
 	go agent.RunBatch(cfg, rawAgents, batchCtrl)
 

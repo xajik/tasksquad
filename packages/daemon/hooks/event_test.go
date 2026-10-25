@@ -11,11 +11,11 @@ import (
 
 func TestEventHookFeedsCurrentTaskOnly(t *testing.T) {
 	a := &fakeAgent{id: "ev-agent", taskID: "cur", mode: "running"}
-	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil)
+	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil, "test-hook-token")
 	send := func(task, body string) string {
 		t.Helper()
 		w := httptest.NewRecorder()
-		h.ServeHTTP(w, httptest.NewRequest("POST", "/hooks/event?agent=ev-agent&task_id="+task, strings.NewReader(body)))
+		h.ServeHTTP(w, nativeHookRequest("POST", "/hooks/event?agent=ev-agent&task_id="+task, strings.NewReader(body)))
 		if w.Code != 200 {
 			t.Fatalf("status = %d", w.Code)
 		}
@@ -39,9 +39,9 @@ func TestEventHookFeedsCurrentTaskOnly(t *testing.T) {
 
 func TestEventHookBuildsBodylessEventFromURL(t *testing.T) {
 	a := &fakeAgent{id: "claw-agent", taskID: "cur", mode: "running"}
-	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil)
+	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil, "test-hook-token")
 	for _, q := range []string{"event=PreToolUse&tool=Bash", "event=PostToolUse&tool=Bash"} {
-		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST",
+		h.ServeHTTP(httptest.NewRecorder(), nativeHookRequest("POST",
 			"/hooks/event?agent=claw-agent&task_id=cur&provider=claw&"+q, strings.NewReader("")))
 	}
 	l := metrics.Take("claw-agent", "cur")

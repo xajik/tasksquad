@@ -1,12 +1,16 @@
 package hooks
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/tasksquad/daemon/config"
+	"github.com/tasksquad/daemon/hookauth"
 	"github.com/tasksquad/daemon/logger"
 )
 
@@ -77,18 +81,35 @@ type SupervisorReporter interface {
 	TriggerForTask(taskID string) error
 }
 
-// corsMiddleware adds CORS headers so the local portal (localhost:5173) can
-// call the hooks server directly from the browser. The daemon only listens on
-// 127.0.0.1, so allowing all origins is safe — external hosts cannot reach it.
-func corsMiddleware(next http.Handler) http.Handler {
+// Only native callers with the local capability may invoke hook endpoints.
+// Host validation also blocks DNS rebinding; browser Origins are never trusted.
+func authenticateHooks(next http.Handler, token string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+		if _, present := r.Header["Origin"]; present {
+			http.Error(w, "browser hooks forbidden", http.StatusForbidden)
 			return
 		}
+		if r.Header.Get("Sec-Fetch-Site") != "" || !hookauth.LocalHost(r.Host) {
+			http.Error(w, "local native client required", http.StatusForbidden)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		supplied := ""
+		if header := r.Header.Get("Authorization"); strings.HasPrefix(header, "Bearer ") {
+			supplied = strings.TrimPrefix(header, "Bearer ")
+		}
+		// Only Claw's fixed HTTP callback accepts a query capability.
+		if supplied == "" && (r.URL.Path == "/hooks/stop" || r.URL.Path == "/hooks/event") {
+			supplied = r.URL.Query().Get("hook_token")
+		}
+		if token == "" || subtle.ConstantTimeCompare([]byte(supplied), []byte(token)) != 1 {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 20<<20)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -116,14 +137,24 @@ type Poller interface {
 //	POST /hooks/skill              — agent pushes a learned skill
 //	POST /hooks/supervisor         — supervisor verdict
 //	POST /hooks/trigger-supervisor — manual supervisor trigger from portal
-func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorReporter, ctrl Poller) {
+func StartHookServer(cfg *config.Config, agents []Agent, reporter SupervisorReporter, ctrl Poller) error {
+	token, err := hookauth.LoadOrCreate(cfg.Hooks.Port)
+	if err != nil {
+		return fmt.Errorf("initialize hook capability: %w", err)
+	}
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Hooks.Port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	server := &http.Server{Handler: NewHandler(cfg, agents, reporter, ctrl, token), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second}
 	logger.Info(fmt.Sprintf("[hooks] Server listening on http://%s", addr))
-	go http.ListenAndServe(addr, NewHandler(cfg, agents, reporter, ctrl)) //nolint:errcheck
+	go server.Serve(listener) //nolint:errcheck
+	return nil
 }
 
 // NewHandler exposes the same hook routes for embedded servers and local tests.
-func NewHandler(cfg *config.Config, agents []Agent, reporter SupervisorReporter, ctrl Poller) http.Handler {
+func NewHandler(cfg *config.Config, agents []Agent, reporter SupervisorReporter, ctrl Poller, token string) http.Handler {
 	srv := &hookServer{cfg: cfg, agents: agents, reporter: reporter, ctrl: ctrl}
 	mux := http.NewServeMux()
 
@@ -141,7 +172,7 @@ func NewHandler(cfg *config.Config, agents []Agent, reporter SupervisorReporter,
 	mux.HandleFunc("/hooks/trigger-supervisor", srv.handleTriggerSupervisor)
 	mux.HandleFunc("/hooks/attach", srv.handleAttach)
 
-	return corsMiddleware(mux)
+	return authenticateHooks(mux, token)
 }
 
 // findAndDispatch iterates agents, applies agentID/taskID filters, and calls fn

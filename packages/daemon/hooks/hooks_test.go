@@ -211,10 +211,10 @@ func TestWriteJSON_ValidBody(t *testing.T) {
 // exit code (non-zero → crashed).
 func TestStopHook_PiEmptyMessageDefersToProcessExit(t *testing.T) {
 	a := &fakeAgent{id: "a", name: "pi", taskID: "t", mode: "running"}
-	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil)
+	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil, "test-hook-token")
 	body := `{"stop_reason":"idle","message":"","transcript_path":""}`
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest("POST", "/hooks/stop?agent=a&task_id=t&provider=pi", strings.NewReader(body)))
+	h.ServeHTTP(w, nativeHookRequest("POST", "/hooks/stop?agent=a&task_id=t&provider=pi", strings.NewReader(body)))
 	if w.Code != http.StatusOK {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -227,10 +227,10 @@ func TestStopHook_PiEmptyMessageDefersToProcessExit(t *testing.T) {
 // provider's error text; that text must become the task's final reply.
 func TestStopHook_PiErrorCarriesMessage(t *testing.T) {
 	a := &fakeAgent{id: "a", name: "pi", taskID: "t", mode: "running"}
-	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil)
+	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil, "test-hook-token")
 	body := `{"stop_reason":"error","message":"Pi model call failed (google/gemini): API key not valid.","transcript_path":""}`
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest("POST", "/hooks/stop?agent=a&task_id=t&provider=pi", strings.NewReader(body)))
+	h.ServeHTTP(w, nativeHookRequest("POST", "/hooks/stop?agent=a&task_id=t&provider=pi", strings.NewReader(body)))
 	if w.Code != http.StatusOK {
 		t.Fatal(w.Code, w.Body.String())
 	}

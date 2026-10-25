@@ -4,8 +4,6 @@ import { ShieldAlert, Play, ChevronDown, ChevronRight, RefreshCw, ExternalLink }
 import { api, type Task, type Message } from '../lib/api'
 import { Button } from '../components/ui/button'
 
-const DAEMON_HOOKS_URL = (import.meta.env.VITE_DAEMON_HOOKS_URL as string | undefined) ?? 'http://localhost:7374'
-
 const ACTIVE_STATUSES = new Set(['running', 'waiting_input', 'wrapping_up'])
 
 interface ParsedVerdict {
@@ -59,8 +57,6 @@ export function Supervisor({ teamId }: { teamId: string }) {
   // taskId → messages (null = not yet loaded, [] = loaded but empty)
   const [msgCache, setMsgCache] = useState<Record<string, Message[] | null>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [triggering, setTriggering] = useState<string | null>(null)
-  const [triggerError, setTriggerError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -97,26 +93,6 @@ export function Supervisor({ teamId }: { teamId: string }) {
       setMsgCache(c => ({ ...c, [taskId]: messages.filter(m => m.role === 'supervisor') }))
     } catch {
       setMsgCache(c => ({ ...c, [taskId]: [] }))
-    }
-  }
-
-  async function triggerSupervisor(taskId: string) {
-    setTriggering(taskId)
-    setTriggerError(null)
-    try {
-      const res = await fetch(`${DAEMON_HOOKS_URL}/hooks/trigger-supervisor`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_id: taskId }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setTriggerError((data as { error?: string }).error ?? `HTTP ${res.status}`)
-      }
-    } catch (e) {
-      setTriggerError('Could not reach daemon — is it running?')
-    } finally {
-      setTriggering(null)
     }
   }
 
@@ -158,18 +134,18 @@ export function Supervisor({ teamId }: { teamId: string }) {
                   size="sm"
                   variant="outline"
                   className="shrink-0 h-7 text-xs"
-                  disabled={triggering === task.id}
-                  onClick={() => triggerSupervisor(task.id)}
+                  disabled
+                  title="Open this task in TaskSquad Native to run its supervisor"
                 >
                   <Play className="h-3 w-3 mr-1" />
-                  {triggering === task.id ? 'Starting…' : 'Run'}
+                  Run in native app
                 </Button>
               </div>
             ))}
           </div>
-          {triggerError && (
-            <p className="text-xs text-red-500 mt-2">{triggerError}</p>
-          )}
+          <p className="text-xs text-muted-foreground mt-2">
+            Open a task in TaskSquad Native to run its supervisor. Automatic supervision continues in the daemon.
+          </p>
         </section>
       )}
 

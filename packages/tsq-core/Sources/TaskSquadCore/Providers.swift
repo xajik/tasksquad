@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 
 /// Ports packages/daemon/provider: how the engine launches and hooks each CLI.
 /// Hook URLs, file locations and generated file contents match the Go daemon so
@@ -73,7 +78,7 @@ public enum ProviderKind: String, CaseIterable, Sendable {
             let endpoint = "http://127.0.0.1:\(hooksPort)/hooks/codex?agent=\(GoJSON.queryEscape(agentID))&task_id=\(GoJSON.queryEscape(taskID))"
             // The endpoint is an argument, never interpolated into shell code; the
             // timeout keeps a stopped daemon from holding up a Codex turn.
-            let argv: GoJSONValue = ["sh", "-c", "curl --silent --show-error --fail --max-time 5 -X POST \"$1\" -H 'Content-Type: application/json' --data-binary \"$2\" >/dev/null",
+            let argv: GoJSONValue = ["sh", "-c", "curl --silent --show-error --fail --max-time 5 -X POST \"$1\" -H 'Content-Type: application/json' -H \"Authorization: Bearer $TSQ_HOOK_TOKEN\" --data-binary \"$2\" >/dev/null",
                         "tsq-codex-notify", .string(endpoint)]
             return ["-c", "notify=" + argv.marshal()]
         default:
@@ -83,7 +88,7 @@ public enum ProviderKind: String, CaseIterable, Sendable {
 
     /// Writes hook/plugin files into the work directory for CLIs without a
     /// per-invocation override.
-    public func setup(workDir: String, hooksPort: Int, agentID: String, taskID: String) throws {
+    public func setup(workDir: String, hooksPort: Int, agentID: String, taskID: String, hookToken: String? = nil) throws {
         let root = URL(fileURLWithPath: workDir, isDirectory: true)
         let fileManager = FileManager.default
         switch self {
@@ -96,7 +101,8 @@ public enum ProviderKind: String, CaseIterable, Sendable {
             try Self.writeHooks(root.appendingPathComponent(".gemini/settings.json"), hooks: hooks)
         case .claw:
             try Self.writeManagedBlock(root.appendingPathComponent(".agent/settings.local.toml"),
-                                       block: Self.clawHooks(port: hooksPort, agentID: agentID, taskID: taskID))
+                                       block: Self.clawHooks(port: hooksPort, agentID: agentID, taskID: taskID, hookToken: hookToken))
+            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: root.appendingPathComponent(".agent/settings.local.toml").path)
         case .opencode:
             let folder = root.appendingPathComponent(".opencode/plugins", isDirectory: true)
             try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -151,9 +157,21 @@ public enum ProviderKind: String, CaseIterable, Sendable {
                 // SessionStart doesn't deliver to http hooks, and a command hook's
                 // stdout is injected into the model's context: discard curl's output.
                 hook = ["type": "command", "timeout": .int(lifecycleHookTimeout), "command":
-                    .string("curl -s -m \(lifecycleHookTimeout) -X POST -H 'Content-Type: application/json' --data-binary @- '\(eventURL)' >/dev/null 2>&1 || true")]
+                    .string("curl -s -m \(lifecycleHookTimeout) -X POST -H 'Content-Type: application/json' -H \"Authorization: Bearer $TSQ_HOOK_TOKEN\" --data-binary @- '\(eventURL)' >/dev/null 2>&1 || true")]
             }
             hooks[event, default: []].append(["matcher": "*", "hooks": [hook]])
+        }
+        for name in hooks.keys {
+            hooks[name] = hooks[name]?.map { group in
+                guard var object = group.object, let entries = object["hooks"]?.array else { return group }
+                object["hooks"] = .array(entries.map { entry in
+                    guard var item = entry.object, item["type"]?.string == "http" else { return entry }
+                    item["headers"] = ["Authorization": "Bearer $TSQ_HOOK_TOKEN"]
+                    item["allowedEnvVars"] = ["TSQ_HOOK_TOKEN"]
+                    return .object(item)
+                })
+                return .object(object)
+            }
         }
         return ["hooks": .object(hooks.mapValues(GoJSONValue.array))]
     }
@@ -166,7 +184,7 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     private static func geminiGroup(name: String, url: String) -> GoJSONValue {
         ["matcher": "*", "hooks": [[
             "name": .string(name), "type": "command", "timeout": 5000,
-            "command": .string("curl -sS -X POST \"\(url)\" -H \"Content-Type: application/json\" -d @- > /dev/null 2>&1; printf '{}'"),
+            "command": .string("curl -sS -X POST \"\(url)\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer $TSQ_HOOK_TOKEN\" -d @- > /dev/null 2>&1; printf '{}'"),
         ]]]
     }
 
@@ -187,12 +205,14 @@ public enum ProviderKind: String, CaseIterable, Sendable {
     static let clawManagedEnd = "# <<< TaskSquad hooks <<<"
 
     /// agent-code loads TOML only (settings.toml, then settings.local.toml).
-    static func clawHooks(port: Int, agentID: String, taskID: String) -> String {
+    static func clawHooks(port: Int, agentID: String, taskID: String, hookToken: String? = nil) -> String {
         var block = clawManagedStart + "\n"
         func hook(_ event: String, _ tool: String, _ url: String) {
             block += "[[hooks]]\nevent = \(goQuote(event))\n"
             if !tool.isEmpty { block += "tool_name = \(goQuote(tool))\n" }
-            block += "action = { type = \"http\", url = \(goQuote(url)) }\n\n"
+            var authenticated = url
+            if let hookToken { authenticated += "&hook_token=" + hookToken }
+            block += "action = { type = \"http\", url = \(goQuote(authenticated)) }\n\n"
         }
         hook("stop", "", "http://localhost:\(port)/hooks/stop?agent=\(agentID)&task_id=\(taskID)")
         let event = "http://localhost:\(port)/hooks/event?agent=\(agentID)&task_id=\(taskID)&provider=claw"
@@ -221,7 +241,12 @@ public enum ProviderKind: String, CaseIterable, Sendable {
             } else { rest = String(rest[..<start.lowerBound]) }
         }
         if !rest.isEmpty && !rest.hasSuffix("\n") { rest += "\n" }
-        try Data((rest + block).utf8).write(to: url)
+        let fd = open(url.path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { try? handle.close() }
+        guard fchmod(fd, 0o600) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        try handle.write(contentsOf: Data((rest + block).utf8))
     }
 
     private static func httpHook(_ url: String) -> GoJSONValue {

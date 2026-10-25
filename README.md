@@ -80,7 +80,7 @@ DMG installation, signing prerequisites, and switching from the CLI daemon.
 
 Using installation script (macOS/Linux/Windows):
 ```bash
-curl -sSL install.tasksquad.ai | bash
+curl --proto '=https' --proto-redir '=https' -fsSL https://install.tasksquad.ai | bash
 ```
 
 > **Prerequisite: tmux** — TaskSquad requires [tmux](https://github.com/tmux/tmux/wiki) to manage agent sessions on your machine.

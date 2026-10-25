@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/tasksquad/daemon/hookauth"
 )
 
 func RunReport(args []string) error {
@@ -39,7 +42,15 @@ func RunReport(args []string) error {
 	body, _ := json.Marshal(payload)
 
 	url := fmt.Sprintf("http://localhost:%d/hooks/supervisor", *port)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if err := hookauth.Authorize(req, *port); err != nil {
+		return err
+	}
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error posting report: %v\n", err)
 		os.Exit(1)
@@ -109,7 +120,15 @@ func RunSkill(args []string) error {
 	body, _ := json.Marshal(payload)
 
 	url := fmt.Sprintf("http://localhost:%d/hooks/skill", *port)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if err := hookauth.Authorize(req, *port); err != nil {
+		return err
+	}
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error pushing skill: %v\n", err)
 		os.Exit(1)

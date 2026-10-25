@@ -200,6 +200,14 @@ Existing `.claude/settings.json` keys are preserved; only the `hooks` key is ove
 
 The daemon runs a local HTTP server (default port `7374`) that receives provider callbacks:
 
+Callbacks require the private per-port capability in `~/.tasksquad/hooks-<port>.token`
+(mode `0600`), sent as `Authorization: Bearer <capability>`. Generated provider
+hooks and CLI/native clients supply it automatically. Browser Origins and
+non-loopback Host headers are rejected. Restart after updating; custom hook
+clients must add the header. Never commit capability files or Claw's local hook
+settings. Manual supervisor runs are available in the native app, not through
+browser-to-loopback requests.
+
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/hooks/stop` | Claude Code Stop event — closes the current session |

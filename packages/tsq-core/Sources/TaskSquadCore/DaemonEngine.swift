@@ -93,6 +93,7 @@ public actor DaemonEngine {
     /// Where the TerminalRelay lives: the API server (tests point it elsewhere).
     private let relayServerURL: String
     private let appVersion: String
+    private var hookCapability = ""
 
     public func start() async throws {
         guard !running, !stopping else { return }
@@ -106,6 +107,7 @@ public actor DaemonEngine {
         guard let port = UInt16(exactly: configuration.hooks.port), port > 0 else {
             throw ConfigurationError("hooks.port must be between 1 and 65535")
         }
+        hookCapability = try LocalHookAuth.loadOrCreate(port: Int(port), paths: paths)
         let server = try LocalHTTPServer(port: port) { [weak self] request in
             await self?.handleHook(request) ?? .init(status: 503)
         }
@@ -390,7 +392,7 @@ public actor DaemonEngine {
             }
             let provider = agent.provider
             if provider.usesHooks {
-                do { try provider.setup(workDir: agent.configuration.workDir, hooksPort: configuration.hooks.port, agentID: agentID, taskID: taskID) }
+                do { try provider.setup(workDir: agent.configuration.workDir, hooksPort: configuration.hooks.port, agentID: agentID, taskID: taskID, hookToken: hookCapability) }
                 catch { Log.warn("[\(name)] Provider setup warning: \(error.localizedDescription)") }
             }
             let prompt = Self.injectKBNote(TaskPrompt.build(subject: subject, messages: messages, memoryRollup: memoryRollup),
@@ -403,6 +405,7 @@ public actor DaemonEngine {
                 + (try provider.setupArguments(hooksPort: configuration.hooks.port, agentID: agentID, taskID: taskID))
             var environment = environment
             environment["TSQ_TASK_ID"] = taskID
+            environment["TSQ_HOOK_TOKEN"] = hookCapability
             environment.merge(provider.environment) { _, new in new }
             if provider.interactive {
                 status = try await runInteractive(agentID: agentID, generation: generation, sessionID: sessionID,
@@ -449,6 +452,7 @@ public actor DaemonEngine {
         let formatted = provider.formatPrompt(prompt)
         var sessionEnvironment = provider.environment
         sessionEnvironment["TSQ_TASK_ID"] = environment["TSQ_TASK_ID"]
+        sessionEnvironment["TSQ_HOOK_TOKEN"] = environment["TSQ_HOOK_TOKEN"]
         // An already-running tmux server would otherwise supply its own PATH.
         if let path = environment["PATH"] { sessionEnvironment["PATH"] = path }
         try await session.start(command: command + provider.initialPromptArguments(formatted),
@@ -830,6 +834,7 @@ public actor DaemonEngine {
     // MARK: Hook server (hooks/server.go, hooks/handlers.go)
 
     private func handleHook(_ request: LocalHTTPRequest) async -> LocalHTTPResponse {
+        if let status = LocalHookAuth.rejection(request, token: hookCapability) { return .init(status: status) }
         let ok = LocalHTTPResponse.json(.object(["status": .string("ok")]))
         let query = Dictionary((request.components?.queryItems ?? []).map { ($0.name, $0.value ?? "") }) { first, _ in first }
         let agentParam = query["agent"] ?? "", taskParam = query["task_id"] ?? "", providerParam = query["provider"] ?? ""

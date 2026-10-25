@@ -136,7 +136,7 @@ private actor InteractiveWorker {
         while IFS= read -r line; do
           n=$((n+1))
           printf 'got:%s\\n' "$line"
-          curl -s -X POST "$url" -H 'Content-Type: application/json' --data-binary "{\\"session_id\\":\\"cli-1\\",\\"stop_reason\\":\\"end_turn\\",\\"last_assistant_message\\":\\"turn$n:$line\\"}" >/dev/null
+          curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url" -H 'Content-Type: application/json' --data-binary "{\\"session_id\\":\\"cli-1\\",\\"stop_reason\\":\\"end_turn\\",\\"last_assistant_message\\":\\"turn$n:$line\\"}" >/dev/null
         done
         """
         let worker = InteractiveWorker()
@@ -195,7 +195,7 @@ private actor InteractiveWorker {
         ext=.pi/extensions/tasksquad.ts
         port=$(grep -o 'http://localhost:[0-9]*' "$ext" | head -1 | sed 's/.*://')
         path=$(grep -o '/hooks/stop?agent=[^"]*' "$ext" | head -1)
-        curl -s -X POST "http://127.0.0.1:$port$path" -H 'Content-Type: application/json' --data-binary '{"stop_reason":"idle","message":""}' >/dev/null
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "http://127.0.0.1:$port$path" -H 'Content-Type: application/json' --data-binary '{"stop_reason":"idle","message":""}' >/dev/null
         echo 'Error: model omlx/default is not loaded' >&2
         exit 1
         """
@@ -236,12 +236,14 @@ private actor InteractiveWorker {
         try await engine.start()
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/hooks/attach")!)
         request.httpMethod = "POST"
+            request.setValue("Bearer " + (try LocalHookAuth.read(port: request.url!.port!, paths: .init(home: home))), forHTTPHeaderField: "Authorization")
         request.httpBody = Data(#"{"task_id":"none","path":"/tmp/x.png"}"#.utf8)
         let (_, response) = try await URLSession.shared.data(for: request)
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 404, "listener up, no agent on that task")
         func hook(_ path: String, _ body: String) async throws -> (Int, String) {
             var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)\(path)")!)
             request.httpMethod = "POST"; request.httpBody = Data(body.utf8)
+            request.setValue("Bearer " + (try LocalHookAuth.read(port: request.url!.port!, paths: .init(home: home))), forHTTPHeaderField: "Authorization")
             let (data, response) = try await URLSession.shared.data(for: request)
             return ((response as? HTTPURLResponse)?.statusCode ?? 0, String(decoding: data, as: UTF8.self))
         }
@@ -278,11 +280,11 @@ private actor InteractiveWorker {
         IFS= read -r line
         printf 'PNG' > shot.png
         printf 'txt' > notes.txt
-        curl -s -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"stale\\",\\"path\\":\\"$PWD/shot.png\\"}" > codes
-        curl -s -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"$TSQ_TASK_ID\\",\\"path\\":\\"$PWD/notes.txt\\"}" >> codes
-        curl -s -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"$TSQ_TASK_ID\\"}" >> codes
-        curl -s -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"$TSQ_TASK_ID\\",\\"path\\":\\"$PWD/shot.png\\",\\"caption\\":\\"Look 猫\\"}" >> codes
-        curl -s -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"done"}' >/dev/null
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"stale\\",\\"path\\":\\"$PWD/shot.png\\"}" > codes
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"$TSQ_TASK_ID\\",\\"path\\":\\"$PWD/notes.txt\\"}" >> codes
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"$TSQ_TASK_ID\\"}" >> codes
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -o /dev/null -w '%{http_code}\\n' -X POST "$base/hooks/attach" --data-binary "{\\"task_id\\":\\"$TSQ_TASK_ID\\",\\"path\\":\\"$PWD/shot.png\\",\\"caption\\":\\"Look 猫\\"}" >> codes
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"done"}' >/dev/null
         sleep 30
         """
         let worker = InteractiveWorker()
@@ -324,14 +326,14 @@ private actor InteractiveWorker {
         stale=$(printf '%s' "$event" | sed 's/task_id=[^&]*/task_id=stale/')
         printf 'READY\\n'
         IFS= read -r line
-        curl -s -X POST "$event" --data-binary '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"x"}' > reply
-        curl -s -X POST "$stale" --data-binary '{"hook_event_name":"PreToolUse","tool_name":"Read","tool_use_id":"y"}' >/dev/null
-        curl -s -X POST "$event&event=PreToolUse&tool=Glob" >/dev/null
-        curl -s -X POST "$event&event=PostToolUse&tool=Glob" >/dev/null
-        curl -s -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"done"}' >/dev/null
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$event" --data-binary '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"x"}' > reply
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$stale" --data-binary '{"hook_event_name":"PreToolUse","tool_name":"Read","tool_use_id":"y"}' >/dev/null
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$event&event=PreToolUse&tool=Glob" >/dev/null
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$event&event=PostToolUse&tool=Glob" >/dev/null
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"done"}' >/dev/null
         # The server auto-closes the second paused reply, which posts the session report.
         while IFS= read -r line; do
-          curl -s -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"again"}' >/dev/null
+          curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"again"}' >/dev/null
         done
         """
         let worker = InteractiveWorker()
@@ -370,8 +372,8 @@ private actor InteractiveWorker {
         touch ready
         IFS= read -r second
         printf 'second:%s\\n' "$second"
-        curl -s -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"done"}' >/dev/null
-        while IFS= read -r more; do curl -s -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"x"}' >/dev/null; done
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"done"}' >/dev/null
+        while IFS= read -r more; do curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url" --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"x"}' >/dev/null; done
         """
         let worker = InteractiveWorker()
         let (engine, server, home) = try await makeEngine(script: script, worker: worker, tmux: tmux, relay: "http://127.0.0.1:\(relay.port)", errors: { _ in })
@@ -389,6 +391,7 @@ private actor InteractiveWorker {
         let port = try XCTUnwrap(try String(contentsOf: home.appendingPathComponent("hooks-port"), encoding: .utf8).split(separator: "\n").first)
         var blocked = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/hooks/tui-blocked?agent=fixture-agent&task_id=fixture-task&state=on")!)
         blocked.httpMethod = "POST"
+        blocked.setValue("Bearer " + (try LocalHookAuth.read(port: blocked.url!.port!, paths: .init(home: home))), forHTTPHeaderField: "Authorization")
         _ = try await URLSession.shared.data(for: blocked)
         relay.send(#"{"t":"i","d":"\#(Data("late\r".utf8).base64EncodedString())"}"#)
         try await wait { String(decoding: relay.bytes, as: UTF8.self).contains("second:late") }
@@ -407,7 +410,7 @@ private actor InteractiveWorker {
         let script = """
         #!/bin/sh
         url=$(printf '%s ' "$@" | grep -o 'http://127.0.0.1:[0-9]*/hooks/codex?[^" ]*' | head -1 | sed 's/\\\\u0026/\\&/g')
-        post() { curl -s -X POST "$url" -H 'Content-Type: application/json' --data-binary "$1" >/dev/null; }
+        post() { curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url" -H 'Content-Type: application/json' --data-binary "$1" >/dev/null; }
         printf 'READY\\n'
         post '{"type":"agent-turn-complete","thread-id":"title-thread","turn-id":"t1","input-messages":["Generate a concise, single-line task title of at most 36 characters."],"last-assistant-message":"{\\"title\\":\\"x\\"}"}'
         post '{"type":"agent-turn-complete","thread-id":"thread-a","turn-id":"1","last-assistant-message":"REAL"}'
@@ -436,7 +439,7 @@ private actor InteractiveWorker {
             #!/bin/sh
             url=$(grep -o 'http://localhost:[0-9]*' .pi/extensions/tasksquad.ts | head -1)
             query=$(grep -o '/hooks/stop?agent=[^"]*' .pi/extensions/tasksquad.ts | head -1)
-            curl -s -X POST "$url$query" --data-binary '{"stop_reason":"\(reason)","message":"\(message)","transcript_path":""}' >/dev/null
+            curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url$query" --data-binary '{"stop_reason":"\(reason)","message":"\(message)","transcript_path":""}' >/dev/null
             sleep 0.3
             exit 1
             """
@@ -463,7 +466,7 @@ private actor InteractiveWorker {
         let script = """
         #!/bin/sh
         url=$(printf '%s ' "$@" | grep -o 'http://127.0.0.1:[0-9]*/hooks/codex?[^" ]*' | head -1 | sed 's/\\\\u0026/\\&/g')
-        post() { curl -s -X POST "$url" -H 'Content-Type: application/json' --data-binary "{\\"type\\":\\"agent-turn-complete\\",\\"thread-id\\":\\"thread\\",\\"turn-id\\":\\"$1\\",\\"last-assistant-message\\":\\"$2\\"}" >/dev/null; }
+        post() { curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url" -H 'Content-Type: application/json' --data-binary "{\\"type\\":\\"agent-turn-complete\\",\\"thread-id\\":\\"thread\\",\\"turn-id\\":\\"$1\\",\\"last-assistant-message\\":\\"$2\\"}" >/dev/null; }
         post 1 FIRST
         while IFS= read -r line; do post 2 "SECOND $line"; post 2 DUPLICATE; done
         """
@@ -481,6 +484,7 @@ private actor InteractiveWorker {
         func call(_ path: String, _ body: [String: Any], origin: String? = nil) async throws -> Int {
             var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)\(path)")!)
             request.httpMethod = "POST"
+            request.setValue("Bearer " + (try LocalHookAuth.read(port: request.url!.port!, paths: .init(home: home))), forHTTPHeaderField: "Authorization")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             if let origin { request.setValue(origin, forHTTPHeaderField: "Origin") }
             request.httpBody = try JSONSerialization.data(withJSONObject: body)

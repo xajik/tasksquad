@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tasksquad/daemon/hookauth"
 	"github.com/tasksquad/daemon/logger"
 )
 
@@ -88,6 +89,7 @@ func (p *Claw) Setup(workDir string, hooksPort int, agentID string, taskID strin
 
 // clawHook appends one [[hooks]] entry; toolName "" matches every tool.
 func clawHook(b *strings.Builder, event, toolName, url string) {
+	url = hookauth.URL(url)
 	fmt.Fprintf(b, "[[hooks]]\nevent = %q\n", event)
 	if toolName != "" {
 		fmt.Fprintf(b, "tool_name = %q\n", toolName)
@@ -117,5 +119,14 @@ func writeManagedBlock(path, block string) error {
 	if rest != "" && !strings.HasSuffix(rest, "\n") {
 		rest += "\n"
 	}
-	return os.WriteFile(path, []byte(rest+block), 0644)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := f.Chmod(0600); err != nil {
+		return err
+	}
+	_, err = f.WriteString(rest + block)
+	return err
 }

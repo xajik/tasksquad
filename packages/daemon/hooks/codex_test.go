@@ -23,11 +23,11 @@ func (a *codexTestAgent) AdvanceCloseStep(_ *config.Config) { a.events <- "advan
 func TestCodexHookRouting(t *testing.T) {
 	a := &codexTestAgent{fakeAgent: fakeAgent{id: "a", taskID: "t", mode: "running"}, events: make(chan string, 10)}
 	b := &codexTestAgent{fakeAgent: fakeAgent{id: "b", taskID: "u", mode: "running"}, events: make(chan string, 10)}
-	h := NewHandler(&config.Config{}, []Agent{a, b}, nil, nil)
+	h := NewHandler(&config.Config{}, []Agent{a, b}, nil, nil, "test-hook-token")
 	send := func(agent, task, thread, turn, kind string) {
 		t.Helper()
 		body := fmt.Sprintf(`{"type":%q,"thread-id":%q,"turn-id":%q,"last-assistant-message":"OK"}`, kind, thread, turn)
-		r := httptest.NewRequest("POST", "/hooks/codex?agent="+agent+"&task_id="+task, strings.NewReader(body))
+		r := nativeHookRequest("POST", "/hooks/codex?agent="+agent+"&task_id="+task, strings.NewReader(body))
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		if w.Code != 200 {
@@ -48,7 +48,7 @@ func TestCodexHookRouting(t *testing.T) {
 	// Codex's auxiliary title-generation thread finishes first; it must neither
 	// dispatch nor pin its thread, or the real turn below would be dropped.
 	title := `{"type":"agent-turn-complete","thread-id":"title-thread","turn-id":"t1","input-messages":["Generate a concise, single-line task title of at most 36 characters."],"last-assistant-message":"{\"title\":\"x\"}"}`
-	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/hooks/codex?agent=a&task_id=t", strings.NewReader(title)))
+	h.ServeHTTP(httptest.NewRecorder(), nativeHookRequest("POST", "/hooks/codex?agent=a&task_id=t", strings.NewReader(title)))
 	send("a", "t", "thread-a", "1", "agent-turn-complete")
 	expect(a.events, "pause:OK")
 	send("a", "t", "thread-a", "1", "agent-turn-complete") // duplicate
@@ -75,7 +75,7 @@ func TestCodexHookRouting(t *testing.T) {
 }
 
 func TestCodexInvalidCallbacks(t *testing.T) {
-	h := NewHandler(&config.Config{}, nil, nil, nil)
+	h := NewHandler(&config.Config{}, nil, nil, nil, "test-hook-token")
 	for _, tc := range []struct {
 		method, url, body string
 		status            int
@@ -86,7 +86,7 @@ func TestCodexInvalidCallbacks(t *testing.T) {
 		{"POST", "/hooks/codex?agent=a&task_id=t", `{"type":"agent-turn-complete"}`, 400},
 	} {
 		w := httptest.NewRecorder()
-		h.ServeHTTP(w, httptest.NewRequest(tc.method, tc.url, strings.NewReader(tc.body)))
+		h.ServeHTTP(w, nativeHookRequest(tc.method, tc.url, strings.NewReader(tc.body)))
 		if w.Code != tc.status {
 			t.Fatal(w.Code, tc)
 		}

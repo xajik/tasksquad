@@ -33,7 +33,7 @@ export default function(pi) {
   const post = async (path, body, signal) => {
     try {
       await fetch("http://localhost:%[1]d" + path, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (process.env.TSQ_HOOK_TOKEN ?? "") },
         body: JSON.stringify(body), signal,
       })
     } catch (e) {

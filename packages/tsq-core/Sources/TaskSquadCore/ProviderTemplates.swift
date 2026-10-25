@@ -11,7 +11,7 @@ export const TaskSquadPlugin = async ({ client }) => {
   const post = async (path, body) => {
     try {
       await fetch("http://localhost:{{PORT}}" + path, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (process.env.TSQ_HOOK_TOKEN ?? "") },
         body: JSON.stringify(body)
       })
     } catch (e) {
@@ -176,7 +176,7 @@ export default function(pi) {
   const post = async (path, body, signal) => {
     try {
       await fetch("http://localhost:{{PORT}}" + path, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (process.env.TSQ_HOOK_TOKEN ?? "") },
         body: JSON.stringify(body), signal,
       })
     } catch (e) {
