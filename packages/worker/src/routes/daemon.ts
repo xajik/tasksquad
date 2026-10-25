@@ -1044,14 +1044,16 @@ export async function userAgents(req: Request, env: Env, _ctx: unknown): Promise
  * Response: { "states": { "sessionID1": { "task_id": "...", "task_status": "done", "session_status": "closed" }, ... } }
  *
  * Used by orphan cleanup to detect stale tmux sessions.
- * Uses Firebase auth - validates user via Firebase JWT.
+ * Only sessions of agents in the caller's teams are returned; any other id is
+ * omitted, exactly like an unknown one.
  */
 export async function sessionState(req: Request, env: Env, _ctx: unknown): Promise<Response> {
   const body = await req.json<{ sessions?: string[] }>().catch(() => ({} as { sessions?: string[] }))
   const sessions = body.sessions ?? []
-  if (!sessions.length) return err('missing_fields', 400)
+  if (!Array.isArray(sessions) || !sessions.length) return err('missing_fields', 400)
+  // D1 binds at most 100 parameters per statement; one is the user id.
+  if (sessions.length > 99 || sessions.some(id => typeof id !== 'string')) return err('invalid_sessions', 400)
 
-  // Firebase auth - just verify user is logged in
   const authResult = await withFirebaseAuth(req, env)
   if (authResult instanceof Response) return authResult
 
@@ -1060,8 +1062,10 @@ export async function sessionState(req: Request, env: Env, _ctx: unknown): Promi
     SELECT s.id, s.task_id, s.status AS session_status, t.status AS task_status
     FROM sessions s
     JOIN tasks t ON t.id = s.task_id
+    JOIN agents a ON a.id = s.agent_id
+    JOIN team_members m ON m.team_id = a.team_id AND m.user_id = ?
     WHERE s.id IN (${placeholders})
-  `).bind(...sessions).all<{ id: string; task_id: string; session_status: string; task_status: string }>()
+  `).bind(authResult.userId, ...sessions).all<{ id: string; task_id: string; session_status: string; task_status: string }>()
 
   const states: Record<string, { task_id: string; task_status: string; session_status: string }> = {}
   for (const row of rows.results) {
