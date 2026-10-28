@@ -21,7 +21,7 @@ struct MobileInboxScope: View {
                     Button("Clear filters") { model.status = "all"; model.origin = "all" }.font(.caption).frame(minHeight: 44)
                 }
             }
-        }.listRowSeparator(.hidden)
+        }.listRowSeparator(.hidden).listRowBackground(MobileTheme.background)
     }
     private func scope(_ title: String, value: String) -> some View {
         Button { model.status = value } label: {

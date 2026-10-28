@@ -229,7 +229,7 @@ struct PortalHomeView: View {
                 }
                 Spacer(); MobileIcon(name: "chevron-right", size: 16).foregroundStyle(.tertiary)
             }.padding(.vertical, 8).frame(minHeight: 44)
-        }.buttonStyle(.plain).accessibilityIdentifier("record-" + record.id)
+        }.buttonStyle(.plain).accessibilityIdentifier("record-" + record.id).listRowBackground(MobileTheme.background)
     }
     /// One muted line under every row: role for people, otherwise when it was created.
     private func caption(_ record: CustomerRecord) -> String? {

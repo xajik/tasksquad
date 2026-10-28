@@ -1,0 +1,20 @@
+[
+  {
+    "file": "08-note.png",
+    "test": "PortalFlowTests/test13NotesCreateEditAndComment()",
+    "timestamp": 1793174925.738,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "12-dark-large-conversation.png",
+    "test": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+    "timestamp": 1793174937.237,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "11-dark-large-inbox.png",
+    "test": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+    "timestamp": 1793174935.836,
+    "device": "iPhone 17 Pro"
+  }
+]

@@ -11,7 +11,9 @@ All runs use production SwiftUI views and customer HTTP/WebSocket transports aga
 - **iPad mini (A17 Pro) / iOS 26.1:** 3 targeted journeys passed; zero failures/skips. Covers direct project switching, inline reply retry, and inbox filter recovery. See `ipad/ipad-summary.json`.
 - **Final iPhone reply regression:** 3 journeys passed; zero failures/skips. Rechecks image round trip, text/image restoration after cancellation/relaunch, and rejection/retry/cleanup after the final Send-contrast and compact-attachment changes. See `final-reply/reply-summary.json`.
 
-The shared Swift regression suite passed in every contract invocation. Focused runs repeat tests from the full suite; these are **46 successful Xcode test executions**, not 46 unique tests. There are 31 distinct UI journeys covered across these runs, including the dedicated software-keyboard check, plus 7 hosted tests.
+- **Final semantic-surface regression:** dark/large-text and note/comment journeys passed after applying the app background token to plain reading rows. See `surfaces/surfaces-summary.json`.
+
+The shared Swift regression suite passed in every contract invocation. Focused runs repeat tests from the full suite; these are **48 successful Xcode test executions**, not 48 unique tests. There are 31 distinct UI journeys covered across these runs, including the dedicated software-keyboard check, plus 7 hosted tests.
 
 ## Screenshots to inspect
 
@@ -51,3 +53,5 @@ The dedicated keyboard test skips unless `TEST_RUNNER_SOFTWARE_KEYBOARD=1` is su
 The full iOS 26.1 run recorded nine frame-dimension and four view-reparenting warnings. The iPad run recorded one of each; the final reply run's warnings are in its summary. The drawer's calculated width is clamped to zero, and explicit frame dimensions were reviewed, but the root cause of the remaining warnings is not established. Hosted tests also log duplicate Swift class loading warnings. These diagnostics have not been claimed fixed.
 
 Manual VoiceOver traversal, accessibility-size keyboard layouts, iPad landscape keyboard behavior, realistic long datasets, offline networking and a live production account/daemon remain unqualified. No claim is made about first-time discoverability or measured completion speed. Message previews, unread/project-wide counts and global search remain limited by the current list API.
+
+Final surface check command: `make e2e-contract TEST_FLAGS='-only-testing:TaskSquadUITests/PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable -only-testing:TaskSquadUITests/PortalFlowTests/test13NotesCreateEditAndComment'`. Export it with `EVIDENCE_OUTPUT=screenshots/usability-retest/surfaces EVIDENCE_NAME=surfaces`.

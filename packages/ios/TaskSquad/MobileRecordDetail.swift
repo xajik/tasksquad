@@ -84,7 +84,7 @@ List {
                                 HStack(spacing: 12) { recordMetadata(record) }
                                 VStack(alignment: .leading, spacing: 8) { recordMetadata(record) }
                             }
-                        }.padding(.vertical, 4).listRowSeparator(.hidden)
+                        }.padding(.vertical, 4).listRowSeparator(.hidden).listRowBackground(MobileTheme.background)
                     }
                     if taskSection { conversation }
                     else { contents(record) }
@@ -161,7 +161,7 @@ List {
                             }
                         }
                         ForEach(message.records("attachments")) { attachment in MobileAttachment(api: model.api, path: ["tasks", id, "messages", message.id, "attachments", attachment.id], name: attachment.text("filename")) }
-                    }.padding(.vertical, 5).id(message.id)
+                    }.padding(.vertical, 5).id(message.id).listRowBackground(MobileTheme.background)
                 }
             }
         }
@@ -170,8 +170,8 @@ List {
         ForEach(["description", "content", "body", "role", "category", "frequency", "timezone", "email"], id: \.self) { key in
             if !record.text(key).isEmpty {
                 if model.section == .notes, key == "content" {
-                    Section { MarkdownContent(record.text(key), copy: { UIPasteboard.general.string = $0 }) }
-                } else { Section(key.capitalized) { MarkdownContent(Self.withoutFrontMatter(record.text(key)), copy: { UIPasteboard.general.string = $0 }) } }
+                    Section { MarkdownContent(record.text(key), copy: { UIPasteboard.general.string = $0 }).listRowBackground(MobileTheme.background) }
+                } else { Section(key.capitalized) { MarkdownContent(Self.withoutFrontMatter(record.text(key)), copy: { UIPasteboard.general.string = $0 }).listRowBackground(MobileTheme.background) } }
             }
         }
         if model.section == .agents {
@@ -185,9 +185,9 @@ List {
         }
         if model.section == .notes {
             Section("Comments") {
-                if messages.isEmpty { Text("No comments yet").foregroundStyle(MobileTheme.mutedForeground) }
-                ForEach(messages) { Text($0.text("content")) }
-                Button("Add comment") { comment() }.frame(minHeight: 44).accessibilityIdentifier("add-comment")
+                if messages.isEmpty { Text("No comments yet").foregroundStyle(MobileTheme.mutedForeground).listRowBackground(MobileTheme.background) }
+                ForEach(messages) { Text($0.text("content")).listRowBackground(MobileTheme.background) }
+                Button("Add comment") { comment() }.frame(minHeight: 44).accessibilityIdentifier("add-comment").listRowBackground(MobileTheme.background)
             }
         }
     }

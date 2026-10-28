@@ -27,6 +27,8 @@ The existing iPad mini (A17 Pro) / iOS 26.1 passed **three focused journeys**: d
 
 The full run recorded nine frame-dimension warnings and four view-reparenting warnings; the iPad run recorded one of each. These warnings persist despite functional passes and the nonnegative drawer-width guard. Their root cause is not established. Hosted tests also log duplicate Swift class loading warnings. The warning counts are not claimed as fixed.
 
+A final visual review corrected system-black plain-list rows to the semantic app background; dark/large-text and note/comment checks both passed afterward (`screenshots/usability-retest/surfaces/`).
+
 The final iPhone reply regression result and all reproducible commands are recorded in `screenshots/usability-retest/README.md`. VoiceOver traversal, accessibility-size keyboard layout, iPad landscape keyboard behavior, realistic long datasets, offline networking, and live production account/daemon qualification remain outstanding. The fixture results do not establish those or measure user completion speed.
 
 ## Intended experience
