@@ -268,3 +268,89 @@ func processPID(cmd *exec.Cmd) int {
 	}
 	return cmd.Process.Pid
 }
+
+// detach ends this spawn of the task without finishing the task: the CLI went
+// away while waiting for the user, or a resumed CLI never got going
+// (resumeFailed). Unlike complete it posts no reply and does not fail the task.
+// The server keeps the task open (pending when a user message is unanswered,
+// else waiting_input) and the next spawn resumes the CLI session it reported,
+// or replays the thread when resumeFailed made the server drop that session.
+func (a *Agent) detach(cfg *config.Config, resumeFailed bool) {
+	a.st.mu.Lock()
+	if a.st.completing || a.st.sessionID == "" {
+		a.st.mu.Unlock()
+		return
+	}
+	a.st.completing = true
+	sessionID := a.st.sessionID
+	agentID := a.st.agentID
+	taskID := a.st.taskID
+	pw := a.st.stdinWrite
+	a.st.stdinWrite = nil
+	runLog := a.st.runLog
+	a.st.runLog = nil
+	outputDone := a.st.outputDone
+	sess := a.st.tmuxSession
+	fifo := a.st.fifoPath
+	a.st.tmuxSession = ""
+	a.st.fifoPath = ""
+	a.st.transcriptPath = ""
+	lines := append([]string(nil), a.st.outputLines...)
+	a.st.mu.Unlock()
+
+	a.closeProcessResources(string(agentmode.StatusDetached), sess, fifo, pw, 0, outputDone)
+	if a.relayConn != nil {
+		a.relayConn.Close()
+		a.relayConn = nil
+	}
+
+	reason := "exited_waiting_for_input"
+	if resumeFailed {
+		reason = "resume_failed"
+	}
+	logger.Info(fmt.Sprintf("[%s] CLI process ended without finishing task %s (%s) — detaching; the next reply re-spawns it", a.Config.Name, taskID, reason))
+	logger.Lifecycle(fmt.Sprintf("[%s] event=detached task_id=%s reason=%s", a.Config.Name, taskID, reason))
+	if runLog != nil {
+		fmt.Fprintf(runLog, "\n[EVENT] event=detached reason=%s\n# ended=%s\n", reason, time.Now().Format(time.RFC3339))
+		runLog.Close()
+	}
+	analytics.Track("task_detached", map[string]interface{}{
+		"task_id":    taskID,
+		"agent_name": a.Config.Name,
+		"provider":   a.Provider(),
+		"reason":     reason,
+	})
+
+	if _, err := a.post(cfg, "/daemon/session/close", map[string]any{
+		"session_id":    sessionID,
+		"agent_id":      agentID,
+		"status":        string(agentmode.StatusDetached),
+		"resume_failed": resumeFailed,
+	}); err != nil {
+		logger.Error(fmt.Sprintf("[%s] Session detach error: %v", a.Config.Name, err))
+	}
+	if len(lines) > 0 {
+		go a.uploadAndAttachLog(cfg, sessionID, strings.Join(lines, "\n"))
+	}
+
+	a.st.mu.Lock()
+	tlog := a.st.taskLog
+	a.st.taskLog = nil
+	a.st.mu.Unlock()
+	if tlog != nil {
+		tlog.Write(tasklog.EventTaskEnd{Type: "task_end", Status: string(agentmode.StatusDetached), Ts: tasklog.Now()}) //nolint:errcheck
+		tlog.Close()
+	}
+
+	a.st.mu.Lock()
+	a.st.mode = ModeIdle
+	a.st.sessionID = ""
+	a.st.cliSessionID = ""
+	a.st.resumed = false
+	a.st.outputLines = nil
+	a.st.outputDone = nil
+	a.st.proc = nil
+	a.st.notifyPosted = false
+	a.st.completing = false
+	a.st.mu.Unlock()
+}

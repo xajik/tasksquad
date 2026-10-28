@@ -53,6 +53,10 @@ type Agent interface {
 	// hook (e.g. codex last-assistant-message) so internalComplete can use it
 	// as finalText without a transcript file.
 	SetHookMessage(message string)
+	// EndPipeTurn records that a pipe provider (Pi) finished a turn with
+	// hookMessage as its reply. Synchronous: the process exits right after the
+	// hook, and its exit path posts the reply and keeps the task open.
+	EndPipeTurn(hookMessage, transcriptPath string)
 	// GetLastTmuxCapture returns the stored tmux capture for fallback when
 	// transcript is unavailable. Returns empty string if not available.
 	GetLastTmuxCapture() string

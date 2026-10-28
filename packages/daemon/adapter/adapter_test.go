@@ -271,3 +271,44 @@ func TestStdoutAdapter_AllNoops(t *testing.T) {
 		t.Errorf("ExtractTranscript should be empty, got %q", got)
 	}
 }
+
+func TestClaudeNotificationSessionID(t *testing.T) {
+	ev, err := adapter.ClaudeAdapter{}.ParseNotification([]byte(`{"message":"Claude needs your permission","transcript_path":"/t.jsonl","session_id":"6f75c202-a633-4804-8b23-5937aa47f17f"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.SessionID != "6f75c202-a633-4804-8b23-5937aa47f17f" || ev.Message != "Claude needs your permission" {
+		t.Fatalf("got %+v", ev)
+	}
+}
+
+func TestGeminiAndOpenCodeReportTheirSession(t *testing.T) {
+	ev, _ := adapter.GeminiAdapter{}.ParseStop([]byte(`{"reason":"end_turn","prompt_response":"hi","session_id":"6f75c202-a633-4804-8b23-5937aa47f17f"}`), false)
+	if ev.SessionID != "6f75c202-a633-4804-8b23-5937aa47f17f" {
+		t.Fatalf("gemini stop: %+v", ev)
+	}
+	nev, _ := adapter.GeminiAdapter{}.ParseNotification([]byte(`{"message":"m","session_id":"g-1"}`))
+	if nev.SessionID != "g-1" {
+		t.Fatalf("gemini notification: %+v", nev)
+	}
+	ev, _ = adapter.OpenCodeAdapter{}.ParseStop([]byte(`{"stop_reason":"idle","message":"done","session_id":"ses_abc"}`), false)
+	if ev.SessionID != "ses_abc" || ev.HookMessage != "done" {
+		t.Fatalf("opencode stop: %+v", ev)
+	}
+}
+
+func TestPiSessionIDFromTranscriptPath(t *testing.T) {
+	const id = "01a1807b-d4cf-732f-a57d-cc9414b962bd"
+	for path, want := range map[string]string{
+		"/h/.pi/agent/sessions/--repo--/2026-10-12T04-10-46-928Z_" + id + ".jsonl": id,
+		"": "", "/t": "", "/x/no-underscore.jsonl": "", "/x/a_b_c.jsonl": "",
+	} {
+		if got := adapter.PiSessionID(path); got != want {
+			t.Errorf("PiSessionID(%q) = %q, want %q", path, got, want)
+		}
+	}
+	ev, _ := adapter.PiAdapter{}.ParseStop([]byte(`{"stop_reason":"idle","message":"hi","transcript_path":"/s/2026_`+id+`.jsonl"}`), false)
+	if ev.SessionID != id {
+		t.Fatalf("got %+v", ev)
+	}
+}

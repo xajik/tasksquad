@@ -20,6 +20,10 @@ const (
 	StatusClosed    CompletionStatus = "closed"
 	StatusCrashed   CompletionStatus = "crashed"
 	StatusCancelled CompletionStatus = "cancelled"
+	// StatusDetached: the CLI process went away without finishing the task
+	// (it died while waiting for input, or a resumed process failed to start).
+	// The server keeps the task open and the next reply re-spawns it.
+	StatusDetached CompletionStatus = "detached"
 )
 
 // TaskStatus is the lifecycle state of a task as stored on the server.
@@ -54,4 +58,5 @@ const (
 	SessionStatusRunning      SessionStatus = "running"
 	SessionStatusWaitingInput SessionStatus = "waiting_input"
 	SessionStatusClosed       SessionStatus = "closed"
+	SessionStatusDetached     SessionStatus = "detached"
 )

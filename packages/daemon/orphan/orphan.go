@@ -3,6 +3,7 @@ package orphan
 import (
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,10 @@ import (
 
 const orphanCleanupInterval = 1 * time.Hour
 
+// untrackedGrace keeps a just-created task session out of the untracked check:
+// tmux new-session runs before the agent records the session name.
+const untrackedGrace = 2 * time.Minute
+
 type SessionState struct {
 	TaskID        string `json:"task_id"`
 	TaskStatus    string `json:"task_status"`
@@ -26,6 +31,13 @@ type OrphanController struct {
 	token        string
 	interval     time.Duration
 	cachedStates map[string]SessionState
+	// tracked reports whether a local agent owns the named tmux session; nil
+	// disables the untracked check. created holds each listed session's start.
+	tracked func(name string) bool
+	created map[string]time.Time
+	// startedAt: sessions created before this daemon started belong to a
+	// previous process and need no grace period.
+	startedAt time.Time
 }
 
 func New(cfg *config.Config, token string) *OrphanController {
@@ -34,7 +46,18 @@ func New(cfg *config.Config, token string) *OrphanController {
 		token:        token,
 		interval:     orphanCleanupInterval,
 		cachedStates: make(map[string]SessionState),
+		startedAt:    time.Now(),
 	}
+}
+
+// WithTracked makes the sweep also kill task sessions no local agent owns.
+// Agent state is in memory, so after a daemon restart the previous process's
+// sessions are unreachable: nothing types into them or reads them again. Left
+// running, a CLI there would hold the same provider session the next spawn
+// resumes (`claude --resume`) while the task's server state still looks open.
+func (c *OrphanController) WithTracked(tracked func(name string) bool) *OrphanController {
+	c.tracked = tracked
+	return c
 }
 
 func (c *OrphanController) Run() {
@@ -61,6 +84,20 @@ func (c *OrphanController) cleanOrphans() {
 
 	logger.Info(fmt.Sprintf("[orphan] checking %d sessions", len(sessionIDs)))
 
+	live := sessionIDs[:0]
+	for _, sid := range sessionIDs {
+		if c.isUntracked(sid, time.Now()) {
+			logger.Info(fmt.Sprintf("[orphan] tsq-%s is not owned by any agent of this daemon", sid))
+			c.killOrphan(sid)
+			continue
+		}
+		live = append(live, sid)
+	}
+	sessionIDs = live
+	if len(sessionIDs) == 0 {
+		return
+	}
+
 	states, err := c.getSessionStates(sessionIDs)
 	if err != nil {
 		logger.Error(fmt.Sprintf("[orphan] failed to get session states: %v", err))
@@ -80,14 +117,18 @@ func (c *OrphanController) cleanOrphans() {
 }
 
 func (c *OrphanController) listTmuxSessions() ([]string, error) {
-	out, err := exec.Command("tmux", "list-sessions", "-F", "#{session_name}").Output()
+	out, err := exec.Command("tmux", "list-sessions", "-F", "#{session_name} #{session_created}").Output()
 	if err != nil {
 		return nil, nil
 	}
 
 	var ids []string
+	c.created = make(map[string]time.Time)
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		name := strings.TrimSpace(line)
+		name, createdRaw, _ := strings.Cut(strings.TrimSpace(line), " ")
+		if secs, err := strconv.ParseInt(createdRaw, 10, 64); err == nil {
+			c.created[strings.TrimPrefix(name, "tsq-")] = time.Unix(secs, 0)
+		}
 		// Supervisor sessions are tracked separately via killOrphan's task lookup, and
 		// portal sessions live in the `portals` table, not `sessions` — /daemon/session/state
 		// would never find them, so leaving them in scope here would get every portal
@@ -125,6 +166,19 @@ func (c *OrphanController) getSessionStates(sessionIDs []string) (map[string]Ses
 
 	c.cachedStates = states
 	return states, nil
+}
+
+// isUntracked reports whether task session tsq-<sid> is owned by no local
+// agent and was created by a previous daemon process or before the grace period.
+func (c *OrphanController) isUntracked(sid string, now time.Time) bool {
+	if c.tracked == nil {
+		return false
+	}
+	created, ok := c.created[sid]
+	if !ok || (!created.Before(c.startedAt) && now.Sub(created) < untrackedGrace) {
+		return false
+	}
+	return !c.tracked("tsq-" + sid)
 }
 
 func (c *OrphanController) isOrphan(state SessionState) bool {

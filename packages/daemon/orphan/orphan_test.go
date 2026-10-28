@@ -2,6 +2,7 @@ package orphan
 
 import (
 	"testing"
+	"time"
 )
 
 func TestIsOrphan(t *testing.T) {
@@ -80,5 +81,24 @@ func TestTaskSessionNames(t *testing.T) {
 	}
 	if !isTaskSessionName("tsq-01SESSION") {
 		t.Error("task session skipped")
+	}
+}
+
+func TestIsUntracked(t *testing.T) {
+	now := time.Now()
+	c := &OrphanController{startedAt: now.Add(-time.Minute), created: map[string]time.Time{
+		"old":      now.Add(-time.Hour),
+		"fresh":    now.Add(-10 * time.Second),
+		"mine":     now.Add(-time.Hour),
+		"previous": now.Add(-90 * time.Second), // before this daemon started: no grace
+	}}
+	if c.isUntracked("old", now) {
+		t.Fatal("without a tracker nothing is untracked")
+	}
+	c.WithTracked(func(name string) bool { return name == "tsq-mine" })
+	for sid, want := range map[string]bool{"old": true, "fresh": false, "mine": false, "unknown": false, "previous": true} {
+		if got := c.isUntracked(sid, now); got != want {
+			t.Errorf("isUntracked(%q) = %v, want %v", sid, got, want)
+		}
 	}
 }

@@ -102,6 +102,17 @@ type AgentState struct {
 	// or "provider doesn't report session_id" (check is skipped).
 	cliSessionID string
 
+	// resumed is true when this spawn reopened a provider CLI session
+	// (`claude --resume <id>`) rather than starting fresh. If such a process
+	// exits before its first hook pins a session, the resume is treated as
+	// failed and the task is re-spawned with the thread replayed.
+	resumed bool
+
+	// pipeTurnEnded / pipeTurnTranscript: a pipe provider (Pi) reported a
+	// finished turn; its exit path posts the reply and detaches the task.
+	pipeTurnEnded      bool
+	pipeTurnTranscript string
+
 	// Session report inputs (see metrics.go): turns the daemon typed and the
 	// TaskSquad skill tokens they contained.
 	typedTurns  int
@@ -222,6 +233,33 @@ func (s *AgentState) PinCLISessionID(sessionID string) bool {
 		return true
 	}
 	return s.cliSessionID == sessionID
+}
+
+// CLISessionID returns the CLI tool's own pinned session ID ("" until a hook
+// reports one).
+func (s *AgentState) CLISessionID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cliSessionID
+}
+
+// detachReason reports whether the task's process going away should detach
+// the task (keep it open for a resume) instead of failing it, and whether that
+// is because a resumed spawn never got going. Mid-turn crashes of a fresh
+// spawn still fail the task.
+func (s *AgentState) detachReason() (detach, resumeFailed bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.completing || s.sessionID == "" {
+		return false, false
+	}
+	switch {
+	case s.mode == ModeWaitingInput:
+		return true, false
+	case s.mode == ModeRunning && s.resumed && s.cliSessionID == "":
+		return true, true
+	}
+	return false, false
 }
 
 // LogPath returns the path to the current per-task run log file.

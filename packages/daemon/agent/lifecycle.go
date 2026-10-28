@@ -111,6 +111,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	a.st.transcriptPath = ""
 	a.st.lastTmuxCapturePath = ""
 	a.st.cliSessionID = ""
+	a.st.resumed = false
+	a.st.pipeTurnEnded = false
+	a.st.pipeTurnTranscript = ""
 	a.st.tuiBlocked = false
 	a.st.typedTurns = 0
 	a.st.typedSkills = nil
@@ -205,8 +208,25 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	// directory first, so the prompt can reference them by local path.
 	msgs, _ := task["messages"].([]interface{})
 	msgs = materializeInboundImages(cfg, a.Config.ID, a.Config.WorkDir, msgs)
-	prompt := buildConversationPrompt(subject, msgs, memoryRollup)
-	prompt = injectKBNote(prompt, a.Config.WorkDir)
+	// A resumed CLI session already holds the thread, memory and KB note, so
+	// it only gets what it hasn't seen.
+	resumeID := a.resumeTarget(task)
+	var prompt string
+	if resumeID != "" {
+		prompt = buildResumePrompt(msgs)
+		a.st.mu.Lock()
+		a.st.resumed = true
+		tlog := a.st.taskLog
+		a.st.mu.Unlock()
+		logger.Lifecycle(fmt.Sprintf("[%s] event=resuming task_id=%s provider=%s cli_session=%s", a.Config.Name, taskID, a.prov.Name(), resumeID))
+		a.writeRunLog(fmt.Sprintf("[EVENT] event=resuming cli_session=%s", resumeID))
+		if tlog != nil {
+			tlog.Write(tasklog.EventResume{Type: "resume", Provider: a.prov.Name(), CLISessionID: resumeID, Ts: tasklog.Now()}) //nolint:errcheck
+		}
+	} else {
+		prompt = buildConversationPrompt(subject, msgs, memoryRollup)
+		prompt = injectKBNote(prompt, a.Config.WorkDir)
+	}
 	a.st.mu.Lock()
 	a.st.lastPrompt = prompt
 	a.st.mu.Unlock()
@@ -226,6 +246,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 		args = append(parts[1:], extraArgs...)
 	} else {
 		args = append(append(parts[1:], extraArgs...), "-p", prompt)
+	}
+	if resumeID != "" {
+		args = a.prov.(provider.Resumer).ResumeArgs(args, resumeID)
 	}
 	promptInArgs := false
 	if initial, ok := a.prov.(interface{ InitialPromptArgs(string) []string }); ok {
@@ -411,6 +434,13 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	if usingTmux {
 		<-outputDone
 		if a.prov.UsesHooks() {
+			// The CLI exited without a Stop/close. If it was only waiting for
+			// the user (or was a resume that never got going), keep the task
+			// open: the next reply re-spawns it, resuming when possible.
+			if detach, resumeFailed := a.st.detachReason(); detach {
+				a.detach(cfg, resumeFailed)
+				return
+			}
 			a.complete(cfg, string(agentmode.StatusCrashed))
 		} else {
 			a.complete(cfg, "")
@@ -437,9 +467,105 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	logger.Lifecycle(fmt.Sprintf("[%s] event=exit code=%d task_id=%s", a.Config.Name, code, taskID))
 	a.writeRunLog(fmt.Sprintf("[EVENT] event=exit code=%d", code))
 
+	if code == 0 && a.finishPipeTurn(cfg) {
+		return
+	}
+	// A resumed one-shot run that never reported a turn (e.g. Pi declining a
+	// session from another directory) failed to resume: replay the thread.
+	if detach, resumeFailed := a.st.detachReason(); detach && resumeFailed {
+		a.detach(cfg, true)
+		return
+	}
 	status := string(agentmode.StatusClosed)
 	if code != 0 {
 		status = string(agentmode.StatusCrashed)
 	}
 	a.complete(cfg, status)
+}
+
+// EndPipeTurn implements hooks.Agent: a pipe provider (Pi) finished a turn.
+func (a *Agent) EndPipeTurn(hookMessage, transcriptPath string) {
+	a.st.mu.Lock()
+	defer a.st.mu.Unlock()
+	if a.st.mode != ModeRunning || a.st.completing {
+		return
+	}
+	a.st.hookMessage = hookMessage
+	a.st.pipeTurnEnded = true
+	a.st.pipeTurnTranscript = transcriptPath
+}
+
+// finishPipeTurn handles a pipe provider that exited cleanly after reporting
+// its turn: it posts the reply (the task goes to waiting_input, or is closed
+// when auto_close is set) and detaches, so the agent is free and the user's
+// next reply re-spawns the CLI on the same session (`pi --session <id>`).
+// Returns false when no turn was reported, leaving the exit status to decide.
+func (a *Agent) finishPipeTurn(cfg *config.Config) bool {
+	a.st.mu.Lock()
+	ended, transcript, msg := a.st.pipeTurnEnded, a.st.pipeTurnTranscript, a.st.hookMessage
+	sessionID, taskID, startedAt := a.st.sessionID, a.st.taskID, a.st.startedAt
+	a.st.hookMessage = ""
+	a.st.mu.Unlock()
+	if !ended {
+		return false
+	}
+	a.StopAndPause(cfg, msg, transcript)
+	a.postSessionReport(cfg, sessionID, taskID, startedAt, transcript)
+	if a.st.ModeValue() == ModeWaitingInput {
+		a.detach(cfg, false)
+	} else if a.relayConn != nil { // auto-closed by the server
+		a.relayConn.Close()
+		a.relayConn = nil
+	}
+	return true
+}
+
+// resumeTarget returns the provider CLI session to reopen for task, or "" to
+// start a fresh process. The server hands back the session this task's hooks
+// reported on an earlier spawn; it is used only when this agent's provider can
+// resume and the session is in the CLI's local store (it isn't after a switch
+// of machine or provider, or once the CLI has pruned it).
+func (a *Agent) resumeTarget(task map[string]any) string {
+	r, _ := task["resume"].(map[string]any)
+	if r == nil {
+		return ""
+	}
+	prov, _ := r["provider"].(string)
+	id, _ := r["session_id"].(string)
+	res, ok := a.prov.(provider.Resumer)
+	if !ok || prov != a.prov.Name() || !provider.ValidResumeID(id) {
+		return ""
+	}
+	if !res.CanResume(a.Config.Command, a.Config.WorkDir, id) {
+		logger.Info(fmt.Sprintf("[%s] CLI session %s not found locally — replaying the thread instead of resuming", a.Config.Name, id))
+		return ""
+	}
+	return id
+}
+
+// resumeInterruptedPrompt is sent to a resumed CLI session when there is no
+// unanswered user message, i.e. the previous process died mid-turn.
+const resumeInterruptedPrompt = "Your previous session was interrupted before you finished. Continue the task where you left off."
+
+// buildResumePrompt returns what a resumed CLI session has not seen yet: the
+// user messages after the last agent message.
+func buildResumePrompt(rawMsgs []interface{}) string {
+	var pending []string
+	for _, raw := range rawMsgs {
+		m, _ := raw.(map[string]interface{})
+		role, _ := m["role"].(string)
+		body, _ := m["body"].(string)
+		switch role {
+		case "agent":
+			pending = pending[:0]
+		case "user":
+			if body = strings.TrimSpace(body); body != "" {
+				pending = append(pending, body)
+			}
+		}
+	}
+	if len(pending) == 0 {
+		return resumeInterruptedPrompt
+	}
+	return strings.Join(pending, "\n\n")
 }

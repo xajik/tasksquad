@@ -47,9 +47,10 @@ func (ClaudeAdapter) ParseNotification(body []byte) (NotificationEvent, error) {
 	var p struct {
 		Message        string `json:"message"`
 		TranscriptPath string `json:"transcript_path"`
+		SessionID      string `json:"session_id"`
 	}
 	err := json.Unmarshal(body, &p)
-	return NotificationEvent{Message: p.Message, TranscriptPath: p.TranscriptPath}, err
+	return NotificationEvent{Message: p.Message, TranscriptPath: p.TranscriptPath, SessionID: p.SessionID}, err
 }
 
 func (ClaudeAdapter) ParseAfterAgent(_ []byte) (AfterAgentEvent, error) {

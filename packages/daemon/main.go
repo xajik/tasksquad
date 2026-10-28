@@ -198,7 +198,14 @@ func runDaemon() {
 	// Start orphan cleanup (runs on startup + hourly)
 	token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)
 	if err == nil && token != "" {
-		orphanCtrl := orphan.New(cfg, token)
+		orphanCtrl := orphan.New(cfg, token).WithTracked(func(name string) bool {
+			for _, a := range rawAgents {
+				if a.TmuxSession() == name {
+					return true
+				}
+			}
+			return false
+		})
 		go orphanCtrl.Run()
 	} else {
 		logger.Warn("[orphan] skipped: no auth token")

@@ -14,6 +14,7 @@ func (GeminiAdapter) ParseStop(body []byte, isFailure bool) (StopEvent, error) {
 		Reason         string `json:"reason"`
 		TranscriptPath string `json:"transcript_path"`
 		PromptResponse string `json:"prompt_response"`
+		SessionID      string `json:"session_id"`
 	}
 	if err := json.Unmarshal(body, &p); err != nil {
 		return StopEvent{IsFailure: isFailure}, err
@@ -23,6 +24,7 @@ func (GeminiAdapter) ParseStop(body []byte, isFailure bool) (StopEvent, error) {
 		TranscriptPath: p.TranscriptPath,
 		HookMessage:    p.PromptResponse,
 		IsFailure:      isFailure || p.Reason == "error",
+		SessionID:      p.SessionID,
 	}, nil
 }
 
@@ -30,9 +32,10 @@ func (GeminiAdapter) ParseNotification(body []byte) (NotificationEvent, error) {
 	var p struct {
 		Message        string `json:"message"`
 		TranscriptPath string `json:"transcript_path"`
+		SessionID      string `json:"session_id"`
 	}
 	err := json.Unmarshal(body, &p)
-	return NotificationEvent{Message: p.Message, TranscriptPath: p.TranscriptPath}, err
+	return NotificationEvent{Message: p.Message, TranscriptPath: p.TranscriptPath, SessionID: p.SessionID}, err
 }
 
 func (GeminiAdapter) ParseAfterAgent(body []byte) (AfterAgentEvent, error) {

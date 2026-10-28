@@ -173,6 +173,20 @@ func (a *Agent) SessionID() string { return a.st.SessionID() }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
+// withResume adds the provider CLI session this task can later be resumed
+// from (see provider.Resumer) to a /daemon/session/notify body. The worker
+// stores it on the task and hands it back when the task is next spawned.
+func (a *Agent) withResume(body map[string]any) map[string]any {
+	if _, ok := a.prov.(provider.Resumer); !ok {
+		return body
+	}
+	if id := a.st.CLISessionID(); provider.ValidResumeID(id) {
+		body["provider"] = a.prov.Name()
+		body["provider_session_id"] = id
+	}
+	return body
+}
+
 // post authenticates and sends a JSON POST to the daemon API.
 func (a *Agent) post(cfg *config.Config, path string, body any) (map[string]any, error) {
 	token, err := auth.GetToken(cfg.Firebase.APIKey, cfg.Server.URL)

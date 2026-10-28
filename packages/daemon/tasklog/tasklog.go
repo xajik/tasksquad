@@ -105,5 +105,14 @@ type EventTaskEnd struct {
 	Ts        string `json:"ts"`
 }
 
+// EventResume is written when a spawn reopens the provider CLI's own session
+// (e.g. `claude --resume <id>`) instead of replaying the thread.
+type EventResume struct {
+	Type         string `json:"type"`
+	Provider     string `json:"provider"`
+	CLISessionID string `json:"cli_session_id"`
+	Ts           string `json:"ts"`
+}
+
 // Now returns the current time formatted as RFC3339.
 func Now() string { return time.Now().Format(time.RFC3339) }

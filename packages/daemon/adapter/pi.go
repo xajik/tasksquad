@@ -3,6 +3,7 @@ package adapter
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -26,7 +27,23 @@ func (PiAdapter) ParseStop(body []byte, isFailure bool) (StopEvent, error) {
 		TranscriptPath: p.TranscriptPath,
 		HookMessage:    p.Message,
 		IsFailure:      isFailure || p.StopReason == "error",
+		SessionID:      PiSessionID(p.TranscriptPath),
 	}, nil
+}
+
+// PiSessionID is the session ID in a Pi session file name,
+// <timestamp>_<id>.jsonl — the ID `pi --session <id>` resumes. "" when the
+// path doesn't look like one.
+func PiSessionID(transcriptPath string) string {
+	name := filepath.Base(transcriptPath)
+	if !strings.HasSuffix(name, ".jsonl") {
+		return ""
+	}
+	_, id, ok := strings.Cut(strings.TrimSuffix(name, ".jsonl"), "_")
+	if !ok || id == "" || strings.ContainsAny(id, "_/") {
+		return ""
+	}
+	return id
 }
 
 func (PiAdapter) ParseNotification(body []byte) (NotificationEvent, error) {

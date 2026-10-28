@@ -13,6 +13,7 @@ func (OpenCodeAdapter) ParseStop(body []byte, isFailure bool) (StopEvent, error)
 		StopReason     string `json:"stop_reason"`
 		Message        string `json:"message"`
 		TranscriptPath string `json:"transcript_path"`
+		SessionID      string `json:"session_id"`
 	}
 	if err := json.Unmarshal(body, &p); err != nil {
 		return StopEvent{IsFailure: isFailure}, err
@@ -22,6 +23,7 @@ func (OpenCodeAdapter) ParseStop(body []byte, isFailure bool) (StopEvent, error)
 		TranscriptPath: p.TranscriptPath,
 		HookMessage:    p.Message, // plugin delivers final text here
 		IsFailure:      isFailure || p.StopReason == "error",
+		SessionID:      p.SessionID, // the plugin's main (non-subagent) session
 	}, nil
 }
 

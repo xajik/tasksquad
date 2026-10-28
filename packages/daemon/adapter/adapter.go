@@ -25,6 +25,10 @@ type StopEvent struct {
 type NotificationEvent struct {
 	Message        string
 	TranscriptPath string
+	// SessionID is the CLI tool's own session identifier, as in StopEvent.
+	// Claude Code's Notification can fire before the turn's Stop, so it pins
+	// the session too. Empty when the provider doesn't report it.
+	SessionID string
 }
 
 // AfterAgentEvent is the normalized result of parsing a /hooks/after_agent payload.

@@ -128,11 +128,11 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 		}
 	}
 
-	notifyResp, err := a.post(cfg, "/daemon/session/notify", map[string]any{
+	notifyResp, err := a.post(cfg, "/daemon/session/notify", a.withResume(map[string]any{
 		"session_id": sessionID,
 		"agent_id":   agentID,
 		"message":    finalText,
-	})
+	}))
 	// The native activity feed reads the local journal, including normal paused
 	// turns (previously only Notification hooks wrote these records).
 	a.st.mu.Lock()
@@ -390,11 +390,11 @@ func (a *Agent) SetWaitingInput(cfg *config.Config, message string, transcriptPa
 
 	logger.Info(fmt.Sprintf("[%s] Waiting for user input: %s", a.Config.Name, notifyMsg))
 
-	notifyResp, err := a.post(cfg, "/daemon/session/notify", map[string]any{
+	notifyResp, err := a.post(cfg, "/daemon/session/notify", a.withResume(map[string]any{
 		"session_id": sessionID,
 		"agent_id":   agentID,
 		"message":    notifyMsg,
-	})
+	}))
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] Session notify error: %v", a.Config.Name, err))
 	} else if notifyResp != nil {

@@ -80,7 +80,7 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
-		if !a.PinCLISessionID(ev.SessionID) {
+		if !a.PinCLISessionID(ev.SessionID) && strictSessionPin(provider) {
 			logger.Warn(fmt.Sprintf("[hooks] Stop hook session_id=%q does not match agent %s's pinned CLI session for task_id=%q — ignoring (likely an unrelated process sharing this agent's hook URL)",
 				ev.SessionID, a.Name(), taskIDParam))
 			return
@@ -103,13 +103,12 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 				// let the exit path pick closed vs crashed instead.
 				logger.Debug(fmt.Sprintf("[hooks] PI stop with no message for agent %s — deferring to process exit", a.Name()))
 			} else if provider == "pi" {
-				// PI's process exits immediately after agent_end fires. If we use
-				// StopAndPause the pipe-exit path calls complete() a second time
-				// before completing is set, resulting in two responses. Use Complete
-				// instead: it sets completing=true so the exit path is a no-op.
-				logger.Debug(fmt.Sprintf("[hooks] Dispatching Complete(pi) to agent %s", a.Name()))
-				a.SetHookMessage(ev.HookMessage)
-				go a.Complete(s.cfg, string(agentmode.StatusClosed), ev.TranscriptPath)
+				// PI's process exits immediately after agent_end fires, so the turn
+				// is only recorded here (synchronously, before this response lets
+				// Pi exit); the pipe-exit path posts the reply and keeps the task
+				// open for a follow-up that resumes the Pi session.
+				logger.Debug(fmt.Sprintf("[hooks] Recording PI turn end for agent %s", a.Name()))
+				a.EndPipeTurn(ev.HookMessage, ev.TranscriptPath)
 			} else {
 				logger.Debug(fmt.Sprintf("[hooks] Dispatching StopAndPause to agent %s", a.Name()))
 				go a.StopAndPause(s.cfg, ev.HookMessage, ev.TranscriptPath)
@@ -156,6 +155,11 @@ func (s *hookServer) handleNotification(w http.ResponseWriter, r *http.Request) 
 		provider, msg, nev.TranscriptPath))
 
 	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
+		if !a.PinCLISessionID(nev.SessionID) && strictSessionPin(provider) {
+			logger.Warn(fmt.Sprintf("[hooks] Notification session_id=%q does not match agent %s's pinned CLI session for task_id=%q — ignoring",
+				nev.SessionID, a.Name(), taskIDParam))
+			return
+		}
 		if agentmode.Mode(a.GetMode()) == agentmode.ModeRunning {
 			logger.Debug(fmt.Sprintf("[hooks] Dispatching SetWaitingInput to agent %s", a.Name()))
 			go a.SetWaitingInput(s.cfg, msg, nev.TranscriptPath)
@@ -351,6 +355,15 @@ func (s *hookServer) handleCodex(w http.ResponseWriter, r *http.Request) {
 	clone.URL.RawQuery = q.Encode()
 	clone.Body = io.NopCloser(strings.NewReader(string(body)))
 	s.handleStop(w, clone)
+}
+
+// strictSessionPin reports whether a hook whose session_id differs from the
+// task's pinned CLI session is rejected. Gemini's is only recorded (the first
+// one is kept for resuming): its hooks come from the work dir's shared
+// settings, and turns its CLI reports under another session (e.g. subagents)
+// must not leave the task stuck running.
+func strictSessionPin(provider string) bool {
+	return provider != "gemini"
 }
 
 // codexTitlePromptPrefix is the start of the prompt Codex sends to its internal

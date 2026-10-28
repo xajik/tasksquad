@@ -28,6 +28,7 @@ type fakeAgent struct {
 	setWaitingInputCalled bool
 	setHookMessageCalled  bool
 	attachImageCalled     bool
+	endPipeTurnCalled     bool
 	attachImageErr        error
 }
 
@@ -61,6 +62,7 @@ func (a *fakeAgent) StopAndPause(_ *config.Config, _, _ string) {
 func (a *fakeAgent) SetWaitingInput(_ *config.Config, _, _ string) {
 	a.setWaitingInputCalled = true
 }
+func (a *fakeAgent) EndPipeTurn(m, _ string) { a.hookMsg = m; a.endPipeTurnCalled = true }
 func (a *fakeAgent) PushIntermediateResponse(_ *config.Config, _, _ string) {}
 func (a *fakeAgent) AdvanceCloseStep(_ *config.Config)                      {}
 func (a *fakeAgent) GetLastTmuxCapture() string                             { return "" }
@@ -236,5 +238,33 @@ func TestStopHook_PiErrorCarriesMessage(t *testing.T) {
 	}
 	if a.hookMsg != "Pi model call failed (google/gemini): API key not valid." {
 		t.Fatalf("hook message = %q, want the PI error text", a.hookMsg)
+	}
+}
+
+// Gemini's session_id is recorded for resuming but never gates its hooks.
+func TestStrictSessionPin(t *testing.T) {
+	for provider, want := range map[string]bool{"": true, "claude-code": true, "codex": true, "opencode": true, "gemini": false} {
+		if got := strictSessionPin(provider); got != want {
+			t.Errorf("strictSessionPin(%q) = %v, want %v", provider, got, want)
+		}
+	}
+}
+
+// A PI turn with text is recorded synchronously (before the response lets PI
+// exit) and never completes the task: the exit path pauses and detaches it.
+func TestStopHook_PiTurnEndsWithoutCompleting(t *testing.T) {
+	a := &fakeAgent{id: "a", name: "pi", taskID: "t", mode: "running"}
+	h := NewHandler(&config.Config{}, []Agent{a}, nil, nil, "test-hook-token")
+	body := `{"stop_reason":"idle","message":"answer","transcript_path":"/s/2026_01a1807b-d4cf-732f-a57d-cc9414b962bd.jsonl"}`
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, nativeHookRequest("POST", "/hooks/stop?agent=a&task_id=t&provider=pi", strings.NewReader(body)))
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if !a.endPipeTurnCalled || a.hookMsg != "answer" || a.completeCalled {
+		t.Fatalf("end=%v msg=%q complete=%v", a.endPipeTurnCalled, a.hookMsg, a.completeCalled)
+	}
+	if a.pinnedSessionID != "01a1807b-d4cf-732f-a57d-cc9414b962bd" {
+		t.Fatalf("PI session not pinned: %q", a.pinnedSessionID)
 	}
 }
