@@ -394,10 +394,9 @@ import CryptoKit
         app.buttons["editor-submit"].tap()
         XCTAssertTrue(app.buttons["add-comment"].waitForExistence(timeout: 5))
         screenshot("30-note-detail")
-        app.buttons["more-actions"].tap()
-        XCTAssertTrue(app.buttons["Edit"].waitForExistence(timeout: 5))
-        screenshot("31-note-actions")
-        app.buttons["Edit"].tap()
+        assertFits(app.buttons["edit-record"])
+        app.buttons["edit-record"].tap()
+        screenshot("31-note-edit")
         XCTAssertEqual(app.textFields["field-title"].value as? String, "Usability audit note")
         XCTAssertEqual(app.textViews["field-content"].value as? String, "Content comes first.")
     }

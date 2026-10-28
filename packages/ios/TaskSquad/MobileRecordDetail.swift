@@ -30,9 +30,13 @@ struct MobileRecordDetail: View {
             else { List {
                 if let record {
                     Section {
-                        Text(model.displayTitle(record)).font(.title3.bold()).textSelection(.enabled)
-                        if !record.status.isEmpty { TSQBadge(status: record.status).accessibilityIdentifier("record-status") }
-                        if !record.text("agent_id").isEmpty { LabeledContent("Agent", value: model.agentName(record.text("agent_id"))) }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(model.displayTitle(record)).font(.title2.bold()).textSelection(.enabled)
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 12) { recordMetadata(record) }
+                                VStack(alignment: .leading, spacing: 8) { recordMetadata(record) }
+                            }
+                        }.padding(.vertical, 4).listRowSeparator(.hidden)
                     }
                     if taskSection { conversation }
                     else { contents(record) }
@@ -40,6 +44,10 @@ struct MobileRecordDetail: View {
                 } else { ProgressView("Loading…") }
 
             }
+            .listStyle(.plain)
+            .listRowSpacing(8)
+            .frame(maxWidth: 680)
+            .frame(maxWidth: .infinity)
             .scrollContentBackground(.hidden).background(MobileTheme.background) }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -53,6 +61,11 @@ struct MobileRecordDetail: View {
         .navigationTitle(model.section == .portals ? model.agentName(record?.text("agent_id") ?? "") : model.section.mobileTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if model.section == .notes, let record, !record.flag("is_default") {
+                    Button("Edit") { edit(record) }.disabled(model.busy).accessibilityIdentifier("edit-record")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 // A live Portal's terminal fills the screen, so its one action
                 // stays in the bar rather than floating over the output.
@@ -80,6 +93,12 @@ struct MobileRecordDetail: View {
         } message: { Text(confirm == "Delete item" ? "This permanently removes the record." : "This changes the remote work. Completed records remain available.") }
     }
     private func ask(_ action: String) { confirm = action; showConfirmation = true }
+    @ViewBuilder private func recordMetadata(_ record: CustomerRecord) -> some View {
+        if !record.status.isEmpty { TSQBadge(status: record.status).accessibilityIdentifier("record-status") }
+        if !record.text("agent_id").isEmpty {
+            Text(model.agentName(record.text("agent_id"))).font(.subheadline).foregroundStyle(MobileTheme.mutedForeground)
+        }
+    }
 
     @ViewBuilder private func portal(_ record: CustomerRecord) -> some View {
         VStack(spacing: 0) {
@@ -100,9 +119,10 @@ struct MobileRecordDetail: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack { Text(message.text("role").capitalized).font(.caption.bold()); Spacer(); Text(message.date, style: .time).font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
                         if ["tool_call", "tool_result"].contains(message.text("type")) {
-                            // Raw tool JSON: compact monospace, not prose.
-                            Text(message.text("body")).font(.system(.footnote, design: .monospaced)).foregroundStyle(MobileTheme.mutedForeground)
-                                .lineLimit(6).textSelection(.enabled).accessibilityIdentifier("message-" + message.id)
+                            DisclosureGroup(message.text("type") == "tool_call" ? "Tool call" : "Tool result") {
+                                Text(message.text("body")).font(.system(.footnote, design: .monospaced)).foregroundStyle(MobileTheme.mutedForeground)
+                                    .textSelection(.enabled).accessibilityIdentifier("message-" + message.id)
+                            }
                         } else {
                             MarkdownContent(message.text("body"), copy: { UIPasteboard.general.string = $0 }).accessibilityIdentifier("message-" + message.id)
                         }
@@ -113,7 +133,7 @@ struct MobileRecordDetail: View {
                         } } }
                         if message.text("type") == "permission_request", message.text("interaction_status") == "pending" {
                             ForEach(permissionOptions(message), id: \.self) { option in
-                                Button(option) { Task { await run(.answerPermission(task: id, option: option)) } }.disabled(model.busy)
+                                Button(option) { Task { await run(.answerPermission(task: id, option: option)) } }.frame(minHeight: 44).disabled(model.busy)
                             }
                         }
                         ForEach(message.records("attachments")) { attachment in MobileAttachment(api: model.api, path: ["tasks", id, "messages", message.id, "attachments", attachment.id], name: attachment.text("filename")) }
@@ -124,7 +144,11 @@ struct MobileRecordDetail: View {
     }
     @ViewBuilder private func contents(_ record: CustomerRecord) -> some View {
         ForEach(["description", "content", "body", "role", "category", "frequency", "timezone", "email"], id: \.self) { key in
-            if !record.text(key).isEmpty { Section(key.capitalized) { MarkdownContent(Self.withoutFrontMatter(record.text(key)), copy: { UIPasteboard.general.string = $0 }) } }
+            if !record.text(key).isEmpty {
+                if model.section == .notes, key == "content" {
+                    Section { MarkdownContent(record.text(key), copy: { UIPasteboard.general.string = $0 }) }
+                } else { Section(key.capitalized) { MarkdownContent(Self.withoutFrontMatter(record.text(key)), copy: { UIPasteboard.general.string = $0 }) } }
+            }
         }
         if model.section == .agents {
             Section("Availability") {
@@ -139,6 +163,7 @@ struct MobileRecordDetail: View {
             Section("Comments") {
                 if messages.isEmpty { Text("No comments yet").foregroundStyle(MobileTheme.mutedForeground) }
                 ForEach(messages) { Text($0.text("content")) }
+                Button("Add comment") { comment() }.frame(minHeight: 44).accessibilityIdentifier("add-comment")
             }
         }
     }
@@ -149,7 +174,7 @@ struct MobileRecordDetail: View {
     /// The FAB: the one action a record is usually opened for.
     private func primaryAction(_ record: CustomerRecord) -> MobileFAB? {
         if taskSection { return MobileFAB(title: "Reply", icon: "message-square", identifier: "reply-task", disabled: model.busy) { reply() } }
-        if model.section == .notes { return MobileFAB(title: "Add comment", icon: "message-square", identifier: "add-comment", disabled: model.busy) { comment() } }
+        if model.section == .notes { return nil }
         if editable, !record.flag("is_default") { return MobileFAB(title: "Edit", icon: "pencil", identifier: "edit-record", disabled: model.busy) { edit(record) } }
         if model.section == .agents, model.canManage { return MobileFAB(title: "Edit role", icon: "pencil", identifier: "edit-record", disabled: model.busy) { editRole(record) } }
         return nil
@@ -180,7 +205,6 @@ struct MobileRecordDetail: View {
         } else {
             Section {
                 if model.section == .notes {
-                    if !record.flag("is_default") { Button { edit(record) } label: { MobileMenuLabel("Edit", icon: "pencil") } }
                     Button { noteTask(.convert) } label: { MobileMenuLabel("Send to Inbox", icon: "inbox") }
                     Button { noteTask(.critique) } label: { MobileMenuLabel("Ask for critique", icon: "sparkles") }
                     Button { Task { await run(.archiveNote(project: model.projectID, note: id, restore: model.archived)) } } label: { MobileMenuLabel(model.archived ? "Restore note" : "Archive note", icon: "folder") }
