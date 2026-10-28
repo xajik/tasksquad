@@ -431,4 +431,20 @@ import CryptoKit
 
 
 
+    func test28ScheduleShowsOnlyRelevantDayControls() async throws {
+        try await launch(); section("Conveyors"); create()
+        type("subject", "Scheduled review"); agent(); type("body", "Review the project")
+        XCTAssertFalse(app.buttons["schedule-weekday"].exists)
+        XCTAssertFalse(app.buttons["schedule-monthday"].exists)
+        app.buttons["field-frequency"].tap(); app.buttons["Weekly"].tap()
+        XCTAssertTrue(app.buttons["schedule-weekday"].exists)
+        XCTAssertFalse(app.buttons["schedule-monthday"].exists)
+        app.buttons["field-frequency"].tap(); app.buttons["Monthly"].tap()
+        XCTAssertFalse(app.buttons["schedule-weekday"].exists)
+        scrollTo(app.buttons["schedule-monthday"])
+        screenshot("33-schedule-fields")
+        app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.staticTexts["Scheduled review"].waitForExistence(timeout: 8))
+    }
+
 }

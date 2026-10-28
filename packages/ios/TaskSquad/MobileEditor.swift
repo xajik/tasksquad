@@ -85,6 +85,7 @@ struct MobileEditor: View {
                 ForEach(primaryFields) { field in fieldView(field) }
                 if request.phases { phaseSection }
                 if request.attachments { imageSection }
+                if scheduledForm { MobileScheduleFields(values: $values) }
                 if request.attachments, let schedule = request.fields.first(where: { $0.id == "scheduled_at" }) {
                     Section { DisclosureGroup("Send later", isExpanded: $scheduleExpanded) { fieldView(schedule) } }
                 }
@@ -123,12 +124,15 @@ struct MobileEditor: View {
                     }
 
     }
+    private var scheduledForm: Bool { request.fields.contains { $0.id == "frequency" } }
     private var primaryFields: [WorkspaceField] {
         if request.attachments { return request.fields.filter { ["subject", "agent_id", "body"].contains($0.id) } }
+        if scheduledForm { return request.fields.filter { ["subject", "agent_id", "body", "frequency"].contains($0.id) } }
         return request.fields
     }
     private var advancedFields: [WorkspaceField] {
         if request.attachments { return request.fields.filter { !["subject", "agent_id", "body", "scheduled_at"].contains($0.id) } }
+        if scheduledForm { return request.fields.filter { ["repeat_count", "end_date", "auto_close"].contains($0.id) } }
         return []
     }
     private var imageSection: some View {
