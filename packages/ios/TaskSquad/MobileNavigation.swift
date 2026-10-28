@@ -72,7 +72,12 @@ struct MobileSidebar: View {
     let select: (WorkspaceSection) -> Void
     let open: (MobileRoute) -> Void
     @AccessibilityFocusState private var closeFocused: Bool
-    static let sections: [WorkspaceSection] = [.inbox, .portals, .notes, .conveyors, .planners, .supervisor, .skills, .memory, .analytics, .agents, .members, .settings]
+    private static let groups: [(String, [WorkspaceSection])] = [
+        ("Work", [.inbox, .notes, .portals]),
+        ("Automation", [.conveyors, .planners, .supervisor]),
+        ("Resources", [.skills, .memory]),
+        ("Manage", [.agents, .members, .analytics, .settings])
+    ]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -88,18 +93,24 @@ struct MobileSidebar: View {
                         .accessibilityFocused($closeFocused)
                 }
             }.padding(.leading, 20).padding(.trailing, 8).frame(minHeight: 56)
+            item("Projects", subtitle: model.currentProject?.title ?? "No project selected", icon: "folder", selected: route == .projects, identifier: "nav-projects") { open(.projects) }
+                .padding(.horizontal, 8).padding(.bottom, 8)
             ScrollView {
                 VStack(spacing: 4) {
-                    ForEach(Self.sections) { section in
-                        let selected = route != .projects && route != .account && (model.section == section || section == .skills && model.section.isLibrary)
-                        item(section == .skills ? "Skills & Sub-agents" : section.mobileTitle,
-                             icon: section.mobileIcon, selected: selected, identifier: "nav-" + section.rawValue) { select(section) }
+                    ForEach(Self.groups.indices, id: \.self) { index in
+                        Text(Self.groups[index].0.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(MobileTheme.mutedForeground)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.top, 16).padding(.bottom, 4)
+                        ForEach(Self.groups[index].1) { section in
+                            let selected = route != .projects && route != .account && (model.section == section || section == .skills && model.section.isLibrary)
+                            item(section == .skills ? "Library" : section.mobileTitle,
+                                 icon: section.mobileIcon, selected: selected, identifier: "nav-" + section.rawValue) { select(section) }
+                        }
                     }
-                    Rectangle().fill(MobileTheme.border).frame(height: 1).padding(.vertical, 8)
-                    item("Projects", subtitle: model.currentProject?.title ?? "No project selected", icon: "folder", selected: route == .projects, identifier: "nav-projects") { open(.projects) }
-                    item("Account", icon: "user", selected: route == .account, identifier: "nav-account") { open(.account) }
                 }.padding(.horizontal, 8).padding(.bottom, 16)
             }.accessibilityIdentifier("sidebar-destinations")
+            Divider()
+            item("Account", icon: "user", selected: route == .account, identifier: "nav-account") { open(.account) }
+                .padding(8)
         }
         .foregroundStyle(MobileTheme.foreground)
         .background(MobileTheme.sidebar)
@@ -223,7 +234,7 @@ struct MobileAccountView: View {
 struct MobileViewOptions: View {
     @ObservedObject var model: WorkspaceStore
     static func available(for section: WorkspaceSection) -> Bool {
-        section == .inbox || section == .notes || section == .memory || section.isLibrary
+        section == .inbox || section == .notes || section == .memory
     }
     private var active: Bool {
         switch model.section {

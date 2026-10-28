@@ -41,7 +41,7 @@ struct PortalHomeView: View {
                         .accessibilityHidden(true)
                     // DESIGN.md §7.2: 256pt drawer; wider at accessibility text sizes.
                     sidebar(close: closeSidebar)
-                        .frame(width: min(typeSize.isAccessibilitySize ? 320 : 256, geometry.size.width - 48))
+                        .frame(width: max(0, min(typeSize.isAccessibilitySize ? 320 : 256, geometry.size.width - 48)))
                         .background(MobileTheme.sidebar)
                         .transition(.move(edge: .leading))
                         .accessibilityAddTraits(.isModal)
@@ -125,11 +125,15 @@ struct PortalHomeView: View {
             .toolbar {
                 menuToolbar
                 ToolbarItem(placement: .principal) {
-                    VStack(spacing: 2) {
-                        Text(model.section.mobileTitle).font(.headline)
-                        Text(model.currentProject?.title ?? "No project selected")
-                            .font(.caption).foregroundStyle(MobileTheme.mutedForeground).lineLimit(1)
-                    }.accessibilityElement(children: .combine)
+                    Button { navigation.path.append(.projects) } label: {
+                        VStack(spacing: 2) {
+                            Text(model.section.mobileTitle).font(.headline)
+                            HStack(spacing: 4) {
+                                Text(model.currentProject?.title ?? "No project selected").lineLimit(1)
+                                MobileIcon(name: "chevron-down", size: 12)
+                            }.font(.caption).foregroundStyle(MobileTheme.mutedForeground)
+                        }.frame(minHeight: 44)
+                    }.buttonStyle(.plain).accessibilityIdentifier("switch-project").accessibilityHint("Switch project")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     if !model.projectID.isEmpty && MobileViewOptions.available(for: model.section) { MobileViewOptions(model: model) }
@@ -150,6 +154,11 @@ struct PortalHomeView: View {
                 Button("Projects") { navigation.path.append(.projects) }
             }
             if !model.projectID.isEmpty {
+                if model.section.isLibrary {
+                    Picker("Library", selection: $model.section) {
+                        ForEach([WorkspaceSection.skills, .subAgents, .commands]) { Text($0.rawValue).tag($0) }
+                    }.pickerStyle(.menu).accessibilityIdentifier("library-selector")
+                }
                 if model.section == .settings { settings }
                 else if model.section == .analytics { analytics }
                 else {

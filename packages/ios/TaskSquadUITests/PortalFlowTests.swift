@@ -45,7 +45,7 @@ import CryptoKit
         let library = ["Skills", "Sub-agents", "Commands"].contains(name)
         navigate("nav-" + (library ? "Skills" : name))
         if library && name != "Skills" {
-            app.buttons["view-options"].tap(); app.buttons[name].tap()
+            app.buttons["library-selector"].tap(); app.buttons[name].tap()
         }
         let title = ["Settings": "Project Settings", "Conveyors": "Conveyor", "Planners": "Planner"][name] ?? name
         XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
@@ -399,6 +399,18 @@ import CryptoKit
         screenshot("31-note-edit")
         XCTAssertEqual(app.textFields["field-title"].value as? String, "Usability audit note")
         XCTAssertEqual(app.textViews["field-content"].value as? String, "Content comes first.")
+    }
+
+    func test27ProjectNameSwitchesWorkspaceDirectly() async throws {
+        try await launch()
+        assertFits(app.buttons["switch-project"])
+        app.buttons["switch-project"].tap()
+        app.buttons["project-empty"].tap()
+        XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5))
+        app.buttons["switch-project"].tap()
+        app.buttons["project-demo"].tap()
+        XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+        screenshot("32-project-switcher")
     }
 
 }
