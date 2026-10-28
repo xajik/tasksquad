@@ -25,17 +25,20 @@ struct PortalTerminalScreen: View {
                 Button(showKeyboard || inputFocused ? "Hide keyboard" : "Show keyboard", systemImage: "keyboard") {
                     if showKeyboard || inputFocused { showKeyboard = false; inputFocused = false; UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
                     else { showKeyboard = true }
-                }.labelStyle(.iconOnly)
-                Button { reconnectID = UUID() } label: { MobileIcon(name: "refresh-cw") }.accessibilityLabel("Reconnect terminal")
-            }.padding(12)
+                }.labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                Button { reconnectID = UUID() } label: { MobileIcon(name: "refresh-cw").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Reconnect terminal")
+            }.padding(.horizontal, 12).padding(.vertical, 4)
             IOSNativeTerminalView(model: terminal, keyboardRequested: showKeyboard).accessibilityIdentifier("live-terminal")
             HStack {
-                TextField("Terminal input", text: $input).focused($inputFocused).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder).accessibilityIdentifier("terminal-input").onSubmit { sendLine() }
-                Button("Send") { sendLine() }.disabled(!terminal.connected || input.isEmpty).accessibilityIdentifier("send-terminal-input")
+                TextField("Terminal input", text: $input).focused($inputFocused).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder).frame(minHeight: 44).accessibilityIdentifier("terminal-input").onSubmit { sendLine() }
+                Button { sendLine() } label: { Text("Send").frame(minWidth: 44, minHeight: 44) }.disabled(!terminal.connected || input.isEmpty).accessibilityIdentifier("send-terminal-input")
             }.padding(.horizontal, 12).padding(.top, 8)
             ScrollView(.horizontal, showsIndicators: false) { HStack {
                 ForEach([("Esc", "\u{1b}"), ("Tab", "\t"), ("Ctrl-C", "\u{03}"), ("↑", "\u{1b}[A"), ("↓", "\u{1b}[B")], id: \.0) { key in
-                    Button(key.0) { terminal.input(Data(key.1.utf8)) }.buttonStyle(.bordered).disabled(!terminal.connected)
+                    Button { terminal.input(Data(key.1.utf8)) } label: {
+                        Text(key.0).frame(minWidth: 44, minHeight: 44).background(MobileTheme.muted, in: RoundedRectangle(cornerRadius: MobileTheme.controlRadius))
+                    }.buttonStyle(.plain).disabled(!terminal.connected)
+                        .accessibilityLabel(key.0 == "↑" ? "Arrow up" : key.0 == "↓" ? "Arrow down" : key.0)
                 }
             }.font(.caption).padding(8) }
         }

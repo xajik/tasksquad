@@ -158,6 +158,10 @@ import CryptoKit
         let terminal = app.descendants(matching: .any)["live-terminal"].firstMatch
         app.textFields["terminal-input"].tap(); app.textFields["terminal-input"].typeText("echo café"); app.buttons["send-terminal-input"].tap()
         app.buttons["Tab"].tap(); app.buttons["Ctrl-C"].tap()
+        for label in ["Tab", "Ctrl-C", "Reconnect terminal"] {
+            XCTAssertGreaterThanOrEqual(app.buttons[label].frame.width, 44)
+            XCTAssertGreaterThanOrEqual(app.buttons[label].frame.height, 44)
+        }
         if app.buttons["Hide keyboard"].exists { app.buttons["Hide keyboard"].tap() }
         XCUIDevice.shared.orientation = .landscapeLeft
         let landscape = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
