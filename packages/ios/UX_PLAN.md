@@ -1,6 +1,33 @@
 # iOS usability plan
 
-Review date: 2026-10-28. Scope: TaskSquad native iOS app in the existing iPhone 17 Pro / iOS 26.1 simulator. This is a baseline audit and implementation plan; production UI behavior has not been changed.
+Review and implementation date: 2026-10-28. Scope: TaskSquad native iOS app. The baseline audit is retained below; the priority changes have now been implemented in local issue-specific commits. Updated evidence is in `screenshots/usability-retest/`; the browser report in `screenshots/usability-retest/index.html` compares the baseline and implementation.
+
+## Implemented changes
+
+- `8a796fc`: persistent required labels, compact field errors, focus and correction handling.
+- `453adfe`: scoped image draft storage, restoration across cancellation/relaunch, cleanup and storage tests.
+- `c4f15e3`: compact record metadata, visible note Edit, comments beside the note, expandable tool details and a bounded reading width.
+- `b7901e5`: grouped sidebar, pinned Projects/Account utilities, direct project switching and a named Library selector.
+- `89e1818`: one Attach menu with previews, optional execution settings collapsed, dependent token controls hidden, native field targets and scalable writing space.
+- `2e0e753`: time/timezone pickers and frequency-specific schedule fields.
+- `b515add`: inline reply composer, failure recovery, successful-send cleanup and scrolling to a sent reply.
+- `9cf27d3`: visible common inbox filters, clearable no-results state, agent/creation context and reduced list chrome.
+- `7936b7b`: terminal controls with 44pt targets and named arrow keys.
+- `ab83f27`, `f5e829a`, `ee54de8`: attachment cleanup semantics, explicit Send contrast and compact filenames while typing.
+
+API requirements and payloads are preserved. Inbox message previews, unread counts and project-wide counts were not added: the current list API does not expose the required data. Search/filtering still operates on loaded records. A new bottom tab bar was deliberately excluded from this implementation, as specified in the plan.
+
+## Implementation verification
+
+The complete iPhone 17 Pro / iOS 26.1 contract run passed **30 UI journeys and 7 hosted tests**, zero failures, one optional promotional-capture skip. The shared Swift regression suite passed as part of the contract runner.
+
+The existing iPhone SE (3rd generation), 375pt wide, iOS 17.2, passed **three focused journeys**: reply retry and cleanup, inbox scope recovery, and software-keyboard bounds with/without an image. The actual keyboard is visible in screenshots `small/37-reply-software-keyboard.png` and `small/38-reply-image-keyboard.png`; Send remains above it. No runtime warnings were recorded in that run.
+
+The existing iPad mini (A17 Pro) / iOS 26.1 passed **three focused journeys**: direct project switching, inline reply retry, and inbox scope recovery. Screenshots verify the persistent sidebar and reply controls.
+
+The full run recorded nine frame-dimension warnings and four view-reparenting warnings; the iPad run recorded one of each. These warnings persist despite functional passes and the nonnegative drawer-width guard. Their root cause is not established. Hosted tests also log duplicate Swift class loading warnings. The warning counts are not claimed as fixed.
+
+The final iPhone reply regression result and all reproducible commands are recorded in `screenshots/usability-retest/README.md`. VoiceOver traversal, accessibility-size keyboard layout, iPad landscape keyboard behavior, realistic long datasets, offline networking, and live production account/daemon qualification remain outstanding. The fixture results do not establish those or measure user completion speed.
 
 ## Intended experience
 

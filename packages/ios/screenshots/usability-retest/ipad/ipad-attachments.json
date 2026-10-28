@@ -1,0 +1,26 @@
+[
+  {
+    "file": "32-project-switcher.png",
+    "test": "PortalFlowTests/test27ProjectNameSwitchesWorkspaceDirectly()",
+    "timestamp": 1793174252.822,
+    "device": "TaskSquad Sidebar iPad"
+  },
+  {
+    "file": "34-reply-retry.png",
+    "test": "PortalFlowTests/test29InlineReplyRetainsFailedDraftAndClearsAfterSend()",
+    "timestamp": 1793174281.249,
+    "device": "TaskSquad Sidebar iPad"
+  },
+  {
+    "file": "36-inbox-scope.png",
+    "test": "PortalFlowTests/test30InboxScopeAndEmptyResultsCanBeCleared()",
+    "timestamp": 1793174305.021,
+    "device": "TaskSquad Sidebar iPad"
+  },
+  {
+    "file": "35-filtered-empty.png",
+    "test": "PortalFlowTests/test30InboxScopeAndEmptyResultsCanBeCleared()",
+    "timestamp": 1793174303.066,
+    "device": "TaskSquad Sidebar iPad"
+  }
+]

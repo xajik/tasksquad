@@ -1,0 +1,32 @@
+[
+  {
+    "file": "34-reply-retry.png",
+    "test": "PortalFlowTests/test29InlineReplyRetainsFailedDraftAndClearsAfterSend()",
+    "timestamp": 1793174147.753,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "36-inbox-scope.png",
+    "test": "PortalFlowTests/test30InboxScopeAndEmptyResultsCanBeCleared()",
+    "timestamp": 1793174162.42,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "35-filtered-empty.png",
+    "test": "PortalFlowTests/test30InboxScopeAndEmptyResultsCanBeCleared()",
+    "timestamp": 1793174160.617,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "38-reply-image-keyboard.png",
+    "test": "PortalFlowTests/test31ReplyControlsStayAboveSoftwareKeyboard()",
+    "timestamp": 1793174181.077,
+    "device": "TaskSquad Sidebar Small"
+  },
+  {
+    "file": "37-reply-software-keyboard.png",
+    "test": "PortalFlowTests/test31ReplyControlsStayAboveSoftwareKeyboard()",
+    "timestamp": 1793174175.186,
+    "device": "TaskSquad Sidebar Small"
+  }
+]

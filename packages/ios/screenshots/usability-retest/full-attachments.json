@@ -1,0 +1,218 @@
+[
+  {
+    "file": "ios-api-metrics.json",
+    "test": "HTTPWorkflowBenchmarkTests/testMatchedPortalAPIWorkflow15Samples()",
+    "timestamp": 1793173260.555,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "02-inbox.png",
+    "test": "PortalFlowTests/test01EmptyProjectKeepsNavigationAndNativeLayout()",
+    "timestamp": 1793173273.775,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "01-empty-project.png",
+    "test": "PortalFlowTests/test01EmptyProjectKeepsNavigationAndNativeLayout()",
+    "timestamp": 1793173266.878,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "03-created-task.png",
+    "test": "PortalFlowTests/test04CreateUnicodeTaskAndInitialImage()",
+    "timestamp": 1793173349.94,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "13-reply-image.png",
+    "test": "PortalFlowTests/test05ReplyAndImageRoundTrip()",
+    "timestamp": 1793173371.917,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "04-conversation.png",
+    "test": "PortalFlowTests/test05ReplyAndImageRoundTrip()",
+    "timestamp": 1793173363.184,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "05-live-terminal.png",
+    "test": "PortalFlowTests/test07PendingPortalStartsRealTerminal()",
+    "timestamp": 1793173417.628,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "06-terminal-landscape.png",
+    "test": "PortalFlowTests/test08TerminalControlInputAndResize()",
+    "timestamp": 1793173445.848,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "07-portal-history.png",
+    "test": "PortalFlowTests/test12CloseRetainsCompletedHistory()",
+    "timestamp": 1793173552.401,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "08-note.png",
+    "test": "PortalFlowTests/test13NotesCreateEditAndComment()",
+    "timestamp": 1793173583.313,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "09-settings.png",
+    "test": "PortalFlowTests/test14AllWorkspaceSectionsLoad()",
+    "timestamp": 1793173644.406,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "10-authenticated-workspace.png",
+    "test": "PortalFlowTests/test16BrowserPKCEKeychainAndLogout()",
+    "timestamp": 1793173732.041,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "00-sign-in.png",
+    "test": "PortalFlowTests/test16BrowserPKCEKeychainAndLogout()",
+    "timestamp": 1793173724.328,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "12-dark-large-conversation.png",
+    "test": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+    "timestamp": 1793173752.256,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "11-dark-large-inbox.png",
+    "test": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+    "timestamp": 1793173750.861,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "navigation-account-dark.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1793173836.127,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "navigation-projects-dark.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1793173831.622,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "navigation-sidebar-dark.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1793173827.752,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "navigation-inbox-dark.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1793173826.593,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "navigation-account-light.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1793173815.672,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "navigation-projects-light.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1793173811.102,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "navigation-sidebar-light.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1793173807.254,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "navigation-inbox-light.png",
+    "test": "PortalFlowTests/test19NavigationScreenshots()",
+    "timestamp": 1793173806.074,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "26-task-options.png",
+    "test": "PortalFlowTests/test24TaskRequirementsAndEditorLayout()",
+    "timestamp": 1793173924.211,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "25-task-required-subject.png",
+    "test": "PortalFlowTests/test24TaskRequirementsAndEditorLayout()",
+    "timestamp": 1793173909.927,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "24-task-editor.png",
+    "test": "PortalFlowTests/test24TaskRequirementsAndEditorLayout()",
+    "timestamp": 1793173907.498,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "28-reply-keyboard.png",
+    "test": "PortalFlowTests/test25ReplyCancellationRestoresTextDraft()",
+    "timestamp": 1793173961.582,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "27-reply-editor.png",
+    "test": "PortalFlowTests/test25ReplyCancellationRestoresTextDraft()",
+    "timestamp": 1793173940.431,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "31-note-edit.png",
+    "test": "PortalFlowTests/test26NoteEditingActionLayout()",
+    "timestamp": 1793173987.628,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "30-note-detail.png",
+    "test": "PortalFlowTests/test26NoteEditingActionLayout()",
+    "timestamp": 1793173986.444,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "29-note-editor.png",
+    "test": "PortalFlowTests/test26NoteEditingActionLayout()",
+    "timestamp": 1793173977.344,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "32-project-switcher.png",
+    "test": "PortalFlowTests/test27ProjectNameSwitchesWorkspaceDirectly()",
+    "timestamp": 1793174004.03,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "33-schedule-fields.png",
+    "test": "PortalFlowTests/test28ScheduleShowsOnlyRelevantDayControls()",
+    "timestamp": 1793174035.593,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "34-reply-retry.png",
+    "test": "PortalFlowTests/test29InlineReplyRetainsFailedDraftAndClearsAfterSend()",
+    "timestamp": 1793174058.994,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "36-inbox-scope.png",
+    "test": "PortalFlowTests/test30InboxScopeAndEmptyResultsCanBeCleared()",
+    "timestamp": 1793174075.328,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "35-filtered-empty.png",
+    "test": "PortalFlowTests/test30InboxScopeAndEmptyResultsCanBeCleared()",
+    "timestamp": 1793174073.496,
+    "device": "iPhone 17 Pro"
+  }
+]

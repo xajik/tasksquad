@@ -1,0 +1,32 @@
+[
+  {
+    "file": "13-reply-image.png",
+    "test": "PortalFlowTests/test05ReplyAndImageRoundTrip()",
+    "timestamp": 1793174365.045,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "04-conversation.png",
+    "test": "PortalFlowTests/test05ReplyAndImageRoundTrip()",
+    "timestamp": 1793174355.913,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "28-reply-keyboard.png",
+    "test": "PortalFlowTests/test25ReplyCancellationRestoresTextDraft()",
+    "timestamp": 1793174400.412,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "27-reply-editor.png",
+    "test": "PortalFlowTests/test25ReplyCancellationRestoresTextDraft()",
+    "timestamp": 1793174379.002,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "34-reply-retry.png",
+    "test": "PortalFlowTests/test29InlineReplyRetainsFailedDraftAndClearsAfterSend()",
+    "timestamp": 1793174421.292,
+    "device": "iPhone 17 Pro"
+  }
+]

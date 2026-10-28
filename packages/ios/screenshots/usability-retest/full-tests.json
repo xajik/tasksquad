@@ -1,0 +1,486 @@
+{
+  "devices": [
+    {
+      "architecture": "arm64",
+      "deviceId": "3D5E8AF0-85BC-4141-8E00-1A18AA2162F9",
+      "deviceName": "iPhone 17 Pro",
+      "modelName": "iPhone 17 Pro",
+      "osBuildNumber": "23B86",
+      "osVersion": "26.1",
+      "platform": "iOS Simulator"
+    }
+  ],
+  "testNodes": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "duration": "0.098s",
+                  "durationInSeconds": 0.09789299964904785,
+                  "name": "testMatchedPortalAPIWorkflow15Samples()",
+                  "nodeIdentifier": "HTTPWorkflowBenchmarkTests/testMatchedPortalAPIWorkflow15Samples()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadTests/HTTPWorkflowBenchmarkTests/testMatchedPortalAPIWorkflow15Samples",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                }
+              ],
+              "name": "HTTPWorkflowBenchmarkTests",
+              "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadTests/HTTPWorkflowBenchmarkTests",
+              "nodeType": "Test Suite",
+              "result": "Passed"
+            },
+            {
+              "children": [
+                {
+                  "duration": "0.0047s",
+                  "durationInSeconds": 0.004670977592468262,
+                  "name": "testCredentialsRestoreWithExpiryAndClearOnInvalidation()",
+                  "nodeIdentifier": "MobileAuthTests/testCredentialsRestoreWithExpiryAndClearOnInvalidation()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadTests/MobileAuthTests/testCredentialsRestoreWithExpiryAndClearOnInvalidation",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "0.0022s",
+                  "durationInSeconds": 0.002218008041381836,
+                  "name": "testExpiredAndRejectedTokensReturnToSignIn()",
+                  "nodeIdentifier": "MobileAuthTests/testExpiredAndRejectedTokensReturnToSignIn()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadTests/MobileAuthTests/testExpiredAndRejectedTokensReturnToSignIn",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "0.00089s",
+                  "durationInSeconds": 0.0008920431137084961,
+                  "name": "testInstalledBundleHasLaunchScreenVersionsAndCallback()",
+                  "nodeIdentifier": "MobileAuthTests/testInstalledBundleHasLaunchScreenVersionsAndCallback()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadTests/MobileAuthTests/testInstalledBundleHasLaunchScreenVersionsAndCallback",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "0.13s",
+                  "durationInSeconds": 0.13063204288482666,
+                  "name": "testPersistedExpiryAndAccountScopes()",
+                  "nodeIdentifier": "MobileAuthTests/testPersistedExpiryAndAccountScopes()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadTests/MobileAuthTests/testPersistedExpiryAndAccountScopes",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                }
+              ],
+              "name": "MobileAuthTests",
+              "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadTests/MobileAuthTests",
+              "nodeType": "Test Suite",
+              "result": "Passed"
+            },
+            {
+              "children": [
+                {
+                  "duration": "0.0052s",
+                  "durationInSeconds": 0.005231022834777832,
+                  "name": "testAttachmentRoundTripIsolationRemovalAndCleanup()",
+                  "nodeIdentifier": "MobileDraftTests/testAttachmentRoundTripIsolationRemovalAndCleanup()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadTests/MobileDraftTests/testAttachmentRoundTripIsolationRemovalAndCleanup",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "0.0018s",
+                  "durationInSeconds": 0.0017620325088500977,
+                  "name": "testRejectedUpdatePreservesExistingDraft()",
+                  "nodeIdentifier": "MobileDraftTests/testRejectedUpdatePreservesExistingDraft()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadTests/MobileDraftTests/testRejectedUpdatePreservesExistingDraft",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                }
+              ],
+              "name": "MobileDraftTests",
+              "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadTests/MobileDraftTests",
+              "nodeType": "Test Suite",
+              "result": "Passed"
+            }
+          ],
+          "name": "TaskSquadTests",
+          "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadTests",
+          "nodeType": "Unit test bundle",
+          "result": "Passed"
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "duration": "11s",
+                  "durationInSeconds": 11.689240097999573,
+                  "name": "test01EmptyProjectKeepsNavigationAndNativeLayout()",
+                  "nodeIdentifier": "PortalFlowTests/test01EmptyProjectKeepsNavigationAndNativeLayout()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test01EmptyProjectKeepsNavigationAndNativeLayout",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "24s",
+                  "durationInSeconds": 24.375823974609375,
+                  "name": "test02ProjectSwitchClearsOldRecords()",
+                  "nodeIdentifier": "PortalFlowTests/test02ProjectSwitchClearsOldRecords()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test02ProjectSwitchClearsOldRecords",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "24s",
+                  "durationInSeconds": 24.37575602531433,
+                  "name": "test03InboxStatusFilter()",
+                  "nodeIdentifier": "PortalFlowTests/test03InboxStatusFilter()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test03InboxStatusFilter",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Multiple Runtime Warnings",
+                      "nodeType": "Runtime Warning"
+                    }
+                  ],
+                  "duration": "27s",
+                  "durationInSeconds": 27.43729603290558,
+                  "name": "test04CreateUnicodeTaskAndInitialImage()",
+                  "nodeIdentifier": "PortalFlowTests/test04CreateUnicodeTaskAndInitialImage()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test04CreateUnicodeTaskAndInitialImage",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Multiple Runtime Warnings",
+                      "nodeType": "Runtime Warning"
+                    }
+                  ],
+                  "duration": "21s",
+                  "durationInSeconds": 21.94740104675293,
+                  "name": "test05ReplyAndImageRoundTrip()",
+                  "nodeIdentifier": "PortalFlowTests/test05ReplyAndImageRoundTrip()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test05ReplyAndImageRoundTrip",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Invalid frame dimension (negative or non-finite).",
+                      "nodeType": "Runtime Warning"
+                    }
+                  ],
+                  "duration": "22s",
+                  "durationInSeconds": 22.256916999816895,
+                  "name": "test06CreateErrorRetainsDraft()",
+                  "nodeIdentifier": "PortalFlowTests/test06CreateErrorRetainsDraft()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test06CreateErrorRetainsDraft",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "23s",
+                  "durationInSeconds": 23.442190051078796,
+                  "name": "test07PendingPortalStartsRealTerminal()",
+                  "nodeIdentifier": "PortalFlowTests/test07PendingPortalStartsRealTerminal()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test07PendingPortalStartsRealTerminal",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "29s",
+                  "durationInSeconds": 29.48087990283966,
+                  "name": "test08TerminalControlInputAndResize()",
+                  "nodeIdentifier": "PortalFlowTests/test08TerminalControlInputAndResize()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test08TerminalControlInputAndResize",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "27s",
+                  "durationInSeconds": 27.832414031028748,
+                  "name": "test09ReconnectMakesNewSocket()",
+                  "nodeIdentifier": "PortalFlowTests/test09ReconnectMakesNewSocket()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test09ReconnectMakesNewSocket",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "25s",
+                  "durationInSeconds": 25.113502979278564,
+                  "name": "test10CancelClosePreservesRunningSession()",
+                  "nodeIdentifier": "PortalFlowTests/test10CancelClosePreservesRunningSession()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test10CancelClosePreservesRunningSession",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "25s",
+                  "durationInSeconds": 25.049378991127014,
+                  "name": "test11CloseErrorKeepsDetailOpen()",
+                  "nodeIdentifier": "PortalFlowTests/test11CloseErrorKeepsDetailOpen()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test11CloseErrorKeepsDetailOpen",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "27s",
+                  "durationInSeconds": 27.298846006393433,
+                  "name": "test12CloseRetainsCompletedHistory()",
+                  "nodeIdentifier": "PortalFlowTests/test12CloseRetainsCompletedHistory()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test12CloseRetainsCompletedHistory",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Invalid frame dimension (negative or non-finite).",
+                      "nodeType": "Runtime Warning"
+                    }
+                  ],
+                  "duration": "30s",
+                  "durationInSeconds": 30.920594930648804,
+                  "name": "test13NotesCreateEditAndComment()",
+                  "nodeIdentifier": "PortalFlowTests/test13NotesCreateEditAndComment()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test13NotesCreateEditAndComment",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "1m 1s",
+                  "durationInSeconds": 61.10145592689514,
+                  "name": "test14AllWorkspaceSectionsLoad()",
+                  "nodeIdentifier": "PortalFlowTests/test14AllWorkspaceSectionsLoad()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test14AllWorkspaceSectionsLoad",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "1m 15s",
+                  "durationInSeconds": 75.73638105392456,
+                  "name": "test15SeededNavigationAndForegroundRecovery()",
+                  "nodeIdentifier": "PortalFlowTests/test15SeededNavigationAndForegroundRecovery()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test15SeededNavigationAndForegroundRecovery",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "20s",
+                  "durationInSeconds": 20.522816061973572,
+                  "name": "test16BrowserPKCEKeychainAndLogout()",
+                  "nodeIdentifier": "PortalFlowTests/test16BrowserPKCEKeychainAndLogout()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test16BrowserPKCEKeychainAndLogout",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "11s",
+                  "durationInSeconds": 11.56846296787262,
+                  "name": "test17DarkAppearanceAndLargeTextRemainUsable()",
+                  "nodeIdentifier": "PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test17DarkAppearanceAndLargeTextRemainUsable",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "34s",
+                  "durationInSeconds": 34.12233889102936,
+                  "name": "test18SidebarDismissalAndUtilityBackPreserveDetail()",
+                  "nodeIdentifier": "PortalFlowTests/test18SidebarDismissalAndUtilityBackPreserveDetail()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test18SidebarDismissalAndUtilityBackPreserveDetail",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "50s",
+                  "durationInSeconds": 50.92518699169159,
+                  "name": "test19NavigationScreenshots()",
+                  "nodeIdentifier": "PortalFlowTests/test19NavigationScreenshots()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test19NavigationScreenshots",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "19s",
+                  "durationInSeconds": 19.875373005867004,
+                  "name": "test20ProjectsSearchAndRetry()",
+                  "nodeIdentifier": "PortalFlowTests/test20ProjectsSearchAndRetry()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test20ProjectsSearchAndRetry",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "14s",
+                  "durationInSeconds": 14.167459964752197,
+                  "name": "test21NoProjectsStillAllowsAccountAndProjectRefresh()",
+                  "nodeIdentifier": "PortalFlowTests/test21NoProjectsStillAllowsAccountAndProjectRefresh()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test21NoProjectsStillAllowsAccountAndProjectRefresh",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "10s",
+                  "durationInSeconds": 10.303973913192749,
+                  "name": "test22ProjectSettingsRespectMemberRole()",
+                  "nodeIdentifier": "PortalFlowTests/test22ProjectSettingsRespectMemberRole()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test22ProjectSettingsRespectMemberRole",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "13s",
+                  "durationInSeconds": 13.942869067192078,
+                  "name": "test23EdgeSwipeOpensAndSwipeClosesSidebar()",
+                  "nodeIdentifier": "PortalFlowTests/test23EdgeSwipeOpensAndSwipeClosesSidebar()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test23EdgeSwipeOpensAndSwipeClosesSidebar",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Invalid frame dimension (negative or non-finite).",
+                      "nodeType": "Runtime Warning"
+                    }
+                  ],
+                  "duration": "30s",
+                  "durationInSeconds": 30.902370929718018,
+                  "name": "test24TaskRequirementsAndEditorLayout()",
+                  "nodeIdentifier": "PortalFlowTests/test24TaskRequirementsAndEditorLayout()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test24TaskRequirementsAndEditorLayout",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Multiple Runtime Warnings",
+                      "nodeType": "Runtime Warning"
+                    }
+                  ],
+                  "duration": "35s",
+                  "durationInSeconds": 35.136402010917664,
+                  "name": "test25ReplyCancellationRestoresTextDraft()",
+                  "nodeIdentifier": "PortalFlowTests/test25ReplyCancellationRestoresTextDraft()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test25ReplyCancellationRestoresTextDraft",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Invalid frame dimension (negative or non-finite).",
+                      "nodeType": "Runtime Warning"
+                    }
+                  ],
+                  "duration": "26s",
+                  "durationInSeconds": 26.050543069839478,
+                  "name": "test26NoteEditingActionLayout()",
+                  "nodeIdentifier": "PortalFlowTests/test26NoteEditingActionLayout()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test26NoteEditingActionLayout",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "16s",
+                  "durationInSeconds": 16.37720501422882,
+                  "name": "test27ProjectNameSwitchesWorkspaceDirectly()",
+                  "nodeIdentifier": "PortalFlowTests/test27ProjectNameSwitchesWorkspaceDirectly()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test27ProjectNameSwitchesWorkspaceDirectly",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Invalid frame dimension (negative or non-finite).",
+                      "nodeType": "Runtime Warning"
+                    }
+                  ],
+                  "duration": "33s",
+                  "durationInSeconds": 33.972342014312744,
+                  "name": "test28ScheduleShowsOnlyRelevantDayControls()",
+                  "nodeIdentifier": "PortalFlowTests/test28ScheduleShowsOnlyRelevantDayControls()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test28ScheduleShowsOnlyRelevantDayControls",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Multiple Runtime Warnings",
+                      "nodeType": "Runtime Warning"
+                    }
+                  ],
+                  "duration": "24s",
+                  "durationInSeconds": 24.078079104423523,
+                  "name": "test29InlineReplyRetainsFailedDraftAndClearsAfterSend()",
+                  "nodeIdentifier": "PortalFlowTests/test29InlineReplyRetainsFailedDraftAndClearsAfterSend()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test29InlineReplyRetainsFailedDraftAndClearsAfterSend",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "13s",
+                  "durationInSeconds": 13.244559049606323,
+                  "name": "test30InboxScopeAndEmptyResultsCanBeCleared()",
+                  "nodeIdentifier": "PortalFlowTests/test30InboxScopeAndEmptyResultsCanBeCleared()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test30InboxScopeAndEmptyResultsCanBeCleared",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                }
+              ],
+              "name": "PortalFlowTests",
+              "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests",
+              "nodeType": "Test Suite",
+              "result": "Passed"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "name": "Test skipped - Set TEST_RUNNER_PROMO_API to capture launch screens",
+                      "nodeType": "Skip Message"
+                    }
+                  ],
+                  "duration": "0.052s",
+                  "durationInSeconds": 0.051748037338256836,
+                  "name": "testCaptureLaunchScreens()",
+                  "nodeIdentifier": "PromoScreenshotTests/testCaptureLaunchScreens()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PromoScreenshotTests/testCaptureLaunchScreens",
+                  "nodeType": "Test Case",
+                  "result": "Skipped"
+                }
+              ],
+              "name": "PromoScreenshotTests",
+              "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PromoScreenshotTests",
+              "nodeType": "Test Suite",
+              "result": "Skipped"
+            }
+          ],
+          "name": "TaskSquadUITests",
+          "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests",
+          "nodeType": "UI test bundle",
+          "result": "Passed"
+        }
+      ],
+      "name": "TaskSquad",
+      "nodeType": "Test Plan",
+      "result": "Passed"
+    }
+  ],
+  "testPlanConfigurations": [
+    {
+      "configurationId": "1",
+      "configurationName": "Test Scheme Action"
+    }
+  ]
+}

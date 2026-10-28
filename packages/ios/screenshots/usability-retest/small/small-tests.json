@@ -1,0 +1,71 @@
+{
+  "devices": [
+    {
+      "architecture": "arm64",
+      "deviceId": "F58D1267-021E-4C60-81DF-337E51BA57C5",
+      "deviceName": "TaskSquad Sidebar Small",
+      "modelName": "iPhone SE (3rd generation)",
+      "osBuildNumber": "21C62",
+      "osVersion": "17.2",
+      "platform": "iOS Simulator"
+    }
+  ],
+  "testNodes": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "duration": "19s",
+                  "durationInSeconds": 19.853672981262207,
+                  "name": "test29InlineReplyRetainsFailedDraftAndClearsAfterSend()",
+                  "nodeIdentifier": "PortalFlowTests/test29InlineReplyRetainsFailedDraftAndClearsAfterSend()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test29InlineReplyRetainsFailedDraftAndClearsAfterSend",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "11s",
+                  "durationInSeconds": 11.06725800037384,
+                  "name": "test30InboxScopeAndEmptyResultsCanBeCleared()",
+                  "nodeIdentifier": "PortalFlowTests/test30InboxScopeAndEmptyResultsCanBeCleared()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test30InboxScopeAndEmptyResultsCanBeCleared",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                },
+                {
+                  "duration": "18s",
+                  "durationInSeconds": 18.665588974952698,
+                  "name": "test31ReplyControlsStayAboveSoftwareKeyboard()",
+                  "nodeIdentifier": "PortalFlowTests/test31ReplyControlsStayAboveSoftwareKeyboard()",
+                  "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests/test31ReplyControlsStayAboveSoftwareKeyboard",
+                  "nodeType": "Test Case",
+                  "result": "Passed"
+                }
+              ],
+              "name": "PortalFlowTests",
+              "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests/PortalFlowTests",
+              "nodeType": "Test Suite",
+              "result": "Passed"
+            }
+          ],
+          "name": "TaskSquadUITests",
+          "nodeIdentifierURL": "test://com.apple.xcode/TaskSquad/TaskSquadUITests",
+          "nodeType": "UI test bundle",
+          "result": "Passed"
+        }
+      ],
+      "name": "TaskSquad",
+      "nodeType": "Test Plan",
+      "result": "Passed"
+    }
+  ],
+  "testPlanConfigurations": [
+    {
+      "configurationId": "1",
+      "configurationName": "Test Scheme Action"
+    }
+  ]
+}
