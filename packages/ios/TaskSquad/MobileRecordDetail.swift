@@ -20,6 +20,7 @@ struct MobileRecordDetail: View {
     @State private var logs: [CustomerRecord] = []
     @State private var showLogs = false
     @State private var terminalPresented = false
+    @State private var sentRevision = 0
     @State private var transcript: String?
     private var record: CustomerRecord? { detail ?? model.records.first { $0.id == id } }
     private var taskSection: Bool { [.inbox, .supervisor].contains(model.section) }
@@ -27,34 +28,14 @@ struct MobileRecordDetail: View {
     var body: some View {
         Group {
             if model.section == .portals, let record { portal(record) }
-            else { List {
-                if let record {
-                    Section {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(model.displayTitle(record)).font(.title2.bold()).textSelection(.enabled)
-                            ViewThatFits(in: .horizontal) {
-                                HStack(spacing: 12) { recordMetadata(record) }
-                                VStack(alignment: .leading, spacing: 8) { recordMetadata(record) }
-                            }
-                        }.padding(.vertical, 4).listRowSeparator(.hidden)
-                    }
-                    if taskSection { conversation }
-                    else { contents(record) }
-                    if !related.isEmpty { Section("Related tasks") { ForEach(related) { Text($0.title + " · " + $0.status) } } }
-                } else { ProgressView("Loading…") }
-
-            }
-            .listStyle(.plain)
-            .listRowSpacing(8)
-            .frame(maxWidth: 680)
-            .frame(maxWidth: .infinity)
-            .scrollContentBackground(.hidden).background(MobileTheme.background) }
+            else { recordList }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if model.section != .portals {
                 VStack(alignment: .trailing, spacing: 0) {
-                    if let record, let primary = primaryAction(record) { primary }
-                    if let error = mutationError ?? error ?? model.error { TSQErrorBanner(error, identifier: "detail-error").padding(.horizontal).padding(.vertical, 8).frame(maxWidth: .infinity).background(.regularMaterial) }
+                    if taskSection, record != nil { replyComposer }
+                    else if let record, let primary = primaryAction(record) { primary }
+                    if let error = mutationError ?? error ?? model.error { TSQErrorBanner(error, identifier: "detail-error").fixedSize(horizontal: false, vertical: true).padding(.horizontal).padding(.vertical, 8).frame(maxWidth: .infinity).background(.regularMaterial) }
                 }.frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
@@ -91,6 +72,49 @@ struct MobileRecordDetail: View {
             Button(confirm, role: .destructive) { let action = confirm; Task { await confirmed(action) } }
             Button("Cancel", role: .cancel) { }
         } message: { Text(confirm == "Delete item" ? "This permanently removes the record." : "This changes the remote work. Completed records remain available.") }
+    }
+    private var recordList: some View {
+        ScrollViewReader { scroll in
+List {
+                if let record {
+                    Section {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(model.displayTitle(record)).font(.title2.bold()).textSelection(.enabled)
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 12) { recordMetadata(record) }
+                                VStack(alignment: .leading, spacing: 8) { recordMetadata(record) }
+                            }
+                        }.padding(.vertical, 4).listRowSeparator(.hidden)
+                    }
+                    if taskSection { conversation }
+                    else { contents(record) }
+                    if !related.isEmpty { Section("Related tasks") { ForEach(related) { Text($0.title + " · " + $0.status) } } }
+                } else { ProgressView("Loading…") }
+
+            }
+            .listStyle(.plain)
+            .listRowSpacing(8)
+            .frame(maxWidth: 680)
+            .frame(maxWidth: .infinity)
+            .scrollContentBackground(.hidden).background(MobileTheme.background)
+            .onChange(of: sentRevision) { _, _ in
+                if let last = messages.last { withAnimation { scroll.scrollTo(last.id, anchor: .bottom) } }
+            }
+        }
+    }
+    private var replyComposer: some View {
+        let context = model.context
+        return MobileReplyComposer(model: model, taskID: id) { body, files in
+            guard context == model.context else { return "The project changed. Your draft is retained." }
+            guard await model.perform(.reply(task: id, values: body, files: files)) != nil else {
+                let message = model.error ?? "The reply could not be sent. Your draft is retained."
+                model.error = nil // The composer owns this request's error.
+                return message
+            }
+            await refresh()
+            sentRevision += 1
+            return nil
+        }.id(model.context + ":" + id)
     }
     private func ask(_ action: String) { confirm = action; showConfirmation = true }
     @ViewBuilder private func recordMetadata(_ record: CustomerRecord) -> some View {
@@ -137,7 +161,7 @@ struct MobileRecordDetail: View {
                             }
                         }
                         ForEach(message.records("attachments")) { attachment in MobileAttachment(api: model.api, path: ["tasks", id, "messages", message.id, "attachments", attachment.id], name: attachment.text("filename")) }
-                    }.padding(.vertical, 5)
+                    }.padding(.vertical, 5).id(message.id)
                 }
             }
         }
@@ -173,7 +197,6 @@ struct MobileRecordDetail: View {
 
     /// The FAB: the one action a record is usually opened for.
     private func primaryAction(_ record: CustomerRecord) -> MobileFAB? {
-        if taskSection { return MobileFAB(title: "Reply", icon: "message-square", identifier: "reply-task", disabled: model.busy) { reply() } }
         if model.section == .notes { return nil }
         if editable, !record.flag("is_default") { return MobileFAB(title: "Edit", icon: "pencil", identifier: "edit-record", disabled: model.busy) { edit(record) } }
         if model.section == .agents, model.canManage { return MobileFAB(title: "Edit role", icon: "pencil", identifier: "edit-record", disabled: model.busy) { editRole(record) } }
@@ -268,11 +291,6 @@ struct MobileRecordDetail: View {
     private func forward() {
         editor = MobileEditorRequest(title: "Forward task", fields: [.init("agent_id", "Agent", .agent, required: true), .init("instructions", "Instructions", .multiline)]) { body, _ in
             guard await model.perform(.forward(task: id, values: body)) != nil else { return false }; await model.refresh(); return true
-        }
-    }
-    private func reply() {
-        editor = MobileEditorRequest(title: "Reply", fields: [.init("body", "Message", .multiline, required: true), .init("scheduled_at", "Schedule reply", .date, initial: .null)], draftKey: model.draftScope("reply." + id).key, attachments: true, submitLabel: "Send") { body, files in
-            guard await model.perform(.reply(task: id, values: body, files: files)) != nil else { return false }; await refresh(); return true
         }
     }
     private func edit(_ record: CustomerRecord) {

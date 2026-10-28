@@ -447,4 +447,24 @@ import CryptoKit
         XCTAssertTrue(app.staticTexts["Scheduled review"].waitForExistence(timeout: 8))
     }
 
+    func test29InlineReplyRetainsFailedDraftAndClearsAfterSend() async throws {
+        try await launch(); openTask(); app.buttons["reply-task"].tap()
+        XCTAssertFalse(app.navigationBars["Reply"].exists, "Reply stays inside the conversation")
+        type("body", "Retry this reply"); attachImage()
+        _ = try await control("fail", body: ["method": "POST", "path": "/tasks/task/messages", "error": "Reply rejected"])
+        app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.staticTexts["editor-error"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.textViews["field-body"].value as? String, "Retry this reply")
+        XCTAssertTrue(app.staticTexts["test.png"].exists)
+        screenshot("34-reply-retry")
+        app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.buttons["reply-task"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Retry this reply"].waitForExistence(timeout: 5))
+        app.buttons["reply-task"].tap()
+        XCTAssertEqual(app.textViews["field-body"].value as? String, "")
+        XCTAssertFalse(app.staticTexts["test.png"].exists, "Sent images are removed from the draft")
+        let state = try await control("state"), messages = state["messages"] as? [String: [[String: Any]]]
+        XCTAssertEqual(messages?["task"]?.count, 2, "Retry creates exactly one reply")
+    }
+
 }
