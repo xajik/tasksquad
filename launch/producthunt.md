@@ -27,9 +27,9 @@ Alternative: "TaskSquad: where AI & teams work" (32 chars), which is grammatical
 
 **Description** (limit 260 characters):
 
-> TaskSquad is the creative workspace where your team and AI agents build together. Bring any harness, even your own, on your own machines. Watch agents work live, govern who runs what, learn as a team, and track every run with analytics.
+> TaskSquad is the creative workspace where your team and AI agents build together. Bring any harness to your Mac and Linux machines. Work from the web, Mac or iPhone, connect your AI assistant over MCP, and track every run.
 
-(236 chars)
+(222 chars)
 
 **Topics:** Artificial Intelligence · Developer Tools · Productivity · Team Collaboration
 
@@ -58,8 +58,14 @@ Alternative: "TaskSquad: where AI & teams work" (32 chars), which is grammatical
 > 🧩 **Bring your own harness.** Claude Code, Codex, Gemini, OpenCode, Pi, or the agent you built yourself. If it
 > runs in a terminal, it can join the squad.
 >
-> 🖥 **Bring your own servers.** Agents run on your laptops, workstations and servers. Your repo is never uploaded,
-> and model API keys stay on your machines.
+> 🖥 **Bring your own servers.** Agents run on your macOS and Linux laptops, workstations and servers. Your repo is
+> never uploaded, and model API keys stay on your machines.
+>
+> 📱 **Every screen.** Work from the web, the native Mac app, or the iPhone app. Start a task at your desk and
+> answer the agent from your phone.
+>
+> 🤖 **MCP for your AI assistant.** Connect Claude Code or any MCP client to `https://tasksquad.ai/mcp` and it can
+> send tasks, follow them and reply, signed in as you. Deletes and membership changes stay manual.
 >
 > 👀 **See everything.** Live output, every tool call, and full transcripts. When an agent goes quiet, a Supervisor
 > inspects its terminal and unblocks it or escalates.
@@ -92,18 +98,20 @@ Screenshot sources are in `launch/media/shots/`, and the content-only crops in `
 | Order | File (`launch/media/gallery/`) | What it shows |
 |---|---|---|
 | Thumbnail | `thumbnail.png` (240×240) | Logo on accent |
-| 1 · Feature graphic | `01.png` | Tagline, supported agents, inbox and thread, "Secure, open, observable" card |
+| 1 · Feature graphic | `01.png` | Tagline, supported agents, inbox and thread, "Secure, open, observable" card (macOS + Linux, Web/Mac/iPhone, MCP) |
 | 2 | `02.png` | Inbox thread: prompt, tool calls, agent reply |
-| 3 | `03.png` | Bring your own harness and servers: daemons on Mac, Linux and Windows (WSL) feeding one inbox |
+| 3 | `03.png` | Your harness, your machines, every screen: Web, Mac, iPhone and MCP clients above one inbox, daemons on macOS and Linux below |
 | 4 | `04.png` | Security boundary: what stays local and what reaches the cloud |
 | 5 | `05.png` | Planner: phases, harness and sub-agent per phase, approvals |
 | 6 | `06.png` | Supervisor: a resolved verdict with what it found and did |
 | 7 | `07.png` | Notes: spec with teammate comment and agent critique |
 | 8 | `08.png` | Memory and skills by category and tag |
 | 9 | `09.png` | Observability and analytics: outcomes, tokens, tool calls, feedback |
-| 10 | `10.png` | Get started: install commands, 3 steps, supported agents |
+| 10 | `10.png` | Get started: install, sign in, `claude mcp add`, 3 steps, supported agents and platforms |
 | Overview A | `bento-1.png` | **Run the work:** Inbox, Supervisor, Portals, Conveyor |
 | Overview B | `bento-2.png` | **Grow the squad:** Agents, Notes, Memory, Skills |
+| Apps | `apps-1..5.png` | Web, Mac and iPhone apps (apps-1 and apps-2 also show MCP) |
+| MCP | `mcp.png` | MCP server: Claude Code sends a task to an agent through `tasksquad.ai/mcp` (labeled "Illustration": a mock terminal, not a screenshot) |
 | Overview C | `bento-3.png` | **Run it your way:** Collaboration, bring your own agents and machines, infrastructure, analytics, security |
 | OG | `og-image.png` (1200×630), also copied to `packages/portal/public/og-image.png` | Link preview |
 | Social | `../out/teaser-1600x900.png`, `../out/teaser-1080x1080.png` | "Launching on Product Hunt" posts |
@@ -125,8 +133,11 @@ Not today. The coordination layer runs on Cloudflare. Execution is already local
 **"Which agents are supported?"**
 Claude Code, Codex, Gemini CLI, OpenCode and Pi out of the box, plus any CLI that writes to stdout. OpenClaw is coming soon.
 
-**"Windows?"**
-Yes, through WSL. The daemon drives agents through tmux, so it needs a tmux-compatible environment. macOS and Linux work natively, and there's also a native macOS menu-bar app (DMG).
+**"Which platforms?"**
+Agents run on macOS and Linux, through the `tsq` daemon or the native Mac app. You work from the web, the Mac app or the iPhone app, and AI assistants connect over MCP. Windows isn't supported natively; WSL can work because the daemon only needs tmux, but we don't advertise it.
+
+**"Can my AI assistant use TaskSquad?"**
+Yes. Run `claude mcp add --transport http tasksquad https://tasksquad.ai/mcp` (or add that URL to any MCP client with OAuth). It signs in as you in the browser and can work the inbox, notes, planners, conveyors, memory and live terminals. Deleting things, managing members and creating agent tokens always stay manual in the portal.
 
 **"Why tmux?"**
 It gives every task a real, persistent terminal session. Agents keep their full interactive TUI, sessions survive daemon restarts, and you can attach locally or open a live browser terminal (Portal) into the exact same session.
@@ -182,3 +193,5 @@ Free covers up to 3 projects × 3 agents × 5 members. Pro is $29/mo for 10 proj
 | Owner / Maintainer / Member roles | `packages/worker/src/routes/teams.ts` |
 | Single-use, 60 s terminal tickets | `POST /terminal/ticket`, `docs/concepts/security.md` |
 | Windows needs WSL | `packages/daemon/README.md` |
+| MCP server at `tasksquad.ai/mcp`, OAuth sign-in as the user, destructive/membership/token tools blocked | `packages/mcp/README.md`, `packages/mcp/src/tools/blocked.ts` |
+| Native Mac and iPhone apps on the same workspace | `packages/macos`, `packages/ios`, `packages/mobile/TaskSquadPortal` |
