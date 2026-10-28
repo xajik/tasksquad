@@ -96,7 +96,7 @@ import CryptoKit
 
     func test01EmptyProjectKeepsNavigationAndNativeLayout() async throws {
         try await launch(project: false)
-        XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["No tasks yet"].waitForExistence(timeout: 5))
         assertFits(app.buttons["open-sidebar"])
         assertFits(app.buttons["view-options"]); assertFits(app.buttons["create-item"])
         screenshot("01-empty-project")
@@ -105,12 +105,12 @@ import CryptoKit
     }
     func test02ProjectSwitchClearsOldRecords() async throws {
         try await launch(); XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
-        chooseProject("Empty project"); XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["record-task"].exists)
+        chooseProject("Empty project"); XCTAssertTrue(app.staticTexts["No tasks yet"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["record-task"].exists)
         chooseProject("Test workspace"); XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
     }
     func test03InboxStatusFilter() async throws {
         try await launch(); filterStatus("Done")
-        XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["No matching results"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["view-options"].label, "View options, filtered")
         filterStatus("Waiting Input")
         XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
@@ -273,7 +273,7 @@ import CryptoKit
         app.buttons["Forward to agent"].tap(); app.buttons["Cancel"].tap()
         back()
         chooseProject("Empty project")
-        XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["No tasks yet"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["reply-task"].exists)
     }
     func test19NavigationScreenshots() async throws {
@@ -418,18 +418,12 @@ import CryptoKit
         assertFits(app.buttons["switch-project"])
         app.buttons["switch-project"].tap()
         app.buttons["project-empty"].tap()
-        XCTAssertTrue(app.staticTexts["No inbox"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["No tasks yet"].waitForExistence(timeout: 5))
         app.buttons["switch-project"].tap()
         app.buttons["project-demo"].tap()
         XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
         screenshot("32-project-switcher")
     }
-
-
-
-
-
-
 
     func test28ScheduleShowsOnlyRelevantDayControls() async throws {
         try await launch(); section("Conveyors"); create()
@@ -465,6 +459,20 @@ import CryptoKit
         XCTAssertFalse(app.staticTexts["test.png"].exists, "Sent images are removed from the draft")
         let state = try await control("state"), messages = state["messages"] as? [String: [[String: Any]]]
         XCTAssertEqual(messages?["task"]?.count, 2, "Retry creates exactly one reply")
+    }
+
+    func test30InboxScopeAndEmptyResultsCanBeCleared() async throws {
+        try await launch()
+        app.buttons["scope-running"].tap()
+        XCTAssertTrue(app.staticTexts["No matching results"].waitForExistence(timeout: 5))
+        assertFits(app.buttons["clear-filters"])
+        screenshot("35-filtered-empty")
+        app.buttons["clear-filters"].tap()
+        XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+        app.buttons["scope-waiting_input"].tap()
+        XCTAssertTrue(app.buttons["scope-waiting_input"].isSelected)
+        XCTAssertTrue(app.buttons["record-task"].exists)
+        screenshot("36-inbox-scope")
     }
 
 }

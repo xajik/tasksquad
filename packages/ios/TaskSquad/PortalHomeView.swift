@@ -159,6 +159,7 @@ struct PortalHomeView: View {
                         ForEach([WorkspaceSection.skills, .subAgents, .commands]) { Text($0.rawValue).tag($0) }
                     }.pickerStyle(.menu).accessibilityIdentifier("library-selector")
                 }
+                if model.section == .inbox { MobileInboxScope(model: model) }
                 if model.section == .settings { settings }
                 else if model.section == .analytics { analytics }
                 else {
@@ -171,7 +172,10 @@ struct PortalHomeView: View {
                         if !model.rollups.isEmpty { Section("Daily rollups") { ForEach(model.rollups) { rollup in DisclosureGroup(rollup.title) { MarkdownContent(rollup.text("content")) } } } }
                     }
                     if model.loading { ProgressView("Loading…") }
-                    else if model.visibleRecords.isEmpty { TSQEmptyState(icon: "inbox", title: "No \(model.section.rawValue.lowercased())", message: "Choose another project or create a new item.").listRowBackground(Color.clear) }
+                    else if model.error != nil && model.records.isEmpty {
+                        Button("Retry loading") { Task { await model.refresh() } }.frame(minHeight: 44)
+                    }
+                    else if model.visibleRecords.isEmpty { emptyState }
                     else if model.section == .portals {
                         portalSection("Active sessions", live: true)
                         portalSection("History", live: false)
@@ -179,7 +183,6 @@ struct PortalHomeView: View {
                         Section { ForEach(model.visibleRecords) { record in row(record) } }
                     }
                     if model.hasMore { Button("Load more") { Task { await model.refresh(loadMore: true) } }.disabled(model.loading) }
-                    if let refreshedAt = model.refreshedAt { Text("Updated \(refreshedAt.formatted(date: .omitted, time: .shortened))").font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
                 }
             }
         }
@@ -188,10 +191,27 @@ struct PortalHomeView: View {
                 if canCreate {
                     MobileFAB(title: createTitle, icon: "plus", identifier: "create-item", disabled: model.busy) { create() }
                 }
-                if let error = model.error { Text(error).font(.footnote).foregroundStyle(MobileTheme.destructive).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("workspace-error") }
+                if let error = model.error { Text(error).font(.footnote).foregroundStyle(MobileTheme.destructive).fixedSize(horizontal: false, vertical: true).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("workspace-error") }
             }.frame(maxWidth: .infinity, alignment: .trailing)
         }
+        .listStyle(.plain)
         .scrollContentBackground(.hidden).background(MobileTheme.background)
+    }
+    private var filtered: Bool {
+        !model.search.isEmpty || (model.section == .inbox && (model.status != "all" || model.origin != "all"))
+            || (model.section == .notes && model.archived) || (model.section == .memory && model.memoryCategory != "all")
+    }
+    @ViewBuilder private var emptyState: some View {
+        if filtered {
+            TSQEmptyState(icon: "search", title: "No matching results", message: "Try another search or clear your filters.") {
+                Button("Clear search and filters") {
+                    model.search = ""; model.status = "all"; model.origin = "all"; model.archived = false; model.memoryCategory = "all"
+                }.frame(minHeight: 44).accessibilityIdentifier("clear-filters")
+            }.listRowBackground(Color.clear).listRowSeparator(.hidden)
+        } else {
+            TSQEmptyState(icon: model.section.mobileIcon, title: model.section == .inbox ? "No tasks yet" : "No \(model.section.rawValue.lowercased()) yet", message: canCreate ? "Create a \(model.section.mobileItem) to get started." : "Items will appear here when available.")
+                .listRowBackground(Color.clear).listRowSeparator(.hidden)
+        }
     }
     private var canCreate: Bool { model.canCreate && !model.projectID.isEmpty }
     private var createTitle: String { model.section == .members ? "Invite member" : "New " + model.section.mobileItem }
@@ -208,15 +228,16 @@ struct PortalHomeView: View {
                     if let caption = caption(record) { Text(caption).font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
                 }
                 Spacer(); MobileIcon(name: "chevron-right", size: 16).foregroundStyle(.tertiary)
-            }.padding(.vertical, 3)
+            }.padding(.vertical, 8).frame(minHeight: 44)
         }.buttonStyle(.plain).accessibilityIdentifier("record-" + record.id)
     }
     /// One muted line under every row: role for people, otherwise when it was created.
     private func caption(_ record: CustomerRecord) -> String? {
         var parts: [String] = []
+        if model.section == .inbox, !record.text("agent_id").isEmpty { parts.append(model.agentName(record.text("agent_id"))) }
         if model.section == .members, !record.text("role").isEmpty { parts.append(record.text("role").capitalized) }
         if model.section == .agents, record.flag("paused") { parts.append("Paused") }
-        if model.section != .members, record.number("created_at") > 0 { parts.append(record.date.formatted(.relative(presentation: .named))) }
+        if model.section != .members, record.number("created_at") > 0 { parts.append("Created " + record.date.formatted(.relative(presentation: .named))) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
     private func create() {
