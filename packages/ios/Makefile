@@ -2,6 +2,8 @@ SIMULATOR ?= iPhone 17 Pro
 SIMULATOR_OS ?= 26.1
 DERIVED_DATA ?= .build/DerivedData
 TEST_FLAGS ?=
+EVIDENCE_OUTPUT ?= screenshots/workspace-contract-run
+EVIDENCE_NAME ?= full
 SIMULATOR_SIGNING = CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual
 
 .PHONY: icons generate build test e2e clean evidence
@@ -35,4 +37,4 @@ e2e-contract: .build/fixture-env/bin/python
 	.build/fixture-env/bin/python -m pip install -r scripts/requirements.txt
 
 evidence:
-	python3 scripts/export_evidence.py "$(RESULT)"
+	python3 scripts/export_evidence.py "$(RESULT)" --output "$(EVIDENCE_OUTPUT)" --name "$(EVIDENCE_NAME)"

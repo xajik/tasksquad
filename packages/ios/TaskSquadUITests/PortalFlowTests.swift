@@ -1,7 +1,7 @@
 import XCTest
 import CryptoKit
 
-/// Seventeen distinct journeys through production views, HTTP and WebSocket code.
+/// Native journeys through production views, HTTP and WebSocket code.
 /// The fixture is loopback and stateful, not an in-app demo or a live daemon.
 @MainActor final class PortalFlowTests: XCTestCase {
     private let app = XCUIApplication()
@@ -333,6 +333,65 @@ import CryptoKit
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
         XCTAssertTrue(app.buttons["close-sidebar"].waitForNonExistence(timeout: 3))
         XCTAssertTrue(app.buttons["record-task"].isHittable)
+    }
+
+    /// Baseline usability evidence: required inputs are discovered on submit,
+    /// and a task can be created with a subject and agent but no message.
+    func test24TaskRequirementsAndEditorLayout() async throws {
+        try await launch(); create()
+        screenshot("24-task-editor")
+        app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.staticTexts["editor-error"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["editor-error"].label.contains("Subject is required"))
+        screenshot("25-task-required-subject")
+        type("subject", "Usability audit task")
+        app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.staticTexts["editor-error"].label.contains("Agent is required"))
+        agent()
+        scrollTo(app.switches["Save tokens"])
+        screenshot("26-task-options")
+        let before = try await control("state")
+        XCTAssertEqual((before["tasks"] as? [String: Any])?.count, 1, "Invalid submissions do not create tasks")
+        app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.buttons["reply-task"].waitForExistence(timeout: 8))
+        let after = try await control("state")
+        XCTAssertEqual((after["tasks"] as? [String: Any])?.count, 2)
+    }
+
+    func test25ReplyCancellationRestoresTextDraft() async throws {
+        try await launch(); openTask(); app.buttons["reply-task"].tap()
+        screenshot("27-reply-editor")
+        type("body", "Keep this reply draft")
+        app.buttons["Attach test image"].tap()
+        XCTAssertTrue(app.staticTexts["test.png"].exists)
+        app.buttons["Cancel"].tap()
+        app.buttons["reply-task"].tap()
+        let body = app.textViews["field-body"]
+        XCTAssertTrue(body.waitForExistence(timeout: 5))
+        XCTAssertEqual(body.value as? String, "Keep this reply draft")
+        // Documents the baseline gap: only field values are persisted today.
+        // Replace this assertion with restoration when attachment drafts ship.
+        XCTAssertFalse(app.staticTexts["test.png"].exists)
+        body.tap()
+        screenshot("28-reply-keyboard")
+        let state = try await control("state")
+        let messages = state["messages"] as? [String: [[String: Any]]]
+        XCTAssertEqual(messages?["task"]?.count, 1, "Cancelling does not send a reply")
+    }
+
+    func test26NoteEditingActionLayout() async throws {
+        try await launch(); section("Notes"); create()
+        screenshot("29-note-editor")
+        type("title", "Usability audit note"); type("content", "Content comes first.")
+        app.buttons["editor-submit"].tap()
+        XCTAssertTrue(app.buttons["add-comment"].waitForExistence(timeout: 5))
+        screenshot("30-note-detail")
+        app.buttons["more-actions"].tap()
+        XCTAssertTrue(app.buttons["Edit"].waitForExistence(timeout: 5))
+        screenshot("31-note-actions")
+        app.buttons["Edit"].tap()
+        XCTAssertEqual(app.textFields["field-title"].value as? String, "Usability audit note")
+        XCTAssertEqual(app.textViews["field-content"].value as? String, "Content comes first.")
     }
 
 }

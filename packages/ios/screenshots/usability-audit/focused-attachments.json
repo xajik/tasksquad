@@ -1,0 +1,50 @@
+[
+  {
+    "file": "26-task-options.png",
+    "test": "PortalFlowTests/test24TaskRequirementsAndEditorLayout()",
+    "timestamp": 1793163467.912,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "25-task-required-subject.png",
+    "test": "PortalFlowTests/test24TaskRequirementsAndEditorLayout()",
+    "timestamp": 1793163459.167,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "24-task-editor.png",
+    "test": "PortalFlowTests/test24TaskRequirementsAndEditorLayout()",
+    "timestamp": 1793163456.779,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "28-reply-keyboard.png",
+    "test": "PortalFlowTests/test25ReplyCancellationRestoresTextDraft()",
+    "timestamp": 1793163492.515,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "27-reply-editor.png",
+    "test": "PortalFlowTests/test25ReplyCancellationRestoresTextDraft()",
+    "timestamp": 1793163484.477,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "31-note-actions.png",
+    "test": "PortalFlowTests/test26NoteEditingActionLayout()",
+    "timestamp": 1793163519.926,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "30-note-detail.png",
+    "test": "PortalFlowTests/test26NoteEditingActionLayout()",
+    "timestamp": 1793163517.595,
+    "device": "iPhone 17 Pro"
+  },
+  {
+    "file": "29-note-editor.png",
+    "test": "PortalFlowTests/test26NoteEditingActionLayout()",
+    "timestamp": 1793163508.478,
+    "device": "iPhone 17 Pro"
+  }
+]
