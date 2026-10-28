@@ -27,64 +27,29 @@ struct MobileEditor: View {
     @FocusState private var focusedField: String?
     @State private var validation: String?
     @State private var invalidField: String?
+    @State private var unavailableDraftImages = false
     @State private var phases: [PhaseDraft] = [.init()]
     @State private var subAgents: [CustomerRecord] = []
     init(model: WorkspaceStore, request: MobileEditorRequest) {
         self.model = model; self.request = request
         _values = State(initialValue: request.draftKey.flatMap { MobileDraftStore.load($0) } ?? Dictionary(uniqueKeysWithValues: request.fields.map { ($0.id, $0.initial) }))
+        if let key = request.draftKey {
+            do { _files = State(initialValue: try MobileDraftStore.loadFiles(key)) }
+            catch {
+                _unavailableDraftImages = State(initialValue: true)
+                _validation = State(initialValue: "Draft images could not be restored. Reopen to retry, or discard unavailable images before sending.")
+            }
+        }
     }
     var body: some View {
         NavigationStack {
-            ScrollViewReader { scroll in
-            Form {
-                if let validation, invalidField == nil {
-                    Section { errorText(validation) }
-                }
-                ForEach(request.attachments ? request.fields.filter { ["subject", "agent_id", "body"].contains($0.id) } : request.fields) { field in fieldView(field) }
-                if request.phases {
-                    Section("Phases in execution order") {
-                        ForEach($phases) { $phase in
-                            VStack(alignment: .leading) {
-                                TextField("Phase name", text: $phase.name)
-                                Picker("Harness agent", selection: $phase.agent) { Text("Use default").tag(""); ForEach(model.agents) { Text($0.title).tag($0.id) } }
-                                Picker("Sub-agent", selection: $phase.subAgent) { Text("Use default").tag(""); ForEach(subAgents) { Text($0.title).tag($0.id) } }
-                                Stepper("Retries: \(phase.retries)", value: $phase.retries, in: 0...10)
-                                Toggle("Auto-close", isOn: $phase.autoClose)
-                            }
-                        }
-                        Button("Add phase") { phases.append(.init()) }
-                        if phases.count > 1 { Button("Remove last phase") { phases.removeLast() } }
-                    }
-                }
-                if request.attachments {
-                    Section("Images") {
-                        ForEach(files) { file in HStack { Text(file.name); Spacer(); Button("Remove") { files.removeAll { $0.id == file.id } } } }
-                        PhotosPicker("Attach photos", selection: $photos, maxSelectionCount: 5, matching: .images)
-                        Button("Choose image files") { chooseFiles = true }
-                        #if DEBUG
-                        if ProcessInfo.processInfo.arguments.contains("--ui-test-api") {
-                            Button("Attach test image") { if let data = UIImage(systemName: "star.fill")?.pngData() { addImage(data, name: "test.png", mime: "image/png") } }
-                        }
-                        #endif
-                    }
-                }
-                if request.attachments { ForEach(request.fields.filter { !["subject", "agent_id", "body"].contains($0.id) }) { field in fieldView(field) } }
-            }
-            .scrollContentBackground(.hidden).background(MobileTheme.background)
-            .scrollDismissesKeyboard(.interactively)
-            .onChange(of: invalidField) { _, field in
-                if let field { withAnimation { scroll.scrollTo(field, anchor: .center) } }
-            }
-            }
+            editorForm
             .navigationTitle(request.title).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done editing") { focusedField = nil } }
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(submitting) }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button { Task { await submit() } } label: {
-                        if submitting { ProgressView().accessibilityLabel("Sending") }
-                        else { Text(request.submitLabel) }
-                    }.disabled(submitting || model.busy).accessibilityIdentifier("editor-submit")
+                    submitButton
                 }
             }
             .interactiveDismissDisabled(submitting)
@@ -105,6 +70,67 @@ struct MobileEditor: View {
             }
             .task { if request.phases { do { subAgents = CustomerRecord(try await model.api.request(["teams", model.projectID, "sub-agents"])).records("sub_agents") } catch { validation = error.localizedDescription } } }
         }
+    }
+    private var submitButton: some View {
+        Button(submitting ? "Sending…" : request.submitLabel) { Task { await submit() } }
+            .disabled(submitting || model.busy || unavailableDraftImages)
+            .accessibilityIdentifier("editor-submit")
+    }
+    private var editorForm: some View {
+            ScrollViewReader { scroll in
+            Form {
+                if let validation, invalidField == nil {
+                    Section {
+                        errorText(validation)
+                        if unavailableDraftImages {
+                            Button("Discard unavailable draft images", role: .destructive) {
+                                if setFiles([]) { unavailableDraftImages = false; self.validation = nil }
+                            }
+                        }
+                    }
+                }
+                ForEach(request.attachments ? request.fields.filter { ["subject", "agent_id", "body"].contains($0.id) } : request.fields) { field in fieldView(field) }
+                if request.phases { phaseSection }
+                if request.attachments { imageSection }
+                if request.attachments { ForEach(request.fields.filter { !["subject", "agent_id", "body"].contains($0.id) }) { field in fieldView(field) } }
+            }
+            .scrollContentBackground(.hidden).background(MobileTheme.background)
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: invalidField) { _, field in
+                if let field { withAnimation { scroll.scrollTo(field, anchor: .center) } }
+            }
+            }
+    }
+    private var phaseSection: some View {
+
+                    Section("Phases in execution order") {
+                        ForEach($phases) { $phase in
+                            VStack(alignment: .leading) {
+                                TextField("Phase name", text: $phase.name)
+                                Picker("Harness agent", selection: $phase.agent) { Text("Use default").tag(""); ForEach(model.agents) { Text($0.title).tag($0.id) } }
+                                Picker("Sub-agent", selection: $phase.subAgent) { Text("Use default").tag(""); ForEach(subAgents) { Text($0.title).tag($0.id) } }
+                                Stepper("Retries: \(phase.retries)", value: $phase.retries, in: 0...10)
+                                Toggle("Auto-close", isOn: $phase.autoClose)
+                            }
+                        }
+                        Button("Add phase") { phases.append(.init()) }
+                        if phases.count > 1 { Button("Remove last phase") { phases.removeLast() } }
+                    }
+
+    }
+    private var imageSection: some View {
+
+                    Section("Images") {
+                        ForEach(files) { file in HStack { Text(file.name); Spacer(); Button("Remove") { _ = setFiles(files.filter { $0.id != file.id }) } } }
+                        PhotosPicker("Attach photos", selection: $photos, maxSelectionCount: 5, matching: .images)
+                        Button("Choose image files") { chooseFiles = true }
+                        #if DEBUG
+                        if ProcessInfo.processInfo.arguments.contains("--ui-test-api") {
+                            Button("Attach test image") { if let data = UIImage(systemName: "star.fill")?.pngData() { addImage(data, name: "test.png", mime: "image/png") } }
+                        }
+                        #endif
+                    }
+
     }
     private func fieldView(_ field: WorkspaceField) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -161,7 +187,18 @@ struct MobileEditor: View {
     private func numeric(_ key: String) -> Binding<String> { Binding(get: { values[key]?.string ?? values[key]?.number.map { String(Int($0)) } ?? "" }, set: { values[key] = .string($0) }) }
     private func addImage(_ data: Data, name: String, mime: String) {
         guard files.count < 5, data.count <= 10*1024*1024 else { validation = "Attach up to five images, each no larger than 10 MiB."; return }
-        files.append(CustomerUpload(name: name, mimeType: mime, data: data))
+        _ = setFiles(files + [CustomerUpload(name: name, mimeType: mime, data: data)])
+    }
+    private func setFiles(_ value: [CustomerUpload]) -> Bool {
+        do {
+            if let key = request.draftKey { try MobileDraftStore.saveFiles(value, key: key) }
+            files = value
+            return true
+        } catch {
+            invalidField = nil
+            validation = "Images could not be saved to your draft. Please try again."
+            return false
+        }
     }
     private func submit() async {
         guard !submitting else { return }

@@ -372,9 +372,14 @@ import CryptoKit
         let body = app.textViews["field-body"]
         XCTAssertTrue(body.waitForExistence(timeout: 5))
         XCTAssertEqual(body.value as? String, "Keep this reply draft")
-        // Documents the baseline gap: only field values are persisted today.
-        // Replace this assertion with restoration when attachment drafts ship.
-        XCTAssertFalse(app.staticTexts["test.png"].exists)
+        XCTAssertTrue(app.staticTexts["test.png"].exists, "Selected images are restored with the text")
+        app.buttons["Cancel"].tap()
+        app.terminate()
+        app.launchArguments = ["--ui-test-api", base.absoluteString, "--ui-test-appearance", "light"]
+        app.launch()
+        chooseProject("Test workspace"); openTask(); app.buttons["reply-task"].tap()
+        XCTAssertEqual(app.textViews["field-body"].value as? String, "Keep this reply draft")
+        XCTAssertTrue(app.staticTexts["test.png"].exists, "Images survive a process relaunch")
         body.tap()
         screenshot("28-reply-keyboard")
         let state = try await control("state")
