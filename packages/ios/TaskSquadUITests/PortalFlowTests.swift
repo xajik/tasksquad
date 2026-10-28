@@ -479,4 +479,23 @@ import CryptoKit
         screenshot("36-inbox-scope")
     }
 
+    func test31ReplyControlsStayAboveSoftwareKeyboard() async throws {
+        guard ProcessInfo.processInfo.environment["SOFTWARE_KEYBOARD"] == "1" else {
+            throw XCTSkip("Run with TEST_RUNNER_SOFTWARE_KEYBOARD=1 and the simulator software keyboard enabled")
+        }
+        try await launch(); openTask(); app.buttons["reply-task"].tap()
+        let body = app.textViews["field-body"]
+        body.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        assertFits(app.buttons["editor-submit"])
+        XCTAssertLessThanOrEqual(app.buttons["editor-submit"].frame.maxY, app.keyboards.firstMatch.frame.minY)
+        screenshot("37-reply-software-keyboard")
+        app.buttons["Done editing"].tap()
+        type("body", "Keyboard reply"); attachImage(); body.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        assertFits(app.buttons["editor-submit"])
+        XCTAssertLessThanOrEqual(app.buttons["editor-submit"].frame.maxY, app.keyboards.firstMatch.frame.minY)
+        screenshot("38-reply-image-keyboard")
+    }
+
 }

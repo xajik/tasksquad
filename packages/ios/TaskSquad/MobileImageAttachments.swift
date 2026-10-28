@@ -7,6 +7,7 @@ import TaskSquadPortal
 struct MobileImageAttachments: View {
     @Binding var files: [CustomerUpload]
     var compact = false
+    var showPreviews = true
     @Binding var loading: Bool
     let reportError: (String) -> Void
     @State private var choosePhotos = false
@@ -31,7 +32,7 @@ struct MobileImageAttachments: View {
                 Spacer()
                 Text("\(files.count)/5 images").font(.caption).foregroundStyle(MobileTheme.mutedForeground)
             }
-            if !files.isEmpty {
+            if !files.isEmpty && showPreviews {
                 ScrollView(.horizontal) {
                     HStack(spacing: 12) {
                         ForEach(files) { file in
@@ -49,6 +50,8 @@ struct MobileImageAttachments: View {
                         }
                     }
                 }
+            } else if !files.isEmpty {
+                Text(files.map(\.name).joined(separator: ", ")).font(.caption).lineLimit(1)
             }
             if !compact { Text("PNG, JPEG, GIF or WebP · up to 10 MiB each").font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
         }

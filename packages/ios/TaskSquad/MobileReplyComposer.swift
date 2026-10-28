@@ -74,7 +74,7 @@ struct MobileReplyComposer: View {
                     }
                 }
             }
-            MobileImageAttachments(files: Binding(get: { files }, set: { _ = saveFiles($0) }), compact: true, loading: $loadingImages) { error = $0 }
+            MobileImageAttachments(files: Binding(get: { files }, set: { _ = saveFiles($0) }), compact: true, showPreviews: !focused, loading: $loadingImages) { error = $0 }
                 .disabled(unavailableImages || submitting)
             HStack(spacing: 12) {
                 Button("Cancel") { focused = false; expanded = false }.frame(minHeight: 44).disabled(submitting || loadingImages)
