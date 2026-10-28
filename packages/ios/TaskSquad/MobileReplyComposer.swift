@@ -83,7 +83,7 @@ struct MobileReplyComposer: View {
                     .popover(isPresented: $schedulePresented) { scheduleOptions.padding().presentationCompactAdaptation(.popover) }
                 Spacer(minLength: 0)
                 Button(submitting ? "Sending…" : "Send") { Task { await submit() } }
-                    .buttonStyle(.borderedProminent).frame(minHeight: 44)
+                    .buttonStyle(.borderedProminent).foregroundStyle(MobileTheme.primaryForeground).frame(minHeight: 44)
                     .disabled(submitting || model.busy || unavailableImages || loadingImages).accessibilityIdentifier("editor-submit")
             }.font(.subheadline)
         }.disabled(submitting)
