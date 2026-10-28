@@ -73,7 +73,7 @@ struct MobileAttachmentDraftStore {
             throw error
         }
         let retained = Set(written.map(\.lastPathComponent) + ["images.json"])
-        for url in try manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) where !retained.contains(url.lastPathComponent) { try? manager.removeItem(at: url) }
+        for url in (try? manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [] where !retained.contains(url.lastPathComponent) { try? manager.removeItem(at: url) }
     }
     func remove(_ key: String) throws {
         let folder = directory(key)
