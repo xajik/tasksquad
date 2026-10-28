@@ -58,6 +58,21 @@ async function notifyTeamMembers(env: Env, taskId: string, title: string, body: 
 }
 
 
+/** Providers whose CLI session the daemon knows how to resume. */
+const RESUMABLE_PROVIDERS = new Set(['claude-code', 'codex', 'gemini', 'opencode', 'pi'])
+const RESUME_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
+
+/**
+ * Validates the provider CLI session a daemon reports for a task. The id ends up
+ * on the daemon's command line (`claude --resume <id>`), so only plain ids for
+ * known providers are stored; anything else is dropped.
+ */
+export function parseResume(provider: unknown, sessionId: unknown): { provider: string; session_id: string } | null {
+  if (typeof provider !== 'string' || typeof sessionId !== 'string') return null
+  if (!RESUMABLE_PROVIDERS.has(provider) || !RESUME_ID_RE.test(sessionId)) return null
+  return { provider, session_id: sessionId }
+}
+
 const HEARTBEAT_MIN_INTERVAL_MS = 45_000
 // Base poll interval + up to 5 s of random jitter to spread agent traffic.
 const POLL_BASE_MS = 60_000
@@ -196,9 +211,9 @@ async function processAgentHeartbeat(
 
   // Idle: query for pending task
   const task = await env.DB
-    .prepare("SELECT t.id, t.subject, t.settings FROM tasks t WHERE t.agent_id = ? AND t.status = ? ORDER BY t.created_at ASC LIMIT 1")
+    .prepare("SELECT t.id, t.subject, t.settings, t.resume_provider, t.resume_session_id FROM tasks t WHERE t.agent_id = ? AND t.status = ? ORDER BY t.created_at ASC LIMIT 1")
     .bind(agentId, TaskStatus.Pending)
-    .first<{ id: string; subject: string; settings: string | null }>()
+    .first<{ id: string; subject: string; settings: string | null; resume_provider: string | null; resume_session_id: string | null }>()
 
   if (task) {
     const msgRows = await env.DB
@@ -234,10 +249,14 @@ async function processAgentHeartbeat(
       if (rollup?.content) memoryRollup = rollup.content
     }
 
+    // A provider CLI session from an earlier spawn of this task: the daemon
+    // resumes it instead of replaying the thread as plain text.
+    const resume = parseResume(task.resume_provider, task.resume_session_id)
+
     return {
       agent_id: agentId,
       ok: true,
-      task: { id: task.id, subject: task.subject, messages },
+      task: { id: task.id, subject: task.subject, messages, ...(resume ? { resume } : {}) },
       ...(memoryRollup ? { memory_rollup: memoryRollup } : {}),
       next_poll_ms: nextPollMs,
     }
@@ -529,10 +548,15 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
     session_id?: string
     status?: string
     final_text?: string
-  }>().catch(() => ({} as { session_id?: string; status?: string; final_text?: string }))
+    resume_failed?: boolean
+  }>().catch(() => ({} as { session_id?: string; status?: string; final_text?: string; resume_failed?: boolean }))
   const { session_id, status = SessionStatus.Closed, final_text } = body
   const agentId = daemon.agentId
   if (!session_id) return err('missing_fields', 400)
+
+  if (status === SessionStatus.Detached) {
+    return sessionDetach(env, daemon, session_id, body.resume_failed === true)
+  }
 
   const session = await env.DB
     .prepare('SELECT s.task_id, t.subject, t.auto_close, a.name as agent_name FROM sessions s JOIN tasks t ON t.id = s.task_id JOIN agents a ON a.id = s.agent_id WHERE s.id = ? AND s.agent_id = ?')
@@ -610,6 +634,51 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   return json({ ok: true, session_id, message_id: final_text ? msgId : null })
 }
 
+/**
+ * The task's CLI process went away without finishing the task: it died while
+ * waiting for input, or a resumed process failed before its first turn. The
+ * agent goes idle but the task stays open. It goes back to `pending` when a user
+ * message is still unanswered, so the next heartbeat re-spawns it right away;
+ * otherwise it stays in `waiting_input` until the user replies. resumeFailed
+ * drops the stored provider session so that re-spawn replays the thread instead.
+ */
+async function sessionDetach(env: Env, daemon: DaemonContext, sessionId: string, resumeFailed: boolean): Promise<Response> {
+  const agentId = daemon.agentId
+  const session = await env.DB
+    .prepare('SELECT s.task_id, t.status AS task_status FROM sessions s JOIN tasks t ON t.id = s.task_id WHERE s.id = ? AND s.agent_id = ?')
+    .bind(sessionId, agentId)
+    .first<{ task_id: string; task_status: string }>()
+  if (!session) return err('not_found', 404)
+
+  const now = Date.now()
+  const ops = [
+    env.DB.prepare('UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?')
+      .bind(SessionStatus.Detached, now, sessionId),
+    env.DB.prepare('UPDATE agents SET status = ? WHERE id = ?').bind(AgentStatus.Idle, agentId),
+    env.DB.prepare('UPDATE agent_state SET current_task_id = NULL, current_session = NULL, mode = ?, updated_at = ? WHERE agent_id = ?')
+      .bind(AgentMode.Idle, now, agentId),
+  ]
+  // A task the user already closed or cancelled stays that way.
+  const open = [TaskStatus.Pending, TaskStatus.Running, TaskStatus.WaitingInput, TaskStatus.WrappingUp] as string[]
+  if (open.includes(session.task_status)) {
+    ops.push(env.DB.prepare(`
+      UPDATE tasks SET
+        status = CASE WHEN EXISTS (
+          SELECT 1 FROM messages
+          WHERE task_id = ?1 AND role = 'user' AND (scheduled_at IS NULL OR scheduled_at <= ?2)
+            AND created_at > (SELECT COALESCE(MAX(created_at), 0) FROM messages WHERE task_id = ?1 AND role = 'agent')
+        ) THEN ?3 ELSE ?4 END,
+        completed_at = NULL
+      WHERE id = ?1
+    `).bind(session.task_id, now, TaskStatus.Pending, TaskStatus.WaitingInput))
+  }
+  if (resumeFailed) {
+    ops.push(env.DB.prepare('UPDATE tasks SET resume_provider = NULL, resume_session_id = NULL WHERE id = ?').bind(session.task_id))
+  }
+  await env.DB.batch(ops)
+  return json({ ok: true, session_id: sessionId })
+}
+
 export async function complete(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
   const body = await req.json<{ session_id?: string; output?: string }>().catch(() => ({} as { session_id?: string; output?: string }))
   const { session_id, output } = body
@@ -672,9 +741,10 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
 }
 
 export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
-  const body = await req.json<{ session_id?: string; agent_id?: string; message?: string }>()
-    .catch(() => ({} as { session_id?: string; agent_id?: string; message?: string }))
+  const body = await req.json<{ session_id?: string; agent_id?: string; message?: string; provider?: string; provider_session_id?: string }>()
+    .catch(() => ({} as { session_id?: string; agent_id?: string; message?: string; provider?: string; provider_session_id?: string }))
   const { session_id, message } = body
+  const resume = parseResume(body.provider, body.provider_session_id)
   const agentId = daemon.agentId
   if (!session_id || !message) return err('missing_fields', 400)
 
@@ -723,6 +793,10 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
     env.DB.prepare("UPDATE agents SET status = ? WHERE id = ?").bind(AgentStatus.WaitingInput, agentId),
     env.DB.prepare("UPDATE tasks SET status = ? WHERE id = ?").bind(TaskStatus.WaitingInput, session.task_id),
     env.DB.prepare("UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?").bind(AgentMode.WaitingInput, now, agentId),
+    ...(resume ? [
+      env.DB.prepare('UPDATE tasks SET resume_provider = ?, resume_session_id = ? WHERE id = ?')
+        .bind(resume.provider, resume.session_id, session.task_id),
+    ] : []),
   ])
 
   await notifyTeamMembers(env, session.task_id, `${agentName} needs your input`, `${session.subject} · ${truncate(message)}`)

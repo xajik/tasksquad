@@ -25,6 +25,10 @@ export const SessionStatus = {
   Running:      'running',
   WaitingInput: 'waiting_input',
   Closed:       'closed',
+  // The CLI process went away while the task was waiting for input (or a
+  // resumed process failed to start). The task stays open; the next user reply
+  // re-spawns it, resuming the provider session when one was reported.
+  Detached:     'detached',
 } as const
 
 export type SessionStatusValue = typeof SessionStatus[keyof typeof SessionStatus]
