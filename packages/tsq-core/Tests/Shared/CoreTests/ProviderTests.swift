@@ -68,7 +68,7 @@ final class ProviderTests: PlatformTestCase {
         XCTAssertEqual(command, #"curl -sS -X POST "http://localhost:7374/hooks/stop?agent=A1&task_id=T1&provider=gemini" -H "Content-Type: application/json" -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -d @- > /dev/null 2>&1; printf '{}'"#)
         let plugin = try String(contentsOf: root.appendingPathComponent(".opencode/plugins/tasksquad.ts"), encoding: .utf8)
         XCTAssertTrue(plugin.contains(#"fetch("http://localhost:7374" + path"#))
-        XCTAssertTrue(plugin.contains(#"post("/hooks/stop?agent=A1&task_id=T1&provider=opencode", { stop_reason: "idle", message })"#))
+        XCTAssertTrue(plugin.contains(#"post("/hooks/stop?agent=A1&task_id=T1&provider=opencode", { stop_reason: "idle", message, session_id: mainSession ?? "" })"#))
         let pi = try String(contentsOf: root.appendingPathComponent(".pi/extensions/tasksquad.ts"), encoding: .utf8)
         XCTAssertTrue(pi.contains(#""/hooks/stop?agent=A1&task_id=T1&provider=pi","#))
         // agent-code loads TOML only; the managed block is replaced and the user's settings kept.

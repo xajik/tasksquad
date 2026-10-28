@@ -40,6 +40,12 @@ public actor DaemonEngine {
         /// Live terminal relay for the web/iOS task view (Go: Agent.relayConn).
         var relay: (any WebSocketConnection)?
         var relayInput: Task<Void, Never>?
+        /// Set with a `.detached` result: the resumed spawn never got going, so the
+        /// server should drop the provider session and replay the thread next time.
+        var detachResumeFailed = false
+        /// A pipe provider (Pi) reported a finished turn; its exit posts the reply and detaches.
+        var pipeTurnEnded = false
+        var pipeTurnTranscript = ""
         init(configuration: DaemonConfiguration.Agent) {
             self.configuration = configuration
             provider = ProviderKind.detect(command: configuration.command, override: configuration.provider)
@@ -141,7 +147,8 @@ public actor DaemonEngine {
         await sync.start()
         // Startup + hourly cleanup of task sessions the server closed (Go: orphan.New(...).Run()).
         // Like Go, failures are only logged; a missed sweep retries next hour.
-        let sweep = OrphanSweep(api: api, tokens: tokens, tmux: tmux) { message in Log.error(message) }
+        let sweep = OrphanSweep(api: api, tokens: tokens, tmux: tmux,
+                                tracked: { [weak self] name in await self?.ownsTmuxSession(name) ?? true }) { message in Log.error(message) }
         orphanSweep = sweep
         await sweep.start()
         // Disabled (but still answering hooks) without [supervisor] or when its CLI is not on PATH.
@@ -348,6 +355,9 @@ public actor DaemonEngine {
             agents[agentID]?.typedTurns = 0
             agents[agentID]?.typedSkills = []
             agents[agentID]?.stderrTail = Data()
+            agents[agentID]?.detachResumeFailed = false
+            agents[agentID]?.pipeTurnEnded = false
+            agents[agentID]?.pipeTurnTranscript = ""
             agents[agentID]?.lastActivityAt = Date()
             tasks[agentID] = Task { await self.execute(agentID: agentID, task: task, memoryRollup: memoryRollup, generation: generation) }
         } catch { report(error) }
@@ -395,14 +405,27 @@ public actor DaemonEngine {
                 do { try provider.setup(workDir: agent.configuration.workDir, hooksPort: configuration.hooks.port, agentID: agentID, taskID: taskID, hookToken: hookCapability) }
                 catch { Log.warn("[\(name)] Provider setup warning: \(error.localizedDescription)") }
             }
-            let prompt = Self.injectKBNote(TaskPrompt.build(subject: subject, messages: messages, memoryRollup: memoryRollup),
+            // A resumed CLI session already holds the thread, memory and KB note,
+            // so it only gets what it hasn't seen.
+            let resumeID = await resumeTarget(agent: agent, task: task)
+            let prompt: String
+            if let resumeID {
+                prompt = TaskPrompt.resume(messages: messages)
+                agents[agentID]?.state.markResumed()
+                Log.event("[\(name)] event=resuming task_id=\(taskID) provider=\(provider.rawValue) cli_session=\(resumeID)")
+                try? await artifacts?.writeTimestamped("[EVENT] event=resuming cli_session=\(resumeID)")
+                try? await artifacts?.event(["type": "resume", "provider": provider.rawValue, "cli_session_id": resumeID])
+            } else {
+                prompt = Self.injectKBNote(TaskPrompt.build(subject: subject, messages: messages, memoryRollup: memoryRollup),
                                            workDir: agent.configuration.workDir)
+            }
             agents[agentID]?.lastPrompt = prompt
             recordTyped(agentID: agentID, prompt)
             let parts = agent.configuration.command.split(whereSeparator: \.isWhitespace).map(String.init)
             guard let executable = parts.first else { throw ConfigurationError("Agent command is empty") }
-            let arguments = Array(parts.dropFirst()) + provider.extraArguments
+            var arguments = Array(parts.dropFirst()) + provider.extraArguments
                 + (try provider.setupArguments(hooksPort: configuration.hooks.port, agentID: agentID, taskID: taskID))
+            if let resumeID { arguments = provider.resumeArguments(arguments, id: resumeID) }
             var environment = environment
             environment["TSQ_TASK_ID"] = taskID
             environment["TSQ_HOOK_TOKEN"] = hookCapability
@@ -429,6 +452,14 @@ public actor DaemonEngine {
                 Log.event("[\(name)] event=exit code=\(code) task_id=\(taskID)")
                 try? await artifacts?.writeTimestamped("[EVENT] event=exit code=\(code)")
                 status = code == 0 ? .closed : .crashed
+                if code == 0, let turn = await finishPipeTurn(agentID: agentID, generation: generation) { status = turn }
+                // A resumed one-shot run that never reported a turn (e.g. Pi declining a
+                // session from another directory) failed to resume: replay the thread.
+                else if let reason = agents[agentID]?.state.detachReason(), agents[agentID]?.state.generation == generation,
+                        reason.detach, reason.resumeFailed {
+                    agents[agentID]?.detachResumeFailed = true
+                    status = .detached
+                }
             }
         } catch is CancellationError { status = .cancelled }
         catch { if Task.isCancelled { status = .cancelled } else { report(error) } }
@@ -497,13 +528,30 @@ public actor DaemonEngine {
         }
         if agents[agentID]?.state.generation == generation { agents[agentID]?.tmux = nil }
         if Task.isCancelled { return .cancelled }
+        guard provider.usesHooks else { return .closed }
+        // The CLI exited without a Stop/close. If it was only waiting for the user
+        // (or was a resume that never got going), keep the task open: the next reply
+        // re-spawns it, resuming when possible (Go: detachReason in startTask).
+        if let current = agents[agentID], current.state.generation == generation, !current.completionRequested,
+           !current.serverClosed, !current.autoClosed, !current.resetRequested {
+            let reason = current.state.detachReason()
+            if reason.detach {
+                agents[agentID]?.detachResumeFailed = reason.resumeFailed
+                return .detached
+            }
+        }
         // A session that ends without a completion hook is a crash (Go: tmux EOF path).
-        return provider.usesHooks ? .crashed : .closed
+        return .crashed
     }
 
     private func trackStarted(_ agent: AgentRuntime, taskID: String, via: String) {
         analytics.track("task_started", ["task_id": .string(taskID), "agent_name": .string(agent.configuration.name),
                                          "provider": .string(agent.provider.rawValue), "via": .string(via)])
+    }
+
+    /// Whether one of this engine's agents is running the named task tmux session.
+    private func ownsTmuxSession(_ name: String) -> Bool {
+        agents.values.contains { $0.tmux?.name == name }
     }
 
     private func relayInputAllowed(_ agentID: String) -> Bool {
@@ -555,6 +603,10 @@ public actor DaemonEngine {
             else { agents[agentID]?.state.finishCompletion(generation: generation) }
             return // The server already closed this session; do not post a second reply.
         }
+        if status == .detached, agents[agentID]?.completionOverride == nil {
+            await detach(agentID: agentID, generation: generation)
+            return
+        }
         let wasLearning = agents[agentID]?.state.mode == .learning
         guard agents[agentID]?.state.beginCompletion(generation: generation) == true, let agent = agents[agentID] else {
             try? agents[agentID]?.state.transition(.spawnFailed)
@@ -576,6 +628,7 @@ public actor DaemonEngine {
         case .closed: analytics.track("task_completed", common.merging(["provider": .string(agent.provider.rawValue), "duration_secs": duration]) { $1 })
         case .crashed: analytics.track("task_failed", common.merging(["provider": .string(agent.provider.rawValue), "duration_secs": duration]) { $1 })
         case .cancelled: analytics.track("task_cancelled", common.merging(["duration_secs": duration]) { $1 })
+        case .detached: break // only reached with a completion override, which is never .detached
         }
         let sessionID = agent.state.sessionID
         let capture = agent.terminalCapture
@@ -613,6 +666,79 @@ public actor DaemonEngine {
                                           omitEmpty: ["r2_log_key"])
         await postSessionReport(agentID: agentID, sessionID: sessionID)
         agents[agentID]?.state.finishCompletion(generation: generation)
+    }
+
+    /// Ports Agent.detach (agent/complete.go): ends this spawn without finishing
+    /// the task. No reply is posted and the task is not failed; the server keeps
+    /// it open and the next spawn resumes the reported CLI session, or replays
+    /// the thread when resume_failed made the server drop that session.
+    private func detach(agentID: String, generation: UInt64) async {
+        guard agents[agentID]?.state.beginCompletion(generation: generation) == true, let agent = agents[agentID] else { return }
+        let agentName = agent.configuration.name
+        let resumeFailed = agent.detachResumeFailed
+        let reason = resumeFailed ? "resume_failed" : "exited_waiting_for_input"
+        Log.info("[\(agentName)] CLI process ended without finishing task \(agent.state.taskID) (\(reason)) — detaching; the next reply re-spawns it")
+        Log.event("[\(agentName)] event=detached task_id=\(agent.state.taskID) reason=\(reason)")
+        try? await agent.artifacts?.writeEnd("[EVENT] event=detached reason=\(reason)")
+        analytics.track("task_detached", ["task_id": .string(agent.state.taskID), "agent_name": .string(agentName),
+                                          "provider": .string(agent.provider.rawValue), "reason": .string(reason)])
+        let sessionID = agent.state.sessionID
+        do {
+            _ = try await post(agentID: agentID, path: "/daemon/session/close", body: .object([
+                "session_id": .string(sessionID), "agent_id": .string(agentID),
+                "status": .string(CompletionStatus.detached.rawValue), "resume_failed": .bool(resumeFailed),
+            ]))
+        } catch { fail("[\(agentName)] Session detach error: \(error.localizedDescription)") }
+        let log = agent.output.logContent
+        if !log.isEmpty {
+            let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: agentID)
+            do { try await uploader.attachLog(sessionID: sessionID, content: log) } catch { Log.warn("[\(agentName)] Upload failed: \(error.localizedDescription)") }
+        }
+        try? await agent.artifacts?.event(["type": "task_end", "status": CompletionStatus.detached.rawValue, "final_text": ""])
+        agents[agentID]?.detachResumeFailed = false
+        agents[agentID]?.state.finishCompletion(generation: generation)
+    }
+
+    /// Ports Agent.finishPipeTurn (agent/lifecycle.go): a pipe provider that exited
+    /// cleanly after reporting its turn posts the reply (waiting_input, or closed by
+    /// auto_close) and detaches, so the agent is free and the next reply re-spawns
+    /// `pi --session <id>`. nil when no turn was reported (the exit code decides).
+    private func finishPipeTurn(agentID: String, generation: UInt64) async -> CompletionStatus? {
+        guard let agent = agents[agentID], agent.state.generation == generation, agent.pipeTurnEnded else { return nil }
+        let message = agent.hookMessage, transcript = agent.pipeTurnTranscript
+        agents[agentID]?.hookMessage = ""
+        await pause(agentID: agentID, hookMessage: message, transcriptPath: transcript)
+        guard agents[agentID]?.state.generation == generation, agents[agentID]?.state.mode == .waitingInput else {
+            return .closed // auto-closed by the server: complete() resets without a second close
+        }
+        await postSessionReport(agentID: agentID, sessionID: agents[agentID]?.state.sessionID ?? "")
+        agents[agentID]?.detachResumeFailed = false
+        return .detached
+    }
+
+    /// The provider CLI session to reopen for task, or nil to start fresh. Used
+    /// only when this agent's provider can resume and the session is in the CLI's
+    /// local store (Go: Agent.resumeTarget).
+    private func resumeTarget(agent: AgentRuntime, task: JSONValue) async -> String? {
+        guard let resume = task["resume"], let id = resume["session_id"]?.string,
+              resume["provider"]?.string == agent.provider.rawValue, agent.provider.resumable,
+              ProviderKind.validResumeID(id) else { return nil }
+        guard await agent.provider.canResume(id: id, command: agent.configuration.command, workDir: agent.configuration.workDir,
+                                             environment: environment) else {
+            Log.info("[\(agent.configuration.name)] CLI session \(id) not found locally — replaying the thread instead of resuming")
+            return nil
+        }
+        return id
+    }
+
+    /// Adds the provider CLI session this task can later be resumed from to a
+    /// /daemon/session/notify body (Go: Agent.withResume).
+    private func withResume(_ agentID: String, _ body: [String: JSONValue]) -> [String: JSONValue] {
+        guard let agent = agents[agentID], agent.provider.resumable, ProviderKind.validResumeID(agent.state.cliSessionID) else { return body }
+        var body = body
+        body["provider"] = .string(agent.provider.rawValue)
+        body["provider_session_id"] = .string(agent.state.cliSessionID)
+        return body
     }
 
     // MARK: Session report (POST /daemon/session/metrics)
@@ -705,9 +831,9 @@ public actor DaemonEngine {
         let sessionID = current.state.sessionID
         var response: JSONValue?
         do {
-            response = try await post(agentID: agentID, path: "/daemon/session/notify", body: .object([
+            response = try await post(agentID: agentID, path: "/daemon/session/notify", body: .object(withResume(agentID, [
                 "session_id": .string(sessionID), "agent_id": .string(agentID), "message": .string(text),
-            ]))
+            ])))
         } catch { fail("[\(current.configuration.name)] StopAndPause notify error: \(error.localizedDescription)") }
         // A close/reset may have won while the notify request was in flight.
         guard let latest = agents[agentID], latest.state.generation == generation, !latest.completionRequested, !latest.state.completing else { return }
@@ -871,7 +997,11 @@ public actor DaemonEngine {
             Log.info("[hooks] ★ POST /hooks/notification from 127.0.0.1 body: \(String(decoding: request.body, as: UTF8.self))")
             let (message, transcript) = HookAdapter.parseNotification(body: request.body)
             Log.info("[hooks] Notification received: provider=\(providerParam) msg=\(Log.quote(message)) transcript_path=\(transcript)")
-            if let id = matchingAgent(agentParam, taskParam), agents[id]?.state.mode == .running {
+            let notifySession = HookAdapter.notificationSessionID(provider: providerParam, body: request.body)
+            if let id = matchingAgent(agentParam, taskParam), agents[id]?.state.pinCLISessionID(notifySession) == false,
+               ProviderKind.strictSessionPin(provider: providerParam) {
+                Log.warn("[hooks] Notification session_id=\(Log.quote(notifySession)) does not match agent \(name(id))'s pinned CLI session for task_id=\(Log.quote(taskParam)) — ignoring")
+            } else if let id = matchingAgent(agentParam, taskParam), agents[id]?.state.mode == .running {
                 Task { await self.pause(agentID: id, hookMessage: "", transcriptPath: transcript,
                                         fallback: message.isEmpty ? "Waiting for your input" : message) }
             }
@@ -1064,7 +1194,7 @@ public actor DaemonEngine {
             return
         }
         // Reject hooks from an unrelated CLI process sharing this agent's hook URL.
-        guard agents[id]?.state.pinCLISessionID(event.sessionID) == true else {
+        guard agents[id]?.state.pinCLISessionID(event.sessionID) == true || !ProviderKind.strictSessionPin(provider: provider) else {
             Log.warn("[hooks] Stop hook session_id=\(Log.quote(event.sessionID)) does not match agent \(name(id))'s pinned CLI session for task_id=\(Log.quote(taskParam)) — ignoring")
             return
         }
@@ -1083,9 +1213,13 @@ public actor DaemonEngine {
                 // here would hide the exit code, so the process exit decides closed vs crashed.
                 return
             } else if provider == "pi" {
-                // Pi exits right after agent_end; complete rather than pause.
+                // Pi exits right after agent_end, so the turn is only recorded here (before
+                // this response lets Pi exit); the exit path posts the reply and keeps the
+                // task open for a follow-up that resumes the Pi session (Go: EndPipeTurn).
+                guard agents[id]?.state.mode == .running, agents[id]?.completionRequested == false else { return }
                 agents[id]?.hookMessage = event.hookMessage
-                Task { await self.requestCompletion(agentID: id, status: .closed, transcriptPath: event.transcriptPath) }
+                agents[id]?.pipeTurnTranscript = event.transcriptPath
+                agents[id]?.pipeTurnEnded = true
             } else {
                 Task { await self.pause(agentID: id, hookMessage: event.hookMessage, transcriptPath: event.transcriptPath) }
             }

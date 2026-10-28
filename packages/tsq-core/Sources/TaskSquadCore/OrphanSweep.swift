@@ -13,10 +13,31 @@ actor OrphanSweep {
     private let report: @Sendable (String) -> Void
     private var loop: Task<Void, Never>?
     private var cachedStates: [String: SessionState] = [:]
+    /// Whether a local agent owns the named tmux session; nil disables the check.
+    private let tracked: (@Sendable (String) async -> Bool)?
+    private var created: [String: Date] = [:]
+    /// Sessions created before this sweep existed belong to a previous daemon
+    /// process and need no grace period.
+    private let startedAt = Date()
 
+    /// A just-created task session is skipped: tmux new-session runs before the
+    /// agent records the session name (Go: untrackedGrace).
+    static let untrackedGrace: TimeInterval = 120
+
+    /// `tracked` makes the sweep also kill task sessions no local agent owns (Go:
+    /// OrphanController.WithTracked). Agent state is in memory, so after a daemon
+    /// restart the previous process's sessions are unreachable; left running, a CLI
+    /// there would hold the provider session the next spawn resumes.
     init(api: WorkerAPI, tokens: any TokenProvider, tmux: TmuxConnection, interval: Duration = .seconds(3600),
-         report: @escaping @Sendable (String) -> Void) {
-        self.api = api; self.tokens = tokens; self.tmux = tmux; self.interval = interval; self.report = report
+         tracked: (@Sendable (String) async -> Bool)? = nil, report: @escaping @Sendable (String) -> Void) {
+        self.api = api; self.tokens = tokens; self.tmux = tmux; self.interval = interval; self.tracked = tracked; self.report = report
+    }
+
+    /// Whether task session tsq-<id> is unowned and was created by a previous
+    /// daemon process (before `startedAt`) or before the grace period.
+    static func isUntracked(created: Date?, now: Date, startedAt: Date, owned: Bool) -> Bool {
+        guard let created, created < startedAt || now.timeIntervalSince(created) >= untrackedGrace else { return false }
+        return !owned
     }
 
     func start() {
@@ -47,9 +68,22 @@ actor OrphanSweep {
     }
 
     func clean() async {
-        let sessionIDs = await listTaskSessions()
+        var sessionIDs = await listTaskSessions()
         guard !sessionIDs.isEmpty else { Log.debug("[orphan] no tsq-* sessions found"); return }
         Log.info("[orphan] checking \(sessionIDs.count) sessions")
+        if let tracked {
+            var live: [String] = []
+            for id in sessionIDs {
+                if Self.isUntracked(created: created[id], now: Date(), startedAt: startedAt, owned: await tracked("tsq-" + id)) {
+                    Log.info("[orphan] tsq-\(id) is not owned by any agent of this daemon")
+                    await kill(id)
+                } else {
+                    live.append(id)
+                }
+            }
+            sessionIDs = live
+            guard !sessionIDs.isEmpty else { return }
+        }
         let states: [String: SessionState]
         do { states = try await sessionStates(sessionIDs) } catch {
             report("[orphan] failed to get session states: \(error.localizedDescription)")
@@ -64,9 +98,17 @@ actor OrphanSweep {
 
     /// Session IDs (without the `tsq-` prefix). A missing tmux server means none.
     private func listTaskSessions() async -> [String] {
-        guard let output = try? await tmux.run(["list-sessions", "-F", "#{session_name}"]) else { return [] }
-        return output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter(Self.isTaskSessionName).map { String($0.dropFirst(4)) }
+        guard let output = try? await tmux.run(["list-sessions", "-F", "#{session_name} #{session_created}"]) else { return [] }
+        created = [:]
+        var ids: [String] = []
+        for line in output.split(separator: "\n") {
+            let fields = line.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1).map(String.init)
+            guard let name = fields.first, Self.isTaskSessionName(name) else { continue }
+            let id = String(name.dropFirst(4))
+            if fields.count > 1, let seconds = TimeInterval(fields[1]) { created[id] = Date(timeIntervalSince1970: seconds) }
+            ids.append(id)
+        }
+        return ids
     }
 
     private func sessionStates(_ ids: [String]) async throws -> [String: SessionState] {

@@ -68,7 +68,7 @@ export const TaskSquadPlugin = async ({ client }) => {
             if (cached.completed) lastCompleted = cached
           }
           const message = lastCompleted ? lastCompleted.textParts.map(p => p.text).join("") : ""
-          await post("/hooks/stop?agent={{AGENT}}&task_id={{TASK}}&provider=opencode", { stop_reason: "idle", message })
+          await post("/hooks/stop?agent={{AGENT}}&task_id={{TASK}}&provider=opencode", { stop_reason: "idle", message, session_id: mainSession ?? "" })
           sessionIdleSent = true
         }
       }
@@ -81,14 +81,14 @@ export const TaskSquadPlugin = async ({ client }) => {
             if (cached.completed) lastCompleted = cached
           }
           const message = lastCompleted ? lastCompleted.textParts.map(p => p.text).join("") : ""
-          await post("/hooks/stop?agent={{AGENT}}&task_id={{TASK}}&provider=opencode", { stop_reason: "idle", message })
+          await post("/hooks/stop?agent={{AGENT}}&task_id={{TASK}}&provider=opencode", { stop_reason: "idle", message, session_id: mainSession ?? "" })
           sessionIdleSent = true
         }
       }
 
       if (event.type === "session.error") {
         await client.app.log({ body: { service: "tasksquad", level: "error", message: "session.error" } })
-        await post("/hooks/stop?agent={{AGENT}}&task_id={{TASK}}&provider=opencode", { stop_reason: "error", message: event.properties?.error?.message || "Unknown error" })
+        await post("/hooks/stop?agent={{AGENT}}&task_id={{TASK}}&provider=opencode", { stop_reason: "error", message: event.properties?.error?.message || "Unknown error", session_id: mainSession ?? "" })
       }
 
       // Reset on new user message to handle multiple turns

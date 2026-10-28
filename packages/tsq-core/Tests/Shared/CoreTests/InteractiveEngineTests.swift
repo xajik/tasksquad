@@ -10,7 +10,12 @@ private actor InteractiveWorker {
     var assigned = false
     var replied = false
     var notifies: [String] = []
+    var notifyBodies: [JSONValue] = []
     var close: JSONValue?
+    /// Overrides for the assigned task: its thread and a provider session to resume.
+    var taskMessages: [JSONValue]?
+    var taskResume: JSONValue?
+    func setTask(messages: [JSONValue], resume: JSONValue?) { taskMessages = messages; taskResume = resume }
     var statuses: [String] = []
     var uploads = 0
     var imageMessages: [JSONValue] = []
@@ -31,7 +36,9 @@ private actor InteractiveWorker {
             if !assigned {
                 assigned = true
                 let message = JSONValue.object(["role": .string("user"), "body": .string("first é猫")])
-                agent["task"] = .object(["id": .string("fixture-task"), "subject": .string("s"), "messages": .array([message])])
+                var task: [String: JSONValue] = ["id": .string("fixture-task"), "subject": .string("s"), "messages": .array(taskMessages ?? [message])]
+                if let taskResume { task["resume"] = taskResume }
+                agent["task"] = .object(task)
             } else if status == "waiting_input" && !replied && !manual {
                 replied = true
                 agent["reply"] = .string("second turn")
@@ -41,6 +48,7 @@ private actor InteractiveWorker {
             return .json(.object(["session_id": .string("01FIXTURESESSION")]))
         case "/daemon/session/notify":
             notifies.append(body["message"]?.string ?? "")
+            notifyBodies.append(body)
             // The second paused reply is auto-closed by the server.
             return .json(.object(["message_id": .string("m\(notifies.count)"), "close": .bool(notifies.count == 2 && !manual)]))
         case "/daemon/session/close":
@@ -89,6 +97,7 @@ private actor InteractiveWorker {
     }
 
     private func makeEngine(script: String, binary: String = "claude", worker: InteractiveWorker, tmux: TmuxConnection, relay: String? = nil,
+                            environment: [String: String] = ProcessInfo.processInfo.environment,
                             errors: @escaping @Sendable (String) -> Void) async throws -> (DaemonEngine, LocalHTTPServer, URL) {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let bin = home.appendingPathComponent("bin")
@@ -115,7 +124,7 @@ private actor InteractiveWorker {
         """)
         var timing = InteractiveTiming()
         timing.readyWait = .milliseconds(300); timing.submitWait = .milliseconds(100); timing.replyDelay = .milliseconds(100)
-        let engine = DaemonEngine(configuration: config, paths: TaskSquadPaths(home: home), tokens: FixtureTokens(),
+        let engine = DaemonEngine(configuration: config, paths: TaskSquadPaths(home: home), tokens: FixtureTokens(), environment: environment,
                                   tmux: tmux, timing: timing, relayServerURL: relay, onError: errors)
         return (engine, server, home)
     }
@@ -185,6 +194,84 @@ private actor InteractiveWorker {
         await server.stop()
     }
 
+    /// Claude Code's Stop hook URL from the per-invocation --settings file, then
+    /// `line` reads one typed prompt. Shared by the resume tests below.
+    private static let claudeHookPrelude = """
+    #!/bin/sh
+    printf '%s\\n' "$@" > "$PWD/argv.txt"
+    settings=""
+    while [ $# -gt 0 ]; do [ "$1" = "--settings" ] && settings="$2"; shift; done
+    url=$(grep -o 'http://localhost:[0-9]*/hooks/stop?agent=[^"]*' "$settings" | grep -v failure | head -1 | sed -e 's/localhost/127.0.0.1/' -e 's/\\\\u0026/\\&/g')
+    [ -n "$url" ] || exit 9
+    IFS= read -r line
+
+    """
+
+    func testCLIExitingWhileWaitingDetachesInsteadOfFailing() async throws {
+        let tmux = try tmuxConnection()
+        defer { Task { _ = try? await tmux.run(["kill-server"]) } }
+        // One turn through the Stop hook, then the CLI goes away while waiting.
+        let script = Self.claudeHookPrelude + """
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url" -H 'Content-Type: application/json' --data-binary '{"session_id":"cli-1","stop_reason":"end_turn","last_assistant_message":"done one"}' >/dev/null
+        sleep 1
+        exit 0
+        """
+        let worker = InteractiveWorker()
+        await worker.setManual()
+        let (engine, server, home) = try await makeEngine(script: script, worker: worker, tmux: tmux, errors: { XCTFail($0) })
+        defer { try? FileManager.default.removeItem(at: home) }
+        try await engine.start()
+        try await wait { await worker.close != nil }
+        let notify = await worker.notifyBodies.first
+        XCTAssertEqual(notify?["provider"], .string("claude-code"))
+        XCTAssertEqual(notify?["provider_session_id"], .string("cli-1"), "the CLI session must reach the server for a later resume")
+        let close = await worker.close
+        XCTAssertEqual(close?["status"], .string("detached"))
+        XCTAssertEqual(close?["resume_failed"], .bool(false))
+        XCTAssertNil(close?["final_text"], "detaching must not post a reply")
+        try await wait { await engine.snapshots().first?.mode == .idle }
+        let journal = try String(contentsOf: home.appendingPathComponent(".tasksquad/tasks/fixture-task.jsonl"), encoding: .utf8)
+        XCTAssertTrue(journal.contains(#""type":"task_end","status":"detached""#), journal)
+        await engine.stop()
+        await server.stop()
+    }
+
+    func testResumedTaskReopensTheCLISessionWithOnlyTheNewReply() async throws {
+        let tmux = try tmuxConnection()
+        defer { Task { _ = try? await tmux.run(["kill-server"]) } }
+        let resumeID = "6f75c202-a633-4804-8b23-5937aa47f17f"
+        let claudeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: claudeDir) }
+        let project = claudeDir.appendingPathComponent("projects/-fixture")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        try Data("{}\n".utf8).write(to: project.appendingPathComponent(resumeID + ".jsonl"))
+        let script = Self.claudeHookPrelude + """
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url" -H 'Content-Type: application/json' --data-binary "{\\"session_id\\":\\"\(resumeID)\\",\\"stop_reason\\":\\"end_turn\\",\\"last_assistant_message\\":\\"resumed:$line\\"}" >/dev/null
+        sleep 30
+        """
+        let worker = InteractiveWorker()
+        await worker.setManual()
+        await worker.setTask(messages: [
+            .object(["role": .string("user"), "body": .string("first")]),
+            .object(["role": .string("agent"), "body": .string("which file?")]),
+            .object(["role": .string("user"), "body": .string("the config one")]),
+        ], resume: .object(["provider": .string("claude-code"), "session_id": .string(resumeID)]))
+        var environment = ProcessInfo.processInfo.environment
+        environment["CLAUDE_CONFIG_DIR"] = claudeDir.path
+        let (engine, server, home) = try await makeEngine(script: script, worker: worker, tmux: tmux, environment: environment, errors: { XCTFail($0) })
+        defer { try? FileManager.default.removeItem(at: home) }
+        try await engine.start()
+        try await wait { await worker.notifies.count >= 1 }
+        let notifies = await worker.notifies
+        XCTAssertEqual(notifies, ["resumed:the config one"], "a resumed session gets only the unanswered reply")
+        let argv = try String(contentsOf: home.appendingPathComponent("argv.txt"), encoding: .utf8).split(separator: "\n").map(String.init)
+        XCTAssertEqual(Array(argv.suffix(2)), ["--resume", resumeID])
+        let journal = try String(contentsOf: home.appendingPathComponent(".tasksquad/tasks/fixture-task.jsonl"), encoding: .utf8)
+        XCTAssertTrue(journal.contains(#""type":"resume","provider":"claude-code","cli_session_id":"\#(resumeID)""#), journal)
+        await engine.stop()
+        await server.stop()
+    }
+
     func testPiHookDoesNotMaskFailedExitAndStderrBecomesTheMessage() async throws {
         let tmux = try tmuxConnection()
         // Real Pi fires agent_end (-> stop hook, empty message) even when the model
@@ -207,6 +294,55 @@ private actor InteractiveWorker {
         let close = await worker.close
         XCTAssertEqual(close?["status"], .string("crashed"))
         XCTAssertEqual(close?["final_text"], .string("Agent process failed:\nError: model omlx/default is not loaded"))
+        try await wait { await engine.snapshots().first?.mode == .idle }
+        await engine.stop()
+        await server.stop()
+    }
+
+    /// A Pi turn posts its reply, reports the Pi session and detaches (task open,
+    /// agent idle). A task carrying that session re-spawns `pi --session <id> -p
+    /// <only the new reply>`.
+    func testPiFollowUpResumesTheSessionAndEachTurnDetaches() async throws {
+        let tmux = try tmuxConnection()
+        defer { Task { _ = try? await tmux.run(["kill-server"]) } }
+        let id = "01a1807b-d4cf-732f-a57d-cc9414b962bd"
+        let sessions = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: sessions) }
+        try FileManager.default.createDirectory(at: sessions.appendingPathComponent("--work--"), withIntermediateDirectories: true)
+        let transcript = sessions.appendingPathComponent("--work--/2026-10-28T03-00-00-000Z_\(id).jsonl")
+        let script = """
+        #!/bin/sh
+        printf '%s\\n' "$@" > "$PWD/argv.txt"
+        ext=.pi/extensions/tasksquad.ts
+        port=$(grep -o 'http://localhost:[0-9]*' "$ext" | head -1 | sed 's/.*://')
+        path=$(grep -o '/hooks/stop?agent=[^"]*' "$ext" | head -1)
+        curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "http://127.0.0.1:$port$path" -H 'Content-Type: application/json' --data-binary '{"stop_reason":"idle","message":"answer","transcript_path":"\(transcript.path)"}' >/dev/null
+        exit 0
+        """
+        let worker = InteractiveWorker()
+        await worker.setManual()
+        await worker.setTask(messages: [
+            .object(["role": .string("user"), "body": .string("first question")]),
+            .object(["role": .string("agent"), "body": .string("earlier answer")]),
+            .object(["role": .string("user"), "body": .string("follow up")]),
+        ], resume: .object(["provider": .string("pi"), "session_id": .string(id)]))
+        var environment = ProcessInfo.processInfo.environment
+        environment["PI_CODING_AGENT_SESSION_DIR"] = sessions.path
+        let (engine, server, home) = try await makeEngine(script: script, binary: "pi", worker: worker, tmux: tmux, environment: environment, errors: { XCTFail($0) })
+        defer { try? FileManager.default.removeItem(at: home) }
+        // The session is recorded for the agent's work dir (makeEngine uses home).
+        try Data(#"{"type":"session","id":"\#(id)","cwd":"\#(home.path)"}"#.utf8 + Data("\n".utf8)).write(to: transcript)
+        try await engine.start()
+        try await wait { await worker.close != nil }
+        let argv = try String(contentsOf: home.appendingPathComponent("argv.txt"), encoding: .utf8).split(separator: "\n").map(String.init)
+        XCTAssertEqual(Array(argv.prefix(2)), ["--session", id])
+        XCTAssertEqual(Array(argv.suffix(2)), ["-p", "follow up"], "a resumed Pi session gets only the new reply")
+        let notify = await worker.notifyBodies.first
+        XCTAssertEqual(notify?["message"], .string("answer"))
+        XCTAssertEqual(notify?["provider"], .string("pi"))
+        XCTAssertEqual(notify?["provider_session_id"], .string(id))
+        let close = await worker.close
+        XCTAssertEqual(close?["status"], .string("detached"), "a finished Pi turn keeps the task open")
         try await wait { await engine.snapshots().first?.mode == .idle }
         await engine.stop()
         await server.stop()

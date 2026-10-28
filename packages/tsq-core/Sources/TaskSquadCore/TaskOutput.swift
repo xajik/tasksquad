@@ -16,6 +16,26 @@ public enum TaskPrompt {
         }
         return memoryRollup.isEmpty ? base : "## Project memory (recent activity)\n\(memoryRollup)\n\n---\n\n\(base)"
     }
+
+    /// Sent to a resumed CLI session when no user message is unanswered, i.e.
+    /// the previous process died mid-turn.
+    public static let resumeInterrupted = "Your previous session was interrupted before you finished. Continue the task where you left off."
+
+    /// What a resumed CLI session has not seen yet: the user messages after the
+    /// last agent message (Go: buildResumePrompt).
+    public static func resume(messages: [JSONValue]) -> String {
+        var pending: [String] = []
+        for message in messages {
+            switch message["role"]?.string {
+            case "agent": pending = []
+            case "user":
+                let body = (message["body"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !body.isEmpty { pending.append(body) }
+            default: break
+            }
+        }
+        return pending.isEmpty ? resumeInterrupted : pending.joined(separator: "\n\n")
+    }
 }
 
 public struct TaskOutput: Sendable {

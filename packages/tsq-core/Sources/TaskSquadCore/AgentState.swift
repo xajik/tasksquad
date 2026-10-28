@@ -10,7 +10,10 @@ public enum AgentEvent: String, CaseIterable, Sendable {
     case completed, reset, userClosed = "user_closed"
 }
 
-public enum CompletionStatus: String, Sendable { case closed, crashed, cancelled }
+/// `detached`: the CLI went away without finishing the task (it exited while
+/// waiting for input, or a resumed process never got going). The server keeps
+/// the task open and the next reply re-spawns it (Go: agentmode.StatusDetached).
+public enum CompletionStatus: String, Sendable { case closed, crashed, cancelled, detached }
 
 /// Value state owned by the engine actor. Callbacks carry a generation so output
 /// from a terminated process cannot alter the next task on the same agent.
@@ -19,6 +22,8 @@ public struct AgentState: Sendable, Equatable {
     public private(set) var taskID = ""
     public private(set) var sessionID = ""
     public private(set) var cliSessionID = ""
+    /// This spawn reopened the provider CLI's own session (`claude --resume <id>`).
+    public private(set) var resumed = false
     public private(set) var generation: UInt64 = 0
     public private(set) var tuiBlocked = false
     public private(set) var completing = false
@@ -58,6 +63,7 @@ public struct AgentState: Sendable, Equatable {
         taskID = id
         sessionID = ""
         cliSessionID = ""
+        resumed = false
         completing = false
         notifyPosted = false
         pendingSteps = []; executedSteps = []
@@ -74,6 +80,19 @@ public struct AgentState: Sendable, Equatable {
         guard !id.isEmpty else { return true }
         if cliSessionID.isEmpty { cliSessionID = id; return true }
         return cliSessionID == id
+    }
+
+    public mutating func markResumed() { resumed = true }
+
+    /// Ports AgentState.detachReason (agent/state.go): whether the process going
+    /// away should detach the task (keep it open for a resume) instead of failing
+    /// it, and whether that is because a resumed spawn never got going. A fresh
+    /// spawn's mid-turn crash still fails the task.
+    public func detachReason() -> (detach: Bool, resumeFailed: Bool) {
+        guard !completing, !sessionID.isEmpty else { return (false, false) }
+        if mode == .waitingInput { return (true, false) }
+        if mode == .running, resumed, cliSessionID.isEmpty { return (true, true) }
+        return (false, false)
     }
 
     public mutating func setTUIBlocked(_ blocked: Bool) {
@@ -110,7 +129,7 @@ public struct AgentState: Sendable, Equatable {
 
     public mutating func reset() {
         generation &+= 1
-        mode = .idle; sessionID = ""; taskID = ""; cliSessionID = ""
+        mode = .idle; sessionID = ""; taskID = ""; cliSessionID = ""; resumed = false
         completing = false; tuiBlocked = false; notifyPosted = false
         pendingSteps = []; executedSteps = []
     }

@@ -291,10 +291,12 @@ public enum HookAdapter {
                                  hookMessage: s("last-assistant-message"), isFailure: isFailure, sessionID: s("thread-id"))
         case "gemini":
             return HookStopEvent(reason: s("reason"), transcriptPath: s("transcript_path"), hookMessage: s("prompt_response"),
-                                 isFailure: isFailure || s("reason") == "error")
+                                 isFailure: isFailure || s("reason") == "error", sessionID: s("session_id"))
         case "opencode", "pi":
+            // The OpenCode plugin reports its main (non-subagent) session; Pi's is in its session file name.
             return HookStopEvent(reason: s("stop_reason"), transcriptPath: s("transcript_path"), hookMessage: s("message"),
-                                 isFailure: isFailure || s("stop_reason") == "error")
+                                 isFailure: isFailure || s("stop_reason") == "error",
+                                 sessionID: provider == "opencode" ? s("session_id") : piSessionID(transcriptPath: s("transcript_path")))
         default: // claude-code, claw
             let sessionID = provider == "claw" ? "" : s("session_id")
             if isFailure {
@@ -305,9 +307,30 @@ public enum HookAdapter {
         }
     }
 
+    /// The session ID in a Pi session file name, <timestamp>_<id>.jsonl — the ID
+    /// `pi --session <id>` resumes (Go: adapter.PiSessionID). "" otherwise.
+    public static func piSessionID(transcriptPath: String) -> String {
+        let name = (transcriptPath as NSString).lastPathComponent
+        guard name.hasSuffix(".jsonl") else { return "" }
+        let stem = name.dropLast(".jsonl".count)
+        guard let underscore = stem.firstIndex(of: "_") else { return "" }
+        let id = stem[stem.index(after: underscore)...]
+        return id.isEmpty || id.contains("_") || id.contains("/") ? "" : String(id)
+    }
+
     public static func parseNotification(body: Data) -> (message: String, transcriptPath: String) {
         let p = object(body)
         return (p["message"]?.string ?? "", p["transcript_path"]?.string ?? "")
+    }
+
+    /// The CLI's own session ID in a Notification payload. Claude Code's
+    /// Notification can fire before the turn's Stop, so it pins the session too
+    /// (Go: Claude/GeminiAdapter.ParseNotification). Other providers don't report one.
+    public static func notificationSessionID(provider: String, body: Data) -> String {
+        switch provider {
+        case "stdout", "codex", "opencode", "pi", "claw": return ""
+        default: return object(body)["session_id"]?.string ?? ""
+        }
     }
 
     public static func parseAfterAgent(provider: String, body: Data) -> (response: String, transcriptPath: String) {
@@ -371,4 +394,135 @@ public enum HookAdapter {
         }
         return ""
     }
+}
+
+/// Ports packages/daemon/provider/resume.go: reopening a provider CLI's own
+/// session when a task's process is gone, so it keeps its history instead of
+/// getting the thread replayed as plain text.
+extension ProviderKind {
+    public var resumable: Bool { [.claudeCode, .codex, .gemini, .opencode, .pi].contains(self) }
+
+    /// Whether a hook whose session_id differs from the task's pinned CLI session
+    /// is rejected (Go: strictSessionPin). Gemini's is only recorded: its hooks come
+    /// from the work dir's shared settings, and turns reported under another session
+    /// (e.g. subagents) must not leave the task stuck running.
+    public static func strictSessionPin(provider: String) -> Bool { provider != "gemini" }
+
+    private static let resumeID = try! NSRegularExpression(pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+    private static let codexRolloutPrefix = try! NSRegularExpression(pattern: "^rollout-\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}$")
+
+    private static func matches(_ regex: NSRegularExpression, _ value: String) -> Bool {
+        regex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil
+    }
+
+    /// Whether id is safe to pass to a CLI as a session ID (never a flag or path).
+    public static func validResumeID(_ id: String) -> Bool {
+        matches(resumeID, id) && !id.contains("..")
+    }
+
+    /// `arguments` (everything after the binary) changed to reopen session id.
+    /// initialPromptArguments are appended afterwards.
+    public func resumeArguments(_ arguments: [String], id: String) -> [String] {
+        switch self {
+        case .claudeCode, .gemini: arguments + ["--resume", id]
+        case .codex: ["resume"] + arguments + [id] // `codex resume [options] <id> -- <prompt>`
+        case .opencode: arguments + ["--session", id]
+        // Before the one-shot `-p <reply>`; --session reopens an existing session
+        // (--session-id would silently create an empty one when it is missing).
+        case .pi: ["--session", id] + arguments
+        default: arguments
+        }
+    }
+
+    /// Whether session id is in the CLI's local session store. `command` is the
+    /// agent's configured command (its first field is the CLI) and `workDir` the
+    /// directory the CLI runs in; only OpenCode needs them.
+    public func canResume(id: String, command: String = "", workDir: String = "",
+                          environment: [String: String] = ProcessInfo.processInfo.environment) async -> Bool {
+        guard resumable, Self.validResumeID(id) else { return false }
+        let fm = FileManager.default
+        func root(_ variable: String, _ directory: String) -> URL {
+            if let value = environment[variable], !value.isEmpty { return URL(fileURLWithPath: value, isDirectory: true) }
+            return TaskSquadPaths.userHome(environment: environment).appendingPathComponent(directory, isDirectory: true)
+        }
+        switch self {
+        case .claudeCode:
+            let projects = root("CLAUDE_CONFIG_DIR", ".claude").appendingPathComponent("projects", isDirectory: true)
+            let dirs = (try? fm.contentsOfDirectory(atPath: projects.path)) ?? []
+            return dirs.contains { fm.fileExists(atPath: projects.appendingPathComponent($0).appendingPathComponent(id + ".jsonl").path) }
+        case .codex:
+            let sessions = root("CODEX_HOME", ".codex").appendingPathComponent("sessions", isDirectory: true)
+            let suffix = "-" + id + ".jsonl"
+            guard let walker = fm.enumerator(atPath: sessions.path) else { return false }
+            for case let path as String in walker.allObjects {
+                let name = (path as NSString).lastPathComponent
+                if name.hasSuffix(suffix), Self.matches(Self.codexRolloutPrefix, String(name.dropLast(suffix.count))) { return true }
+            }
+            return false
+        case .gemini:
+            // ~/.gemini/tmp/<project hash>/chats/*.json; names carry only part of the UUID.
+            let tmp = TaskSquadPaths.userHome(environment: environment).appendingPathComponent(".gemini/tmp", isDirectory: true)
+            let needle = Data(("\"" + id + "\"").utf8)
+            for project in (try? fm.contentsOfDirectory(atPath: tmp.path)) ?? [] {
+                let chats = tmp.appendingPathComponent(project).appendingPathComponent("chats", isDirectory: true)
+                for file in (try? fm.contentsOfDirectory(atPath: chats.path)) ?? [] where file.hasSuffix(".json") {
+                    if let data = fm.contents(atPath: chats.appendingPathComponent(file).path), data.range(of: needle) != nil { return true }
+                }
+            }
+            return false
+        case .pi:
+            // <sessions>/<encoded cwd>/<timestamp>_<id>.jsonl
+            let sessions: URL
+            if let dir = environment["PI_CODING_AGENT_SESSION_DIR"], !dir.isEmpty { sessions = URL(fileURLWithPath: dir, isDirectory: true) }
+            else { sessions = root("PI_CODING_AGENT_DIR", ".pi/agent").appendingPathComponent("sessions", isDirectory: true) }
+            // Only a session recorded for workDir: resumed from another directory, Pi asks
+            // "Fork this session into current directory? [y/N]" and, with no terminal,
+            // exits 0 without running the turn.
+            let suffix = "_" + id + ".jsonl"
+            let want = URL(fileURLWithPath: workDir).resolvingSymlinksInPath().standardizedFileURL.path
+            func recordedHere(_ file: URL) -> Bool {
+                guard let data = fm.contents(atPath: file.path),
+                      let header = try? JSONDecoder().decode(JSONValue.self, from: data.prefix { $0 != 10 }),
+                      header["type"]?.string == "session", let cwd = header["cwd"]?.string, !workDir.isEmpty else { return false }
+                return URL(fileURLWithPath: cwd).resolvingSymlinksInPath().standardizedFileURL.path == want
+            }
+            var candidates = ((try? fm.contentsOfDirectory(atPath: sessions.path)) ?? []).filter { $0.hasSuffix(suffix) }.map { sessions.appendingPathComponent($0) }
+            for project in (try? fm.contentsOfDirectory(atPath: sessions.path)) ?? [] {
+                let folder = sessions.appendingPathComponent(project)
+                candidates += ((try? fm.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(suffix) }.map { folder.appendingPathComponent($0) }
+            }
+            return candidates.contains(where: recordedHere)
+        case .opencode:
+            // Sessions live in a SQLite database; ask the CLI, scoped to the project in workDir.
+            let binary = command.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? cliName
+            guard let executable = ExecutableLocator.find(binary, environment: environment) else { return false }
+            let output = OutputBuffer()
+            let listing = ProcessSpecification(executable: executable, arguments: ["session", "list", "--format", "json"],
+                                               directory: workDir.isEmpty ? nil : workDir, environment: environment)
+            let exit = await withTaskGroup(of: ProcessExit?.self) { group in
+                group.addTask { try? await NativeProcess.run(listing, output: { channel, data in
+                    if channel == .stdout { await output.append(data) }
+                }) }
+                group.addTask { try? await Task.sleep(for: .seconds(15)); return nil }
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
+            guard exit?.code == 0 else { return false }
+            return Self.openCodeListHas(await output.data, id: id)
+        default:
+            return false
+        }
+    }
+
+    /// Whether `opencode session list --format json` output lists session id.
+    static func openCodeListHas(_ data: Data, id: String) -> Bool {
+        guard let sessions = try? JSONDecoder().decode([JSONValue].self, from: data) else { return false }
+        return sessions.contains { $0["id"]?.string == id }
+    }
+}
+
+private actor OutputBuffer {
+    private(set) var data = Data()
+    func append(_ chunk: Data) { data.append(chunk) }
 }

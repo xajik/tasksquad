@@ -370,7 +370,7 @@
    "message": "",
    "provider": "gemini",
    "reason": "",
-   "session": "",
+   "session": "s1",
    "transcript": "/t"
   },
   {
@@ -381,7 +381,7 @@
    "message": "",
    "provider": "gemini",
    "reason": "",
-   "session": "",
+   "session": "s1",
    "transcript": "/t"
   },
   {
@@ -436,7 +436,7 @@
    "message": "",
    "provider": "gemini",
    "reason": "",
-   "session": "",
+   "session": "s2",
    "transcript": ""
   },
   {
@@ -447,7 +447,7 @@
    "message": "",
    "provider": "gemini",
    "reason": "",
-   "session": "",
+   "session": "s2",
    "transcript": ""
   },
   {
@@ -546,7 +546,7 @@
    "message": "",
    "provider": "opencode",
    "reason": "end_turn",
-   "session": "",
+   "session": "s1",
    "transcript": "/t"
   },
   {
@@ -557,7 +557,7 @@
    "message": "",
    "provider": "opencode",
    "reason": "end_turn",
-   "session": "",
+   "session": "s1",
    "transcript": "/t"
   },
   {
@@ -612,7 +612,7 @@
    "message": "",
    "provider": "opencode",
    "reason": "",
-   "session": "",
+   "session": "s2",
    "transcript": ""
   },
   {
@@ -623,7 +623,7 @@
    "message": "",
    "provider": "opencode",
    "reason": "",
-   "session": "",
+   "session": "s2",
    "transcript": ""
   },
   {
