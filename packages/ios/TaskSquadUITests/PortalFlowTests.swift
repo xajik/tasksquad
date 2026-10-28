@@ -51,6 +51,7 @@ import CryptoKit
         XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
     }
     private func create() { let button = app.buttons["create-item"]; XCTAssertTrue(button.waitForExistence(timeout: 5)); XCTAssertTrue(button.isHittable); button.tap() }
+    private func attachImage() { app.buttons["attach-images"].tap(); app.buttons["Attach test image"].tap() }
     private func agent() { app.buttons["field-agent_id"].tap(); app.buttons["Fixture Agent"].tap() }
     private func type(_ id: String, _ text: String) { let field = app.descendants(matching: .any)["field-"+id].firstMatch; XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap(); field.typeText(text); if app.buttons["Done editing"].exists { app.buttons["Done editing"].tap() } }
     private func back() {
@@ -116,7 +117,7 @@ import CryptoKit
     }
     func test04CreateUnicodeTaskAndInitialImage() async throws {
         try await launch(); create(); type("subject", "Unicode 猫 café"); agent(); type("body", "Review 🚀")
-        scrollTo(app.buttons["Attach test image"]); app.buttons["Attach test image"].tap(); app.buttons["editor-submit"].tap()
+        attachImage(); app.buttons["editor-submit"].tap()
         XCTAssertTrue(app.buttons["reply-task"].waitForExistence(timeout: 8))
         let state = try await control("state"), tasks = state["tasks"] as! [String:[String:Any]]
         XCTAssertEqual(tasks.count,2); XCTAssertTrue(tasks.values.contains { $0["subject"] as? String == "Unicode 猫 café" })
@@ -129,7 +130,7 @@ import CryptoKit
     func test05ReplyAndImageRoundTrip() async throws {
         try await launch(); openTask(); screenshot("04-conversation")
         app.buttons["reply-task"].tap(); type("body", "Reply café 猫")
-        app.buttons["Attach test image"].tap(); app.buttons["editor-submit"].tap()
+        attachImage(); app.buttons["editor-submit"].tap()
         XCTAssertTrue(app.staticTexts["Reply café 猫"].waitForExistence(timeout: 8))
         let state = try await control("state"), messages = state["messages"] as! [String:[[String:Any]]]
         XCTAssertEqual(messages["task"]!.count,2); XCTAssertEqual((messages["task"]!.last!["attachments"] as! [Any]).count,1)
@@ -351,7 +352,18 @@ import CryptoKit
         XCTAssertTrue(app.staticTexts["editor-error"].label.contains("Agent is required"))
         agent()
         XCTAssertFalse(app.staticTexts["editor-error"].exists, "Selecting an agent clears its error")
+        app.buttons["editor-advanced"].tap()
         scrollTo(app.switches["Save tokens"])
+        XCTAssertFalse(app.buttons["field-save_tokens_level"].exists)
+        app.switches["Save tokens"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(app.switches["Save tokens"].value as? String, "1")
+        let tokenLevel = app.descendants(matching: .any)["field-save_tokens_level"].firstMatch
+        scrollTo(tokenLevel)
+        XCTAssertTrue(tokenLevel.exists)
+        scrollTo(app.switches["Save tokens"])
+        app.switches["Save tokens"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertEqual(app.switches["Save tokens"].value as? String, "0")
+        XCTAssertFalse(app.buttons["field-save_tokens_level"].exists)
         screenshot("26-task-options")
         let before = try await control("state")
         XCTAssertEqual((before["tasks"] as? [String: Any])?.count, 1, "Invalid submissions do not create tasks")
@@ -365,7 +377,7 @@ import CryptoKit
         try await launch(); openTask(); app.buttons["reply-task"].tap()
         screenshot("27-reply-editor")
         type("body", "Keep this reply draft")
-        app.buttons["Attach test image"].tap()
+        attachImage()
         XCTAssertTrue(app.staticTexts["test.png"].exists)
         app.buttons["Cancel"].tap()
         app.buttons["reply-task"].tap()
@@ -412,5 +424,11 @@ import CryptoKit
         XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
         screenshot("32-project-switcher")
     }
+
+
+
+
+
+
 
 }

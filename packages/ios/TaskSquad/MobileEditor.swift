@@ -1,7 +1,5 @@
 import SwiftUI
-import PhotosUI
 import TaskSquadPortal
-import UniformTypeIdentifiers
 
 struct MobileEditorRequest: Identifiable {
     let id = UUID()
@@ -21,9 +19,11 @@ struct MobileEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var values: [String: JSONValue]
     @State private var files: [CustomerUpload] = []
-    @State private var photos: [PhotosPickerItem] = []
-    @State private var chooseFiles = false
+    @State private var advancedExpanded = false
+    @State private var scheduleExpanded = false
+    @State private var loadingImages = false
     @State private var submitting = false
+    @ScaledMetric(relativeTo: .body) private var writingHeight: CGFloat = 120
     @FocusState private var focusedField: String?
     @State private var validation: String?
     @State private var invalidField: String?
@@ -44,36 +44,29 @@ struct MobileEditor: View {
     var body: some View {
         NavigationStack {
             editorForm
+            .disabled(submitting)
             .navigationTitle(request.title).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done editing") { focusedField = nil } }
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(submitting) }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(submitting || loadingImages) }
                 ToolbarItem(placement: .confirmationAction) {
                     submitButton
                 }
             }
-            .interactiveDismissDisabled(submitting)
+            .interactiveDismissDisabled(submitting || loadingImages)
             .onChange(of: values) { old, value in
                 if let key = request.draftKey { MobileDraftStore.save(value, key: key) }
-                if let field = invalidField, old[field] != value[field] { validation = nil; invalidField = nil }
-            }
-            .onChange(of: photos) { _, items in Task {
-                do { for item in items {
-                    if let data = try await item.loadTransferable(type: Data.self), let png = UIImage(data: data)?.pngData() { addImage(png, name: "photo.png", mime: "image/png") }
-                }; photos = [] } catch { validation = error.localizedDescription }
-            } }
-            .fileImporter(isPresented: $chooseFiles, allowedContentTypes: [.png, .jpeg, .gif, .webP], allowsMultipleSelection: true) { result in
-                do { for url in try result.get() {
-                    let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }
-                    addImage(try Data(contentsOf: url), name: url.lastPathComponent, mime: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "image/png")
-                } } catch { validation = error.localizedDescription }
+                if let field = invalidField, old[field] != value[field],
+                   !(value[field]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || value[field]?.number != nil {
+                    validation = nil; invalidField = nil
+                }
             }
             .task { if request.phases { do { subAgents = CustomerRecord(try await model.api.request(["teams", model.projectID, "sub-agents"])).records("sub_agents") } catch { validation = error.localizedDescription } } }
         }
     }
     private var submitButton: some View {
         Button(submitting ? "Sending…" : request.submitLabel) { Task { await submit() } }
-            .disabled(submitting || model.busy || unavailableDraftImages)
+            .disabled(submitting || model.busy || unavailableDraftImages || loadingImages)
             .accessibilityIdentifier("editor-submit")
     }
     private var editorForm: some View {
@@ -89,10 +82,22 @@ struct MobileEditor: View {
                         }
                     }
                 }
-                ForEach(request.attachments ? request.fields.filter { ["subject", "agent_id", "body"].contains($0.id) } : request.fields) { field in fieldView(field) }
+                ForEach(primaryFields) { field in fieldView(field) }
                 if request.phases { phaseSection }
                 if request.attachments { imageSection }
-                if request.attachments { ForEach(request.fields.filter { !["subject", "agent_id", "body"].contains($0.id) }) { field in fieldView(field) } }
+                if request.attachments, let schedule = request.fields.first(where: { $0.id == "scheduled_at" }) {
+                    Section { DisclosureGroup("Send later", isExpanded: $scheduleExpanded) { fieldView(schedule) } }
+                }
+                if !advancedFields.isEmpty {
+                    Section {
+                        Button { advancedExpanded.toggle() } label: {
+                            HStack { Text("Advanced"); Spacer(); MobileIcon(name: advancedExpanded ? "chevron-up" : "chevron-down", size: 16) }.frame(minHeight: 44)
+                        }.accessibilityIdentifier("editor-advanced").accessibilityValue(advancedExpanded ? "Expanded" : "Collapsed")
+                        if advancedExpanded {
+                            ForEach(advancedFields.filter { $0.id != "save_tokens_level" || values["save_tokens_enabled"] == .bool(true) }) { field in fieldView(field) }
+                        }
+                    }
+                }
             }
             .scrollContentBackground(.hidden).background(MobileTheme.background)
             .scrollDismissesKeyboard(.interactively)
@@ -118,30 +123,34 @@ struct MobileEditor: View {
                     }
 
     }
+    private var primaryFields: [WorkspaceField] {
+        if request.attachments { return request.fields.filter { ["subject", "agent_id", "body"].contains($0.id) } }
+        return request.fields
+    }
+    private var advancedFields: [WorkspaceField] {
+        if request.attachments { return request.fields.filter { !["subject", "agent_id", "body", "scheduled_at"].contains($0.id) } }
+        return []
+    }
     private var imageSection: some View {
-
-                    Section("Images") {
-                        ForEach(files) { file in HStack { Text(file.name); Spacer(); Button("Remove") { _ = setFiles(files.filter { $0.id != file.id }) } } }
-                        PhotosPicker("Attach photos", selection: $photos, maxSelectionCount: 5, matching: .images)
-                        Button("Choose image files") { chooseFiles = true }
-                        #if DEBUG
-                        if ProcessInfo.processInfo.arguments.contains("--ui-test-api") {
-                            Button("Attach test image") { if let data = UIImage(systemName: "star.fill")?.pngData() { addImage(data, name: "test.png", mime: "image/png") } }
-                        }
-                        #endif
-                    }
-
+        Section {
+            MobileImageAttachments(files: Binding(get: { files }, set: { _ = setFiles($0) }), loading: $loadingImages) { message in
+                invalidField = nil; validation = message
+            }.disabled(unavailableDraftImages || submitting || loadingImages)
+        }
     }
     private func fieldView(_ field: WorkspaceField) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             fieldControl(field)
+            if case .agent = field.kind, model.agents.isEmpty {
+                Text("No agents in this project. Add an agent from Agents before sending work.").font(.footnote).foregroundStyle(MobileTheme.mutedForeground)
+            }
             if invalidField == field.id, let validation { errorText(validation) }
         }.id(field.id)
     }
     private func fieldLabel(_ field: WorkspaceField) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(field.label)
-            if field.required { Text("Required").font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
+            Text(field.label).fixedSize(horizontal: false, vertical: true)
+            Text(field.required ? "Required" : "Optional").font(.caption).foregroundStyle(MobileTheme.mutedForeground)
         }
     }
     private func errorText(_ message: String) -> some View {
@@ -154,12 +163,12 @@ struct MobileEditor: View {
         case .text:
             VStack(alignment: .leading, spacing: 8) {
                 fieldLabel(field).font(.subheadline.weight(.medium))
-                TextField(field.label, text: string(field.id)).focused($focusedField, equals: field.id).accessibilityIdentifier("field-" + field.id)
+                TextField(field.label, text: string(field.id)).frame(minHeight: 44).focused($focusedField, equals: field.id).accessibilityIdentifier("field-" + field.id)
             }
         case .multiline:
             VStack(alignment: .leading, spacing: 8) {
                 fieldLabel(field).font(.subheadline.weight(.medium))
-                TextEditor(text: string(field.id)).focused($focusedField, equals: field.id).frame(minHeight: 120).accessibilityLabel(field.label).accessibilityIdentifier("field-" + field.id)
+                TextEditor(text: string(field.id)).focused($focusedField, equals: field.id).frame(height: writingHeight).accessibilityLabel(field.label).accessibilityIdentifier("field-" + field.id)
             }
         case .bool: Toggle(field.label, isOn: Binding(get: { values[field.id] == .bool(true) || values[field.id]?.number == 1 }, set: { values[field.id] = .bool($0) }))
         case .integer, .optionalInteger:
@@ -172,7 +181,7 @@ struct MobileEditor: View {
                 fieldLabel(field).font(.subheadline.weight(.medium))
                 TextField("Comma separated", text: Binding(get: { (values[field.id]?.array ?? []).compactMap(\.string).joined(separator: ", ") }, set: { values[field.id] = .array($0.split(separator: ",").map { .string($0.trimmingCharacters(in: .whitespaces)) }) })).focused($focusedField, equals: field.id).accessibilityIdentifier("field-" + field.id)
             }
-        case .choice(let choices): Picker(field.label, selection: string(field.id)) { ForEach(choices, id: \.self) { Text($0.capitalized).tag($0) } }
+        case .choice(let choices): Picker(field.label, selection: string(field.id)) { ForEach(choices, id: \.self) { Text($0.capitalized).tag($0) } }.accessibilityIdentifier("field-" + field.id)
         case .agent, .subAgent: Picker(selection: string(field.id)) {
             Text("Select an agent").tag("")
             ForEach(isSubAgent(field) ? subAgents : request.eligibleAgentsOnly ? model.eligibleAgents : model.agents) { Text($0.title).tag($0.id) }
@@ -185,10 +194,6 @@ struct MobileEditor: View {
     private func isSubAgent(_ field: WorkspaceField) -> Bool { if case .subAgent = field.kind { return true }; return false }
     private func string(_ key: String) -> Binding<String> { Binding(get: { values[key]?.string ?? "" }, set: { values[key] = .string($0) }) }
     private func numeric(_ key: String) -> Binding<String> { Binding(get: { values[key]?.string ?? values[key]?.number.map { String(Int($0)) } ?? "" }, set: { values[key] = .string($0) }) }
-    private func addImage(_ data: Data, name: String, mime: String) {
-        guard files.count < 5, data.count <= 10*1024*1024 else { validation = "Attach up to five images, each no larger than 10 MiB."; return }
-        _ = setFiles(files + [CustomerUpload(name: name, mimeType: mime, data: data)])
-    }
     private func setFiles(_ value: [CustomerUpload]) -> Bool {
         do {
             if let key = request.draftKey { try MobileDraftStore.saveFiles(value, key: key) }
