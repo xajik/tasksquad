@@ -1,7 +1,7 @@
 .PHONY: build test test-compatibility test-keychain test-ui dev app app-check app-signed package install install-cli cli smoke workflow-check clean
 
 # Bumped by `make bump` at the repo root; release workflows pass VERSION explicitly.
-VERSION ?= 0.4.7
+VERSION ?= 0.4.8
 # Empty = universal when Rosetta is available, else native arm64 only.
 ARCHS ?=
 export ARCHS
