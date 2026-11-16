@@ -4,22 +4,22 @@ import TaskSquadCore
 import TaskSquadPortal
 import TaskSquadDesign
 import TaskSquadPortalUI
+import UniformTypeIdentifiers
 
 struct CustomerTaskDetail: View {
     @ObservedObject var model: CustomerWorkspaceModel
+    @ObservedObject var ui: WorkspaceUI
     let record: CustomerRecord
     var supervisorOnly = false
-    @Binding var editor: CustomerEditorRequest?
-    @Binding var confirmation: CustomerConfirmation?
-    @Binding var presentedText: CustomerText?
     @State private var reply = ""
     @State private var files: [CustomerUpload] = []
     @State private var scheduled = false
     @State private var scheduledDate = Date().addingTimeInterval(3600)
-    @State private var terminalExpanded = false
     @State private var follow = true
     @State private var sending = false
     @State private var supervisorPort = "7374"
+    @State private var dropTargeted = false
+    @FocusState private var replyFocused: Bool
     private var shownMessages: [CustomerRecord] { supervisorOnly ? model.messages.filter { $0.text("role") == "supervisor" } : model.messages }
     private var replyDraft: WorkspaceDraftScope { model.workspace.draftScope("reply." + record.id) }
     private var active: Bool { !["done", "failed"].contains(record.status) }
@@ -34,164 +34,128 @@ struct CustomerTaskDetail: View {
     }
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(record.title).font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.foreground).textSelection(.enabled)
-                HStack(spacing: 8) {
-                    CustomerStatus(status: record.status)
-                    Label(model.agentName(record.text("agent_id")), icon: .bot).labelStyle(TSQLabelStyle(spacing: 4))
-                        .font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
-                    Spacer(); Toggle("Follow", isOn: $follow).toggleStyle(.checkbox).font(.system(size: 12))
-                    Menu { actions } label: { Text("Actions") }.menuStyle(.button).controlSize(.small).fixedSize()
-                }
-                if record.number("scheduled_at") > Date().timeIntervalSince1970 * 1000 {
-                    Label("Scheduled: " + Date(timeIntervalSince1970: record.number("scheduled_at") / 1000).formatted(), icon: .clock)
-                        .labelStyle(TSQLabelStyle(spacing: 4)).font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
-                }
-                if record.status == "wrapping_up", !record.strings("close_steps").isEmpty {
-                    ForEach(Array(record.strings("close_steps").enumerated()), id: \.offset) { index, step in
-                        Label(step, icon: index < Int(record.number("close_steps_active_idx")) ? .circleCheck : index == Int(record.number("close_steps_active_idx")) ? .refreshCw : .circle).labelStyle(TSQLabelStyle(spacing: 6)).font(.system(size: 12))
-                    }
-                }
-            }.padding(.horizontal, 20).padding(.vertical, 16).edgeBorder(.bottom)
+            header
+            Divider()
             ScrollViewReader { reader in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
-                        if supervisorOnly {
-                            HStack {
-                                TextField("Local hooks port", text: $supervisorPort).textFieldStyle(.roundedBorder).frame(width: 100)
-                                Button { Task { await triggerSupervisor() } } label: { Label("Run Supervisor Locally", icon: .play) }.buttonStyle(.tsqOutline).disabled(!active || model.busy)
-                            }
-                            Text("Manual runs require a local daemon managing this task. Reports from any machine appear below.").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
-                        }
+                        if supervisorOnly { supervisorControls }
                         if !record.text("session_id").isEmpty, active {
-                            DisclosureGroup(record.flag("tui_blocked") ? "Terminal · agent is waiting for input" : "Live Terminal", isExpanded: $terminalExpanded) {
-                                if terminalExpanded {
-                                    CustomerRemoteTerminal(api: try? model.api(), sessionID: record.text("session_id")).frame(height: 400)
+                            DisclosureGroup(record.flag("tui_blocked") ? "Live Terminal · agent is waiting for input" : "Live Terminal", isExpanded: $ui.terminalVisible) {
+                                if ui.terminalVisible {
+                                    CustomerRemoteTerminal(api: try? model.api(), sessionID: record.text("session_id")).frame(height: 360)
+                                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                                 }
                             }
                         }
                         ForEach(shownMessages) { message in messageView(message) }
-                        if shownMessages.isEmpty { Text(supervisorOnly ? "No supervisor reports yet." : "No messages yet.").font(.system(size: 13)).foregroundStyle(Theme.mutedForeground) }
+                        if shownMessages.isEmpty {
+                            Text(supervisorOnly ? "No supervisor reports yet." : "No messages yet.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 40)
+                        }
                         Color.clear.frame(height: 1).id("bottom")
-                    }.padding(20)
-                }.background(Theme.muted.opacity(0.25)).onChange(of: shownMessages.count) { if follow { reader.scrollTo("bottom", anchor: .bottom) } }
+                    }.padding(20).frame(maxWidth: 860).frame(maxWidth: .infinity)
+                }.onChange(of: shownMessages.count) { if follow { reader.scrollTo("bottom", anchor: .bottom) } }
             }
             if let pendingReply {
+                Divider()
                 HStack {
-                    Label("Your reply is scheduled for " + Date(timeIntervalSince1970: pendingReply.number("scheduled_at") / 1000).formatted(), icon: .clock)
-                        .labelStyle(TSQLabelStyle(spacing: 6)).font(.system(size: 13))
+                    Label("Your reply is scheduled for " + Date(timeIntervalSince1970: pendingReply.number("scheduled_at") / 1000).formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
                     Spacer()
-                    Button("Edit") { editMessage(pendingReply) }.buttonStyle(.tsqOutline)
-                    Button("Cancel Reply") { deleteMessage(pendingReply) }.buttonStyle(.tsq(.ghost))
-                }.padding(16).edgeBorder(.top)
-            } else if !supervisorOnly { composer }
+                    Button("Edit…") { editMessage(pendingReply) }
+                    Button("Cancel Reply…") { deleteMessage(pendingReply) }
+                }.padding(12)
+            } else if !supervisorOnly { Divider(); composer }
+        }
+        .onChange(of: ui.replyFocus) { replyFocused = true }
+    }
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(record.title).font(Theme.title).textSelection(.enabled)
+            HStack(spacing: 8) {
+                CustomerStatus(status: record.status)
+                Label(model.agentName(record.text("agent_id")), icon: .bot).labelStyle(TSQLabelStyle(spacing: 4)).font(Theme.callout).foregroundStyle(.secondary)
+                Spacer()
+                Toggle("Follow Latest", isOn: $follow).toggleStyle(.checkbox).help("Scroll to new messages as they arrive")
+            }
+            if record.number("scheduled_at") > Date().timeIntervalSince1970 * 1000 {
+                Label("Scheduled: " + Date(timeIntervalSince1970: record.number("scheduled_at") / 1000).formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
+                    .font(Theme.callout).foregroundStyle(.secondary)
+            }
+            if record.status == "wrapping_up", !record.strings("close_steps").isEmpty {
+                let current = Int(record.number("close_steps_active_idx"))
+                ForEach(Array(record.strings("close_steps").enumerated()), id: \.offset) { index, step in
+                    Label(step, systemImage: index < current ? "checkmark.circle.fill" : index == current ? "arrow.triangle.2.circlepath" : "circle").font(Theme.callout)
+                }
+            }
+        }.padding(.horizontal, 20).padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private var supervisorControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { Task { await triggerSupervisor() } } label: { Label("Run Supervisor Locally", systemImage: "play") }.disabled(!active || model.busy)
+            Text("Manual runs need a local daemon managing this task. Reports from any machine appear below.").font(Theme.caption).foregroundStyle(.secondary)
+            DisclosureGroup("Advanced") {
+                LabeledContent("Local hooks port") { TextField("Port", text: $supervisorPort).textFieldStyle(.roundedBorder).frame(width: 100).labelsHidden() }
+            }.font(Theme.callout)
         }
     }
-    /// Web `MessageBubble`: bordered card, header row with avatar, name, time, and icon actions.
     private func messageView(_ message: CustomerRecord) -> some View {
         let isUser = message.text("role") == "user"
         let name = isUser ? (message.text("sender_id") == model.profile?.id ? "You" : "User")
             : message.text("role") == "agent" ? model.agentName(record.text("agent_id")) : message.text("role").capitalized
         let task = record.id
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
                 Icon(isUser ? .user : message.text("role") == "agent" ? .bot : .info, size: 14)
-                    .foregroundStyle(isUser ? Theme.primary : Theme.mutedForeground)
-                    .frame(width: 28, height: 28).background(isUser ? Theme.primary.opacity(0.1) : Theme.muted, in: Circle())
-                Text(name.isEmpty ? "Agent" : name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.foreground)
+                    .foregroundStyle(isUser ? Theme.tint : .secondary)
+                    .frame(width: 26, height: 26).background(isUser ? Theme.tint.opacity(0.12) : Theme.muted, in: Circle())
+                Text(name.isEmpty ? "Agent" : name).font(Theme.body.weight(.semibold))
                 if !message.text("type").isEmpty, !["message", "final"].contains(message.text("type")) {
-                    Badge(message.text("type").replacingOccurrences(of: "_", with: " "), variant: .outline)
+                    Badge(StatusPresentation(message.text("type")).label, variant: .outline)
                 }
                 if message.number("scheduled_at") > Date().timeIntervalSince1970 * 1000 {
                     Badge("Scheduled · " + Date(timeIntervalSince1970: message.number("scheduled_at") / 1000).formatted(date: .abbreviated, time: .shortened), variant: .warning)
                 }
                 Spacer()
-                Text(message.date.formatted(date: .abbreviated, time: .shortened)).font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
-                Button { copyText(message.text("body")) } label: { Icon(.copy, size: 14) }.buttonStyle(.plain).foregroundStyle(Theme.mutedForeground).help("Copy message")
+                Text(message.date.formatted(date: .abbreviated, time: .shortened)).font(Theme.caption).foregroundStyle(.secondary)
+                Button { copyText(message.text("body")) } label: { Image(systemName: "doc.on.doc") }.help("Copy message").accessibilityLabel("Copy message")
                 if message.text("role") == "agent" {
-                    gradeIcon(.thumbsUp, record: message, grade: 1) { .gradeMessage(task: task, message: message.id, $0) }
-                    gradeIcon(.thumbsDown, record: message, grade: 0) { .gradeMessage(task: task, message: message.id, $0) }
+                    gradeIcon("hand.thumbsup", label: "Mark helpful", record: message, grade: 1) { .gradeMessage(task: task, message: message.id, $0) }
+                    gradeIcon("hand.thumbsdown", label: "Mark unhelpful", record: message, grade: 0) { .gradeMessage(task: task, message: message.id, $0) }
                 }
-                Menu { messageActions(message) } label: { Icon(.ellipsis, size: 14) }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(Theme.mutedForeground)
+            }.buttonStyle(.borderless)
+            if message.text("type") == "thinking" || message.text("type") == "tool_use" {
+                DisclosureGroup("Details") { CustomerMarkdown(text: message.text("body")) }.font(Theme.callout)
+            } else { CustomerMarkdown(text: message.text("body")) }
+            if message.text("interaction_status") == "resolved" {
+                Label("Response: " + message.text("interaction_response"), systemImage: "checkmark.circle").font(Theme.callout).foregroundStyle(Theme.green)
             }
-            .padding(.horizontal, 16).padding(.vertical, 10)
-            .overlay(alignment: .bottom) { Rectangle().fill(isUser ? Theme.primary.opacity(0.1) : Theme.border.opacity(0.7)).frame(height: 1) }
-            VStack(alignment: .leading, spacing: 12) {
-                if message.text("type") == "thinking" || message.text("type") == "tool_use" {
-                    DisclosureGroup("Details") { CustomerMarkdown(text: message.text("body")) }.font(.system(size: 12))
-                } else { CustomerMarkdown(text: message.text("body")) }
-                if message.text("interaction_status") == "resolved" { Label("Response: " + message.text("interaction_response"), icon: .circleCheck).labelStyle(TSQLabelStyle(spacing: 6)).font(.system(size: 12)).foregroundStyle(Theme.green) }
-                ForEach(message.records("attachments")) { attachment in
-                    CustomerAttachment(api: try? model.api(), taskID: record.id, messageID: message.id, attachment: attachment)
-                }
-            }.padding(16)
+            ForEach(message.records("attachments")) { attachment in
+                CustomerAttachment(api: try? model.api(), taskID: record.id, messageID: message.id, attachment: attachment)
+            }
         }
-        .background(isUser ? Theme.primary.opacity(0.04) : Theme.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(isUser ? Theme.primary.opacity(0.2) : Theme.border))
+        .padding(14)
+        .background(isUser ? AnyShapeStyle(Theme.tint.opacity(0.08)) : AnyShapeStyle(Theme.card), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.border))
+        .contextMenu { messageActions(message) }
+        .accessibilityElement(children: .contain)
     }
     /// Selecting the current grade again clears it.
-    private func gradeIcon(_ icon: LucideIcon, record: CustomerRecord, grade: Double, operation: @escaping (Double?) -> WorkspaceOperation) -> some View {
+    private func gradeIcon(_ symbol: String, label: String, record: CustomerRecord, grade: Double, operation: @escaping (Double?) -> WorkspaceOperation) -> some View {
         let selected = record.value["grade"]?.number == grade
-        return Button {
-            Task { await model.run(operation(selected ? nil : grade)) }
-        } label: {
-            Icon(icon, size: 14).padding(3)
-                .background(selected ? (grade == 1 ? Theme.green : Theme.red).opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 4))
+        return Button { Task { await model.run(operation(selected ? nil : grade)) } } label: {
+            Image(systemName: selected ? symbol + ".fill" : symbol).foregroundStyle(selected ? (grade == 1 ? Theme.green : Theme.red) : .secondary)
         }
-        .buttonStyle(.plain).foregroundStyle(selected ? (grade == 1 ? Theme.green : Theme.red) : Theme.mutedForeground)
-        .help(grade == 1 ? "Good" : "Not helpful").disabled(model.busy)
-    }
-    @ViewBuilder private var actions: some View {
-        Button("Forward to Agent…") {
-            let task = record.id
-            editor = CustomerEditorRequest(title: "Forward Task", fields: [.init("agent_id", "Agent", .agent, required: true), .init("instructions", "Instructions", .multiline)], submitLabel: "Forward") { body, _ in
-                guard let response = await model.perform(.forward(task: task, values: body)) else { return false }
-                if let id = response["task_id"]?.string { model.openTask(id) }; return true
-            }
-        }
-        Button("Token Saving…") {
-            let settings = record.value["settings"]?["save_tokens"]
-            let task = record.id
-            editor = CustomerEditorRequest(title: "Token Saving", fields: [.init("enabled", "Enabled", .bool, initial: settings?["enabled"] ?? .bool(false)), .init("level", "Level", .choice(["lite", "full", "ultra"]), initial: settings?["level"] ?? .string("full"))]) { body, _ in
-                guard await model.perform(.taskSettings(task: task, saveTokens: body)) != nil else { return false }
-                await model.refresh(); return true
-            }
-        }
-        Button("View Logs") {
-            let id = record.id
-            Task {
-                do {
-                    let logs = CustomerRecord(try await model.api().request(["tasks", id, "logs"])).records("logs")
-                    presentedText = CustomerText(title: "Task Logs", text: logs.map { "[\($0.text("level"))] \($0.text("body"))" }.joined(separator: "\n"))
-                } catch { model.error = error.localizedDescription }
-            }
-        }
-        Divider()
-        gradeButton("Approve Task", record: record, grade: 1)
-        gradeButton("Reject Task", record: record, grade: 0)
-        if active {
-            Button("Close Task…") {
-                let id = record.id
-                confirmation = CustomerConfirmation(title: "Close this task?", message: "The agent will finish and close its session.", action: "Close Task") { await model.run(.closeTask(id)) }
-            }
-        }
-        Button("Delete Task…", role: .destructive) {
-            let id = record.id
-            confirmation = CustomerConfirmation(title: "Delete this task?", message: "The task and all its messages will be removed permanently.", action: "Delete") {
-                if await model.perform(.deleteTask(id)) != nil { model.selectedID = nil; await model.refresh() }
-            }
-        }
+        .help(label).accessibilityLabel(label).accessibilityAddTraits(selected ? .isSelected : []).disabled(model.busy)
     }
     @ViewBuilder private func messageActions(_ message: CustomerRecord) -> some View {
-        Button("Copy") { copyText(message.text("body")) }
+        Button("Copy Message") { copyText(message.text("body")) }
         if !message.text("transcript_key").isEmpty {
             Button("View Transcript") {
                 let path = ["tasks", record.id, "messages", message.id, "transcript"]
                 Task {
                     do {
                         let data = try await model.api().data(path)
-                        presentedText = CustomerText(title: "Transcript", text: String(decoding: data, as: UTF8.self))
+                        ui.presentedText = CustomerText(title: "Transcript", text: String(decoding: data, as: UTF8.self))
                     } catch { model.error = error.localizedDescription }
                 }
             }
@@ -204,69 +168,69 @@ struct CustomerTaskDetail: View {
     }
     private func editMessage(_ message: CustomerRecord) {
         let task = record.id
-        editor = CustomerEditorRequest(title: "Edit Scheduled Reply", fields: [.init("body", "Message", .multiline, required: true, initial: .string(message.text("body"))), .init("scheduled_at", "Schedule reply", .date, initial: message.value["scheduled_at"] ?? .null)]) { body, _ in
+        ui.editor = CustomerEditorRequest(title: "Edit Scheduled Reply", fields: [.init("body", "Message", .multiline, required: true, initial: .string(message.text("body"))), .init("scheduled_at", "Schedule reply", .date, initial: message.value["scheduled_at"] ?? .null)]) { body, _ in
             guard await model.perform(.editMessage(task: task, message: message.id, values: body)) != nil else { return false }
             await model.refresh(); return true
         }
     }
     private func deleteMessage(_ message: CustomerRecord) {
         let operation = WorkspaceOperation.deleteMessage(task: record.id, message: message.id)
-        confirmation = CustomerConfirmation(title: "Cancel scheduled reply?", message: "This message will not be sent.", action: "Delete Reply") { await model.run(operation) }
+        ui.confirmation = CustomerConfirmation(title: "Cancel scheduled reply?", message: "This message will not be sent.", action: "Delete Reply") { await model.run(operation) }
     }
-    private func gradeButton(_ title: String, record: CustomerRecord, grade: Double) -> some View {
-        Button((record.value["grade"]?.number == grade ? "✓ " : "") + title) {
-            Task { await model.run(.grade(task: record.id, record.value["grade"]?.number == grade ? nil : grade)) }
-        }.disabled(model.busy)
+    /// Shown above the reply field so a pending request cannot scroll out of view.
+    @ViewBuilder private var permissionBar: some View {
+        if !permissionOptions.isEmpty {
+            HStack(spacing: 8) {
+                Label("Permission requested", systemImage: "exclamationmark.shield").font(Theme.body.weight(.semibold)).foregroundStyle(Theme.amber)
+                Spacer()
+                ForEach(permissionOptions, id: \.self) { option in Button(option) { Task { await send(option) } }.disabled(model.busy || sending) }
+            }
+            .padding(10).background(Theme.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radius))
+            .accessibilityIdentifier("permission-bar")
+        }
     }
-    /// Web reply box: bordered card, borderless text area, footer with Schedule and Send.
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !permissionOptions.isEmpty {
-                HStack(spacing: 8) {
-                    Label("Permission requested", icon: .shieldAlert).labelStyle(TSQLabelStyle(spacing: 6)).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.amber)
-                    ForEach(permissionOptions, id: \.self) { option in Button(option) { Task { await send(option) } }.buttonStyle(.tsqOutline).disabled(model.busy || sending) }
+            permissionBar
+            TextEditor(text: $reply).font(Theme.body).scrollContentBackground(.hidden).focused($replyFocused)
+                .onAppear { reply = model.drafts.load(replyDraft)?["body"]?.string ?? reply }
+                .onChange(of: reply) { _, text in if text.isEmpty { model.drafts.remove(replyDraft) } else { model.drafts.save(["body": .string(text)], scope: replyDraft) } }
+                .frame(minHeight: 44, maxHeight: 140).fixedSize(horizontal: false, vertical: true)
+                .overlay(alignment: .topLeading) {
+                    if reply.isEmpty { Text("Reply…").foregroundStyle(.tertiary).padding(.leading, 5).allowsHitTesting(false) }
                 }
-            }
-            VStack(spacing: 0) {
-                TextEditor(text: $reply).font(.system(size: 13)).scrollContentBackground(.hidden)
-                    .onAppear { reply = model.drafts.load(replyDraft)?["body"]?.string ?? reply }
-                    .onChange(of: reply) { _, text in if text.isEmpty { model.drafts.remove(replyDraft) } else { model.drafts.save(["body": .string(text)], scope: replyDraft) } }
-                    .frame(minHeight: 64, maxHeight: 120).padding(.horizontal, 10).padding(.top, 8)
-                    .overlay(alignment: .topLeading) {
-                        if reply.isEmpty { Text("Write your reply…").font(.system(size: 13)).foregroundStyle(Theme.mutedForeground).padding(.horizontal, 15).padding(.top, 8).allowsHitTesting(false) }
-                    }
-                if !files.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(files) { file in
-                            HStack(spacing: 4) {
-                                Icon(.paperclip, size: 12); Text(file.name).lineLimit(1)
-                                Button { files.removeAll { $0.id == file.id } } label: { Icon(.x, size: 12) }.buttonStyle(.plain)
-                            }.font(.system(size: 12)).padding(.horizontal, 8).padding(.vertical, 3).background(Theme.muted, in: RoundedRectangle(cornerRadius: 4))
-                        }
-                        Spacer()
-                    }.padding(.horizontal, 12).padding(.bottom, 8)
-                }
-                if scheduled {
-                    HStack { DatePicker("Send at", selection: $scheduledDate).font(.system(size: 12)); Spacer() }.padding(.horizontal, 12).padding(.vertical, 8).edgeBorder(.top)
-                }
+                .accessibilityLabel("Reply").accessibilityIdentifier("field-body")
+            if !files.isEmpty {
                 HStack(spacing: 6) {
-                    Button { do { files += try CustomerFiles.chooseImages() } catch { model.error = error.localizedDescription } } label: { Label("Attach", icon: .paperclip) }
-                        .buttonStyle(.tsq(.ghost)).foregroundStyle(Theme.mutedForeground)
-                    Button { scheduled.toggle() } label: { Label(scheduled ? "Cancel schedule" : "Schedule", icon: .clock) }
-                        .buttonStyle(.tsq(.ghost)).foregroundStyle(Theme.mutedForeground)
-                    Spacer()
-                    Text("⌘↩ to send").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
-                    Button { Task { await send(reply) } } label: {
-                        HStack(spacing: 6) { if sending { ProgressView().controlSize(.mini) }; Text(scheduled ? "Schedule" : "Send") }
+                    ForEach(files) { file in
+                        HStack(spacing: 4) {
+                            Image(systemName: "paperclip"); Text(file.name).lineLimit(1)
+                            Button { files.removeAll { $0.id == file.id } } label: { Image(systemName: "xmark.circle.fill") }
+                                .buttonStyle(.borderless).accessibilityLabel("Remove " + file.name)
+                        }.font(Theme.caption).padding(.horizontal, 8).padding(.vertical, 3).background(Theme.muted, in: Capsule())
                     }
-                    .buttonStyle(.tsq(.default)).keyboardShortcut(.return, modifiers: .command)
-                    .disabled(sending || model.busy || (reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && files.isEmpty))
-                }.padding(.horizontal, 10).padding(.vertical, 8).background(Theme.muted.opacity(0.3)).edgeBorder(.top)
+                }
             }
-            .background(Theme.background, in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.border))
-        }.padding(16).edgeBorder(.top)
+            if scheduled { DatePicker("Send at", selection: $scheduledDate, in: Date()...) }
+            HStack(spacing: 10) {
+                Button { do { files += try CustomerFiles.chooseImages() } catch { model.error = error.localizedDescription } } label: { Label("Attach Images…", systemImage: "paperclip") }
+                    .help("Attach images, or drop them here")
+                Toggle(isOn: $scheduled) { Label("Send Later", systemImage: "clock") }.toggleStyle(.button).help("Schedule this reply")
+                Spacer()
+                Button { Task { await send(reply) } } label: {
+                    HStack(spacing: 6) { if sending { ProgressView().controlSize(.mini) }; Text(scheduled ? "Schedule" : "Send") }
+                }
+                .buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command).help("Send (⌘↩)")
+                .disabled(sending || model.busy || (reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && files.isEmpty))
+                .accessibilityIdentifier("editor-submit")
+            }.labelStyle(.iconOnly)
+        }
+        .padding(12)
+        .background(dropTargeted ? AnyShapeStyle(Theme.tint.opacity(0.1)) : AnyShapeStyle(.bar))
+        .dropDestination(for: URL.self) { urls, _ in
+            do { files += try urls.map(CustomerFiles.upload); return true }
+            catch { model.error = error.localizedDescription; return false }
+        } isTargeted: { dropTargeted = $0 }
     }
     private func send(_ text: String) async {
         guard !sending else { return }; sending = true; defer { sending = false }
@@ -300,9 +264,12 @@ struct CustomerAttachment: View {
     @State private var error: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let image { Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 280) }
-            Button { Task { await save() } } label: { Label(attachment.text("filename"), icon: .download) }.buttonStyle(.tsqOutline)
-            if let error { Text(error).font(.system(size: 12)).foregroundStyle(Theme.destructive) }
+            if let image {
+                Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 280).clipShape(RoundedRectangle(cornerRadius: Theme.controlRadius))
+                    .accessibilityLabel(attachment.text("filename"))
+            }
+            Button { Task { await save() } } label: { Label(attachment.text("filename"), systemImage: "arrow.down.circle") }.help("Save attachment…")
+            if let error { Text(error).font(Theme.caption).foregroundStyle(Theme.destructive) }
         }.task(id: attachment.id) {
             guard attachment.text("mime_type").hasPrefix("image/"), attachment.number("size") <= 20 * 1024 * 1024, let api else { return }
             do { image = NSImage(data: try await api.data(path)) } catch { self.error = error.localizedDescription }

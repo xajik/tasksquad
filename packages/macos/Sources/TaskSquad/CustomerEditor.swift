@@ -35,8 +35,7 @@ struct CustomerEditor: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(request.title).font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.foreground)
-                .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 6)
+            Text(request.title).font(Theme.headline).padding(.horizontal, 20).padding(.top, 16).accessibilityAddTraits(.isHeader)
             Form {
                 ForEach(request.fields) { field in fieldView(field) }
                 if request.phases { phaseEditor }
@@ -50,18 +49,20 @@ struct CustomerEditor: View {
                         }
                     }
                 }
-            }.formStyle(.grouped).scrollContentBackground(.hidden)
-            if let message = validation ?? model.error {
-                Text(message).font(.system(size: 13)).foregroundStyle(Theme.destructive).textSelection(.enabled).padding(.horizontal, 24).padding(.bottom, 12)
-            }
+                // The form's own error only: a background workspace error belongs to the window.
+                if let validation {
+                    Section { Label(validation, systemImage: "exclamationmark.triangle").foregroundStyle(Theme.destructive).textSelection(.enabled).accessibilityIdentifier("editor-error") }
+                }
+            }.formStyle(.grouped)
+            Divider()
             HStack(spacing: 8) {
                 Spacer()
                 if submitting { ProgressView().controlSize(.small) }
-                Button("Cancel") { dismiss() }.buttonStyle(.tsq(.outline, size: .default)).keyboardShortcut(.cancelAction).disabled(submitting)
-                Button(request.submitLabel) { Task { await submit() } }.buttonStyle(.tsqPrimary)
-                    .keyboardShortcut(.defaultAction).disabled(submitting || model.busy)
-            }.padding(20).edgeBorder(.top)
-        }.frame(width: 620, height: request.phases ? 750 : 630).background(Theme.background)
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(submitting)
+                Button(request.submitLabel) { Task { await submit() } }.buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction).disabled(submitting || model.busy).accessibilityIdentifier("editor-submit")
+            }.padding(16)
+        }.frame(minWidth: 520, idealWidth: 620, minHeight: 360, idealHeight: request.phases ? 720 : 600)
         .interactiveDismissDisabled(submitting)
         .onChange(of: values) { _, value in if let key = request.draftKey { model.drafts.save(value, key: key) } }
         .task {
@@ -74,11 +75,7 @@ struct CustomerEditor: View {
         switch field.kind {
         case .text: TextField(field.label, text: string(field.id))
         case .multiline:
-            VStack(alignment: .leading) {
-                Text(field.label).font(.system(size: 13, weight: .medium))
-                TextEditor(text: string(field.id)).font(.system(size: 13)).scrollContentBackground(.hidden).frame(minHeight: 120).padding(6)
-                    .overlay(RoundedRectangle(cornerRadius: Theme.controlRadius).strokeBorder(Theme.input))
-            }
+            TextField(field.label, text: string(field.id), axis: .vertical).lineLimit(5...14)
         case .bool: Toggle(field.label, isOn: boolean(field.id))
         case .integer, .optionalInteger: TextField(field.label, text: numeric(field.id))
         case .tags:
@@ -143,6 +140,7 @@ struct CustomerEditor: View {
         catch { validation = error.localizedDescription; return }
         submitting = true; defer { submitting = false }
         if await request.submit(body, files) { if let key = request.draftKey { model.drafts.remove(key) }; dismiss() }
+        else { validation = model.error ?? "The request could not be completed."; model.error = nil }
     }
 }
 
@@ -153,11 +151,15 @@ struct CustomerEditor: View {
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.png, .jpeg, .gif, .webP]
         panel.allowsMultipleSelection = true; panel.canChooseDirectories = false
         guard panel.runModal() == .OK else { return [] }
-        return try panel.urls.map { url in
-            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-            guard size <= 10 * 1024 * 1024 else { throw ConfigurationError("\(url.lastPathComponent) exceeds 10 MiB.") }
-            return try CustomerUpload(name: url.lastPathComponent, mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream", data: Data(contentsOf: url))
-        }
+        return try panel.urls.map(upload)
+    }
+    /// Reads one image file for upload; also used for files dropped on the reply field.
+    static func upload(_ url: URL) throws -> CustomerUpload {
+        let type = UTType(filenameExtension: url.pathExtension)
+        guard let type, [.png, .jpeg, .gif, .webP].contains(where: type.conforms(to:)) else { throw ConfigurationError("\(url.lastPathComponent) is not a PNG, JPEG, GIF or WebP image.") }
+        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard size <= 10 * 1024 * 1024 else { throw ConfigurationError("\(url.lastPathComponent) exceeds 10 MiB.") }
+        return try CustomerUpload(name: url.lastPathComponent, mimeType: type.preferredMIMEType ?? "application/octet-stream", data: Data(contentsOf: url))
     }
     static func save(_ data: Data, name: String) throws {
         let panel = NSSavePanel(); panel.nameFieldStringValue = URL(fileURLWithPath: name).lastPathComponent

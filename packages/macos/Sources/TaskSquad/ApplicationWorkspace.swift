@@ -9,102 +9,112 @@ enum WindowID {
     static let thisMac = "this-mac"
 }
 
-/// The project workspace, laid out like the web dashboard. Everything here is
-/// scoped to the selected project; machine-wide daemon views live in the
-/// separate "This Mac" window.
+/// The project workspace: a sidebar of sections, the section's records, and
+/// the selected record. Everything here is scoped to the selected project;
+/// machine-wide daemon views live in the separate "This Mac" window.
 struct MainWindow: View {
     @ObservedObject var control: ControlPanelModel
     @ObservedObject var customer: CustomerWorkspaceModel
-    @State private var projectEditor: CustomerEditorRequest?
+    @StateObject private var ui: WorkspaceUI
     @Environment(\.openWindow) private var openWindow
     private let initialSection: CustomerSection?
-    static let sections: [CustomerSection] = [.inbox, .portals, .notes, .conveyors, .planners, .supervisor, .skills, .memory, .analytics, .agents, .members, .settings]
+    static let sections = CustomerSection.destinations
     private static let selectionKey = "section"
 
     init(control: ControlPanelModel, customer: CustomerWorkspaceModel, initialSection: CustomerSection? = nil) {
         self.control = control; self.customer = customer
+        _ui = StateObject(wrappedValue: WorkspaceUI(model: customer))
         self.initialSection = initialSection ?? UserDefaults.standard.string(forKey: Self.selectionKey).flatMap(CustomerSection.init(rawValue:))
     }
+    /// Sections shown without a record list.
+    private var fullWidth: Bool { customer.teamID.isEmpty || [.analytics, .settings].contains(customer.section) }
 
     var body: some View {
-        NavigationSplitView {
-            sidebar.navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
-        } detail: {
-            CustomerWorkspace(model: customer)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Theme.background)
-        }
-        .navigationTitle(customer.section.title)
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                DaemonControl(control: control)
-                Button { openWindow(id: WindowID.thisMac) } label: { Label("This Mac", icon: .laptop).labelStyle(TSQLabelStyle(spacing: 6)) }
-                    .help("Local agents, tmux sessions, logs, and daemon configuration on this Mac (⇧⌘M)")
+        Group {
+            if customer.profile == nil { CustomerSignIn(model: customer).navigationTitle("TaskSquad") }
+            else if fullWidth {
+                NavigationSplitView { sidebar } detail: { CustomerProjectPage(model: customer, ui: ui) }
+            } else {
+                NavigationSplitView { sidebar } content: {
+                    CustomerRecordList(model: customer, ui: ui).navigationSplitViewColumnWidth(min: 260, ideal: 340, max: 520)
+                } detail: { CustomerDetail(model: customer, ui: ui) }
             }
         }
-        .tint(Theme.primary)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let error = customer.error { ErrorBanner(message: error) { customer.error = nil } }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .status) {
+                DaemonControl(control: control)
+                Button { openWindow(id: WindowID.thisMac) } label: { Label("This Mac", systemImage: "laptopcomputer") }
+                    .help("Local agents, tmux sessions, logs and daemon configuration on this Mac (⇧⌘M)")
+            }
+        }
+        .modifier(CustomerPresentations(model: customer, ui: ui))
+        .focusedSceneObject(ui)
         .onAppear {
             if let initialSection, customer.section != initialSection { customer.section = initialSection }
             customer.active = true
         }
         .onDisappear { customer.active = false }
         .onChange(of: customer.section) { _, value in UserDefaults.standard.set(value.rawValue, forKey: Self.selectionKey) }
-        .sheet(item: $projectEditor) { CustomerEditor(model: customer, request: $0) }
+        .task(id: "\(customer.active):\(customer.selectionKey)") {
+            guard customer.active else { return }
+            await customer.restore()
+            await customer.poll()
+        }
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                BrandLogo(size: 20)
-                Text("TaskSquad").font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.foreground)
-            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 14)
-            ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(Self.sections) { section in
-                        SidebarItem(icon: section.icon, title: section.title,
-                                    selected: customer.section == section || (section == .skills && customer.section.isLibrary)) {
-                            customer.section = section
-                        }
+        List(selection: Binding<CustomerSection?>(get: { customer.section.destination }, set: { if let value = $0 { ui.select(value) } })) {
+            ForEach(CustomerSection.groups) { group in
+                Section(group.title) {
+                    ForEach(group.sections) { section in
+                        Label { Text(section.title) } icon: { Icon(section.icon) }
+                            .tag(section).accessibilityIdentifier("nav-" + section.rawValue)
                     }
-                }.padding(.horizontal, 8)
+                }
             }
-            footer
         }
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(Theme.sidebar)
+        .safeAreaInset(edge: .top, spacing: 0) { projectMenu.padding(.horizontal, 10).padding(.bottom, 6) }
+        .safeAreaInset(edge: .bottom, spacing: 0) { accountMenu.padding(10) }
+        .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 320)
     }
 
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if customer.profile != nil {
-                VStack(alignment: .leading, spacing: 4) {
-                    // Native popup button: the web's `SelectTrigger` equivalent.
-                    Picker("Project", selection: $customer.teamID) {
-                        if customer.teams.isEmpty { Text("No projects").tag("") }
-                        ForEach(customer.teams) { Text($0.title).tag($0.id) }
-                    }
-                    .pickerStyle(.menu).labelsHidden().frame(maxWidth: .infinity)
-                    Button { projectEditor = .newProject(model: customer) } label: { Label("New project", icon: .plus) }
-                        .buttonStyle(TSQButtonStyle(variant: .ghost, size: .sm, fullWidth: true))
-                        .foregroundStyle(Theme.mutedForeground)
-                }.padding(8).edgeBorder(.top)
-                Group {
-                    if customer.isPro { Badge("Pro", variant: .default) }
-                    else {
-                        Button { customer.open("/pricing") } label: { Badge("Free plan") }.buttonStyle(.plain)
-                    }
-                }.padding(.horizontal, 16).padding(.bottom, 4)
-            }
-            VStack(spacing: 2) {
-                SidebarItem(icon: .bookMarked, title: "Docs", muted: true) { customer.open("/docs") }
-                if customer.profile != nil {
-                    SidebarItem(icon: .logOut, title: "Sign out", muted: true) { Task { await customer.signOut() } }
-                } else {
-                    SidebarItem(icon: .user, title: customer.signingIn ? "Signing in…" : "Sign in", muted: true) { customer.signIn() }
-                        .disabled(customer.signingIn)
-                }
-            }.padding(8)
+    /// The current project; switching and creating projects.
+    private var projectMenu: some View {
+        Menu {
+            Picker("Project", selection: $customer.teamID) {
+                ForEach(customer.teams) { Text($0.title).tag($0.id) }
+            }.pickerStyle(.inline).labelsHidden()
+            Divider()
+            Button("New Project…") { ui.newProject() }
+        } label: {
+            Label { Text(customer.currentTeam?.title ?? "No Project").lineLimit(1) } icon: { Image(systemName: "folder") }
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .help("Switch project").accessibilityLabel("Project: " + (customer.currentTeam?.title ?? "none")).accessibilityIdentifier("switch-project")
+    }
+
+    private var accountMenu: some View {
+        Menu {
+            Button("Plans and Billing") { customer.open("/pricing") }
+            Button("Documentation") { customer.open("/docs") }
+            SettingsLink { Text("Settings…") }
+            Divider()
+            Button("Sign Out…") { ui.confirmSignOut() }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "person.crop.circle").imageScale(.large)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(customer.profile?.text("email") ?? "").lineLimit(1).truncationMode(.middle)
+                    Text(customer.isPro ? "Pro plan" : "Free plan").font(Theme.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }.contentShape(Rectangle())
+        }
+        .menuStyle(.button).buttonStyle(.plain)
+        .help("Account").accessibilityIdentifier("nav-account")
     }
 }
 
@@ -123,35 +133,31 @@ struct ThisMacWindow: View {
 
     var body: some View {
         NavigationSplitView {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 10) {
-                    Icon(.laptop, size: 18).foregroundStyle(Theme.foreground)
-                        .frame(width: 32, height: 32).background(Theme.muted, in: RoundedRectangle(cornerRadius: Theme.controlRadius))
+            List(selection: Binding<PanelSection?>(get: { section }, set: { if let value = $0 { section = value } })) {
+                Section {
+                    ForEach(PanelSection.allCases) { item in
+                        Label { Text(item.rawValue) } icon: { Icon(item.icon) }.tag(item)
+                    }
+                } header: {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(Host.current().localizedName ?? "This Mac").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.foreground).lineLimit(1)
+                        Text(Host.current().localizedName ?? "This Mac").font(Theme.headline).foregroundStyle(.primary).lineLimit(1)
                         HStack(spacing: 5) {
                             StatusDot(active: control.engineRunning, size: 6)
                             Text(control.engineRunning ? "Daemon running" : control.observationDate != nil ? "Existing daemon" : "Daemon stopped")
-                        }.font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
-                    }
-                }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 14)
-                VStack(spacing: 2) {
-                    ForEach(PanelSection.allCases) { item in
-                        SidebarItem(icon: item.icon, title: item.rawValue, selected: section == item) { section = item }
-                    }
-                }.padding(.horizontal, 8)
-                Spacer()
-                Text("Shared by every project on this Mac.").font(.system(size: 11)).foregroundStyle(Theme.mutedForeground).padding(16)
+                        }.font(Theme.caption)
+                    }.textCase(nil).padding(.bottom, 6)
+                }
             }
-            .frame(maxHeight: .infinity, alignment: .top)
-            .background(Theme.sidebar)
-            .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Text("Shared by every project on this Mac.").font(Theme.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            }
+            .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
         } detail: {
             LocalSectionView(model: control, section: section)
         }
         .navigationTitle(section.rawValue)
-        .toolbar { ToolbarItem(placement: .primaryAction) { DaemonControl(control: control) } }
-        .tint(Theme.primary)
+        .toolbar { ToolbarItem(placement: .status) { DaemonControl(control: control) } }
         .onChange(of: section) { _, value in UserDefaults.standard.set(value.rawValue, forKey: Self.selectionKey) }
         .onReceive(NotificationCenter.default.publisher(for: .showLocalSection)) { note in
             if let value = note.object as? PanelSection { section = value }
@@ -172,11 +178,12 @@ struct DaemonControl: View {
         } label: {
             HStack(spacing: 6) {
                 StatusDot(active: control.engineRunning, size: 7)
-                Text(control.engineRunning ? "Daemon running" : "Daemon stopped").font(.system(size: 12, weight: .medium))
-                Icon(control.engineRunning ? .square : .play, size: 11).foregroundStyle(Theme.mutedForeground)
-            }.padding(.horizontal, 4)
+                Text(control.engineRunning ? "Daemon Running" : "Daemon Stopped")
+                Image(systemName: control.engineRunning ? "stop.fill" : "play.fill").imageScale(.small).foregroundStyle(.secondary)
+            }
         }
         .disabled(control.engineBusy || (!control.engineRunning && control.configuration == nil))
+        .accessibilityLabel(control.engineRunning ? "Stop the local daemon" : "Start the local daemon")
         .help(control.engineRunning ? "Stop the local daemon" : "Start the local daemon. It runs for every project on this Mac.")
         .alert("Daemon could not start", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK") { failure = nil }
@@ -184,15 +191,97 @@ struct DaemonControl: View {
     }
 }
 
+/// Settings (⌘,): everything that is a preference rather than project data.
 struct SettingsView: View {
+    @ObservedObject var control: ControlPanelModel
+    @ObservedObject var customer: CustomerWorkspaceModel
+    @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system
+    @State private var confirmSignOut = false
+    @State private var confirmDaemonSignOut = false
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Appearance").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.foreground)
-                AppearancePicker()
-                Text("System follows your Mac's Light or Dark setting.").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
+        TabView {
+            Tab("General", systemImage: "gearshape") { general }
+            Tab("Notifications", systemImage: "bell") { notifications }
+            Tab("Accounts", systemImage: "person.crop.circle") { accounts }
+            Tab("Connection", systemImage: "network") { connection }
+        }
+        .frame(width: 520).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var general: some View {
+        Form {
+            Section("Appearance") {
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
+                }.pickerStyle(.segmented)
             }
-        }.padding(24).frame(width: 420, alignment: .leading)
+            Section {
+                Toggle("Open at Login", isOn: Binding(get: { control.runOnLogin }, set: { _ in control.toggleRunOnLogin() }))
+                Toggle("Pause Pulling New Tasks", isOn: Binding(get: { control.pullingPaused }, set: { _ in Task { await control.togglePulling() } }))
+                    .disabled(!control.engineRunning)
+                LabeledContent("Configuration") {
+                    Button("Show in Finder") { control.revealConfiguration() }
+                }
+            } header: { Text("Local Daemon") } footer: {
+                Text("Pausing keeps running tasks going and stops the daemon from picking up new ones.")
+            }
+        }
+        .formStyle(.grouped)
+        .onChange(of: appearance) { _, value in value.apply() }
+    }
+
+    private var notifications: some View {
+        Form {
+            Section {
+                Toggle("Task Notifications", isOn: Binding(get: { customer.notifications }, set: { value in Task { await customer.setNotifications(value) } }))
+            } footer: {
+                Text("Notifies you when a task starts, needs your input, finishes or fails while TaskSquad is open.")
+            }
+        }.formStyle(.grouped)
+    }
+
+    private var accounts: some View {
+        Form {
+            Section {
+                if let profile = customer.profile {
+                    LabeledContent("Signed in as", value: profile.text("email"))
+                    LabeledContent("Plan", value: customer.isPro ? "Pro" : "Free")
+                    Button("Plans and Billing") { customer.open("/pricing") }
+                    Button("Sign Out…", role: .destructive) { confirmSignOut = true }
+                } else {
+                    Button(customer.signingIn ? "Signing In…" : "Sign In…") { customer.signIn() }.disabled(customer.signingIn)
+                }
+            } header: { Text("Workspace") } footer: {
+                Text("Your projects, tasks and notes. Independent of the local daemon's account.")
+            }
+            Section {
+                if let email = control.loginEmail {
+                    LabeledContent("Signed in as", value: email)
+                    Button("Sign Out…", role: .destructive) { confirmDaemonSignOut = true }
+                } else {
+                    Button("Sign In…") { control.signIn() }
+                }
+            } header: { Text("Local Daemon") } footer: {
+                Text("The account local agents on this Mac run tasks for.")
+            }
+        }
+        .formStyle(.grouped)
+        .confirmationDialog("Sign out of TaskSquad?", isPresented: $confirmSignOut) {
+            Button("Sign Out", role: .destructive) { Task { await customer.signOut() } }
+        } message: { Text("Local agents keep running. Sign in again to see your projects.") }
+        .confirmationDialog("Sign the daemon out?", isPresented: $confirmDaemonSignOut) {
+            Button("Sign Out", role: .destructive) { Task { await control.logout() } }
+        } message: { Text("Local agents on this Mac stop receiving tasks until you sign in again.") }
+    }
+
+    private var connection: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            CustomerConnectionForm(model: customer)
+            if customer.profile == nil {
+                Button("Save") { Task { await customer.saveConnection() } }.padding([.horizontal, .bottom], 20)
+            }
+        }
     }
 }
 

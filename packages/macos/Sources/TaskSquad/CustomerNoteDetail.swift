@@ -4,80 +4,47 @@ import TaskSquadPortal
 
 struct CustomerNoteDetail: View {
     @ObservedObject var model: CustomerWorkspaceModel
+    @ObservedObject var ui: WorkspaceUI
     let record: CustomerRecord
-    let edit: () -> Void
-    @Binding var editor: CustomerEditorRequest?
-    @Binding var confirmation: CustomerConfirmation?
     @State private var comment = ""
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text(record.title).font(.system(size: 24, weight: .bold)).foregroundStyle(Theme.foreground).textSelection(.enabled)
-                HStack(spacing: 8) {
-                    Button(action: edit) { Label("Edit", icon: .pencil) }.buttonStyle(.tsqOutline)
-                    Button(record.number("archived_at") > 0 ? "Unarchive" : "Archive") {
-                        let operation = WorkspaceOperation.archiveNote(project: model.teamID, note: record.id, restore: record.number("archived_at") > 0)
-                        Task { await model.run(operation) }
-                    }.buttonStyle(.tsqOutline)
-                    Menu {
-                        Button("Convert to Task…") { sendToAgent(critique: false) }
-                        Button("Request Critique…") { sendToAgent(critique: true) }
-                    } label: { Text("Send to Agent") }.menuStyle(.button).controlSize(.small).fixedSize()
-                    Spacer()
-                    Button {
-                        let operation = WorkspaceOperation.delete(.notes, project: model.teamID, id: record.id)
-                        confirmation = CustomerConfirmation(title: "Delete \(record.title)?", message: "This note and its comments will be permanently removed.", action: "Delete") {
-                            if await model.perform(operation) != nil { model.selectedID = nil; await model.refresh() }
-                        }
-                    } label: { Icon(.trash, size: 14) }.buttonStyle(.tsqIcon).foregroundStyle(Theme.destructive).help("Delete note")
-                }.disabled(model.busy)
+                Text(record.title).font(Theme.title).textSelection(.enabled)
                 if !record.strings("tags").isEmpty {
                     HStack(spacing: 6) { ForEach(record.strings("tags"), id: \.self) { Badge("#" + $0) } }
                 }
                 CustomerMarkdown(text: record.text("content"))
-                Rectangle().fill(Theme.border).frame(height: 1)
+                Divider()
                 if !model.related.isEmpty {
-                    Text("Linked tasks").font(.system(size: 15, weight: .semibold))
+                    Text("Linked tasks").font(Theme.headline)
                     ForEach(model.related) { task in
                         HStack { Button(task.title) { model.openTask(task.id) }.buttonStyle(.link); CustomerStatus(status: task.status) }
                     }
-                    Rectangle().fill(Theme.border).frame(height: 1)
+                    Divider()
                 }
-                Text("Comments").font(.system(size: 15, weight: .semibold))
+                Text("Comments").font(Theme.headline)
                 ForEach(model.comments) { entry in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text(entry.text("agent_name", fallback: entry.text("author_id") == model.profile?.id ? "You" : "Team member")).font(.system(size: 13, weight: .semibold))
-                            Spacer(); Text(entry.date.formatted()).font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
+                            Text(entry.text("agent_name", fallback: entry.text("author_id") == model.profile?.id ? "You" : "Team member")).font(Theme.body.weight(.semibold))
+                            Spacer(); Text(entry.date.formatted(date: .abbreviated, time: .shortened)).font(Theme.caption).foregroundStyle(.secondary)
                             if entry.text("author_id") == model.profile?.id || model.isMaintainer {
                                 Button {
                                     let operation = WorkspaceOperation.deleteComment(project: model.teamID, note: record.id, comment: entry.id)
-                                    confirmation = CustomerConfirmation(title: "Delete comment?", message: "This cannot be undone.", action: "Delete") { await model.run(operation) }
-                                } label: { Icon(.trash, size: 13) }.buttonStyle(.plain).foregroundStyle(Theme.mutedForeground).help("Delete comment")
+                                    ui.confirmation = CustomerConfirmation(title: "Delete comment?", message: "This cannot be undone.", action: "Delete") { await model.run(operation) }
+                                } label: { Image(systemName: "trash") }.buttonStyle(.borderless).help("Delete comment").accessibilityLabel("Delete comment")
                             }
                         }
                         CustomerMarkdown(text: entry.text("content"))
-                    }.padding(14).background(Theme.muted.opacity(0.4), in: RoundedRectangle(cornerRadius: Theme.radius))
+                    }.padding(12).background(Theme.muted, in: RoundedRectangle(cornerRadius: Theme.radius))
                 }
-                TextEditor(text: $comment).font(.system(size: 13)).scrollContentBackground(.hidden).frame(minHeight: 90).padding(8)
-                    .overlay(alignment: .topLeading) {
-                        if comment.isEmpty { Text("Add a comment…").font(.system(size: 13)).foregroundStyle(Theme.mutedForeground).padding(13).allowsHitTesting(false) }
-                    }
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.border))
+                TextField("Add a comment…", text: $comment, axis: .vertical).lineLimit(3...10).textFieldStyle(.roundedBorder)
                 Button("Add Comment") {
                     let operation = WorkspaceOperation.comment(project: model.teamID, note: record.id, content: comment)
                     Task { if await model.perform(operation) != nil { comment = ""; await model.refresh() } }
-                }.buttonStyle(.tsqPrimary).disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
-            }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-    private func sendToAgent(critique: Bool) {
-        let project = model.teamID, note = record.id
-        var fields: [CustomerField] = [.init("agent_id", "Agent", .agent, required: true), .init(critique ? "context" : "instructions", critique ? "Context" : "Instructions", .multiline), .init("include_comments", "Include comments", .bool, initial: .bool(true))]
-        if !critique { fields.append(.init("auto_close", "Auto-close task", .bool, initial: .bool(false))) }
-        editor = CustomerEditorRequest(title: critique ? "Request Critique" : "Convert Note to Task", fields: fields, submitLabel: "Send") { body, _ in
-            guard let result = await model.perform(.noteTask(critique ? .critique : .convert, project: project, note: note, values: body)) else { return false }
-            if let id = result["task_id"]?.string { model.openTask(id) }; return true
+                }.buttonStyle(.borderedProminent).disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
+            }.padding(24).frame(maxWidth: 760, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

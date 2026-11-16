@@ -5,6 +5,7 @@ import TaskSquadCLI
 import TaskSquadCore
 import TaskSquadDesign
 import TaskSquadMacPlatform
+import TaskSquadPortal
 
 Platform.install(MacPlatform())
 if let locale = setlocale(LC_CTYPE, ""), ["C", "POSIX"].contains(String(cString: locale)) {
@@ -71,7 +72,7 @@ struct TaskSquadApplication: App {
         .defaultSize(width: 1200, height: 760)
         .windowToolbarStyle(.unifiedCompact)
         .commands {
-            CommandGroup(replacing: .newItem) { }
+            WorkspaceCommands()
             CommandGroup(after: .appInfo) {
                 Button("Show Configuration in Finder") { model.revealConfiguration() }
             }
@@ -84,7 +85,7 @@ struct TaskSquadApplication: App {
         }
         .defaultSize(width: 1120, height: 720)
         .windowToolbarStyle(.unifiedCompact)
-        Settings { SettingsView() }
+        Settings { SettingsView(control: model, customer: customer) }
         MenuBarExtra {
             MenuBarContent(model: model)
         } label: { Image(nsImage: BrandImage.tray) }
@@ -113,14 +114,8 @@ private struct MenuBarContent: View {
     @ObservedObject var model: ControlPanelModel
     @Environment(\.openWindow) var openWindow
     var body: some View {
-        Text(model.loginEmail.map { "👤 " + $0 } ?? "👤 Not logged in")
+        Text(model.loginEmail ?? "Not signed in")
         Text(model.engineRunning ? model.statsLabel : (model.configuration == nil ? "Configuration unavailable" : "Daemon stopped"))
-        Divider()
-        Button(model.pullingPaused ? "▶ Resume Pulling" : "⏸ Pause Pulling") { Task { await model.togglePulling() } }
-            .disabled(!model.engineRunning)
-        Toggle("Run on OS Boot", isOn: Binding(get: { model.runOnLogin }, set: { _ in model.toggleRunOnLogin() }))
-        Button("Open Config") { NSWorkspace.shared.open(model.configurationURL) }
-        if model.loginEmail != nil { Button("Logout") { Task { await model.logout() } } }
         Divider()
         Button("Open TaskSquad") {
             openWindow(id: WindowID.main)
@@ -130,16 +125,77 @@ private struct MenuBarContent: View {
             openWindow(id: WindowID.thisMac)
             NSApp.activate(ignoringOtherApps: true)
         }
+        Divider()
         Button(model.engineRunning ? "Stop Daemon" : "Start Daemon") {
             Task { if model.engineRunning { await model.stopEngine() } else { await model.startEngine() } }
         }.disabled(model.engineBusy || (!model.engineRunning && model.configuration == nil))
-        Picker("Appearance", selection: Binding(get: { AppAppearance.current }, set: {
-            UserDefaults.standard.set($0.rawValue, forKey: AppAppearance.storageKey); $0.apply()
-        })) {
-            ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
-        }
+        Button(model.pullingPaused ? "Resume Pulling New Tasks" : "Pause Pulling New Tasks") { Task { await model.togglePulling() } }
+            .disabled(!model.engineRunning)
+        Toggle("Open at Login", isOn: Binding(get: { model.runOnLogin }, set: { _ in model.toggleRunOnLogin() }))
+        Button("Open Configuration File") { NSWorkspace.shared.open(model.configurationURL) }
         Divider()
+        SettingsLink { Text("Settings…") }
         Button("Quit TaskSquad") { NSApp.terminate(nil) }.keyboardShortcut("q")
+    }
+}
+
+/// Menu-bar commands for the project window. They act on whichever window is
+/// in front, and are disabled when that is not the project window.
+struct WorkspaceCommands: Commands {
+    @FocusedObject private var ui: WorkspaceUI?
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button(ui?.createTitle ?? "New Task") { ui?.create() }.keyboardShortcut("n").disabled(ui?.canCreate != true)
+            Button("New Project…") { ui?.newProject() }.keyboardShortcut("n", modifiers: [.command, .shift]).disabled(ui?.signedIn != true)
+        }
+        CommandGroup(after: .textEditing) {
+            Button("Find") { ui?.searching = true }.keyboardShortcut("f").disabled(ui?.signedIn != true)
+        }
+        CommandGroup(after: .toolbar) {
+            Button("Refresh") { ui?.refresh() }.keyboardShortcut("r").disabled(ui?.signedIn != true)
+            Divider()
+            ForEach(CustomerSection.destinations) { section in
+                if let digit = section.shortcutDigit {
+                    Button(section.title) { ui?.select(section) }
+                        .keyboardShortcut(KeyEquivalent(Character(String(digit))), modifiers: .command).disabled(ui?.signedIn != true)
+                } else {
+                    Button(section.title) { ui?.select(section) }.disabled(ui?.signedIn != true)
+                }
+            }
+            Divider()
+        }
+        CommandMenu("Item") {
+            Button("Reply") { ui?.focusReply() }.keyboardShortcut("r", modifiers: [.command, .shift]).disabled(ui?.canReply != true)
+            if let ui, let record = ui.selected {
+                RecordCommandItems(ui: ui, record: record)
+                Divider()
+                Button("Open in Web") { ui.model.openInBrowser() }.keyboardShortcut("o", modifiers: [.command, .option])
+            } else {
+                Button("No Item Selected") { }.disabled(true)
+            }
+        }
+    }
+}
+
+/// The selected record's actions as menu-bar items; Delete gets ⌘⌫.
+private struct RecordCommandItems: View {
+    @ObservedObject var ui: WorkspaceUI
+    let record: CustomerRecord
+    var body: some View {
+        let actions = ui.actions(for: record)
+        ForEach(Array([RecordAction.Placement.primary, .secondary, .feedback, .destructive].enumerated()), id: \.offset) { _, placement in
+            let group = actions.filter { $0.placement == placement }
+            if !group.isEmpty {
+                Divider()
+                ForEach(group) { action in
+                    if action.kind == .delete {
+                        Button(action.title) { ui.perform(action, on: record) }.keyboardShortcut(.delete, modifiers: .command).disabled(ui.model.busy)
+                    } else {
+                        Button((action.isOn ? "✓ " : "") + action.title) { ui.perform(action, on: record) }.disabled(ui.model.busy)
+                    }
+                }
+            }
+        }
     }
 }
 

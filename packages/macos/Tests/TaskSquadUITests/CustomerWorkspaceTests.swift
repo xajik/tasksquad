@@ -48,6 +48,12 @@ private actor WorkspaceTransport: HTTPTransport {
         return CustomerWorkspaceModel(defaults: defaults, api: api)
     }
 
+    /// The project window around `model`, with a daemon model that touches no real state.
+    private func window(_ model: CustomerWorkspaceModel, section: CustomerSection? = nil) -> MainWindow {
+        let control = ControlPanelModel(paths: TaskSquadPaths(home: FileManager.default.temporaryDirectory.appendingPathComponent("tsq-preview-fixture")), loadSavedAccount: false)
+        return MainWindow(control: control, customer: model, initialSection: section ?? model.section)
+    }
+
     func testCustomerCanLoadEverySectionWithoutDaemonConfiguration() async throws {
         let transport = WorkspaceTransport(), model = fixture(transport)
         await model.restore()
@@ -145,7 +151,7 @@ private actor WorkspaceTransport: HTTPTransport {
             XCTAssertEqual(model.detail?.id, "item-1", "iteration \(iteration): Portal detail opens")
             let openMilliseconds = Date().timeIntervalSince(openStart) * 1_000
             if iteration == 1 {
-                try render(CustomerWorkspace(model: model), name: "portal-native-detail", appearance: .aqua)
+                try render(window(model), name: "portal-native-detail", appearance: .aqua)
             }
             var trace: [String] = []
             for _ in 0..<5 {
@@ -199,10 +205,10 @@ private actor WorkspaceTransport: HTTPTransport {
         for section in [CustomerSection.inbox, .notes, .planners, .skills, .memory, .settings] {
             model.section = section; model.selectedID = section == .settings ? nil : "item-1"
             await model.refresh()
-            try render(CustomerWorkspace(model: model), name: "customer-" + section.resource, appearance: .aqua)
+            try render(window(model), name: "customer-" + section.resource, appearance: .aqua)
         }
         model.section = .inbox; model.selectedID = "item-1"; await model.refresh()
-        try render(CustomerWorkspace(model: model), name: "customer-inbox-dark", appearance: .darkAqua)
+        try render(window(model), name: "customer-inbox-dark", appearance: .darkAqua)
         let request = CustomerEditorRequest(title: "New Task", fields: CustomerField.fields(for: .inbox), attachments: true) { _, _ in false }
         try render(CustomerEditor(model: model, request: request), name: "customer-compose", appearance: .aqua)
     }
@@ -228,6 +234,8 @@ private actor WorkspaceTransport: HTTPTransport {
         let shown = Set(MainWindow.sections), library: Set<CustomerSection> = [.subAgents, .commands]
         XCTAssertEqual(shown.union(library), Set(CustomerSection.allCases))
         XCTAssertEqual(MainWindow.sections.first, .inbox)
+        // The first nine destinations are reachable with ⌘1…⌘9.
+        XCTAssertEqual(MainWindow.sections.prefix(9).compactMap(\.shortcutDigit), Array(1...9))
     }
 
     func testMainWindowRendersSignedInAndSignedOut() async throws {
@@ -251,7 +259,7 @@ private actor WorkspaceTransport: HTTPTransport {
         model.section = .inbox; model.selectedID = "item-1"; await model.refresh()
         try render(MainWindow(control: control, customer: model, initialSection: .inbox), name: "window-inbox-light", appearance: .aqua)
         try render(MainWindow(control: control, customer: model, initialSection: .inbox), name: "window-inbox-dark", appearance: .darkAqua)
-        try render(SettingsView(), name: "settings-appearance", appearance: .aqua)
+        try render(SettingsView(control: control, customer: model), name: "settings-general", appearance: .aqua, size: NSSize(width: 520, height: 420))
         model.section = .analytics; await model.refresh()
         XCTAssertNil(model.error)
         let stats = CustomerRecord(try await model.api().request(["teams", model.teamID, "stats"]))
@@ -260,17 +268,43 @@ private actor WorkspaceTransport: HTTPTransport {
         try render(CustomerAnalytics(model: model, initialStats: stats), name: "analytics-dark", appearance: .darkAqua, settle: 0.3)
     }
 
-    private func render<V: View>(_ value: V, name: String, appearance: NSAppearance.Name, settle: TimeInterval = 0.08) throws {
-        let view = NSHostingView(rootView: value.background(Color(nsColor: .windowBackgroundColor)))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820), styleMask: [.borderless], backing: .buffered, defer: false)
+    /// Renders in a titled window so the toolbar, title bar and sidebar material
+    /// are part of the image, as they are in the running app.
+    /// Offscreen images drop the sidebar's vibrant text, so the system lists are
+    /// checked through their tables: sidebar (every destination plus group
+    /// headers) and the record list.
+    func testProjectWindowUsesSystemListsForSidebarAndRecords() async throws {
+        _ = NSApplication.shared
+        let model = fixture(); await model.restore()
+        model.section = .inbox; model.selectedID = "item-1"; await model.refresh()
+        let rows = try tableRowCounts(window(model))
+        XCTAssertEqual(rows.count, 2, "sidebar and record list are both system lists: \(rows)")
+        XCTAssertEqual(rows.last, MainWindow.sections.count + CustomerSection.groups.count, "sidebar shows every destination under its group")
+        XCTAssertEqual(rows.first, 1, "record list shows the fixture task")
+    }
+
+    private func tableRowCounts<V: View>(_ value: V) throws -> [Int] {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        let view = NSHostingView(rootView: value)
         window.contentView = view; defer { window.contentView = nil }
-        view.appearance = NSAppearance(named: appearance)
-        view.frame = NSRect(x: 0, y: 0, width: 1200, height: 820)
+        view.layoutSubtreeIfNeeded(); RunLoop.current.run(until: Date().addingTimeInterval(0.3)); view.layoutSubtreeIfNeeded()
+        func tables(_ view: NSView) -> [NSTableView] { (view as? NSTableView).map { [$0] } ?? view.subviews.flatMap(tables) }
+        return tables(try XCTUnwrap(window.contentView?.superview)).map(\.numberOfRows).sorted()
+    }
+
+    private func render<V: View>(_ value: V, name: String, appearance: NSAppearance.Name, settle: TimeInterval = 0.15, size: NSSize = NSSize(width: 1200, height: 820)) throws {
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: appearance)
+        window.toolbarStyle = .unified
+        let view = NSHostingView(rootView: value)
+        window.contentView = view; defer { window.contentView = nil }
+        window.setContentSize(size)
         view.layoutSubtreeIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(settle))
         view.layoutSubtreeIfNeeded()
-        let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-        view.cacheDisplay(in: view.bounds, to: bitmap)
+        let frame = try XCTUnwrap(view.superview ?? view)
+        let bitmap = try XCTUnwrap(frame.bitmapImageRepForCachingDisplay(in: frame.bounds))
+        frame.cacheDisplay(in: frame.bounds, to: bitmap)
         let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
         XCTAssertGreaterThan(png.count, 5000)
         if let directory = ProcessInfo.processInfo.environment["TSQ_UI_ARTIFACTS"] {
