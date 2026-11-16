@@ -105,7 +105,7 @@ struct CustomerWorkspace: View {
         }
     }
     private var header: some View {
-        PageHeader(title: model.section.isLibrary ? CustomerSection.skills.title : model.section.title, subtitle: model.currentTeam?.title) {
+        PageHeader(title: model.section.title, subtitle: model.currentTeam?.title) {
             if model.loading || model.busy { ProgressView().controlSize(.small) }
             if model.section.isLibrary {
                 Picker("Library", selection: $model.section) {

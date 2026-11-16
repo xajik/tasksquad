@@ -34,7 +34,7 @@ struct MainWindow: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Theme.background)
         }
-        .navigationTitle(customer.section.isLibrary ? CustomerSection.skills.title : customer.section.title)
+        .navigationTitle(customer.section.title)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 DaemonControl(control: control)
@@ -193,18 +193,6 @@ struct SettingsView: View {
                 Text("System follows your Mac's Light or Dark setting.").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
             }
         }.padding(24).frame(width: 420, alignment: .leading)
-    }
-}
-
-extension CustomerSection {
-    /// Sidebar labels as the web app shows them.
-    var title: String {
-        switch self {
-        case .conveyors: "Conveyor"
-        case .planners: "Planner"
-        case .skills: "Skills & Sub-agents"
-        default: rawValue
-        }
     }
 }
 
