@@ -235,9 +235,9 @@ Error callout recipe: `rounded-lg border border-red-500/30 bg-red-500/15 p-3 tex
 }
 ```
 
-**Apple** (`Theme.swift`, `dynamic(light:dark:)`): set `primary` to `0xFFFFFF` (from `0xE7E9ED`), add `card = 0x1C1F25`, `popover = 0x22252C`, `accent = 0x2A2E37`, `subtleForeground = 0x7A8291`, `ink = 0x0F1117`. All other dark values already match.
+**Apple:** surfaces, text and separators are system semantic colours, so the dark theme comes from the system (§13.1). Only brand, status and terminal colours are fixed values in `TSQTheme`.
 
-**Appearance setting:** every app offers **System / Light / Dark**, defaulting to System (see the macOS `AppearancePicker`, §9.10).
+**Appearance setting:** every app offers **System / Light / Dark**, defaulting to System. macOS: Settings → General. iOS: More → Account.
 
 ---
 
@@ -424,8 +424,8 @@ Dark mode uses lighter surfaces plus stronger, softer shadows instead. See §2.7
 | Sidebar nav | 8px horizontal inset; items are full-width `ghost` buttons, left-aligned, 16px icon + 8px gap, 4px between items |
 | Sidebar footer | `border-t`, 8px padding, 12px muted links |
 | Mobile top bar | 12px vertical / 16px horizontal padding, `border-b`, menu button + logo + wordmark |
-| iOS drawer | Compact width: 256pt slide-over (320pt at accessibility text sizes) on `scrim-drawer`, opened by the `panel-left` button or an edge swipe on the root screen. Nav rows keep the §9.9 recipe at a 44pt minimum height. Regular width (iPad): persistent split-view sidebar. |
-| iOS bar & actions | Root (drawer) screens: `panel-left` leading. Pushed screens (record detail, Projects, Account): system Back only, never both. Trailing: one control per screen, either `list-filter` view options on lists (fills with `accent` when a non-default option is active) or the `…` menu on records. See §9.11. |
+| iOS navigation | iPhone: tab bar with Inbox, Notes, Portals, Agents and More; More lists every other section plus Projects and Account. iPad: sidebar, record list and record side by side. See §13.1. |
+| iOS bar & actions | Leading: the project menu on lists. Trailing: filter and `+` on lists; Edit and the `…` menu on records. Rows also offer swipe actions and a context menu. |
 | Main | `p-4 sm:p-8`, safe-area aware |
 | Full-height | `h-screen overflow-hidden` shell; only the main column scrolls |
 
@@ -603,11 +603,17 @@ Full-width `ghost` button, left-aligned, 40px tall, 16px icon + 8px gap, 4px bot
 
 Track: `muted`, 8px radius, 3px padding, 4px gap. Segment: 28px tall, 10px horizontal padding, 5px radius, 14px icon + 12px medium label, 6px gap. **Selected:** `background` fill, `foreground` text, `0 1px 1px rgb(0 0 0 / .08)` shadow. **Unselected:** `muted-foreground`.
 
-### 9.11 Floating action button (mobile)
+### 9.11 Record actions (native)
 
-The screen's single primary action. Lists use it to create (`plus`, "New task", "New note"…); records use it to reply or comment (`message-square`) or edit (`pencil`). 56px circle, `primary` fill, 24px `primary-foreground` icon, `elevation-2`, 16px from the trailing and bottom safe edges (above the search bar and error banner). Hidden when the user can't perform the action. A live terminal is the one exception: its Close stays in the bar so nothing floats over output.
+The native apps do not use a floating action button. Creating a record is the `+` button in the toolbar (⌘N on macOS). What can be done to a record is defined once (`RecordAction` in `TaskSquadPortal`) and shown wherever the platform expects it:
 
-Secondary record actions live in the `…` menu with Lucide icons: neutral actions first, then feedback, then state changes, with `destructive` items last. Actions that can't apply to the current status (e.g. Cancel on a finished task) are left out, not disabled.
+| Surface | macOS | iOS / iPadOS |
+|---|---|---|
+| Most used | Toolbar buttons | Toolbar "Edit"; reply field on tasks |
+| Everything | Toolbar "More Actions" menu, the row's context menu, the **Item** menu | `…` menu, the row's context menu |
+| Quick | ⌘⌫ deletes, Delete key in the list | Swipe: leading for the primary action, trailing for close / cancel / delete |
+
+Order: primary, secondary, feedback, then state changes with destructive items last. Actions that cannot apply to the current status are left out, not disabled. Close, cancel, reset, leave and delete ask for confirmation in a confirmation dialog; only delete, cancel, reset and leave use the destructive role. A live terminal keeps its Close in the bar.
 
 ---
 
@@ -656,10 +662,9 @@ Secondary record actions live in the `…` menu with Lucide icons: neutral actio
 | `muted-foreground` | `text-muted-foreground` | `Theme.mutedForeground` |
 | `border` | `border-border` | `Theme.border` |
 | `input` | `border-input` | `Theme.input` |
-| `primary` | `bg-primary` | `Theme.primary` |
+| `primary` | `bg-primary` | `Theme.tint` (brand accent; native primary buttons use the system prominent style) |
 | `destructive` | `bg-destructive` | `Theme.destructive` |
 | `brand` | `#2563EB` | `Theme.brand` |
-| `sidebar` | n/a | `Theme.sidebar` |
 | `scrim-modal` / `scrim-drawer` | `bg-black/80` / `bg-black/50` | `Theme.scrimModal` / `Theme.scrimDrawer` |
 | success / warning / error | `green-600` / `amber-600` / `red-600` | `Theme.green` / `Theme.amber` / `Theme.red` |
 | live dot | `bg-green-500` | `Theme.live` |
@@ -668,7 +673,28 @@ Secondary record actions live in the `…` menu with Lucide icons: neutral actio
 | Sans | system stack | `.system` font |
 | Mono | `font-mono` | `.system(design: .monospaced)` |
 
-**Native type mapping** (points = px): caption 12, body 14 (macOS) / 15–17 (iOS, follow Dynamic Type `.subheadline`/`.body`), title-sm 18, headline 24. On iOS, scale the ramp with Dynamic Type and keep the weights from §3.3.
+**Native type mapping:** both platforms use system text styles through `TSQTheme` (`caption`, `callout`, `body`, `headline`, `title`, `largeTitle`, `mono`), so text follows the user's text-size setting. Do not use fixed point sizes.
+
+### 13.1 Native platforms
+
+The macOS and iOS apps are native first. They use the system's controls, layout and materials, and keep the brand in a small set of places.
+
+**System-provided (do not restyle):**
+
+- Navigation: `NavigationSplitView` with `List` sidebars on macOS and iPad, `TabView` on iPhone.
+- Lists: `List` with selection, so arrow keys, type-select, context menus, swipe actions and separators work.
+- Toolbars, menus, search (`.searchable`), pickers, toggles, forms (`Form`), sheets and confirmation dialogs.
+- Buttons: `.borderedProminent` for the one primary action, `.bordered` otherwise, `.borderless` for icon buttons. Toolbar items get Liquid Glass from the system; do not paint backgrounds behind them.
+- Surfaces and text: system semantic colours. Do not paint opaque backgrounds on sidebars or window roots; they hide the system material.
+- Empty states: `ContentUnavailableView`.
+
+**Branded:**
+
+- Accent colour (`TSQTheme.tint`, the brand blue) for the primary button, selection and links.
+- Status colours and badges (§2.3, §9.6), the logo, and Lucide icons for sections and content. System menus, toolbars and swipe actions use SF Symbols.
+- Markdown and terminal content (§3.5, §9.8).
+
+**Every action is reachable three ways on macOS:** toolbar or context menu, the menu bar, and a keyboard shortcut for common ones (⌘N new, ⌘F find, ⌘R refresh, ⌘1–⌘9 sections, ⇧⌘R reply, ⌘⌫ delete, ⌘↩ send). Icon-only buttons carry a tooltip and an accessibility label.
 
 ---
 

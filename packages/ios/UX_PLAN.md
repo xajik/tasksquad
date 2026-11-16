@@ -177,3 +177,19 @@ Focused evidence: `screenshots/usability-audit/focused-summary.json`, `focused-t
 `28-reply-keyboard.png` captures focused text input and the Done editing toolbar; a software keyboard is **not visible** in this simulator configuration. It does not qualify software-keyboard avoidance. No new small-phone or iPad run, VoiceOver traversal, or live production run was performed. Those remain explicit release gates.
 
 The Makefile now accepts `EVIDENCE_OUTPUT` and `EVIDENCE_NAME` so this audit can be exported without replacing earlier contract evidence. For example: `make evidence RESULT=<passed.xcresult> EVIDENCE_OUTPUT=screenshots/usability-audit EVIDENCE_NAME=focused`.
+
+## Native navigation (November 2026)
+
+The grouped drawer was replaced by system navigation, and the app now requires iOS 26.
+
+- iPhone: tab bar with Inbox, Notes, Portals, Agents and More. More lists the other sections, Projects and Account.
+- iPad: sidebar, record list and record side by side.
+- The floating action button is gone. Create is `+` in the toolbar; Edit is a toolbar button on every editable record.
+- Rows have swipe actions and a context menu built from the shared `RecordAction` list, so close, cancel, delete, forward and the rest no longer require opening the record.
+- The project is switched from a menu in the toolbar; "All Projects…" opens the searchable list.
+- Pending permission requests are pinned above the reply field.
+- Close, cancel, delete, reset, leave and sign out use confirmation dialogs.
+- Received images open full screen with zoom and sharing.
+
+Still open from the list above: VoiceOver traversal, keyboard at accessibility text sizes, slow or offline networking, message previews and unread counts (API), and a live production account.
+

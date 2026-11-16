@@ -57,7 +57,8 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 
 ### D. Shared content components
 - [x] `TSQCard`, `TSQEmptyState`, `TSQErrorBanner`, `TSQStatusDot` and `TSQPageHeader` live in `TaskSquadPortalUI`. `TSQIcon` (asset catalog) is in `TaskSquadDesign`. macOS uses them via aliases. iOS uses the empty state, error banner and icon (`MobileIcon` wraps `TSQIcon`).
-- [ ] `RecordRow`, `ConversationMessage` + authenticated attachments, `PhaseSummary`, `MetricTile`, `TerminalConnectionHeader`
+- [x] `TSQRecordRow`, plus `RecordAction` and `WorkspaceSection` presentation in `TaskSquadPortal` (shared titles, icons, grouping, filters, record actions)
+- [ ] `ConversationMessage` + authenticated attachments, `PhaseSummary`, `MetricTile`, `TerminalConnectionHeader`
 - [x] `MarkdownContent` uses `TSQTheme` tokens (and table header tint spans the row); `MarkdownBlock.parse` tests moved to `MarkdownBlockTests`
 - [x] `TaskSquadPortalUI` render smoke tests (`Tests/TaskSquadPortalUITests`, macOS `ImageRenderer`): icons must draw non-blank pixels, and components render in light and dark
 
@@ -70,7 +71,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 
 ### E. Remove compatibility layers
 - [x] `PortalAPI` deleted. `CustomerAPI` (in `CustomerSession.swift`) provides `terminalSession`, the PKCE exchange and token revocation, and both terminals use it. `PortalTerminalSession`'s auth-stop now recognizes `CustomerAPIError`; macOS tickets never matched the old `PortalAPIError` check.
-- [ ] Drop the `Theme`/`MobileTheme`/`MobilePrimaryButtonStyle` typealiases (optional, mechanical)
+- [ ] Drop the `Theme`/`MobileTheme` typealiases (optional, mechanical; `MobilePrimaryButtonStyle` is gone)
 
 ### F. CI and evidence
 - [x] `macos-native.yml` triggers on `packages/mobile/**`; runs `swift test` for this package
@@ -80,7 +81,7 @@ behavioral reference through existing Worker contracts. No Worker or DB changes.
 ## Notes and decisions
 - `TSQIcon` loads SVGs from `Vectors/` on macOS and the asset catalog on iOS. The GitHub macOS runner's SwiftPM *copies* `Assets.xcassets` uncompiled (no `Assets.car`), so catalog images are blank in CI-built macOS apps. `RenderSmokeTests` guards this.
 - If `test08TerminalControlInputAndResize` fails on rotation (`landscape` waiter times out and the screenshot stays portrait), the simulator is stuck in portrait. Run `xcrun simctl shutdown all` and rerun. It is not a code regression.
-- Task removal: macOS offers **Delete** (`DELETE /tasks/:id`, as on the web) and iOS offers **Cancel** (`PUT /tasks/:id {status: cancelled}`). Both are valid Worker routes (`.deleteTask`, `.cancelTask`). Choosing one UX for both apps is still open.
+- Task removal: both apps offer **Close**, **Cancel** (`PUT /tasks/:id {status: cancelled}`) and **Delete** (`DELETE /tasks/:id`) from the shared `RecordAction` list.
 - `createPayload` drops `scheduled_at: null` and empty `close_steps`, as macOS did before, for both apps.
 - Icon sources: `scripts/vendor-icons.mjs` (macOS) writes `Sources/TaskSquadDesign/Vectors/Icons`. `packages/ios/scripts/generate_icons.swift` (run by `make build` in `packages/ios`) regenerates PDF imagesets when a source digest changes.
 - The macOS tray icon (`Brand/tray.svg`) stays in the app bundle (`TaskSquad_TaskSquad.bundle`), since it is platform-specific.
