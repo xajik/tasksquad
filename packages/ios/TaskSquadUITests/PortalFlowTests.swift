@@ -17,7 +17,7 @@ import CryptoKit
     /// tab bar, decides: record screens hide the tab bar.
     private var compact: Bool { min(app.frame.width, app.frame.height) < 600 }
     private func waitForWorkspace(timeout: TimeInterval = 10) {
-        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: timeout) || app.buttons["nav-Inbox"].waitForExistence(timeout: 2), "Workspace did not appear")
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: timeout) || app.buttons["switch-project"].waitForExistence(timeout: 2), "Workspace did not appear")
     }
     private func launch(project: Bool = true) async throws {
         XCUIDevice.shared.orientation = .portrait // A failed landscape test must not affect the next one.
@@ -40,8 +40,14 @@ import CryptoKit
             for _ in 0..<4 where !item.isHittable { app.swipeUp() }
             item.tap()
         } else {
-            let item = app.buttons[identifier].exists ? app.buttons[identifier] : app.descendants(matching: .any)[identifier].firstMatch
-            XCTAssertTrue(item.waitForExistence(timeout: 5), identifier); item.tap()
+            // In portrait the system keeps the sidebar behind its toggle, as an
+            // overlay; open it for the tap and close it again afterwards.
+            let toggle = app.buttons.matching(NSPredicate(format: "identifier == 'ToggleSidebar' OR label CONTAINS[c] 'sidebar'")).firstMatch
+            var opened = false
+            if !app.descendants(matching: .any)[identifier].firstMatch.waitForExistence(timeout: 2), toggle.waitForExistence(timeout: 3) { toggle.tap(); opened = true }
+            let item = element(identifier)
+            XCTAssertTrue(item.exists, identifier); item.tap()
+            if opened, !["nav-projects", "nav-account"].contains(identifier), app.descendants(matching: .any)[identifier].firstMatch.exists, toggle.exists, toggle.isHittable { toggle.tap() }
         }
     }
     private func chooseProject(_ name: String) {
@@ -60,15 +66,32 @@ import CryptoKit
         let title = library ? "Library" : ["Settings": "Project Settings", "Conveyors": "Conveyor", "Planners": "Planner"][name] ?? name
         XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5), title)
     }
+    /// A list row. iPhone rows are links (buttons); iPad rows are selectable cells.
+    private func record(_ id: String) -> XCUIElement { element("record-" + id) }
+    /// The first hittable element with this identifier, of any type.
+    private func element(_ identifier: String) -> XCUIElement {
+        let matches = app.descendants(matching: .any).matching(identifier: identifier)
+        _ = matches.firstMatch.waitForExistence(timeout: 5)
+        for index in 0..<min(matches.count, 6) where matches.element(boundBy: index).isHittable { return matches.element(boundBy: index) }
+        return matches.firstMatch
+    }
     private func create() { let button = app.buttons["create-item"]; XCTAssertTrue(button.waitForExistence(timeout: 5)); XCTAssertTrue(button.isHittable); button.tap() }
     private func attachImage() { app.buttons["attach-images"].tap(); app.buttons["Attach test image"].tap() }
-    private func agent() { app.buttons["field-agent_id"].tap(); app.buttons["Fixture Agent"].tap() }
+    private func agent() {
+        let field = app.buttons["field-agent_id"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap()
+        let option = app.buttons["Fixture Agent"]
+        XCTAssertTrue(option.waitForExistence(timeout: 5)); option.tap()
+        // Wait for the menu to close and the choice to show before moving on.
+        let chosen = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS 'Fixture Agent' OR value CONTAINS 'Fixture Agent'"), object: field)
+        _ = XCTWaiter.wait(for: [chosen], timeout: 3)
+    }
     private func type(_ id: String, _ text: String) { let field = app.descendants(matching: .any)["field-"+id].firstMatch; XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap(); field.typeText(text); if app.buttons["Done editing"].exists { app.buttons["Done editing"].tap() } }
     private func back() {
         let back = app.navigationBars.buttons.matching(identifier: "BackButton").firstMatch
         (back.exists ? back : app.navigationBars.buttons.element(boundBy: 0)).tap()
     }
-    private func openTask() { let row = app.buttons["record-task"]; XCTAssertTrue(row.waitForExistence(timeout: 5)); row.tap(); XCTAssertTrue(app.buttons["reply-task"].waitForExistence(timeout: 5)) }
+    private func openTask() { let row = record("task"); XCTAssertTrue(row.waitForExistence(timeout: 5)); row.tap(); XCTAssertTrue(app.buttons["reply-task"].waitForExistence(timeout: 5)) }
     private func openPortal() async throws -> String {
         section("Portals"); create(); agent(); app.buttons["editor-submit"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["live-terminal"].firstMatch.waitForExistence(timeout: 12))
@@ -119,20 +142,20 @@ import CryptoKit
         if compact { assertFits(app.tabBars.buttons["Inbox"]); assertFits(app.tabBars.buttons["More"]) }
         assertFits(app.buttons["view-options"]); assertFits(app.buttons["create-item"])
         screenshot("01-empty-project")
-        chooseProject("Test workspace"); XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+        chooseProject("Test workspace"); XCTAssertTrue(record("task").waitForExistence(timeout: 5))
         screenshot("02-inbox")
     }
     func test02ProjectSwitchClearsOldRecords() async throws {
-        try await launch(); XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
-        chooseProject("Empty project"); XCTAssertTrue(app.staticTexts["No tasks yet"].waitForExistence(timeout: 5)); XCTAssertFalse(app.buttons["record-task"].exists)
-        chooseProject("Test workspace"); XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+        try await launch(); XCTAssertTrue(record("task").waitForExistence(timeout: 5))
+        chooseProject("Empty project"); XCTAssertTrue(app.staticTexts["No tasks yet"].waitForExistence(timeout: 5)); XCTAssertFalse(record("task").exists)
+        chooseProject("Test workspace"); XCTAssertTrue(record("task").waitForExistence(timeout: 5))
     }
     func test03InboxStatusFilter() async throws {
         try await launch(); filterStatus("Done")
         XCTAssertTrue(app.staticTexts["No matching results"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["view-options"].label, "View options, filtered")
         filterStatus("Waiting for input")
-        XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+        XCTAssertTrue(record("task").waitForExistence(timeout: 5))
     }
     func test04CreateUnicodeTaskAndInitialImage() async throws {
         try await launch(); create(); type("subject", "Unicode 猫 café"); agent(); type("body", "Review 🚀")
@@ -225,7 +248,7 @@ import CryptoKit
     func test12CloseRetainsCompletedHistory() async throws {
         try await launch(); let id = try await openPortal(); app.buttons["close-portal"].tap(); app.buttons["Close Portal"].tap()
         XCTAssertTrue(app.staticTexts["Portal completed"].waitForExistence(timeout: 8)); XCTAssertFalse(app.descendants(matching: .any)["live-terminal"].firstMatch.exists)
-        back(); XCTAssertTrue(app.staticTexts["History"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["record-"+id].exists)
+        back(); XCTAssertTrue(app.staticTexts["History"].waitForExistence(timeout: 5)); XCTAssertTrue(record(id).exists)
         screenshot("07-portal-history")
     }
     func test13NotesCreateEditAndComment() async throws {
@@ -245,7 +268,7 @@ import CryptoKit
         waitForWorkspace()
         chooseProject("Test workspace")
         screenshot("11-dark-large-inbox")
-        scrollTo(app.buttons["record-task"]); app.buttons["record-task"].tap()
+        scrollTo(record("task")); record("task").tap()
         scrollTo(app.buttons["reply-task"]); assertFits(app.buttons["reply-task"])
         screenshot("12-dark-large-conversation")
     }
@@ -305,7 +328,7 @@ import CryptoKit
             app.launch()
             waitForWorkspace()
             chooseProject("Test workspace")
-            XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+            XCTAssertTrue(record("task").waitForExistence(timeout: 5))
             screenshot("navigation-inbox-" + appearance)
             if compact { app.tabBars.buttons["More"].tap(); XCTAssertTrue(app.buttons["nav-Conveyors"].waitForExistence(timeout: 5)); screenshot("navigation-more-" + appearance) }
             navigate("nav-projects"); screenshot("navigation-projects-" + appearance)
@@ -325,7 +348,7 @@ import CryptoKit
         search.tap(); search.typeText("Test workspace")
         XCTAssertFalse(app.buttons["project-empty"].exists)
         app.buttons["project-demo"].tap()
-        XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+        XCTAssertTrue(record("task").waitForExistence(timeout: 5))
     }
     func test21NoProjectsStillAllowsAccountAndProjectRefresh() async throws {
         _ = try await control("reset")
@@ -344,7 +367,7 @@ import CryptoKit
         _ = try await control("projects", body: ["projects": [["id": "demo", "name": "A project with a very long name for a small screen", "role": "member"]]])
         app.launchArguments = ["--ui-test-api", base.absoluteString]
         app.launch()
-        XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 10))
+        XCTAssertTrue(record("task").waitForExistence(timeout: 10))
         section("Settings")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Your role' OR (label == 'Member')")).firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.switches["Project memory"].exists)
@@ -365,12 +388,12 @@ import CryptoKit
         }
         screenshot("39-more")
         app.tabBars.buttons["Inbox"].tap()
-        XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+        XCTAssertTrue(record("task").waitForExistence(timeout: 5))
     }
 
     func test32SwipeAndContextMenuOfferRecordActions() async throws {
         try await launch()
-        let row = app.buttons["record-task"]
+        let row = record("task")
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.swipeLeft()
         XCTAssertTrue(app.buttons["Delete Task"].waitForExistence(timeout: 5), "Trailing swipe offers Delete")
@@ -471,7 +494,7 @@ import CryptoKit
         XCTAssertTrue(app.staticTexts["No tasks yet"].waitForExistence(timeout: 5))
         app.buttons["switch-project"].tap()
         app.buttons["project-demo"].tap()
-        XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+        XCTAssertTrue(record("task").waitForExistence(timeout: 5))
         screenshot("32-project-switcher")
     }
 
@@ -520,10 +543,10 @@ import CryptoKit
         assertFits(app.buttons["clear-filters"])
         screenshot("35-filtered-empty")
         app.buttons["clear-filters"].tap()
-        XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+        XCTAssertTrue(record("task").waitForExistence(timeout: 5))
         scope.buttons["Needs input"].tap()
         XCTAssertTrue(scope.buttons["Needs input"].isSelected)
-        XCTAssertTrue(app.buttons["record-task"].exists)
+        XCTAssertTrue(record("task").exists)
         screenshot("36-inbox-scope")
     }
 

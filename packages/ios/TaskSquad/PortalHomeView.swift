@@ -19,6 +19,7 @@ struct PortalHomeView: View {
     @State private var path: [MobileRoute] = []
     @State private var selectedRecord: String?
     @State private var utility: MobileRoute?
+    @State private var columns = NavigationSplitViewVisibility.doubleColumn
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
 
@@ -52,7 +53,7 @@ struct PortalHomeView: View {
             ForEach(WorkspaceSection.tabs) { section in
                 Tab(value: MobileTab.section(section)) {
                     stack(.section(section)) { sectionScreen(section, root: true) }
-                } label: { Label { Text(section.title) } icon: { TSQIcon.image(section.iconName) } }
+                } label: { Label { Text(section.title) } icon: { TSQIcon.image(section.iconName).accessibilityHidden(true) } }
                 .accessibilityIdentifier("nav-" + section.rawValue)
             }
             Tab("More", systemImage: "ellipsis", value: MobileTab.more) {
@@ -115,22 +116,32 @@ struct PortalHomeView: View {
     // MARK: iPad
 
     private var splitLayout: some View {
-        NavigationSplitView {
+        GeometryReader { geometry in
+            splitView(overlaysSidebar: geometry.size.width < 1000)
+                // Wide enough for all three columns: show the sidebar from the start.
+                .onAppear { if geometry.size.width >= 1000 { columns = .all } }
+        }
+    }
+    /// In portrait the sidebar slides over the list; once a section is chosen it
+    /// is closed again so the list is not left covered.
+    private func splitView(overlaysSidebar: Bool) -> some View {
+        NavigationSplitView(columnVisibility: $columns) {
             List(selection: Binding<WorkspaceSection?>(get: { model.section.destination }, set: { value in
                 if let value, model.section.destination != value { selectedRecord = nil; model.section = value }
+                if value != nil, overlaysSidebar { columns = .doubleColumn }
             })) {
                 ForEach(WorkspaceSection.groups) { group in
                     Section(group.title) {
                         ForEach(group.sections) { section in
-                            Label { Text(section.title) } icon: { TSQIcon.image(section.iconName) }
+                            Label { Text(section.title) } icon: { TSQIcon.image(section.iconName).accessibilityHidden(true) }
                                 .tag(section).accessibilityIdentifier("nav-" + section.rawValue)
                         }
                     }
                 }
                 Section {
-                    Button { utility = .projects } label: { Label(model.currentProject?.title ?? "Projects", systemImage: "folder") }
+                    Button { utility = .projects; if overlaysSidebar { columns = .doubleColumn } } label: { Label(model.currentProject?.title ?? "Projects", systemImage: "folder") }
                         .accessibilityIdentifier("nav-projects")
-                    Button { utility = .account } label: { Label("Account", systemImage: "person.crop.circle") }
+                    Button { utility = .account; if overlaysSidebar { columns = .doubleColumn } } label: { Label("Account", systemImage: "person.crop.circle") }
                         .accessibilityIdentifier("nav-account")
                 }
             }
@@ -180,7 +191,7 @@ struct MobileSectionScreen: View {
         .navigationTitle(section.title)
         .navigationSubtitle(model.currentProject?.title ?? "")
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) { if selection == nil { projectMenu } }
+            ToolbarItem(placement: .topBarLeading) { projectMenu }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if current, !model.projectID.isEmpty, MobileViewOptions.available(for: model.section) { MobileViewOptions(model: model) }
                 if current, model.canCreate {
@@ -335,7 +346,7 @@ struct MobileMoreList: View {
                     Section(group.title) {
                         ForEach(sections) { section in
                             NavigationLink(value: MobileRoute.section(section)) {
-                                Label { Text(section.title) } icon: { TSQIcon.image(section.iconName) }
+                                Label { Text(section.title) } icon: { TSQIcon.image(section.iconName).accessibilityHidden(true) }
                             }.accessibilityIdentifier("nav-" + section.rawValue)
                         }
                     }
