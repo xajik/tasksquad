@@ -1,10 +1,12 @@
 import { Router, IRequest } from 'itty-router'
 import { withFirebaseAuth, withDaemonAgentAuth, mintCliToken, revokeCliToken, err, json } from './auth.js'
+export { GraphCoordinator } from './graph/coordinator.js'
 export { TerminalRelay } from './terminal/relay.js'
 export { AuthLimiter } from './middleware/authLimiter.js'
 import { resolveRelaySession } from './terminal/access.js'
 import { checkCliTokenRateLimit } from './middleware/circuitBreaker.js'
 import { checkRateLimit } from './middleware/rateLimit.js'
+import * as graphs from './routes/graphs.js'
 import * as teams    from './routes/teams.js'
 import * as agents   from './routes/agents.js'
 import * as tasks    from './routes/tasks.js'
@@ -88,6 +90,10 @@ router.delete('/auth/cli-token', (req: IRequest, env: Env) => revokeCliToken(req
 router.get('/me', firebaseRoute(me.getMe))
 router.post('/me/push/token', firebaseRoute(me.savePushToken))
 router.post('/admin/users/:userId/plan', (req: IRequest, env: Env) => me.setUserPlan(req as Request, env))
+router.all('/teams/:teamId/graphs', firebaseRoute(graphs.handle))
+router.all('/teams/:teamId/graphs/:graphId', firebaseRoute(graphs.handle))
+router.all('/teams/:teamId/graphs/:graphId/:action', firebaseRoute(graphs.handle))
+
 router.get('/teams', firebaseRoute(teams.list))
 router.post('/teams',                    firebaseRoute(teams.create))
 router.patch('/teams/:teamId',           firebaseRoute(teams.updateSettings))
@@ -299,5 +305,9 @@ export default {
   // decides per-team whether it's time to materialize a new daily/weekly memory_rollup.
   scheduled: async (_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> => {
     ctx.waitUntil(runRollups(env))
+    if (env.ACTION_GRAPH_ENABLED === 'true') ctx.waitUntil((async () => {
+      const teams = await env.DB.prepare('SELECT team_id, MIN(id) as id FROM graphs GROUP BY team_id').all<{team_id:string;id:string}>()
+      for (const team of teams.results) await env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(team.team_id)).command(team.id,'tick',{team_id:team.team_id})
+    })())
   },
 }

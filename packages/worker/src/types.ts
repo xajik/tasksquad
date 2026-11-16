@@ -1,4 +1,10 @@
+import type { GraphCoordinator } from './graph/coordinator.js'
+
 export interface Env {
+  ACTION_GRAPH_ENABLED?: string
+  GRAPH_COORDINATOR: DurableObjectNamespace<GraphCoordinator>
+  GRAPH_AI?: Ai
+  GRAPH_VECTORS?: VectorizeIndex
   DB: D1Database
   LOGS: R2Bucket
   JWKS_CACHE: KVNamespace
