@@ -1,0 +1,101 @@
+{
+  "instruction": "Execute only the assigned reviewed plan within its baseline, scope and budgets. Report observed evidence with source resource IDs and freshness. Do not grade yourself or start another action. Report blocked if access or a prerequisite is missing.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "outcome": {
+        "type": "string",
+        "enum": [
+          "complete",
+          "failed",
+          "blocked"
+        ]
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 299
+      },
+      "description": {
+        "type": "string",
+        "maxLength": 299
+      },
+      "body": {
+        "type": "string",
+        "maxLength": 3999
+      },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 299
+            },
+            "predicate": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 299
+            },
+            "value": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false",
+                "unknown"
+              ]
+            },
+            "scope": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 299
+            },
+            "observed_at": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "expires_at": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "resource_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "predicate",
+            "value",
+            "scope",
+            "observed_at",
+            "expires_at",
+            "resource_id"
+          ]
+        },
+        "maxItems": 20
+      },
+      "actual_cost": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "minimum": 0
+      }
+    },
+    "required": [
+      "outcome",
+      "title",
+      "description",
+      "body",
+      "evidence",
+      "actual_cost"
+    ]
+  }
+}

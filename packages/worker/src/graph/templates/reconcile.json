@@ -1,0 +1,82 @@
+{
+  "instruction": "Confirm termination of the previous process and independently reconcile its external effects against the saved baseline. Do not start replacement execution. If termination or effects are uncertain return unknown.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "decision": {
+        "type": "string",
+        "enum": [
+          "terminated_restored",
+          "terminated_needs_undo",
+          "unknown"
+        ]
+      },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 299
+            },
+            "predicate": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 299
+            },
+            "value": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false",
+                "unknown"
+              ]
+            },
+            "scope": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 299
+            },
+            "observed_at": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "expires_at": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "resource_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "predicate",
+            "value",
+            "scope",
+            "observed_at",
+            "expires_at",
+            "resource_id"
+          ]
+        },
+        "maxItems": 20
+      },
+      "reason": {
+        "type": "string",
+        "maxLength": 3999
+      }
+    },
+    "required": [
+      "decision",
+      "evidence",
+      "reason"
+    ]
+  }
+}

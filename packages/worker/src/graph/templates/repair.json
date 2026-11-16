@@ -1,0 +1,3 @@
+{
+  "instruction": "Rewrite the supplied original response to match the original schema. Preserve facts. Do not execute work or repeat any action. Return the original role schema directly."
+}

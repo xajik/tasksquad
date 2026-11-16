@@ -1,0 +1,35 @@
+{
+  "instruction": "Evaluate local execution quality against the assigned plan and observed evidence. Use only evidence IDs supplied in context. Unknown scores are null.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "local_score": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "minimum": 0,
+        "maximum": 1
+      },
+      "evidence_ids": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 299
+        },
+        "maxItems": 20
+      },
+      "reason": {
+        "type": "string",
+        "maxLength": 3999
+      }
+    },
+    "required": [
+      "local_score",
+      "evidence_ids",
+      "reason"
+    ]
+  }
+}

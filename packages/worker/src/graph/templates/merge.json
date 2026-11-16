@@ -1,0 +1,33 @@
+{
+  "instruction": "Independently review the candidate. Similarity alone is not equivalence. Compare inputs, resource versions, effects and state predicates. Uncertainty must remain unpublished.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "decision": {
+        "type": "string",
+        "enum": [
+          "distinct",
+          "equivalent",
+          "uncertain",
+          "reject"
+        ]
+      },
+      "equivalent_node_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "reason": {
+        "type": "string",
+        "maxLength": 3999
+      }
+    },
+    "required": [
+      "decision",
+      "equivalent_node_id",
+      "reason"
+    ]
+  }
+}

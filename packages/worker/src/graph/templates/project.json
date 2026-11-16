@@ -1,0 +1,35 @@
+{
+  "instruction": "Evaluate private goal alignment using supplied evidence. Scores do not prove goal achievement. Use only evidence IDs supplied in context.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "goal_score": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "minimum": 0,
+        "maximum": 1
+      },
+      "evidence_ids": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 299
+        },
+        "maxItems": 20
+      },
+      "reason": {
+        "type": "string",
+        "maxLength": 3999
+      }
+    },
+    "required": [
+      "goal_score",
+      "evidence_ids",
+      "reason"
+    ]
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "instruction": "Perform only the assigned compensation. Verify restoration predicates without overwriting unrelated changes. Report observed evidence. Failed restoration is a separate recovery problem.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "restored": {
+        "type": "boolean"
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 299
+      },
+      "description": {
+        "type": "string",
+        "maxLength": 299
+      },
+      "body": {
+        "type": "string",
+        "maxLength": 3999
+      },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 299
+            },
+            "predicate": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 299
+            },
+            "value": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false",
+                "unknown"
+              ]
+            },
+            "scope": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 299
+            },
+            "observed_at": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "expires_at": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "resource_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "predicate",
+            "value",
+            "scope",
+            "observed_at",
+            "expires_at",
+            "resource_id"
+          ]
+        },
+        "maxItems": 20
+      }
+    },
+    "required": [
+      "restored",
+      "title",
+      "description",
+      "body",
+      "evidence"
+    ]
+  }
+}

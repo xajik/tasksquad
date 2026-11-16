@@ -1,0 +1,16 @@
+{
+  "instruction": "Summarize the supplied daily ledger without inventing outcomes or metrics.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string",
+        "maxLength": 3999
+      }
+    },
+    "required": [
+      "summary"
+    ]
+  }
+}

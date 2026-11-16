@@ -1,0 +1,46 @@
+{
+  "instruction": "Decompose the supplied goal into up to five useful subgoals. Do not execute work. Necessity is a planning belief, not proof.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "subgoals": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 299
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 299
+            },
+            "body": {
+              "type": "string",
+              "maxLength": 3999
+            },
+            "necessity_confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "required": [
+            "title",
+            "description",
+            "body",
+            "necessity_confidence"
+          ]
+        },
+        "maxItems": 5
+      }
+    },
+    "required": [
+      "subgoals"
+    ]
+  }
+}

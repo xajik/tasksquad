@@ -1,0 +1,25 @@
+{
+  "instruction": "After user input, verify checkpoint and baseline; decide resume, restart or blocked. Do not repeat an external action.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "decision": {
+        "type": "string",
+        "enum": [
+          "resume",
+          "restart",
+          "blocked"
+        ]
+      },
+      "reason": {
+        "type": "string",
+        "maxLength": 3999
+      }
+    },
+    "required": [
+      "decision",
+      "reason"
+    ]
+  }
+}
