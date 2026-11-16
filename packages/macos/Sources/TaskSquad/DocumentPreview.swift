@@ -28,8 +28,8 @@ struct DocumentPreview: View {
                     Picker("Display", selection: $source) { Text("Preview").tag(false); Text("Source").tag(true) }.pickerStyle(.segmented).labelsHidden().frame(width: 150)
                 }
                 Toggle("Live", isOn: $follow).toggleStyle(.checkbox).help("Refresh when this file changes")
-                Button { copyText(document?.text ?? "") } label: { Icon(.copy) }.help("Copy source")
-                Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: { Icon(.folder) }.help("Reveal in Finder")
+                Button { copyText(document?.text ?? "") } label: { Image(systemName: "doc.on.doc") }.help("Copy source").accessibilityLabel("Copy source")
+                Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: { Image(systemName: "folder") }.help("Reveal in Finder").accessibilityLabel("Reveal in Finder")
             }.padding(16)
             Divider()
             if let notice = document?.notice { banner(notice) }
@@ -117,7 +117,7 @@ struct JSONTreeView: View {
                                 Button { if !expanded.insert(row.id).inserted { expanded.remove(row.id) } } label: {
                                     HStack(spacing: 10) {
                                         Icon(expanded.contains(row.id) ? .chevronDown : .chevronRight, size: 12)
-                                            .font(.system(size: 10, weight: .semibold)).frame(width: 28, height: 32)
+                                            .font(Theme.caption.weight(.semibold)).frame(width: 28, height: 32)
                                         Text(row.node.label).fontWeight(.medium).frame(width: 150, alignment: .leading).lineLimit(2)
                                     }.contentShape(Rectangle())
                                 }.buttonStyle(.plain).help(row.node.label).accessibilityLabel("Toggle \(row.node.label)")
@@ -129,8 +129,8 @@ struct JSONTreeView: View {
                             Text(row.node.isContainer ? (row.node.kind == .object ? "{ }" : "[ ]") : ":").foregroundStyle(.tertiary)
                             Text(row.node.value).foregroundStyle(color(row.node.kind)).textSelection(.enabled).lineLimit(expanded.contains(row.id) ? nil : 4)
                             Spacer(minLength: 16)
-                            Text(row.node.kind.rawValue).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary).padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary, in: Capsule())
-                        }.font(.system(size: 12.5, design: .monospaced)).padding(.vertical, 4).padding(.trailing, 18).padding(.leading, CGFloat(12 + row.depth * 20))
+                            Text(row.node.kind.rawValue).font(Theme.caption.weight(.medium)).foregroundStyle(.secondary).padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary, in: Capsule())
+                        }.font(Theme.caption.monospaced()).padding(.vertical, 4).padding(.trailing, 18).padding(.leading, CGFloat(12 + row.depth * 20))
                             .background(row.depth == 0 ? Color.accentColor.opacity(0.05) : Color.clear)
                             .contextMenu {
                                 Button("Copy Value") { copyText(row.node.raw) }

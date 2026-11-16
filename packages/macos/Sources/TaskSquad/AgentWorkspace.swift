@@ -4,6 +4,7 @@ import TaskSquadCore
 import TaskSquadMacPlatform
 import TaskSquadDesign
 import TaskSquadPortalUI
+import TaskSquadPortal
 
 struct AgentWorkspace: View {
     @ObservedObject var model: ControlPanelModel
@@ -27,7 +28,7 @@ struct AgentWorkspace: View {
     private func snapshot(_ id: String) -> AgentSnapshot? { model.agentSnapshots.first { $0.id == id } }
     private func mode(_ id: String) -> String { model.engineRunning ? snapshot(id)?.mode.rawValue ?? "starting" : observed(id)?.mode ?? "offline" }
     private func color(_ mode: String) -> Color {
-        switch mode { case "running": Theme.live; case "waiting_input": Theme.amber; case "wrapping_up": .purple; case "idle": Theme.brand; default: Theme.mutedForeground }
+        switch mode { case "running": Theme.live; case "waiting_input": Theme.amber; case "wrapping_up": Theme.amber; case "idle": Theme.brand; default: Theme.mutedForeground }
     }
     private func badge(_ mode: String) -> Badge {
         switch mode {
@@ -45,46 +46,48 @@ struct AgentWorkspace: View {
     var body: some View {
         HSplitView {
             VStack(spacing: 0) {
-                SearchField("Find an agent or folder", text: $query).padding(12)
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(agentFolders, id: \.path) { folder in
-                            HStack(spacing: 6) {
-                                Icon(.folder, size: 12)
-                                Text(folder.path.isEmpty ? "No working folder" : (folder.path as NSString).abbreviatingWithTildeInPath)
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.head)
-                            }
-                            .foregroundStyle(Theme.mutedForeground).help(folder.path)
-                            .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 4)
+                List(selection: $model.selectedAgentID) {
+                    ForEach(agentFolders, id: \.path) { folder in
+                        Section {
                             ForEach(folder.agents) { agent in
-                                Button { model.selectedAgentID = agent.id } label: {
-                                    HStack(spacing: 10) {
-                                        StatusDot(active: ["running", "idle"].contains(mode(agent.id)), color: color(mode(agent.id)))
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(agent.name).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.foreground)
-                                            Text(mode(agent.id).replacingOccurrences(of: "_", with: " ")).font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
-                                        }
-                                    }.rowBackground(selected: model.selectedAgentID == agent.id)
-                                }.buttonStyle(.plain)
+                                HStack(spacing: 10) {
+                                    StatusDot(active: ["running", "idle"].contains(mode(agent.id)), color: color(mode(agent.id)))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(agent.name).font(Theme.body.weight(.medium))
+                                        Text(StatusPresentation(mode(agent.id)).label).font(Theme.caption).foregroundStyle(.secondary)
+                                    }
+                                }.padding(.vertical, 2).tag(agent.id)
                             }
+                        } header: {
+                            Label(folder.path.isEmpty ? "No working folder" : (folder.path as NSString).abbreviatingWithTildeInPath, systemImage: "folder")
+                                .lineLimit(1).truncationMode(.head).help(folder.path)
                         }
-                    }.padding(.horizontal, 8).padding(.bottom, 8)
+                    }
                 }
+                .listStyle(.inset)
+                .overlay {
+                    if agentFolders.isEmpty {
+                        if query.isEmpty {
+                            ContentUnavailableView("No Local Agents", systemImage: "cpu", description: Text("Add an agent to the configuration file to run tasks on this Mac."))
+                        } else { ContentUnavailableView.search(text: query) }
+                    }
+                }
+                Divider()
                 HStack(spacing: 6) {
                     StatusDot(active: model.engineRunning || model.observationDate != nil, size: 6)
                     Text(model.engineRunning ? "Native engine · live" : model.observedAgents.isEmpty ? "Engine offline" : "Existing daemon · live")
                     Spacer()
-                }.font(.system(size: 12)).foregroundStyle(Theme.mutedForeground).padding(12).edgeBorder(.top)
-            }.frame(minWidth: 220, idealWidth: 260, maxWidth: 320).edgeBorder(.trailing)
+                }.font(Theme.caption).foregroundStyle(.secondary).padding(10)
+            }.frame(minWidth: 220, idealWidth: 260, maxWidth: 320, maxHeight: .infinity)
             if let agent = selected {
                 VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {
-                            Text(agent.name).font(.system(size: 20, weight: .bold)).foregroundStyle(Theme.foreground)
+                            Text(agent.name).font(Theme.title).foregroundStyle(Theme.foreground)
                             badge(mode(agent.id))
                             Spacer()
                             if model.engineRunning, snapshot(agent.id)?.mode != .idle {
-                                Button("Stop Task") { cancelling = true }.buttonStyle(.tsq(.destructive, size: .default))
+                                Button("Stop Task…", role: .destructive) { cancelling = true }
                             }
                             Button {
                                 Task {
@@ -93,8 +96,7 @@ struct AgentWorkspace: View {
                                     if let pane = model.terminals.panes.first(where: { $0.sessionName == session }) { attach(pane) }
                                     else { model.error = "No tmux session is currently associated with \(agent.name). Open Sessions to browse all terminals." }
                                 }
-                            } label: { Label("Open Terminal", icon: .terminal) }
-                            .buttonStyle(.tsq(.outline, size: .default))
+                            } label: { Label("Open Terminal", systemImage: "terminal") }
                             .disabled((model.engineRunning ? true : observed(agent.id)?.session.isEmpty ?? true))
                         }
                         VStack(alignment: .leading, spacing: 4) {
@@ -102,7 +104,7 @@ struct AgentWorkspace: View {
                             Label(model.paths.expandHome(agent.workDir), icon: .folder).help("Working directory: \(model.paths.expandHome(agent.workDir))")
                         }
                         .labelStyle(TSQLabelStyle(spacing: 6))
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(Theme.caption.monospaced())
                         .foregroundStyle(Theme.mutedForeground)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
@@ -110,9 +112,9 @@ struct AgentWorkspace: View {
                     HStack {
                         Picker("Agent detail", selection: $selectedTab) { Text("Activity").tag("Activity"); Text("Log").tag("Log"); Text("Details").tag("Details") }.pickerStyle(.segmented).labelsHidden().frame(width: 260)
                         Spacer()
-                        if let date = model.observationDate { Text("Updated \(date, style: .time)").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground) }
+                        if let date = model.observationDate { Text("Updated \(date, style: .time)").font(Theme.caption).foregroundStyle(Theme.mutedForeground) }
                     }.padding(.horizontal, 20).padding(.bottom, 12)
-                    Rectangle().fill(Theme.border).frame(height: 1)
+                    Divider()
                     if selectedTab == "Log", let url = logURL(agent) { DocumentPreview(url: url).id(url) }
                     else if selectedTab == "Details" {
                         Form {
@@ -126,18 +128,19 @@ struct AgentWorkspace: View {
                                 LabeledContent("tmux session", value: observed.session.isEmpty ? "None" : observed.session)
                             }
                             Button("Open Working Directory") { NSWorkspace.shared.open(URL(fileURLWithPath: model.paths.expandHome(agent.workDir))) }
-                        }.formStyle(.grouped).scrollContentBackground(.hidden).textSelection(.enabled)
+                        }.formStyle(.grouped).textSelection(.enabled)
                     } else if !taskID(agent.id).isEmpty {
                         TaskActivityView(url: model.paths.tasks.appendingPathComponent(taskID(agent.id) + ".jsonl"))
                     } else {
                         EmptyState(icon: .messagesSquare, title: mode(agent.id) == "offline" ? "Agent is offline" : "Ready for the next task",
                                    message: "Task messages and lifecycle events will appear here as they arrive.")
                     }
-                }.frame(minWidth: 460)
+                }.frame(minWidth: 460, maxHeight: .infinity)
             } else {
                 EmptyState(icon: .bot, title: "Choose an agent", message: "Follow activity, inspect logs, and open its terminal.")
             }
         }
+        .searchable(text: $query, placement: .toolbar, prompt: "Find an agent or folder")
         .task {
             if model.selectedAgentID == nil { model.selectedAgentID = model.configuration?.agents.first?.id }
             while !Task.isCancelled { await model.refreshLogs(); do { try await Task.sleep(for: .seconds(2)) } catch { return } }
@@ -182,11 +185,12 @@ private struct TaskActivityView: View {
                         if let error { Text(error).foregroundStyle(.secondary) }
                         Color.clear.frame(height: 1).id("end")
                     }.padding(24)
-                }.background(Theme.background)
+                }
                 .onChange(of: records) { if follow { proxy.scrollTo("end", anchor: .bottom) } }
             }
-            HStack { Text("Task activity").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground); Spacer(); Toggle("Follow latest", isOn: $follow).toggleStyle(.checkbox).font(.system(size: 12)) }
-                .padding(.horizontal, 16).padding(.vertical, 10).edgeBorder(.top)
+            Divider()
+            HStack { Text("Task activity").font(Theme.caption).foregroundStyle(.secondary); Spacer(); Toggle("Follow Latest", isOn: $follow).toggleStyle(.checkbox) }
+                .padding(.horizontal, 16).padding(.vertical, 8)
         }.task(id: url) {
             records = []; error = nil
             while !Task.isCancelled {

@@ -326,7 +326,6 @@ struct LocalSectionView: View {
             if let error = model.error { ErrorBanner(message: error) { model.error = nil } }
             detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Theme.background)
         .task(id: isActive) {
             guard isActive else { return }
             while !Task.isCancelled {
@@ -345,47 +344,56 @@ struct LocalSectionView: View {
             }
         case .configuration:
             VStack(alignment: .leading, spacing: 0) {
-                PageHeader(title: "Configuration", subtitle: model.configurationURL.path) {
-                    Button { Task { await model.load() } } label: { Icon(.refreshCw) }.buttonStyle(.tsqIcon).help("Reload from disk")
-                    Button("Show in Finder") { model.revealConfiguration() }.buttonStyle(.tsq(.outline, size: .default))
-                }
-                TextEditor(text: $model.document).font(.system(size: 12, design: .monospaced))
+                Text(model.configurationURL.path).font(Theme.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                    .padding(.horizontal, 20).padding(.vertical, 10)
+                TextEditor(text: $model.document).font(Theme.monoSmall)
                     .scrollContentBackground(.hidden).padding(8)
-                    .background(Theme.muted.opacity(0.4), in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.border))
                     .padding(.horizontal, 20)
+                    .accessibilityLabel("Configuration file")
                 if model.configurationRestartRequired {
                     HStack(spacing: 12) {
                         Text("Saved settings differ from the running daemon. Active tasks and Portals must finish before applying them.")
-                            .font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
+                            .font(Theme.caption).foregroundStyle(Theme.mutedForeground)
                         Spacer()
-                        Button("Drain and restart") { Task { await model.drainAndRestart() } }
-                            .buttonStyle(.tsqPrimary).disabled(model.engineBusy || !model.engineCanDrain)
+                        Button("Drain and Restart") { Task { await model.drainAndRestart() } }
+                            .buttonStyle(.borderedProminent).disabled(model.engineBusy || !model.engineCanDrain)
                     }.padding(.horizontal, 20).padding(.top, 12)
                 }
                 HStack {
                     Spacer()
-                    Button("Discard Changes") { model.document = model.savedDocument }.buttonStyle(.tsq(.outline, size: .default))
+                    Button("Discard Changes") { model.document = model.savedDocument }
                         .disabled(model.document == model.savedDocument)
-                    Button("Save Configuration") { Task { await model.save() } }.buttonStyle(.tsqPrimary).keyboardShortcut("s")
-                        .disabled(model.document == model.savedDocument)
+                    Button("Save") { Task { await model.save() } }.buttonStyle(.borderedProminent).keyboardShortcut("s")
+                        .disabled(model.document == model.savedDocument).help("Save configuration (⌘S)")
                 }.padding(20)
+            }
+            .toolbar {
+                ToolbarItemGroup {
+                    Button { Task { await model.load() } } label: { Label("Reload from Disk", systemImage: "arrow.clockwise") }.help("Reload from disk")
+                    Button { model.revealConfiguration() } label: { Label("Show in Finder", systemImage: "folder") }.help("Show in Finder")
+                }
             }
         case .tasks:
             TaskWorkspace(model: model)
         case .logs:
             HSplitView {
-                VStack(spacing: 0) {
-                    TSQList(items: model.logFiles.filter { $0.pathExtension == "log" }, id: \.self, selection: $model.selectedLog) { url in
-                        HStack(spacing: 10) {
-                            Icon(.scrollText).foregroundStyle(Theme.mutedForeground)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(url.lastPathComponent).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                                Text(url.deletingLastPathComponent().lastPathComponent).font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
-                            }
-                        }
+                List(selection: $model.selectedLog) {
+                    ForEach(model.logFiles.filter { $0.pathExtension == "log" }, id: \.self) { url in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(url.lastPathComponent).font(Theme.body.weight(.medium)).lineLimit(1).truncationMode(.middle)
+                            Text(url.deletingLastPathComponent().lastPathComponent).font(Theme.caption).foregroundStyle(.secondary)
+                        }.padding(.vertical, 2).tag(url)
                     }
-                }.frame(minWidth: 220, idealWidth: 260, maxWidth: 340).edgeBorder(.trailing)
+                }
+                .listStyle(.inset)
+                .overlay {
+                    if model.logFiles.filter({ $0.pathExtension == "log" }).isEmpty {
+                        ContentUnavailableView("No Logs Yet", systemImage: "doc.text", description: Text("Logs appear after the daemon runs a task."))
+                    }
+                }
+                .frame(minWidth: 220, idealWidth: 260, maxWidth: 340, maxHeight: .infinity)
                 if let url = model.selectedLog { DocumentPreview(url: url).id(url) }
                 else { EmptyState(icon: .scrollText, title: "Read your agent's activity", message: "Select a log or task journal. New output appears automatically.") }
             }
@@ -397,20 +405,19 @@ struct LocalSectionView: View {
         case .tools:
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    PageHeader(title: "Tools", subtitle: "Local daemon account, paths, and supervisor") { EmptyView() }.padding(.horizontal, -20)
                     Card {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Daemon account").font(.system(size: 15, weight: .semibold))
+                            Text("Daemon account").font(Theme.headline)
                             if let email = model.loginEmail { row("Signed in", email) }
                             if model.loginInProgress {
-                                HStack { ProgressView().controlSize(.small); Text("Waiting for browser sign-in").foregroundStyle(Theme.mutedForeground); Spacer(); Button("Cancel") { model.cancelLogin() }.buttonStyle(.tsqOutline) }
-                            } else { Button("Sign in to TaskSquad") { model.signIn() }.buttonStyle(.tsqPrimary) }
-                            Text("The local daemon signs in separately from the project workspace.").font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
+                                HStack { ProgressView().controlSize(.small); Text("Waiting for browser sign-in").foregroundStyle(Theme.mutedForeground); Spacer(); Button("Cancel") { model.cancelLogin() } }
+                            } else if model.loginEmail == nil { Button("Sign In…") { model.signIn() }.buttonStyle(.borderedProminent) }
+                            Text("The local daemon signs in separately from the project workspace.").font(Theme.caption).foregroundStyle(Theme.mutedForeground)
                         }
                     }
                     Card {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Paths").font(.system(size: 15, weight: .semibold))
+                            Text("Paths").font(Theme.headline)
                             row("Configuration", model.configurationURL.path)
                             row("Logs", model.paths.logs.path)
                             if let config = model.configuration {
@@ -419,14 +426,14 @@ struct LocalSectionView: View {
                                 row("Poll interval", "\(config.server.pollInterval) seconds")
                             }
                             HStack {
-                                Button { NSWorkspace.shared.open(model.paths.logs) } label: { Label("Open Logs in Finder", icon: .folder) }.buttonStyle(.tsqOutline)
-                                if model.engineRunning { Button { Task { await model.forcePoll() } } label: { Label("Poll Now", icon: .refreshCw) }.buttonStyle(.tsqOutline) }
+                                Button { NSWorkspace.shared.open(model.paths.logs) } label: { Label("Open Logs in Finder", systemImage: "folder") }
+                                if model.engineRunning { Button { Task { await model.forcePoll() } } label: { Label("Poll Now", systemImage: "arrow.clockwise") } }
                             }
                         }
                     }
                     Card {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Supervisor").font(.system(size: 15, weight: .semibold))
+                            Text("Supervisor").font(Theme.headline)
                             row("Supervisor", model.configuration?.supervisor?.command ?? "Not configured")
                             row("Dreamer", model.configuration?.dreamer?.command ?? "Uses supervisor command")
                             row("Dreaming window", "\(model.configuration?.dreamer?.windowStart.nonEmpty ?? "01:00") – \(model.configuration?.dreamer?.windowEnd.nonEmpty ?? "05:00")")
@@ -438,8 +445,8 @@ struct LocalSectionView: View {
     }
     private func row(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label).font(.system(size: 13)).foregroundStyle(Theme.mutedForeground).frame(width: 130, alignment: .leading)
-            Text(value).font(.system(size: 13)).foregroundStyle(Theme.foreground).lineLimit(2)
+            Text(label).font(Theme.body).foregroundStyle(Theme.mutedForeground).frame(width: 130, alignment: .leading)
+            Text(value).font(Theme.body).foregroundStyle(Theme.foreground).lineLimit(2)
         }
     }
 }

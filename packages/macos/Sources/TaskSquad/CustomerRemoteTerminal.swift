@@ -3,6 +3,8 @@ import SwiftUI
 @preconcurrency import SwiftTerm
 import TaskSquadCore
 import TaskSquadPortal
+import TaskSquadDesign
+import TaskSquadPortalUI
 
 /// Uses the same single-use tickets and binary input/resize frames as the web
 /// portal. SwiftTerm supplies an AppKit renderer and VT parser, not a WebView.
@@ -22,9 +24,9 @@ struct CustomerRemoteTerminal: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Circle().fill(model.connected ? Color.green : Color.orange).frame(width: 6, height: 6)
-                Text(model.status).font(.caption)
-                Spacer(); Button("Reconnect") { model.disconnect(); attempt = UUID() }
+                StatusDot(active: model.connected, color: model.connected ? nil : Theme.amber, size: 6)
+                Text(model.status).font(Theme.caption)
+                Spacer(); Button("Reconnect") { model.disconnect(); attempt = UUID() }.controlSize(.small)
             }.padding(8)
             CustomerTerminalView(model: model)
         }

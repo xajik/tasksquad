@@ -27,6 +27,7 @@ public struct TSQEmptyState<Actions: View>: View {
         ContentUnavailableView {
             Label { Text(title) } icon: { TSQIcon(icon, size: 40) }
         } description: { Text(message) } actions: { actions }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 public extension TSQEmptyState where Actions == EmptyView {

@@ -53,7 +53,7 @@ struct CustomerAnalytics: View {
             }.pickerStyle(.menu).labelsHidden().fixedSize()
             Spacer()
             if loading { ProgressView().controlSize(.small) }
-            Button { Task { await load() } } label: { Icon(.refreshCw) }.buttonStyle(.tsqIcon).foregroundStyle(Theme.mutedForeground).help("Refresh")
+            Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless).help("Refresh").accessibilityLabel("Refresh")
         }
     }
 
@@ -73,7 +73,7 @@ struct CustomerAnalytics: View {
         }
         if usage.number("sessions_reported") == 0 {
             Text("Tool, skill and token usage appears once agents run on a daemon version that sends session reports.")
-                .font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
+                .font(Theme.caption).foregroundStyle(Theme.mutedForeground)
         }
         dailyChart(stats.records("daily"))
         HStack(alignment: .top, spacing: 12) {
@@ -90,9 +90,9 @@ struct CustomerAnalytics: View {
                 Spacer()
                 if let day = days.first(where: { $0.text("date") == hoveredDay }) {
                     Text("\(shortDate(day.text("date"))): \(Int(day.number("created"))) created · \(Int(day.number("done"))) done · \(Int(day.number("failed"))) failed")
-                        .font(.system(size: 12)).foregroundStyle(Theme.foreground)
+                        .font(Theme.caption).foregroundStyle(Theme.foreground)
                 }
-            }.font(.system(size: 12)).foregroundStyle(Theme.mutedForeground)
+            }.font(Theme.caption).foregroundStyle(Theme.mutedForeground)
             Chart {
                 ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                     BarMark(x: .value("Day", day.text("date")), y: .value("Tasks", day.number("done")))
@@ -129,14 +129,14 @@ struct CustomerAnalytics: View {
         let maximum = max(items.map { $0.number("count") }.max() ?? 1, 1)
         return section(title) {
             if items.isEmpty {
-                Text(empty).font(.system(size: 13)).foregroundStyle(Theme.mutedForeground).frame(maxWidth: .infinity).padding(.vertical, 20)
+                Text(empty).font(Theme.body).foregroundStyle(Theme.mutedForeground).frame(maxWidth: .infinity).padding(.vertical, 20)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(items.prefix(12).enumerated()), id: \.offset) { _, item in
                         VStack(alignment: .leading, spacing: 3) {
                             HStack {
-                                Text(item.text("name")).font(.system(size: 12, design: .monospaced)).lineLimit(1).truncationMode(.middle)
-                                Spacer(); Text(count(item.number("count"))).font(.system(size: 12)).foregroundStyle(Theme.mutedForeground).monospacedDigit()
+                                Text(item.text("name")).font(Theme.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+                                Spacer(); Text(count(item.number("count"))).font(Theme.caption).foregroundStyle(Theme.mutedForeground).monospacedDigit()
                             }
                             GeometryReader { geometry in
                                 Capsule().fill(Theme.muted).overlay(alignment: .leading) {
@@ -153,13 +153,13 @@ struct CustomerAnalytics: View {
     private func agentTable(_ agents: [CustomerRecord]) -> some View {
         section("Agent performance") {
             if agents.isEmpty {
-                Text("No tasks in this range.").font(.system(size: 13)).foregroundStyle(Theme.mutedForeground).frame(maxWidth: .infinity).padding(.vertical, 20)
+                Text("No tasks in this range.").font(Theme.body).foregroundStyle(Theme.mutedForeground).frame(maxWidth: .infinity).padding(.vertical, 20)
             } else {
                 Grid(alignment: .trailing, horizontalSpacing: 16, verticalSpacing: 8) {
                     GridRow {
                         Text("Agent").gridColumnAlignment(.leading)
                         Text("Tasks"); Text("Done"); Text("Failed"); Text("Success"); Text("Median time"); Text("👍 / 👎"); Text("Tool calls"); Text("Tokens")
-                    }.font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.mutedForeground)
+                    }.font(Theme.caption.weight(.medium)).foregroundStyle(Theme.mutedForeground)
                     ForEach(Array(agents.enumerated()), id: \.offset) { _, agent in
                         Divider().gridCellUnsizedAxes(.horizontal)
                         GridRow {
@@ -168,7 +168,7 @@ struct CustomerAnalytics: View {
                             Text(percent(agent.value["success_rate"])); Text(duration(agent.value["median_completion_ms"]?.number))
                             Text("\(Int(agent.number("grades_up"))) / \(Int(agent.number("grades_down")))")
                             Text(count(agent.number("tool_calls"))); Text(count(agent.number("input_tokens") + agent.number("output_tokens")))
-                        }.font(.system(size: 13)).monospacedDigit()
+                        }.font(Theme.body).monospacedDigit()
                     }
                 }
             }
@@ -180,16 +180,16 @@ struct CustomerAnalytics: View {
     private func tile(_ label: String, _ value: String, _ hint: String? = nil) -> some View {
         Card(padding: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(label).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.mutedForeground)
-                Text(value).font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.foreground).monospacedDigit()
-                Text(hint ?? " ").font(.system(size: 11)).foregroundStyle(Theme.mutedForeground)
+                Text(label).font(Theme.caption.weight(.medium)).foregroundStyle(Theme.mutedForeground)
+                Text(value).font(Theme.title).foregroundStyle(Theme.foreground).monospacedDigit()
+                Text(hint ?? " ").font(Theme.caption).foregroundStyle(Theme.mutedForeground)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         Card {
             VStack(alignment: .leading, spacing: 10) {
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.foreground)
+                Text(title).font(Theme.body.weight(.semibold)).foregroundStyle(Theme.foreground)
                 content()
             }.frame(maxWidth: .infinity, alignment: .leading)
         }

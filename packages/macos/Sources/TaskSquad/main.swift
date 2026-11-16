@@ -6,6 +6,7 @@ import TaskSquadCore
 import TaskSquadDesign
 import TaskSquadMacPlatform
 import TaskSquadPortal
+import UserNotifications
 
 Platform.install(MacPlatform())
 if let locale = setlocale(LC_CTYPE, ""), ["C", "POSIX"].contains(String(cString: locale)) {
@@ -102,6 +103,8 @@ struct TaskSquadApplication: App {
         AppAppearance.current.apply()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        // The notification centre needs a bundle; `swift run` has none.
+        if Bundle.main.bundleIdentifier != nil { UNUserNotificationCenter.current().delegate = self }
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
@@ -203,6 +206,21 @@ private struct ThisMacCommand: View {
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         Button("This Mac") { openWindow(id: WindowID.thisMac) }.keyboardShortcut("m", modifiers: [.command, .shift])
+    }
+}
+
+extension ApplicationDelegate: UNUserNotificationCenterDelegate {
+    /// Clicking a task notification opens that task in the project window.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let task = response.notification.request.identifier
+        await MainActor.run {
+            customer?.openTask(task)
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.windows.first { $0.identifier?.rawValue == WindowID.main }?.makeKeyAndOrderFront(nil)
+        }
+    }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
     }
 }
 
