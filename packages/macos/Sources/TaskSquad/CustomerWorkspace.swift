@@ -127,25 +127,12 @@ struct CustomerRecordRow: View {
     @ObservedObject var model: CustomerWorkspaceModel
     let record: CustomerRecord
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(model.section == .portals ? model.agentName(record.text("agent_id")) : record.title).font(Theme.body.weight(.medium)).lineLimit(2)
-                Spacer(minLength: 4)
-                if record.number("created_at") > 0 {
-                    Text(record.date, format: .relative(presentation: .named)).font(Theme.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-            HStack(spacing: 6) {
-                if !record.status.isEmpty { Badge(status: record.status) }
-                if record.flag("paused") { Badge("Paused", variant: .warning) }
-                if !record.text("agent_id").isEmpty, model.section != .portals {
-                    Label(model.agentName(record.text("agent_id")), icon: .bot).labelStyle(TSQLabelStyle(spacing: 4)).lineLimit(1)
-                }
-            }.font(Theme.caption).foregroundStyle(.secondary)
-            if model.section == .supervisor { Text("\(Int(record.number("supervisor_report_count"))) findings").font(Theme.caption).foregroundStyle(.secondary) }
-            if !record.text("description").isEmpty { Text(record.text("description")).font(Theme.callout).foregroundStyle(.secondary).lineLimit(2) }
-            if !record.strings("tags").isEmpty { Text(record.strings("tags").map { "#" + $0 }.joined(separator: " ")).font(Theme.caption).foregroundStyle(.secondary).lineLimit(1) }
-        }.padding(.vertical, 4)
+        let agent = model.agentName(record.text("agent_id"))
+        TSQRecordRow(title: model.section == .portals ? agent : record.title, status: record.status, paused: record.flag("paused"),
+                     detail: model.section == .supervisor ? "\(Int(record.number("supervisor_report_count"))) findings"
+                        : record.text("agent_id").isEmpty || model.section == .portals ? nil : agent,
+                     summary: record.text("description"), tags: record.strings("tags"),
+                     date: record.number("created_at") > 0 ? record.date : nil)
     }
 }
 
