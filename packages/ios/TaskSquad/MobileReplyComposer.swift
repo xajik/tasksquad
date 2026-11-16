@@ -15,7 +15,7 @@ struct MobileReplyComposer: View {
     @State private var loadingImages = false
     @State private var schedulePresented = false
     @FocusState private var focused: Bool
-    @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo: .body) private var writingHeight: CGFloat = 80
     private static let fields: [WorkspaceField] = [
         .init("body", "Message", .multiline, required: true),
         .init("scheduled_at", "Schedule reply", .date, initial: .null)
@@ -38,7 +38,7 @@ struct MobileReplyComposer: View {
             else {
                 HStack {
                     Button { expanded = true; focused = true } label: {
-                        Label("Reply…", systemImage: "arrowshape.turn.up.left").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        Label("Reply…", systemImage: "arrowshape.turn.up.left").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
                     }.accessibilityIdentifier("reply-task")
                     if !(values["body"]?.string ?? "").isEmpty || !files.isEmpty {
                         Text("Draft saved").font(.caption).foregroundStyle(MobileTheme.mutedForeground)
@@ -49,7 +49,7 @@ struct MobileReplyComposer: View {
         .padding(.horizontal, 16).padding(.vertical, 8)
         .frame(maxWidth: 680).frame(maxWidth: .infinity)
         .fixedSize(horizontal: false, vertical: true)
-        .background(MobileTheme.background)
+        .background(.bar)
         .overlay(alignment: .top) { Divider() }
         .onChange(of: values) { old, value in
             MobileDraftStore.save(value, key: draftKey)
@@ -64,7 +64,7 @@ struct MobileReplyComposer: View {
                 Text("Required").font(.caption).foregroundStyle(MobileTheme.mutedForeground)
             }
             TextEditor(text: Binding(get: { values["body"]?.string ?? "" }, set: { values["body"] = .string($0) }))
-                .font(.body).focused($focused).frame(height: typeSize.isAccessibilitySize ? 120 : 80)
+                .font(.body).focused($focused).frame(height: min(writingHeight, 160)).scrollContentBackground(.hidden)
                 .accessibilityLabel("Message").accessibilityIdentifier("field-body")
             if let error {
                 Text(error).font(.footnote).foregroundStyle(MobileTheme.destructive).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("editor-error")
@@ -82,8 +82,10 @@ struct MobileReplyComposer: View {
                     .frame(minHeight: 44)
                     .popover(isPresented: $schedulePresented) { scheduleOptions.padding().presentationCompactAdaptation(.popover) }
                 Spacer(minLength: 0)
-                Button(submitting ? "Sending…" : "Send") { Task { await submit() } }
-                    .buttonStyle(.borderedProminent).foregroundStyle(MobileTheme.primaryForeground).frame(minHeight: 44)
+                Button { Task { await submit() } } label: {
+                    HStack(spacing: 6) { if submitting { ProgressView().tint(.white) }; Text(submitting ? "Sending…" : "Send") }
+                }
+                    .buttonStyle(.borderedProminent)
                     .disabled(submitting || model.busy || unavailableImages || loadingImages).accessibilityIdentifier("editor-submit")
             }.font(.subheadline)
         }.disabled(submitting)

@@ -92,7 +92,7 @@ struct MobileEditor: View {
                 if !advancedFields.isEmpty {
                     Section {
                         Button { advancedExpanded.toggle() } label: {
-                            HStack { Text("Advanced"); Spacer(); MobileIcon(name: advancedExpanded ? "chevron-up" : "chevron-down", size: 16) }.frame(minHeight: 44)
+                            HStack { Text("Advanced"); Spacer(); Image(systemName: "chevron.down").rotationEffect(.degrees(advancedExpanded ? 180 : 0)).foregroundStyle(.secondary) }
                         }.accessibilityIdentifier("editor-advanced").accessibilityValue(advancedExpanded ? "Expanded" : "Collapsed")
                         if advancedExpanded {
                             ForEach(advancedFields.filter { $0.id != "save_tokens_level" || values["save_tokens_enabled"] == .bool(true) }) { field in fieldView(field) }
@@ -100,7 +100,6 @@ struct MobileEditor: View {
                     }
                 }
             }
-            .scrollContentBackground(.hidden).background(MobileTheme.background)
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: invalidField) { _, field in
                 if let field { withAnimation { scroll.scrollTo(field, anchor: .center) } }

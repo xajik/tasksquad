@@ -1,291 +1,370 @@
 import TaskSquadPortalUI
 import SwiftUI
-import Charts
 import TaskSquadPortal
+import TaskSquadDesign
 
+/// iPhone tabs. The four most used sections get a tab; the rest are under More.
+enum MobileTab: Hashable {
+    case section(WorkspaceSection), more
+    var section: WorkspaceSection? { if case .section(let value) = self { value } else { nil } }
+}
+
+/// The signed-in app. iPhone: a tab bar with a navigation stack per tab.
+/// iPad: sidebar, record list and record side by side.
 struct PortalHomeView: View {
     @ObservedObject var auth: MobileAuthStore
     @StateObject private var model: WorkspaceStore
-    @State private var navigation = MobileNavigation()
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @StateObject private var actions: MobileActions
+    @State private var tab = MobileTab.section(.inbox)
+    @State private var path: [MobileRoute] = []
+    @State private var selectedRecord: String?
+    @State private var utility: MobileRoute?
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var typeSize
-    @AccessibilityFocusState private var menuFocused: Bool
-    @State private var editor: MobileEditorRequest?
     @Environment(\.scenePhase) private var scenePhase
 
     init(auth: MobileAuthStore, api: CustomerAPI? = nil) {
         self.auth = auth
-        _model = StateObject(wrappedValue: WorkspaceStore(api: api ?? CustomerAPI(baseURL: MobileAuthStore.apiURL) { force in try await auth.accessToken(forceRefresh: force) }, preferences: api == nil ? .standard : nil))
+        let store = WorkspaceStore(api: api ?? CustomerAPI(baseURL: MobileAuthStore.apiURL) { force in try await auth.accessToken(forceRefresh: force) }, preferences: api == nil ? .standard : nil)
+        _model = StateObject(wrappedValue: store)
+        _actions = StateObject(wrappedValue: MobileActions(model: store))
     }
+    private var regular: Bool { sizeClass == .regular }
+
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Group {
-                    if sizeClass == .regular {
-                        NavigationSplitView(columnVisibility: $columnVisibility) {
-                            sidebar(close: nil)
-                                .navigationSplitViewColumnWidth(min: 240, ideal: 256, max: 320)
-                        } detail: { content }
-                        .navigationSplitViewStyle(.balanced)
-                    } else { content }
+        Group { if regular { splitLayout } else { tabLayout } }
+            .task { await model.connect() }
+            .onChange(of: model.projectID) { _, _ in path = []; selectedRecord = nil; actions.dismissAll() }
+            .onChange(of: sizeClass) { _, _ in path = []; selectedRecord = nil }
+            .modifier(MobileActionPresentations(actions: actions))
+            .onAppear {
+                actions.onRemoved = { id in
+                    if selectedRecord == id { selectedRecord = nil }
+                    if path.last == .record(id) { path.removeLast() }
                 }
-                .accessibilityHidden(navigation.sidebarPresented)
-                .allowsHitTesting(!navigation.sidebarPresented)
-                // Edge swipe opens the drawer on the root screen only; pushed screens
-                // keep the system Back swipe.
-                if navigation.sidebarPresented && sizeClass != .regular {
-                    MobileTheme.scrimDrawer.ignoresSafeArea()
-                        .onTapGesture { closeSidebar() }
-                        .accessibilityHidden(true)
-                    // DESIGN.md §7.2: 256pt drawer; wider at accessibility text sizes.
-                    sidebar(close: closeSidebar)
-                        .frame(width: max(0, min(typeSize.isAccessibilitySize ? 320 : 256, geometry.size.width - 48)))
-                        .background(MobileTheme.sidebar)
-                        .transition(.move(edge: .leading))
-                        .accessibilityAddTraits(.isModal)
-                        .accessibilityAction(.escape) { closeSidebar() }
+                actions.onOpenTask = openTask
+            }
+    }
+
+    // MARK: iPhone
+
+    private var tabLayout: some View {
+        TabView(selection: $tab) {
+            ForEach(WorkspaceSection.tabs) { section in
+                Tab(value: MobileTab.section(section)) {
+                    stack(.section(section)) { sectionScreen(section, root: true) }
+                } label: { Label { Text(section.title) } icon: { TSQIcon.image(section.iconName) } }
+                .accessibilityIdentifier("nav-" + section.rawValue)
+            }
+            Tab("More", systemImage: "ellipsis", value: MobileTab.more) {
+                stack(.more) { MobileMoreList(model: model) }
+            }
+            .accessibilityIdentifier("nav-more")
+        }
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .onChange(of: tab) { _, value in
+            path = []
+            if let section = value.section, model.section != section { model.section = section }
+        }
+        // A section opened from More becomes the current section before its screen draws.
+        .onChange(of: path) { _, value in
+            if case .section(let section) = value.last, model.section.destination != section { model.section = section }
+        }
+    }
+    private func stack<Root: View>(_ owner: MobileTab, @ViewBuilder root: () -> Root) -> some View {
+        NavigationStack(path: tab == owner ? $path : .constant([])) {
+            root().navigationDestination(for: MobileRoute.self) { route in
+                switch route {
+                case .record(let id):
+                    MobileRecordDetail(model: model, actions: actions, id: id, isActive: path.last == route, openTask: openTask)
+                case .section(let section): sectionScreen(section, root: false)
+                case .projects: projects
+                case .account: account
                 }
             }
-            // Edge swipe opens the drawer on a compact root screen; a leftward
-            // swipe closes it. Simultaneous, so list scrolling and taps still win.
-            .simultaneousGesture(DragGesture(minimumDistance: 12, coordinateSpace: .global).onEnded { drag in
-                guard sizeClass != .regular, abs(drag.translation.height) < 80 else { return }
-                if navigation.sidebarPresented, drag.translation.width < -60 { closeSidebar() }
-                else if !navigation.sidebarPresented, navigation.path.isEmpty, drag.startLocation.x < 24, drag.translation.width > 60 {
-                    navigation.sidebarPresented = true
-                }
-            })
-            .animation(reduceMotion ? nil : .easeInOut(duration: MobileTheme.motionBase), value: navigation.sidebarPresented)
         }
-        .task { await model.connect() }
-        .onChange(of: sizeClass) { _, _ in navigation.sidebarPresented = false }
-        .onChange(of: model.context) { _, _ in navigation.path = []; editor = nil }
-        .sheet(item: $editor) { MobileEditor(model: model, request: $0) }
     }
-    private var content: some View {
-        NavigationStack(path: $navigation.path) {
-            workspace
-                .navigationDestination(for: MobileRoute.self) { route in
-                    switch route {
-                    case .record(let id):
-                        MobileRecordDetail(model: model, id: id, isActive: navigation.path.last == route)
-                    case .projects:
-                        MobileProjectsView(model: model) { project in
-                            if project != model.projectID {
-                                navigation.path = []
-                                model.projectID = project
-                            } else { navigation.path.removeLast() }
+    private func sectionScreen(_ section: WorkspaceSection, root: Bool) -> some View {
+        MobileSectionScreen(model: model, actions: actions, section: section,
+                            isActive: scenePhase == .active && (path.isEmpty || path.last == .section(section)), selection: nil,
+                            open: { path.append($0) })
+    }
+    private var projects: some View {
+        MobileProjectsView(model: model) { project in
+            utility = nil
+            if project != model.projectID { model.projectID = project }
+            // Choosing a project lands on its inbox, the place work starts.
+            path = []
+            if !regular { tab = .section(.inbox) }
+            if model.section != .inbox { selectedRecord = nil; model.section = .inbox }
+        }
+    }
+    private var account: some View {
+        MobileAccountView(auth: auth, model: model) {
+            utility = nil; path = []; tab = .section(.inbox)
+            model.resetAccount()
+        }
+    }
+    /// Opens a task from anywhere (a note's linked task, a forwarded task).
+    private func openTask(_ id: String) {
+        if model.section != .inbox { model.section = .inbox }
+        if regular { selectedRecord = id }
+        else if tab != .section(.inbox) { tab = .section(.inbox); Task { path = [.record(id)] } }
+        else { path = [.record(id)] }
+    }
+
+    // MARK: iPad
+
+    private var splitLayout: some View {
+        NavigationSplitView {
+            List(selection: Binding<WorkspaceSection?>(get: { model.section.destination }, set: { value in
+                if let value, model.section.destination != value { selectedRecord = nil; model.section = value }
+            })) {
+                ForEach(WorkspaceSection.groups) { group in
+                    Section(group.title) {
+                        ForEach(group.sections) { section in
+                            Label { Text(section.title) } icon: { TSQIcon.image(section.iconName) }
+                                .tag(section).accessibilityIdentifier("nav-" + section.rawValue)
                         }
-                    case .account:
-                        MobileAccountView(auth: auth, model: model) {
-                            navigation = MobileNavigation()
-                            model.resetAccount()
-                        }
                     }
                 }
-        }
-    }
-    private func sidebar(close: (() -> Void)?) -> some View {
-        MobileSidebar(model: model, route: navigation.path.last, close: close) { section in
-            navigation.path = []
-            if model.section != section { model.section = section }
-            closeSidebar()
-        } open: { route in
-            if navigation.path.last != route {
-                if navigation.path.last == .projects || navigation.path.last == .account { navigation.path.removeLast() }
-                navigation.path.append(route)
+                Section {
+                    Button { utility = .projects } label: { Label(model.currentProject?.title ?? "Projects", systemImage: "folder") }
+                        .accessibilityIdentifier("nav-projects")
+                    Button { utility = .account } label: { Label("Account", systemImage: "person.crop.circle") }
+                        .accessibilityIdentifier("nav-account")
+                }
             }
-            closeSidebar()
+            .navigationTitle("TaskSquad")
+        } content: {
+            MobileSectionScreen(model: model, actions: actions, section: model.section.destination, isActive: scenePhase == .active,
+                                selection: $selectedRecord, open: { if case .record(let id) = $0 { selectedRecord = id } else { utility = $0 } })
+        } detail: {
+            NavigationStack {
+                if let id = selectedRecord {
+                    MobileRecordDetail(model: model, actions: actions, id: id, isActive: scenePhase == .active, openTask: openTask).id(id)
+                } else {
+                    ContentUnavailableView("No \(model.section.itemName.capitalized) Selected", systemImage: "sidebar.right", description: Text("Choose one from the list."))
+                }
+            }
         }
-    }
-    private func closeSidebar() {
-        navigation.sidebarPresented = false
-        menuFocused = true
-    }
-    @ToolbarContentBuilder private var menuToolbar: some ToolbarContent {
-        if sizeClass != .regular {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { navigation.sidebarPresented = true } label: { MobileIcon(name: "panel-left").foregroundStyle(MobileTheme.foreground) }
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityLabel("Open sidebar")
-                    .accessibilityIdentifier("open-sidebar")
-                    .accessibilityFocused($menuFocused)
+        .sheet(item: $utility) { route in
+            NavigationStack {
+                Group { if route == .account { account } else { projects } }
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { utility = nil } } }
             }
         }
     }
-    private var workspace: some View {
-        workspaceList
-            .accessibilityHidden(navigation.sidebarPresented)
-            .allowsHitTesting(!navigation.sidebarPresented)
-            .modifier(MobileWorkspaceSearch(model: model))
-            .navigationTitle(model.section.mobileTitle)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                menuToolbar
-                ToolbarItem(placement: .principal) {
-                    Button { navigation.path.append(.projects) } label: {
-                        VStack(spacing: 2) {
-                            Text(model.section.mobileTitle).font(.headline)
-                            HStack(spacing: 4) {
-                                Text(model.currentProject?.title ?? "No project selected").lineLimit(1)
-                                MobileIcon(name: "chevron-down", size: 12)
-                            }.font(.caption).foregroundStyle(MobileTheme.mutedForeground)
-                        }.frame(minHeight: 44)
-                    }.buttonStyle(.plain).accessibilityIdentifier("switch-project").accessibilityHint("Switch project")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if !model.projectID.isEmpty && MobileViewOptions.available(for: model.section) { MobileViewOptions(model: model) }
-                }
-            }
-            .onChange(of: model.archived) { _, _ in Task { await model.refresh() } }
-            .onChange(of: model.memoryCategory) { _, _ in Task { await model.refresh() } }
-            .refreshable { await model.connect() }
-            .task(id: "\(model.context):\(scenePhase):\(navigation.path.isEmpty)") {
-                guard scenePhase == .active, navigation.path.isEmpty else { return }
-                await model.poll()
-            }
-    }
-    private var workspaceList: some View {
-        List {
-            if model.projectID.isEmpty {
-                TSQEmptyState(icon: "folder", title: "No projects", message: "Open Projects to refresh your available workspaces.")
-                Button("Projects") { navigation.path.append(.projects) }
-            }
-            if !model.projectID.isEmpty {
-                if model.section.isLibrary {
-                    Picker("Library", selection: $model.section) {
-                        ForEach([WorkspaceSection.skills, .subAgents, .commands]) { Text($0.rawValue).tag($0) }
-                    }.pickerStyle(.menu).accessibilityIdentifier("library-selector")
-                }
-                if model.section == .inbox { MobileInboxScope(model: model) }
-                if model.section == .settings { settings }
-                else if model.section == .analytics { analytics }
-                else {
-                    if model.section == .portals {
-                        if !model.isPro { Text("Interactive Portals require an eligible account.").foregroundStyle(MobileTheme.mutedForeground) }
-                        else if model.eligibleAgents.isEmpty { Text("No available agents. Bring an agent online to open a Portal.").foregroundStyle(MobileTheme.mutedForeground) }
-                        else if model.records.filter({ ["pending", "running"].contains($0.status) }).count >= 3 { Text("Three sessions are active. Close one to open another.").foregroundStyle(MobileTheme.mutedForeground) }
-                    }
-                    if model.section == .memory {
-                        if !model.rollups.isEmpty { Section("Daily rollups") { ForEach(model.rollups) { rollup in DisclosureGroup(rollup.title) { MarkdownContent(rollup.text("content")) } } } }
-                    }
-                    if model.loading { ProgressView("Loading…") }
-                    else if model.error != nil && model.records.isEmpty {
-                        Button("Retry loading") { Task { await model.refresh() } }.frame(minHeight: 44)
-                    }
-                    else if model.visibleRecords.isEmpty { emptyState }
-                    else if model.section == .portals {
-                        portalSection("Active sessions", live: true)
-                        portalSection("History", live: false)
-                    } else {
-                        Section { ForEach(model.visibleRecords) { record in row(record) } }
-                    }
-                    if model.hasMore { Button("Load more") { Task { await model.refresh(loadMore: true) } }.disabled(model.loading) }
+}
+
+/// One section's records: search, filters, create, and per-row actions.
+struct MobileSectionScreen: View {
+    @ObservedObject var model: WorkspaceStore
+    @ObservedObject var actions: MobileActions
+    let section: WorkspaceSection
+    let isActive: Bool
+    /// iPad: the selected record. iPhone: `nil`, rows push instead.
+    let selection: Binding<String?>?
+    let open: (MobileRoute) -> Void
+
+    /// The store still holds the previous section for one update after a push from More.
+    private var current: Bool { model.section.destination == section }
+
+    var body: some View {
+        Group {
+            if !current { ProgressView() }
+            else if model.projectID.isEmpty { noProject }
+            else if section == .settings { MobileProjectSettings(model: model) }
+            else { list }
+        }
+        .modifier(MobileWorkspaceSearch(model: model, enabled: current))
+        .navigationTitle(section.title)
+        .navigationSubtitle(model.currentProject?.title ?? "")
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { if selection == nil { projectMenu } }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if current, !model.projectID.isEmpty, MobileViewOptions.available(for: model.section) { MobileViewOptions(model: model) }
+                if current, model.canCreate {
+                    Button(actions.createTitle, systemImage: "plus") { actions.create { open(.record($0)) } }
+                        .disabled(model.busy).accessibilityIdentifier("create-item")
                 }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(alignment: .trailing, spacing: 0) {
-                if canCreate {
-                    MobileFAB(title: createTitle, icon: "plus", identifier: "create-item", disabled: model.busy) { create() }
+            if let error = actions.error ?? model.error, current {
+                TSQErrorBanner(error, identifier: "workspace-error") { actions.error = nil; model.error = nil }
+                    .padding(.horizontal).padding(.vertical, 8).background(.bar)
+            }
+        }
+        .onChange(of: model.archived) { _, _ in Task { await model.refresh() } }
+        .onChange(of: model.memoryCategory) { _, _ in Task { await model.refresh() } }
+        .refreshable { await model.connect() }
+        .task(id: "\(model.context):\(isActive)") {
+            guard isActive, current else { return }
+            await model.poll()
+        }
+    }
+
+    private var noProject: some View {
+        ContentUnavailableView {
+            Label("No projects", systemImage: "folder")
+        } description: { Text("Open Projects to refresh your available workspaces.") } actions: {
+            Button("Projects") { open(.projects) }
+        }
+    }
+
+    /// The current project; switching is one tap and a choice.
+    private var projectMenu: some View {
+        Menu {
+            ForEach(model.projects) { project in
+                Button { if model.projectID != project.id { model.projectID = project.id } } label: {
+                    if model.projectID == project.id { Label(project.title, systemImage: "checkmark") } else { Text(project.title) }
+                }.accessibilityIdentifier("project-" + project.id)
+            }
+            Divider()
+            Button("All Projects…", systemImage: "folder") { open(.projects) }.accessibilityIdentifier("nav-projects")
+        } label: { Label(model.currentProject?.title ?? "Projects", systemImage: "folder") }
+        .accessibilityLabel("Project: " + (model.currentProject?.title ?? "none"))
+        .accessibilityHint("Switch project").accessibilityIdentifier("switch-project")
+    }
+
+    private var list: some View {
+        List(selection: selection ?? .constant(nil)) {
+            if model.section.isLibrary {
+                Picker("Library", selection: $model.section) {
+                    ForEach(WorkspaceSection.libraries) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.segmented).listRowSeparator(.hidden).accessibilityIdentifier("library-selector")
+            }
+            if model.section == .inbox { MobileInboxScope(model: model) }
+            if model.section == .analytics { MobileAnalytics(model: model) }
+            else {
+                if model.section == .portals, let note = portalNote {
+                    Text(note).font(.footnote).foregroundStyle(.secondary).listRowSeparator(.hidden)
                 }
-                if let error = model.error { Text(error).font(.footnote).foregroundStyle(MobileTheme.destructive).fixedSize(horizontal: false, vertical: true).padding().frame(maxWidth: .infinity).background(.regularMaterial).accessibilityIdentifier("workspace-error") }
-            }.frame(maxWidth: .infinity, alignment: .trailing)
+                if model.section == .memory, !model.rollups.isEmpty {
+                    Section(model.rollupPeriod.capitalized + " rollups") {
+                        ForEach(model.rollups) { rollup in DisclosureGroup(rollup.title) { MarkdownContent(rollup.text("content")) } }
+                    }
+                }
+                if model.loading { HStack { Spacer(); ProgressView("Loading…"); Spacer() }.listRowSeparator(.hidden) }
+                else if model.error != nil && model.records.isEmpty {
+                    Button("Retry") { Task { await model.refresh() } }
+                }
+                else if model.visibleRecords.isEmpty { emptyState.listRowSeparator(.hidden) }
+                else if model.section == .portals {
+                    portalSection("Active sessions", live: true)
+                    portalSection("History", live: false)
+                } else {
+                    Section { ForEach(model.visibleRecords) { row($0) } }
+                }
+                if model.hasMore { Button("Load More") { Task { await model.refresh(loadMore: true) } }.disabled(model.loading) }
+            }
         }
         .listStyle(.plain)
-        .scrollContentBackground(.hidden).background(MobileTheme.background)
+    }
+    private var portalNote: String? {
+        if !model.isPro { return "Interactive Portals require an eligible account." }
+        if model.eligibleAgents.isEmpty { return "No available agents. Bring an agent online to open a Portal." }
+        if model.records.filter({ PortalLifecycle.isLive($0.status) }).count >= 3 { return "Three sessions are active. Close one to open another." }
+        return nil
     }
     private var filtered: Bool {
-        !model.search.isEmpty || (model.section == .inbox && (model.status != "all" || model.origin != "all"))
+        (model.section == .inbox && (model.status != "all" || model.origin != "all"))
             || (model.section == .notes && model.archived) || (model.section == .memory && model.memoryCategory != "all")
     }
     @ViewBuilder private var emptyState: some View {
-        if filtered {
-            TSQEmptyState(icon: "search", title: "No matching results", message: "Try another search or clear your filters.") {
+        if filtered || !model.search.isEmpty {
+            ContentUnavailableView {
+                Label("No matching results", systemImage: "magnifyingglass")
+            } description: { Text("Try another search or clear your filters.") } actions: {
                 Button("Clear search and filters") {
                     model.search = ""; model.status = "all"; model.origin = "all"; model.archived = false; model.memoryCategory = "all"
-                }.frame(minHeight: 44).accessibilityIdentifier("clear-filters")
-            }.listRowBackground(Color.clear).listRowSeparator(.hidden)
+                }.accessibilityIdentifier("clear-filters")
+            }
         } else {
-            TSQEmptyState(icon: model.section.mobileIcon, title: model.section == .inbox ? "No tasks yet" : "No \(model.section.rawValue.lowercased()) yet", message: canCreate ? "Create a \(model.section.mobileItem) to get started." : "Items will appear here when available.")
-                .listRowBackground(Color.clear).listRowSeparator(.hidden)
+            TSQEmptyState(icon: model.section.iconName, title: model.section == .inbox ? "No tasks yet" : "No \(model.section.rawValue.lowercased()) yet",
+                          message: model.canCreate ? "Create a \(model.section.itemName) to get started." : "Items will appear here when available.")
         }
     }
-    private var canCreate: Bool { model.canCreate && !model.projectID.isEmpty }
-    private var createTitle: String { model.section == .members ? "Invite member" : "New " + model.section.mobileItem }
     @ViewBuilder private func portalSection(_ title: String, live: Bool) -> some View {
-        let values = model.visibleRecords.filter { ["pending", "running"].contains($0.status) == live }
+        let values = model.visibleRecords.filter { PortalLifecycle.isLive($0.status) == live }
         if !values.isEmpty { Section(title) { ForEach(values) { row($0) } } }
     }
-    private func row(_ record: CustomerRecord) -> some View {
-        Button { navigation.path.append(.record(record.id)) } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(model.section == .portals ? model.agentName(record.text("agent_id")) : model.displayTitle(record)).font(.headline).foregroundStyle(MobileTheme.foreground)
-                    if !record.status.isEmpty { TSQBadge(status: record.status) }
-                    if let caption = caption(record) { Text(caption).font(.caption).foregroundStyle(MobileTheme.mutedForeground) }
-                }
-                Spacer(); MobileIcon(name: "chevron-right", size: 16).foregroundStyle(.tertiary)
-            }.padding(.vertical, 8).frame(minHeight: 44)
-        }.buttonStyle(.plain).accessibilityIdentifier("record-" + record.id).listRowBackground(MobileTheme.background)
-    }
-    /// One muted line under every row: role for people, otherwise when it was created.
-    private func caption(_ record: CustomerRecord) -> String? {
-        var parts: [String] = []
-        if model.section == .inbox, !record.text("agent_id").isEmpty { parts.append(model.agentName(record.text("agent_id"))) }
-        if model.section == .members, !record.text("role").isEmpty { parts.append(record.text("role").capitalized) }
-        if model.section == .agents, record.flag("paused") { parts.append("Paused") }
-        if model.section != .members, record.number("created_at") > 0 { parts.append("Created " + record.date.formatted(.relative(presentation: .named))) }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-    private func create() {
-        let section = model.section, project = model.projectID, context = model.context
-        model.error = nil
-        editor = MobileEditorRequest(title: createTitle, fields: WorkspaceField.fields(for: section), draftKey: model.draftScope("create." + section.rawValue).key, eligibleAgentsOnly: section == .portals, attachments: section == .inbox, phases: section == .planners, submitLabel: section == .inbox ? "Send" : "Create") { body, files in
-            guard context == model.context, let result = await model.perform(.create(section, project: project, values: body, files: files)) else { return false }
-            await model.refresh()
-            let record = CustomerRecord(result)
-            if !record.id.isEmpty { navigation.path = [.record(record.id)] }
-            return true
+    @ViewBuilder private func row(_ record: CustomerRecord) -> some View {
+        let content = TSQRecordRow(title: model.section == .portals ? model.agentName(record.text("agent_id")) : model.displayTitle(record),
+                                   status: record.status, paused: record.flag("paused"), detail: detail(record),
+                                   date: model.section != .members && record.number("created_at") > 0 ? record.date : nil)
+        Group {
+            if selection != nil { content.tag(record.id) }
+            else { NavigationLink(value: MobileRoute.record(record.id)) { content } }
         }
+        .accessibilityIdentifier("record-" + record.id)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            ForEach(model.actions(for: record).filter { $0.placement == .destructive }.reversed()) { action in
+                Button(role: action.isDestructive ? .destructive : nil) { actions.perform(action, on: record) } label: { Label(action.title, systemImage: action.systemImage) }
+                    .tint(action.isDestructive ? nil : MobileTheme.amber)
+            }
+        }
+        .swipeActions(edge: .leading) {
+            ForEach(model.actions(for: record).filter { $0.placement == .primary }) { action in
+                Button { actions.perform(action, on: record) } label: { Label(action.title, systemImage: action.systemImage) }.tint(MobileTheme.tint)
+            }
+        }
+        .contextMenu { MobileActionMenu(actions: actions, record: record) }
     }
-    private var settings: some View {
-        Section("Project") {
-            LabeledContent("Name", value: model.currentProject?.title ?? "No project selected")
-            LabeledContent("Your role", value: (model.currentProject?.text("role") ?? "member").capitalized)
+    private func detail(_ record: CustomerRecord) -> String? {
+        if model.section == .inbox, !record.text("agent_id").isEmpty { return model.agentName(record.text("agent_id")) }
+        if model.section == .members, !record.text("role").isEmpty { return record.text("role").capitalized }
+        if model.section == .agents, !record.status.isEmpty { return nil }
+        return nil
+    }
+}
+
+/// Everything that is not a tab on iPhone, plus Projects and Account.
+struct MobileMoreList: View {
+    @ObservedObject var model: WorkspaceStore
+    var body: some View {
+        List {
+            Section {
+                NavigationLink(value: MobileRoute.projects) {
+                    LabeledContent { Text(model.currentProject?.title ?? "None").lineLimit(1) } label: { Label("Projects", systemImage: "folder") }
+                }.accessibilityIdentifier("nav-projects")
+            }
+            ForEach(WorkspaceSection.groups) { group in
+                let sections = group.sections.filter { !WorkspaceSection.tabs.contains($0) }
+                if !sections.isEmpty {
+                    Section(group.title) {
+                        ForEach(sections) { section in
+                            NavigationLink(value: MobileRoute.section(section)) {
+                                Label { Text(section.title) } icon: { TSQIcon.image(section.iconName) }
+                            }.accessibilityIdentifier("nav-" + section.rawValue)
+                        }
+                    }
+                }
+            }
+            Section {
+                NavigationLink(value: MobileRoute.account) { Label("Account", systemImage: "person.crop.circle") }
+                    .accessibilityIdentifier("nav-account")
+            }
+        }
+        .navigationTitle("More")
+    }
+}
+
+struct MobileProjectSettings: View {
+    @ObservedObject var model: WorkspaceStore
+    var body: some View {
+        Form {
+            Section("Project") {
+                LabeledContent("Name", value: model.currentProject?.title ?? "No project selected")
+                LabeledContent("Your role", value: (model.currentProject?.text("role") ?? "member").capitalized)
+            }
             if model.canManage {
-                Toggle("Learn from sessions", isOn: setting("learn_from_session"))
-                Toggle("Project memory", isOn: setting("memory_enabled"))
+                Section {
+                    Toggle("Learn from sessions", isOn: setting("learn_from_session"))
+                    Toggle("Project memory", isOn: setting("memory_enabled"))
+                } footer: { Text("Agents can save what they learn in this project and reuse it in later tasks.") }
             }
         }
     }
     private func setting(_ key: String) -> Binding<Bool> { Binding(get: { model.currentProject?.flag(key) ?? false }, set: { value in Task { if await model.perform(.setProjectFlag(project: model.projectID, key: key, value)) != nil { await model.connect() } } }) }
-    private static func day(_ text: String) -> Date { (try? Date(text, strategy: .iso8601.year().month().day())) ?? .distantPast }
-    private var analytics: some View {
-        Section("Last 30 days") {
-            if let record = model.records.first {
-                ForEach(["created", "done", "failed", "in_progress", "scheduled"], id: \.self) { key in
-                    LabeledContent(key.replacingOccurrences(of: "_", with: " ").capitalized, value: String(Int(record.value["totals"]?[key]?.number ?? 0)))
-                }
-                if !record.records("daily").isEmpty {
-                    Chart(record.records("daily").indices, id: \.self) { index in
-                        let day = record.records("daily")[index]
-                        BarMark(x: .value("Day", Self.day(day.text("date")), unit: .day), y: .value("Created", day.number("created")))
-                            .foregroundStyle(MobileTheme.primary)
-                    }
-                    .chartXAxis { AxisMarks(values: .stride(by: .day, count: 7)) { AxisGridLine(); AxisValueLabel(format: .dateTime.month(.abbreviated).day()) } }
-                    .frame(height: 180).accessibilityLabel("Tasks created by day")
-                }
-                ForEach(record.records("agents").indices, id: \.self) { index in
-                    let agent = record.records("agents")[index]
-                    LabeledContent(agent.title, value: "\(Int(agent.number("done"))) completed / \(Int(agent.number("tasks"))) tasks")
-                }
-                ForEach(["turns", "input_tokens", "output_tokens", "tool_calls", "tool_errors"], id: \.self) { key in
-                    LabeledContent(key.replacingOccurrences(of: "_", with: " ").capitalized, value: String(Int(record.value["usage"]?[key]?.number ?? 0)))
-                }
-            }
-        }
-    }
 }

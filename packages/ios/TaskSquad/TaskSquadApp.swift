@@ -35,8 +35,7 @@ struct TaskSquadApp: App {
                 }
             }
             .modifier(MobileFixtureTypeSize())
-            .tint(MobileTheme.primary)
-            .foregroundStyle(MobileTheme.foreground)
+            .tint(MobileTheme.tint)
             .preferredColorScheme(colorScheme)
             .task { auth.restore() }
         }

@@ -3,6 +3,7 @@ import CryptoKit
 import Foundation
 import Security
 import SwiftUI
+import TaskSquadDesign
 import TaskSquadPortal
 
 @MainActor
@@ -176,13 +177,13 @@ struct MobileSignInView: View {
     @StateObject private var presenter = MobileAuthPresenter()
     var body: some View {
         VStack(spacing: 18) {
-            MobileIcon(name: "terminal", size: 42).foregroundStyle(MobileTheme.primary)
+            TSQLogo(size: 64)
             Text("TaskSquad").font(.largeTitle.bold())
             Text("Manage tasks, projects and remote agent sessions.").foregroundStyle(MobileTheme.mutedForeground).multilineTextAlignment(.center)
             Button { Task { await auth.signIn(presentation: presenter) } } label: {
-                Label { Text("Continue to sign in") } icon: { MobileIcon(name: "user") }.frame(maxWidth: .infinity)
-            }.buttonStyle(MobilePrimaryButtonStyle()).disabled(auth.signingIn)
+                HStack { if auth.signingIn { ProgressView() }; Text("Continue to sign in") }.frame(maxWidth: .infinity)
+            }.buttonStyle(.borderedProminent).controlSize(.large).disabled(auth.signingIn)
             if let error = auth.error { Text(error).font(.footnote).foregroundStyle(MobileTheme.destructive).accessibilityIdentifier("auth-error") }
-        }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(MobileTheme.background)
+        }.padding(28).frame(maxWidth: 420).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

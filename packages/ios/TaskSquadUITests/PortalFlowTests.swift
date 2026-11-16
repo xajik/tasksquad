@@ -12,43 +12,53 @@ import CryptoKit
         let (data, _) = try await URLSession.shared.data(for: req)
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
+    private static let tabs = ["Inbox", "Notes", "Portals", "Agents"]
+    /// iPhone shows a tab bar; iPad shows the sidebar instead. Width, not the
+    /// tab bar, decides: record screens hide the tab bar.
+    private var compact: Bool { min(app.frame.width, app.frame.height) < 600 }
+    private func waitForWorkspace(timeout: TimeInterval = 10) {
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: timeout) || app.buttons["nav-Inbox"].waitForExistence(timeout: 2), "Workspace did not appear")
+    }
     private func launch(project: Bool = true) async throws {
+        XCUIDevice.shared.orientation = .portrait // A failed landscape test must not affect the next one.
         _ = try await control("reset")
         app.launchArguments = ["--ui-test-api", base.absoluteString, "--ui-test-reset-drafts", "--ui-test-appearance", "light"]
         app.launch()
-        XCTAssertTrue(app.buttons["open-sidebar"].waitForExistence(timeout: 5) || app.buttons["nav-Inbox"].exists)
+        waitForWorkspace()
         if project { chooseProject("Test workspace") }
     }
-    private func openSidebar() {
-        let button = app.buttons["open-sidebar"]
-        if button.exists { button.tap() }
-    }
+    /// Opens a destination by its `nav-…` identifier: a tab, a row under More, or a sidebar row.
     private func navigate(_ identifier: String) {
-        openSidebar()
-        let item = app.buttons[identifier]
-        let sidebar = app.scrollViews["sidebar-destinations"]
-        if !app.buttons["close-sidebar"].exists {
-            for _ in 0..<3 { sidebar.swipeDown() }
+        let name = String(identifier.dropFirst(4))
+        if compact {
+            if Self.tabs.contains(name) { app.tabBars.buttons[name].tap(); return }
+            app.tabBars.buttons["More"].tap()
+            let item = app.buttons[identifier]
+            // More keeps its last screen; step back to the list of destinations.
+            for _ in 0..<3 where !item.exists { if app.navigationBars.buttons.element(boundBy: 0).exists { back() } }
+            XCTAssertTrue(item.waitForExistence(timeout: 5), identifier)
+            for _ in 0..<4 where !item.isHittable { app.swipeUp() }
+            item.tap()
+        } else {
+            let item = app.buttons[identifier].exists ? app.buttons[identifier] : app.descendants(matching: .any)[identifier].firstMatch
+            XCTAssertTrue(item.waitForExistence(timeout: 5), identifier); item.tap()
         }
-        for _ in 0..<12 {
-            if item.isHittable { break }
-            sidebar.swipeUp()
-        }
-        XCTAssertTrue(item.waitForExistence(timeout: 5)); XCTAssertTrue(item.isHittable); item.tap()
     }
     private func chooseProject(_ name: String) {
-        navigate("nav-projects")
+        let menu = app.buttons["switch-project"]
+        if menu.waitForExistence(timeout: 5) { menu.tap() } else { navigate("nav-projects") }
         let project = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-' AND label CONTAINS %@", name)).firstMatch
         XCTAssertTrue(project.waitForExistence(timeout: 5)); project.tap()
     }
     private func section(_ name: String) {
         let library = ["Skills", "Sub-agents", "Commands"].contains(name)
         navigate("nav-" + (library ? "Skills" : name))
-        if library && name != "Skills" {
-            app.buttons["library-selector"].tap(); app.buttons[name].tap()
+        if library {
+            let picker = app.segmentedControls["library-selector"]
+            XCTAssertTrue(picker.waitForExistence(timeout: 5)); picker.buttons[name].tap()
         }
-        let title = ["Settings": "Project Settings", "Conveyors": "Conveyor", "Planners": "Planner"][name] ?? name
-        XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
+        let title = library ? "Library" : ["Settings": "Project Settings", "Conveyors": "Conveyor", "Planners": "Planner"][name] ?? name
+        XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5), title)
     }
     private func create() { let button = app.buttons["create-item"]; XCTAssertTrue(button.waitForExistence(timeout: 5)); XCTAssertTrue(button.isHittable); button.tap() }
     private func attachImage() { app.buttons["attach-images"].tap(); app.buttons["Attach test image"].tap() }
@@ -63,24 +73,33 @@ import CryptoKit
         section("Portals"); create(); agent(); app.buttons["editor-submit"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["live-terminal"].firstMatch.waitForExistence(timeout: 12))
         let state = try await control("state"), portals = state["portals"] as! [String: Any]
-        return portals.keys.first!
+        return try XCTUnwrap(portals.keys.first)
     }
     private func filterStatus(_ value: String) {
         app.buttons["view-options"].tap()
-        let status = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Status'")).firstMatch
+        let status = app.buttons["status-filter"]
         XCTAssertTrue(status.waitForExistence(timeout: 5)); status.tap()
-        let option = app.buttons[value]; XCTAssertTrue(option.waitForExistence(timeout: 5)); option.tap()
+        let option = app.buttons.matching(NSPredicate(format: "label == %@", value)).firstMatch
+        XCTAssertTrue(option.waitForExistence(timeout: 5)); option.tap()
+        screenshot("filters-" + value)
+        app.buttons["filters-done"].tap()
     }
     private func scrollTo(_ element: XCUIElement) {
         for _ in 0..<6 { if element.exists && element.isHittable && app.frame.contains(element.frame) { break }; app.swipeUp() }
         XCTAssertTrue(element.exists); XCTAssertTrue(element.isHittable)
+    }
+    /// iOS 26 confirmation dialogs have no Cancel button on iPhone; tapping outside cancels.
+    private func dismissDialog() {
+        if app.buttons["Cancel"].waitForExistence(timeout: 1) { app.buttons["Cancel"].tap() }
+        else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap() }
     }
     private func screenshot(_ name: String) { let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a) }
     private func assertImageRoundTrip(taskID: String, message: [String: Any]) async throws {
         let attachment = (message["attachments"] as! [[String: Any]])[0]
         let attachmentID = attachment["id"] as! String
         let messageID = message["id"] as! String
-        let image = app.images["test.png"].firstMatch
+        // A received image is a button that opens it full screen.
+        let image = app.buttons["test.png"].firstMatch
         scrollTo(image)
         XCTAssertTrue(image.waitForExistence(timeout: 8), "Authenticated download renders the uploaded image")
         var request = URLRequest(url: base.appendingPathComponent("tasks/\(taskID)/messages/\(messageID)/attachments/\(attachmentID)"))
@@ -97,7 +116,7 @@ import CryptoKit
     func test01EmptyProjectKeepsNavigationAndNativeLayout() async throws {
         try await launch(project: false)
         XCTAssertTrue(app.staticTexts["No tasks yet"].waitForExistence(timeout: 5))
-        assertFits(app.buttons["open-sidebar"])
+        if compact { assertFits(app.tabBars.buttons["Inbox"]); assertFits(app.tabBars.buttons["More"]) }
         assertFits(app.buttons["view-options"]); assertFits(app.buttons["create-item"])
         screenshot("01-empty-project")
         chooseProject("Test workspace"); XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
@@ -112,7 +131,7 @@ import CryptoKit
         try await launch(); filterStatus("Done")
         XCTAssertTrue(app.staticTexts["No matching results"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["view-options"].label, "View options, filtered")
-        filterStatus("Waiting Input")
+        filterStatus("Waiting for input")
         XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
     }
     func test04CreateUnicodeTaskAndInitialImage() async throws {
@@ -193,8 +212,8 @@ import CryptoKit
     }
     func test10CancelClosePreservesRunningSession() async throws {
         try await launch(); let id = try await openPortal(); app.buttons["close-portal"].tap()
-        XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 5)); app.buttons["Cancel"].tap()
-        XCTAssertTrue(app.buttons["close-portal"].isHittable)
+        XCTAssertTrue(app.buttons["Close Portal"].waitForExistence(timeout: 5)); dismissDialog()
+        XCTAssertTrue(app.buttons["close-portal"].waitForExistence(timeout: 5)); XCTAssertTrue(app.buttons["close-portal"].isHittable)
         let state = try await control("state"), portals = state["portals"] as! [String:[String:Any]]; XCTAssertEqual(portals[id]!["status"] as? String,"running")
     }
     func test11CloseErrorKeepsDetailOpen() async throws {
@@ -223,7 +242,7 @@ import CryptoKit
         _ = try await control("reset")
         app.launchArguments = ["--ui-test-api", base.absoluteString, "--ui-test-reset-drafts", "--ui-test-appearance", "dark", "--ui-test-large-text"]
         app.launch()
-        XCTAssertTrue(app.buttons["open-sidebar"].waitForExistence(timeout: 10)); assertFits(app.buttons["open-sidebar"])
+        waitForWorkspace()
         chooseProject("Test workspace")
         screenshot("11-dark-large-inbox")
         scrollTo(app.buttons["record-task"]); app.buttons["record-task"].tap()
@@ -240,11 +259,12 @@ import CryptoKit
         else if springboard.buttons["Continue"].exists { springboard.buttons["Continue"].tap() }
         let link = app.webViews.links["Authorize fixture"]
         XCTAssertTrue(link.waitForExistence(timeout: 12)); link.tap()
-        XCTAssertTrue(app.buttons["open-sidebar"].waitForExistence(timeout: 10))
+        waitForWorkspace()
         screenshot("10-authenticated-workspace")
         let (data,_) = try await URLSession.shared.data(from: base.appendingPathComponent("__test/events"))
         XCTAssertTrue(String(decoding:data,as:UTF8.self).contains("\"verified\": true"))
         navigate("nav-account"); app.buttons["Sign out"].tap()
+        XCTAssertTrue(app.buttons["Sign Out"].waitForExistence(timeout: 5), "Signing out asks for confirmation"); app.buttons["Sign Out"].tap()
         XCTAssertTrue(app.buttons["Continue to sign in"].waitForExistence(timeout: 10))
         app.terminate(); app.launchArguments = ["--ui-test-auth", base.absoluteString]; app.launch()
         XCTAssertTrue(app.buttons["Continue to sign in"].waitForExistence(timeout: 10), "Logout purges the persisted credential")
@@ -252,30 +272,27 @@ import CryptoKit
     func test15SeededNavigationAndForegroundRecovery() async throws {
         try await launch(); var seed: UInt64 = 0x51C0FFEE
         let names = ["Inbox","Notes","Agents","Portals","Analytics","Skills"]
-        for _ in 0..<15 { seed = seed &* 6364136223846793005 &+ 1442695040888963407; section(names[Int((seed>>32)%UInt64(names.count))]); assertFits(app.buttons["open-sidebar"]) }
+        for _ in 0..<15 { seed = seed &* 6364136223846793005 &+ 1442695040888963407; section(names[Int((seed>>32)%UInt64(names.count))]); if compact { assertFits(app.tabBars.buttons["More"]) } }
         XCUIDevice.shared.press(.home); app.activate()
-        XCTAssertTrue(app.buttons["open-sidebar"].waitForExistence(timeout: 5))
+        waitForWorkspace(timeout: 5)
     }
-    func test18SidebarDismissalAndUtilityBackPreserveDetail() async throws {
+    func test18UtilityBackAndRecordActionsStayReachable() async throws {
         try await launch()
-        openSidebar()
-        XCTAssertFalse(app.buttons["create-item"].isHittable)
-        app.buttons["close-sidebar"].tap()
         XCTAssertTrue(app.buttons["create-item"].isHittable)
         navigate("nav-account")
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.switches["Project memory"].exists)
-        back()
+        if compact { back(); navigate("nav-Inbox") } else { app.buttons["Done"].tap() }
         XCTAssertTrue(app.buttons["create-item"].waitForExistence(timeout: 5))
-        // Pushed screens show Back only; the drawer button belongs to root screens.
         openTask()
-        XCTAssertFalse(app.buttons["open-sidebar"].exists)
         XCTAssertTrue(app.buttons["more-actions"].isHittable)
         app.buttons["more-actions"].tap()
-        XCTAssertTrue(app.buttons["Forward to agent"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Delete task"].exists)
-        app.buttons["Forward to agent"].tap(); app.buttons["Cancel"].tap()
-        back()
+        XCTAssertTrue(app.buttons["Forward to Agent…"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Close Task"].exists)
+        XCTAssertTrue(app.buttons["Delete Task"].exists)
+        app.buttons["Forward to Agent…"].tap()
+        XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 5)); app.buttons["Cancel"].tap()
+        if compact { back() }
         chooseProject("Empty project")
         XCTAssertTrue(app.staticTexts["No tasks yet"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["reply-task"].exists)
@@ -286,13 +303,15 @@ import CryptoKit
             app.terminate()
             app.launchArguments = ["--ui-test-api", base.absoluteString, "--ui-test-appearance", appearance]
             app.launch()
-            XCTAssertTrue(app.buttons["open-sidebar"].waitForExistence(timeout: 10) || app.buttons["nav-Inbox"].exists)
+            waitForWorkspace()
             chooseProject("Test workspace")
+            XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
             screenshot("navigation-inbox-" + appearance)
-            openSidebar(); screenshot("navigation-sidebar-" + appearance)
-            if app.buttons["close-sidebar"].exists { app.buttons["close-sidebar"].tap() }
-            navigate("nav-projects"); screenshot("navigation-projects-" + appearance); back()
-            navigate("nav-account"); screenshot("navigation-account-" + appearance); back()
+            if compact { app.tabBars.buttons["More"].tap(); XCTAssertTrue(app.buttons["nav-Conveyors"].waitForExistence(timeout: 5)); screenshot("navigation-more-" + appearance) }
+            navigate("nav-projects"); screenshot("navigation-projects-" + appearance)
+            if compact { back() } else { app.buttons["Done"].tap() }
+            navigate("nav-account"); screenshot("navigation-account-" + appearance)
+            if compact { back() } else { app.buttons["Done"].tap() }
         }
     }
 
@@ -315,7 +334,8 @@ import CryptoKit
         app.launch()
         XCTAssertTrue(app.staticTexts["No projects"].waitForExistence(timeout: 10))
         navigate("nav-account")
-        XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 5)); back()
+        XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 5))
+        if compact { back() } else { app.buttons["Done"].tap() }
         navigate("nav-projects")
         XCTAssertTrue(app.staticTexts["No projects"].waitForExistence(timeout: 5))
     }
@@ -330,14 +350,40 @@ import CryptoKit
         XCTAssertFalse(app.switches["Project memory"].exists)
         XCTAssertFalse(app.buttons["Sign out"].exists)
     }
-    func test23EdgeSwipeOpensAndSwipeClosesSidebar() async throws {
+    func test23TabBarAndMoreReachEverySection() async throws {
         try await launch()
-        guard app.buttons["open-sidebar"].exists else { throw XCTSkip("Regular width keeps a persistent sidebar") }
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)))
-        XCTAssertTrue(app.buttons["close-sidebar"].waitForExistence(timeout: 3))
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)))
-        XCTAssertTrue(app.buttons["close-sidebar"].waitForNonExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["record-task"].isHittable)
+        guard compact else { throw XCTSkip("Regular width shows every section in the sidebar") }
+        for name in Self.tabs { XCTAssertTrue(app.tabBars.buttons[name].exists, name) }
+        app.tabBars.buttons["Notes"].tap()
+        XCTAssertTrue(app.navigationBars["Notes"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["Notes"].isSelected)
+        app.tabBars.buttons["More"].tap()
+        for id in ["nav-projects", "nav-Conveyors", "nav-Planners", "nav-Supervisor", "nav-Skills", "nav-Memory", "nav-Members", "nav-Analytics", "nav-Settings", "nav-account"] {
+            let row = app.buttons[id]
+            for _ in 0..<3 where !row.exists { app.swipeUp() }
+            XCTAssertTrue(row.exists, id)
+        }
+        screenshot("39-more")
+        app.tabBars.buttons["Inbox"].tap()
+        XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
+    }
+
+    func test32SwipeAndContextMenuOfferRecordActions() async throws {
+        try await launch()
+        let row = app.buttons["record-task"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.swipeLeft()
+        XCTAssertTrue(app.buttons["Delete Task"].waitForExistence(timeout: 5), "Trailing swipe offers Delete")
+        screenshot("40-swipe-actions")
+        app.buttons["Delete Task"].tap()
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 5), "Delete asks for confirmation")
+        dismissDialog()
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "Cancelling keeps the task")
+        let state = try await control("state")
+        XCTAssertEqual((state["tasks"] as? [String: Any])?.count, 1)
+        row.press(forDuration: 1.2)
+        XCTAssertTrue(app.buttons["Forward to Agent…"].waitForExistence(timeout: 5), "Long press shows the record's actions")
+        screenshot("41-context-menu")
     }
 
     /// Baseline usability evidence: required inputs are discovered on submit,
@@ -467,14 +513,16 @@ import CryptoKit
 
     func test30InboxScopeAndEmptyResultsCanBeCleared() async throws {
         try await launch()
-        app.buttons["scope-running"].tap()
+        let scope = app.segmentedControls["inbox-scope"]
+        XCTAssertTrue(scope.waitForExistence(timeout: 5))
+        scope.buttons["Running"].tap()
         XCTAssertTrue(app.staticTexts["No matching results"].waitForExistence(timeout: 5))
         assertFits(app.buttons["clear-filters"])
         screenshot("35-filtered-empty")
         app.buttons["clear-filters"].tap()
         XCTAssertTrue(app.buttons["record-task"].waitForExistence(timeout: 5))
-        app.buttons["scope-waiting_input"].tap()
-        XCTAssertTrue(app.buttons["scope-waiting_input"].isSelected)
+        scope.buttons["Needs input"].tap()
+        XCTAssertTrue(scope.buttons["Needs input"].isSelected)
         XCTAssertTrue(app.buttons["record-task"].exists)
         screenshot("36-inbox-scope")
     }

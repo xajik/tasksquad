@@ -1,34 +1,26 @@
 import SwiftUI
 import TaskSquadPortal
 
+/// The inbox's three everyday scopes as a system segmented control. Other
+/// statuses and origins are in the filter menu; when one is active it is named
+/// here with a way to clear it.
 struct MobileInboxScope: View {
     @ObservedObject var model: WorkspaceStore
+    private static let scopes = [("All", "all"), ("Needs input", "waiting_input"), ("Running", "running")]
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    scope("All", value: "all")
-                    scope("Needs input", value: "waiting_input")
-                    scope("Running", value: "running")
-                }
-            }
-            if !["all", "waiting_input", "running"].contains(model.status) || model.origin != "all" {
+            Picker("Show", selection: $model.status) {
+                ForEach(Self.scopes, id: \.1) { Text($0.0).tag($0.1) }
+                // Keeps the control valid while a status from the filter menu is active.
+                if !Self.scopes.map(\.1).contains(model.status) { Text(WorkspaceFilter.label(model.status, any: "")).tag(model.status) }
+            }.pickerStyle(.segmented).accessibilityIdentifier("inbox-scope")
+            if model.origin != "all" {
                 HStack {
-                    Text([model.status == "all" ? nil : model.status.replacingOccurrences(of: "_", with: " ").capitalized,
-                          model.origin == "all" ? nil : "Origin: " + model.origin.replacingOccurrences(of: "-", with: " ")].compactMap { $0 }.joined(separator: " · "))
-                        .font(.caption).foregroundStyle(MobileTheme.mutedForeground)
+                    Text("Origin: " + WorkspaceFilter.label(model.origin, any: "")).font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("Clear filters") { model.status = "all"; model.origin = "all" }.font(.caption).frame(minHeight: 44)
+                    Button("Clear Filters") { model.status = "all"; model.origin = "all" }.font(.caption)
                 }
             }
-        }.listRowSeparator(.hidden).listRowBackground(MobileTheme.background)
-    }
-    private func scope(_ title: String, value: String) -> some View {
-        Button { model.status = value } label: {
-            Text(title).font(.subheadline.weight(.medium)).padding(.horizontal, 12).frame(minHeight: 44)
-                .foregroundStyle(model.status == value ? MobileTheme.primaryForeground : MobileTheme.foreground)
-                .background(model.status == value ? MobileTheme.primary : MobileTheme.muted, in: RoundedRectangle(cornerRadius: MobileTheme.controlRadius))
-        }.buttonStyle(.plain).accessibilityIdentifier("scope-" + value)
-            .accessibilityAddTraits(model.status == value ? .isSelected : [])
+        }.listRowSeparator(.hidden)
     }
 }

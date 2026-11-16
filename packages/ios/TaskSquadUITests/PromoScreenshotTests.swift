@@ -13,8 +13,8 @@ import XCTest
         for appearance in ["light", "dark"] {
             app.launchArguments = ["--ui-test-api", api, "--ui-test-appearance", appearance]
             app.launch()
-            XCTAssertTrue(app.buttons["open-sidebar"].waitForExistence(timeout: 15))
-            navigate("nav-projects")
+            XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 15) || app.buttons["nav-Inbox"].exists)
+            if app.buttons["switch-project"].waitForExistence(timeout: 5) { app.buttons["switch-project"].tap() } else { navigate("nav-projects") }
             let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'project-' AND label CONTAINS %@", project)).firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 10)); row.tap()
             settle(); shot("ios-inbox-\(appearance)")
@@ -29,9 +29,14 @@ import XCTest
     }
 
     private func navigate(_ identifier: String) {
-        if app.buttons["open-sidebar"].exists { app.buttons["open-sidebar"].tap() }
+        let name = String(identifier.dropFirst(4))
+        if app.tabBars.firstMatch.exists {
+            if app.tabBars.buttons[name].exists { app.tabBars.buttons[name].tap(); return }
+            app.tabBars.buttons["More"].tap()
+        }
         let item = app.buttons[identifier]
-        for _ in 0..<12 where !item.isHittable { app.scrollViews["sidebar-destinations"].swipeUp() }
+        for _ in 0..<3 where !item.exists { if app.navigationBars.buttons.element(boundBy: 0).exists { app.navigationBars.buttons.element(boundBy: 0).tap() } }
+        for _ in 0..<6 where item.exists && !item.isHittable { app.swipeUp() }
         XCTAssertTrue(item.waitForExistence(timeout: 5)); item.tap()
     }
     private func go(_ section: String) {

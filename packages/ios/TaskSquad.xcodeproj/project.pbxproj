@@ -12,7 +12,9 @@
 		2D4FBBBE11C73CD6A69053F5 /* MobileNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF3512155D78B938C306E4DD /* MobileNavigation.swift */; };
 		35C95D01C813ED2EF6C26CA1 /* MobileAuthFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */; };
 		41C90D7A2E7A4985C7B458C8 /* MobileEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A30AA7DDE6D278F84DDE19 /* MobileEditor.swift */; };
+		458A4EBFC77F7DDEFD976DCD /* MobileActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05C6F3A15410FD1990B6898 /* MobileActions.swift */; };
 		4DA70E525D87A8D19BA08E94 /* MobileInboxScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A62532387EBC14972BC41D /* MobileInboxScope.swift */; };
+		5269F71A5FD77D0631A05C82 /* MobileAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A16E301539946615174A68A /* MobileAnalytics.swift */; };
 		60CB3BFF7EF9CCAA1C7F89AE /* PortalTerminalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A24DFD7CDB332FEB0BFA475 /* PortalTerminalScreen.swift */; };
 		689758FAD9A501D9354057D7 /* MobileDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F626AD924DEFB03534A3145 /* MobileDraftTests.swift */; };
 		7442E64C730B5701623821B9 /* MobileReplyComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F96E60B526B66662CACD0763 /* MobileReplyComposer.swift */; };
@@ -62,6 +64,7 @@
 		6F626AD924DEFB03534A3145 /* MobileDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDraftTests.swift; sourceTree = "<group>"; };
 		72D2CC658D102F9EDD1B81E3 /* TaskSquadTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TaskSquadTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7FE0916A7F339476E58B09DB /* TaskSquadPortal */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TaskSquadPortal; path = ../mobile/TaskSquadPortal; sourceTree = SOURCE_ROOT; };
+		8A16E301539946615174A68A /* MobileAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAnalytics.swift; sourceTree = "<group>"; };
 		8A24DFD7CDB332FEB0BFA475 /* PortalTerminalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalTerminalScreen.swift; sourceTree = "<group>"; };
 		98A30AA7DDE6D278F84DDE19 /* MobileEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileEditor.swift; sourceTree = "<group>"; };
 		9C2060585F24003A06B8E88A /* PortalHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalHomeView.swift; sourceTree = "<group>"; };
@@ -72,6 +75,7 @@
 		D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAuthFlow.swift; sourceTree = "<group>"; };
 		E7A62532387EBC14972BC41D /* MobileInboxScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileInboxScope.swift; sourceTree = "<group>"; };
 		EB207D857A43491B4B23528D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F05C6F3A15410FD1990B6898 /* MobileActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileActions.swift; sourceTree = "<group>"; };
 		F1756F65F3A291F9D9547D06 /* TaskSquadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskSquadApp.swift; sourceTree = "<group>"; };
 		F96E60B526B66662CACD0763 /* MobileReplyComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileReplyComposer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -152,6 +156,8 @@
 			isa = PBXGroup;
 			children = (
 				EB207D857A43491B4B23528D /* Assets.xcassets */,
+				F05C6F3A15410FD1990B6898 /* MobileActions.swift */,
+				8A16E301539946615174A68A /* MobileAnalytics.swift */,
 				D9B41024B7EB2E9DF19013C6 /* MobileAuthFlow.swift */,
 				5EB4A702FA864462F5E6FE52 /* MobileDraftStore.swift */,
 				98A30AA7DDE6D278F84DDE19 /* MobileEditor.swift */,
@@ -315,6 +321,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				458A4EBFC77F7DDEFD976DCD /* MobileActions.swift in Sources */,
+				5269F71A5FD77D0631A05C82 /* MobileAnalytics.swift in Sources */,
 				35C95D01C813ED2EF6C26CA1 /* MobileAuthFlow.swift in Sources */,
 				DD1759BF6E9091CD96AE1639 /* MobileDraftStore.swift in Sources */,
 				41C90D7A2E7A4985C7B458C8 /* MobileEditor.swift in Sources */,
