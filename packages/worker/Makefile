@@ -31,3 +31,7 @@ migrate-local:
 new-migration:
 	@test -n "$(name)" || (echo "Usage: make new-migration name=<snake_case_description>" && exit 1)
 	bunx wrangler d1 migrations create tasksquad-db $(name)
+
+.PHONY: check
+check:
+	bunx tsc --noEmit

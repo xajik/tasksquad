@@ -1,5 +1,4 @@
 import { ulid } from 'ulidx'
-import type { Env } from '../types.js'
 import { hash, policy, prompt, templates, type Policy, type Role, type Rule, verifyGoal } from './contracts.js'
 
 export interface Graph {
@@ -108,4 +107,12 @@ export async function snapshot(db: D1Database, g: Graph): Promise<Data> {
   rows(db,'SELECT * FROM graph_proposals WHERE graph_id=?',g.id),
  ])
  return { ...g, config:c, nodes,edges,assignments,attempts,results,events,resources,evidence,budgets,grading,evaluations,proposals,goal_verification:verifyGoal(c.rule,evidence,Date.now()) }
+}
+
+export async function resource(db:D1Database,graphId:string,body:Data):Promise<void>{
+ const g=await graph(db,graphId)
+ for(const [key,max] of [['title',299],['description',299],['body',3999]] as const) if(typeof body[key]!=='string'||[...(body[key] as string).normalize('NFC')].length>max)throw new Error(`Invalid resource ${key}`)
+ if(!['execution','private'].includes(body.visibility as string))throw new Error('Invalid visibility')
+ const resourceId=id()
+ await commit(db,g,'resource',resourceId,{},[sql(db,'INSERT INTO graph_resources(id,graph_id,version,title,description,body,visibility,created_at) VALUES(?,?,1,?,?,?,?,?)',resourceId,g.id,body.title,body.description,body.body,body.visibility,Date.now())])
 }
