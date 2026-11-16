@@ -6,16 +6,17 @@ public struct MarkdownBlockView: View {
     let block: MarkdownBlock
     let copy: ((String) -> Void)?
     public init(block: MarkdownBlock, copy: ((String) -> Void)? = nil) { self.block = block; self.copy = copy }
+    private static let headings: [Font] = [.title, .title2, .title3, .headline, .subheadline, .footnote]
     public var body: some View {
         switch block.kind {
         case .heading(let level):
-            inline(block.text).font(.system(size: [32.0, 25, 20, 17, 15, 14][level - 1], weight: .semibold)).padding(.top, level <= 2 ? 10 : 4).accessibilityAddTraits(.isHeader)
+            inline(block.text).font(Self.headings[min(max(level, 1), 6) - 1].weight(.semibold)).padding(.top, level <= 2 ? 10 : 4).accessibilityAddTraits(.isHeader)
         case .paragraph: inline(block.text).font(TSQTheme.body).lineSpacing(6)
         case .code(let language):
             VStack(alignment: .leading, spacing: 0) {
                 HStack { Text(language.isEmpty ? "Code" : language.uppercased()).font(TSQTheme.caption.weight(.medium)).foregroundStyle(TSQTheme.mutedForeground); Spacer(); if let copy { Button("Copy") { copy(block.text) }.buttonStyle(.borderless) } }.padding(12)
                 Divider()
-                ScrollView(.horizontal) { Text(block.text).font(.system(size: 12.5, design: .monospaced)).lineSpacing(4).padding(16).frame(maxWidth: .infinity, alignment: .leading) }
+                ScrollView(.horizontal) { Text(block.text).font(TSQTheme.monoSmall).lineSpacing(4).padding(16).frame(maxWidth: .infinity, alignment: .leading) }
             }.background(TSQTheme.muted).clipShape(RoundedRectangle(cornerRadius: TSQTheme.controlRadius)).overlay(RoundedRectangle(cornerRadius: TSQTheme.controlRadius).strokeBorder(TSQTheme.border))
         case .quote:
             HStack(alignment: .top, spacing: 14) { RoundedRectangle(cornerRadius: 2).fill(TSQTheme.border).frame(width: 3); inline(block.text).foregroundStyle(TSQTheme.mutedForeground).lineSpacing(5).padding(.vertical, 10) }.fixedSize(horizontal: false, vertical: true).padding(.leading, 4)
@@ -42,7 +43,7 @@ public struct MarkdownBlockView: View {
     private func inline(_ source: String) -> Text {
         var attributed = (try? AttributedString(markdown: source, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(source)
         for run in attributed.runs {
-            if run.inlinePresentationIntent?.contains(.code) == true { attributed[run.range].font = .system(size: 13, design: .monospaced); attributed[run.range].foregroundColor = TSQTheme.foreground }
+            if run.inlinePresentationIntent?.contains(.code) == true { attributed[run.range].font = TSQTheme.monoSmall; attributed[run.range].foregroundColor = TSQTheme.foreground }
             if let link = run.link, !["https", "http", "mailto"].contains(link.scheme?.lowercased() ?? "") { attributed[run.range].link = nil }
         }
         return Text(attributed)

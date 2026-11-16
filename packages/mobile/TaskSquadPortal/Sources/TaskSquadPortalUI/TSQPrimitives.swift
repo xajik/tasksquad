@@ -1,23 +1,22 @@
 import SwiftUI
 import TaskSquadDesign
 
-/// Domain-free building blocks from DESIGN.md, shared by the iOS and macOS clients.
-/// Text uses `TSQTheme` type so macOS stays at desktop density and iOS follows
-/// Dynamic Type.
+/// Domain-free building blocks shared by the iOS and macOS clients. Text uses
+/// the `TSQTheme` type ramp (system text styles) on both platforms.
 
-/// Bordered `card` surface with the 8pt content radius.
+/// Grouped `card` surface with the 8pt content radius.
 public struct TSQCard<Content: View>: View {
     var padding: CGFloat
     let content: Content
     public init(padding: CGFloat = 16, @ViewBuilder content: () -> Content) { self.padding = padding; self.content = content() }
     public var body: some View {
         content.padding(padding)
-            .background(TSQTheme.background, in: RoundedRectangle(cornerRadius: TSQTheme.radius, style: .continuous))
+            .background(TSQTheme.card, in: RoundedRectangle(cornerRadius: TSQTheme.radius, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: TSQTheme.radius, style: .continuous).strokeBorder(TSQTheme.border))
     }
 }
 
-/// Centered icon, title, message and optional actions.
+/// The system empty state (`ContentUnavailableView`) with an app icon.
 public struct TSQEmptyState<Actions: View>: View {
     let icon: String, title: String, message: String
     let actions: Actions
@@ -25,15 +24,9 @@ public struct TSQEmptyState<Actions: View>: View {
         self.icon = icon; self.title = title; self.message = message; self.actions = actions()
     }
     public var body: some View {
-        VStack(spacing: 10) {
-            TSQIcon(icon, size: 22).foregroundStyle(TSQTheme.mutedForeground)
-                .frame(width: 48, height: 48).background(TSQTheme.muted, in: Circle())
-                .padding(.bottom, 4)
-            Text(title).font(TSQTheme.body.weight(.semibold)).foregroundStyle(TSQTheme.foreground).multilineTextAlignment(.center)
-            Text(message).font(TSQTheme.body).foregroundStyle(TSQTheme.mutedForeground)
-                .multilineTextAlignment(.center).frame(maxWidth: 380)
-            actions.padding(.top, 6)
-        }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)
+        ContentUnavailableView {
+            Label { Text(title) } icon: { TSQIcon(icon, size: 40) }
+        } description: { Text(message) } actions: { actions }
     }
 }
 public extension TSQEmptyState where Actions == EmptyView {
@@ -52,7 +45,7 @@ public struct TSQErrorBanner: View {
             Text(message).font(TSQTheme.body).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier(identifier ?? "")
             if let dismiss {
-                Button(action: dismiss) { TSQIcon("x", size: 14) }.buttonStyle(.plain).accessibilityLabel("Dismiss")
+                Button(action: dismiss) { TSQIcon("x", size: 14).frame(minWidth: 28, minHeight: 28).contentShape(Rectangle()) }.buttonStyle(.plain).accessibilityLabel("Dismiss")
             }
         }
         .foregroundStyle(TSQTheme.destructive)
@@ -69,13 +62,14 @@ public struct TSQStatusDot: View {
     let color: Color?
     let size: CGFloat
     @State private var pulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     public init(active: Bool, color: Color? = nil, size: CGFloat = 8) { self.active = active; self.color = color; self.size = size }
     public var body: some View {
         Circle().fill(color ?? (active ? TSQTheme.live : TSQTheme.mutedForeground)).frame(width: size, height: size)
             .opacity(active && pulse ? 0.45 : 1)
             .animation(active ? .easeInOut(duration: 1).repeatForever(autoreverses: true) : .default, value: pulse)
-            .onAppear { pulse = active }
-            .onChange(of: active) { _, value in pulse = value }
+            .onAppear { pulse = active && !reduceMotion }
+            .onChange(of: active) { _, value in pulse = value && !reduceMotion }
             .accessibilityHidden(true)
     }
 }
