@@ -1293,7 +1293,8 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
     recovery_reserved: number
     allocations: number
   }>())!
-  if (budgets.attempts >= c.policy.attempt_budget) return
+  // Restoration must stay possible after the attempt budget is spent, or side effects could never be undone.
+  const exhausted = () => budgets.attempts >= c.policy.attempt_budget
   const pending = await rows<Assignment>(
     db,
     "SELECT * FROM graph_assignments WHERE graph_id=? AND status='pending' AND available_at<=? ORDER BY CASE role WHEN 'undo' THEN 0 WHEN 'reconcile' THEN 0 WHEN 'grade' THEN 1 WHEN 'project' THEN 1 WHEN 'continue' THEN 1 ELSE 2 END,priority DESC,created_at",
@@ -1350,6 +1351,7 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
   for (const a of pending.filter((a) => a.role === 'execute')) heap.push(a)
   while (candidates.length || heap.size) {
     const a = candidates.shift() ?? ((budgets.allocations + 1) % 5 === 0 ? heap.popLowest() : heap.pop())!
+    if (exhausted() && !['undo', 'reconcile'].includes(a.role)) continue
     if (
       g.status !== 'running' &&
       !['undo', 'reconcile', 'grade', 'project', 'continue', 'repair'].includes(a.role)
@@ -1524,7 +1526,6 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
       executions++
       budgets.allocations++ // keeps the every-fifth weak-candidate trial correct within one tick
     }
-    if (budgets.attempts >= c.policy.attempt_budget) break
   }
 }
 
