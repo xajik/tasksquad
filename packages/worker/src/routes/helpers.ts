@@ -161,7 +161,7 @@ export async function readMessageAttachment(
   if (!obj) return null
 
   const encrypted = new Uint8Array(await obj.arrayBuffer())
-  let plaintext = encrypted
+  let plaintext: Uint8Array = encrypted
 
   const agent = await env.DB
     .prepare('SELECT encrypted_dek FROM agents WHERE id = ?')

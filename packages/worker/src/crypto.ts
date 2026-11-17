@@ -12,11 +12,13 @@ const AES_KW = 'AES-KW'
  * Generate a new 256-bit AES-GCM Data Encryption Key.
  */
 export async function generateDEK(): Promise<CryptoKey> {
-  return await crypto.subtle.generateKey(
+  const key = await crypto.subtle.generateKey(
     { name: AES_GCM, length: 256 },
     true,
     ['encrypt', 'decrypt']
   )
+  if ('privateKey' in key) throw new Error('Expected a symmetric AES key')
+  return key
 }
 
 /**
@@ -69,6 +71,7 @@ export async function unwrapDEK(wrappedB64: string, masterKey: CryptoKey): Promi
  */
 export async function exportKey(key: CryptoKey): Promise<string> {
   const raw = await crypto.subtle.exportKey('raw', key)
+  if (!(raw instanceof ArrayBuffer)) throw new Error('Expected raw key bytes')
   return btoa(String.fromCharCode(...new Uint8Array(raw)))
 }
 

@@ -3,7 +3,7 @@ import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { importMasterKey, unwrapDEK, decrypt } from '../crypto.js'
 import { bumpInboxVersion } from '../inbox_version.js'
-import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
+import { TaskStatus, MessageType } from '../statuses.js'
 import {
   isAgentKey,
   readMessageAttachment,
@@ -87,7 +87,7 @@ export async function getTranscript(req: Request, env: Env, _ctx: unknown, auth:
   if (!obj) return err('not_found', 404)
 
   const encrypted = new Uint8Array(await obj.arrayBuffer())
-  let plaintext = encrypted
+  let plaintext: Uint8Array = encrypted
 
   // If the agent has an encrypted DEK, we assume the log is encrypted
   const agent = await env.DB

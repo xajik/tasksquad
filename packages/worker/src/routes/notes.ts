@@ -2,7 +2,7 @@ import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
 import { bumpInboxVersion } from '../inbox_version.js'
-import { TaskStatus, AgentStatus, SessionStatus, AgentMode, MessageType } from '../statuses.js'
+import { TaskStatus, MessageType } from '../statuses.js'
 
 async function requireMember(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db

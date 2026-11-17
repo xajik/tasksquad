@@ -34,4 +34,4 @@ new-migration:
 
 .PHONY: check
 check:
-	bunx tsc --noEmit
+	bunx tsc --project tsconfig.check.json --noEmit

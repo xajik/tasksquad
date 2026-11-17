@@ -1,7 +1,7 @@
 import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
-import { TaskStatus, AgentStatus, SessionStatus, AgentMode } from '../statuses.js'
+import { TaskStatus, AgentStatus, SessionStatus } from '../statuses.js'
 
 async function requireOwner(db: D1Database, teamId: string, userId: string): Promise<boolean> {
   const row = await db
