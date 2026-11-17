@@ -465,9 +465,32 @@ export async function intake(
             sessionId
           )
         ]
-      : [])
+      : [
+          // A stale result still means the process has ended: free the agent so retries can dispatch.
+          ...releaseAgentStatements(env.DB, agentId, sessionId, now)
+        ])
   ])
   return a.graph_id
+}
+
+/** The daemon's idle self-heal never runs behind a 304, so closing a graph session must free its agent itself. */
+export function releaseAgentStatements(db: D1Database, agentId: string, sessionId: string, now: number): D1PreparedStatement[] {
+  return [
+    sql(
+      db,
+      "UPDATE agents SET status='idle' WHERE id=? AND EXISTS(SELECT 1 FROM agent_state WHERE agent_id=? AND current_session=?)",
+      agentId,
+      agentId,
+      sessionId
+    ),
+    sql(
+      db,
+      "UPDATE agent_state SET current_task_id=NULL,current_session=NULL,mode='idle',updated_at=? WHERE agent_id=? AND current_session=?",
+      now,
+      agentId,
+      sessionId
+    )
+  ]
 }
 
 async function resolve(

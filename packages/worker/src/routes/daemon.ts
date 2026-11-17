@@ -1,4 +1,5 @@
-import { bindStatement, intake } from '../graph/engine.js'
+import { bindStatement, intake, releaseAgentStatements } from '../graph/engine.js'
+import { bumpInboxVersion } from '../inbox_version.js'
 import { ulid } from 'ulidx'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
@@ -1179,7 +1180,11 @@ async function captureGraphResult(env: Env, sessionId: string, agentId: string, 
     WHERE t.session_id=? AND t.agent_id=?`).bind(sessionId,agentId).first<{id:string;status:string;task_id:string;graph_id:string;team_id:string}>()
   if (!attempt) return null
   if (!completed && attempt.status === 'running') {
-    await env.DB.prepare('UPDATE graph_attempts SET deadline=? WHERE id=?').bind(Date.now(),attempt.id).run()
+    await env.DB.batch([
+      env.DB.prepare('UPDATE graph_attempts SET deadline=? WHERE id=?').bind(Date.now(),attempt.id),
+      ...releaseAgentStatements(env.DB, agentId, sessionId, Date.now())
+    ])
+    await bumpInboxVersion(env, agentId)
     await env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(attempt.team_id)).command(attempt.graph_id,'tick',{team_id:attempt.team_id})
     return json({ok:true,close:true,session_id:sessionId,graph_reconciliation:true})
   }
