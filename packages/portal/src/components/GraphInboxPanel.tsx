@@ -20,11 +20,13 @@ export function GraphInboxPanel({
 }) {
   const [graph, setGraph] = useState<GraphSnapshot | null>(null),
     [error, setError] = useState(''),
-    [busy, setBusy] = useState(false)
+    [busy, setBusy] = useState(false),
+    [notice, setNotice] = useState('')
   useEffect(() => {
     let active = true
     setGraph(null)
     setError('')
+    setNotice('')
     async function load() {
       try {
         const next = await graphApi.get(context.team_id, context.graph_id)
@@ -56,6 +58,11 @@ export function GraphInboxPanel({
         verdict
       })
       setGraph(await graphApi.get(context.team_id, context.graph_id))
+      setNotice(
+        verdict === 'accept'
+          ? 'Accepted. The graph applies this result and moves to the next step.'
+          : 'Rejected. This step is blocked; reply in this thread to continue it.'
+      )
       onChange()
     } catch (e) {
       setError(errorText(e))
@@ -134,6 +141,11 @@ export function GraphInboxPanel({
           )}
         </article>
       ))}
+      {notice && !error && (
+        <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">
+          {notice}
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
