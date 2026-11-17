@@ -21,7 +21,7 @@ export async function search(
     ),
     rows<Data>(
       env.DB,
-      'SELECT * FROM graph_resources WHERE graph_id=? AND (lower(title) LIKE ? OR lower(description) LIKE ? OR lower(body) LIKE ?) LIMIT 100',
+      'SELECT * FROM graph_resources WHERE graph_id=? AND NOT EXISTS(SELECT 1 FROM graph_resources newer WHERE newer.supersedes_id=graph_resources.id) AND (lower(title) LIKE ? OR lower(description) LIKE ? OR lower(body) LIKE ?) LIMIT 100',
       g.id,
       pattern,
       pattern,
@@ -66,6 +66,12 @@ export async function search(
           entity,
           g.id
         ).first<Data>()
+        if (
+          table === 'graph_resources' &&
+          row &&
+          (await sql(env.DB, 'SELECT 1 FROM graph_resources WHERE supersedes_id=?', row.id).first())
+        )
+          continue
         if (row && !target.some((r) => r.id === row.id)) target.push(row)
       }
     }
