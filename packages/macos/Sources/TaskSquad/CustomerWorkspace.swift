@@ -151,28 +151,53 @@ struct CustomerDetail: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The toolbar never changes shape with the selection: the same buttons are
+        // always there and are disabled when they do not apply. Buttons that come
+        // and go move their neighbours and make the whole bar jump on every click.
         .toolbar {
             ToolbarItemGroup {
-                if let record = model.selected {
-                    let actions = ui.actions(for: record)
-                    ForEach(actions.filter(isProminent)) { RecordActionButton(ui: ui, record: record, action: $0) }
-                    Menu {
-                        ForEach(actions.filter { !isProminent($0) && $0.placement != .destructive }) { RecordActionButton(ui: ui, record: record, action: $0) }
+                ForEach(slots, id: \.self) { kind in
+                    let action = available.first { $0.kind == kind }
+                    let info = Self.slotInfo[kind] ?? (kind.rawValue.capitalized, "circle")
+                    Button {
+                        if let record = model.selected, let action { ui.perform(action, on: record) }
+                    } label: {
+                        Label(info.title, systemImage: (action?.isOn ?? false) ? info.image + ".fill" : info.image)
+                    }
+                    .disabled(action == nil || model.busy).help(info.title).accessibilityIdentifier("action-" + kind.rawValue)
+                }
+            }
+            ToolbarItem {
+                Menu {
+                    if let record = model.selected {
+                        ForEach(available.filter { !slots.contains($0.kind) && $0.placement != .destructive }) { RecordActionButton(ui: ui, record: record, action: $0) }
                         Divider()
                         Button { model.openInBrowser() } label: { Label("Open in Web", systemImage: "safari") }
                         Divider()
-                        ForEach(actions.filter { !isProminent($0) && $0.placement == .destructive }) { RecordActionButton(ui: ui, record: record, action: $0) }
-                    } label: { Label("More Actions", systemImage: "ellipsis.circle") }
-                    .help("More actions").accessibilityIdentifier("more-actions")
-                }
+                        ForEach(available.filter { !slots.contains($0.kind) && $0.placement == .destructive }) { RecordActionButton(ui: ui, record: record, action: $0) }
+                    }
+                } label: { Label("More Actions", systemImage: "ellipsis.circle") }
+                .disabled(model.selected == nil).help("More actions").accessibilityIdentifier("more-actions")
             }
         }
     }
-    /// Shown as its own toolbar button; everything else is under "More Actions".
-    private func isProminent(_ action: RecordAction) -> Bool {
-        action.placement == .primary || [.close, .closePortal].contains(action.kind)
-            || (model.section == .planners && [.approve, .reject].contains(action.kind))
+    private var available: [RecordAction] { model.selected.map(ui.actions(for:)) ?? [] }
+    /// The buttons this section shows in the toolbar, in a fixed order.
+    private var slots: [RecordAction.Kind] {
+        switch model.section {
+        case .inbox, .supervisor: [.forward, .close]
+        case .notes, .skills, .subAgents, .commands, .agents: [.edit]
+        case .portals: [.closePortal]
+        case .conveyors: [.edit, .runNow]
+        case .planners: [.approve, .reject]
+        default: []
+        }
     }
+    private static let slotInfo: [RecordAction.Kind: (title: String, image: String)] = [
+        .forward: ("Forward to Agent…", "arrowshape.turn.up.right"), .close: ("Close Task", "checkmark.circle"),
+        .edit: ("Edit", "pencil"), .runNow: ("Run Now", "play.circle"), .closePortal: ("Close Portal", "xmark.circle"),
+        .approve: ("Approve", "hand.thumbsup"), .reject: ("Reject", "hand.thumbsdown"),
+    ]
 
     @ViewBuilder private func detail(_ record: CustomerRecord) -> some View {
         switch model.section {
