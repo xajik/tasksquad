@@ -1,3 +1,4 @@
+import { graphInboxTask } from '../graph/inbox.js'
 import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
@@ -181,7 +182,9 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
     .first<{ team_id: string; status: string; agent_id: string }>()
   if (!task) return err('not_found', 404)
   if (!(await requireMember(env.DB, task.team_id, auth.userId))) return err('not_found', 404)
-  if (task.status === TaskStatus.Done || task.status === TaskStatus.Failed) return err('task_closed', 403)
+  const graph = await graphInboxTask(env, taskId, auth.userId)
+  if (graph && !graph.can_manage) return err('forbidden', 403)
+  if ((task.status === TaskStatus.Done || task.status === TaskStatus.Failed) && !graph?.can_reply) return err('task_closed', 403)
 
   const contentType = req.headers.get('Content-Type') ?? ''
   let text = ''
@@ -212,6 +215,19 @@ export async function create(req: Request, env: Env, _ctx: unknown, auth: AuthCo
 
   const id = ulid()
   const now = Date.now()
+
+  if (graph?.can_reply) {
+    if(text.length>3999)return err('graph_reply_too_long',400)
+    if(scheduledAt||files.length)return err('graph_recovery_requires_immediate_text_reply',400)
+    try {
+      const coordinator=env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(graph.team_id))
+      await coordinator.command(graph.graph_id,'input',{team_id:graph.team_id,user_id:auth.userId,assignment_id:graph.assignment_id,message:text,inbox_task_id:taskId,inbox_message_id:id})
+      await bumpInboxVersion(env,task.agent_id)
+      return json({id,role:'user',body:text,created_at:now,attachments:[],graph_continuation:true},201)
+    } catch(error) {return err(error instanceof Error?error.message:'graph_reply_failed',409)}
+  }
+  // A stale/closed graph assignment can never be reactivated by a regular reply.
+  if(graph && (!graph.latest || !['running','pending'].includes(graph.status))) return err('graph_assignment_not_waiting_for_reply',409)
 
   // If scheduled for future, insert with scheduled_at but don't notify agent
   if (scheduledAt && scheduledAt > now) {

@@ -1,3 +1,4 @@
+import { graphInboxTask } from '../graph/inbox.js'
 import { ulid } from 'ulidx'
 import { json, err } from '../auth.js'
 import type { Env, AuthContext } from '../types.js'
@@ -86,7 +87,8 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
     .bind(taskId)
     .first<{ id: string }>()
 
-  return json({ ...task, settings: task.settings ? JSON.parse(task.settings) : null, close_steps: closeSteps, session_id: activeSession?.id ?? null })
+  const graph = await graphInboxTask(env, taskId, auth.userId)
+  return json({ ...task, graph, settings: task.settings ? JSON.parse(task.settings) : null, close_steps: closeSteps, session_id: activeSession?.id ?? null })
 }
 
 export async function gradeTask(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

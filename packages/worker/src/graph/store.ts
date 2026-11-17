@@ -370,7 +370,7 @@ export async function snapshot(db: D1Database, g: Graph): Promise<Data> {
     rows(db, 'SELECT * FROM graph_assignments WHERE graph_id=? ORDER BY created_at', g.id),
     rows(
       db,
-      'SELECT t.* FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=?',
+      'SELECT t.*,task.status AS task_status,task.tui_blocked FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id JOIN tasks task ON task.id=t.task_id WHERE a.graph_id=?',
       g.id
     ),
     rows(

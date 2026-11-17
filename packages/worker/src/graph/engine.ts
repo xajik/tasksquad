@@ -183,7 +183,33 @@ export async function run(db: D1Database, graphId: string, command: string, body
       },
       { parent: a.id, node: a.node_id, edge: a.edge_id }
     )
+    const inbox: D1PreparedStatement[] = []
+    if (body.inbox_task_id !== undefined || body.inbox_message_id !== undefined) {
+      const latest = await sql(
+        db,
+        'SELECT task_id FROM graph_attempts WHERE assignment_id=? ORDER BY epoch DESC LIMIT 1',
+        a.id
+      ).first<{ task_id: string }>()
+      if (
+        latest?.task_id !== body.inbox_task_id ||
+        typeof body.inbox_message_id !== 'string' ||
+        !body.user_id
+      )
+        throw new Error('Reply must reference the latest inbox attempt')
+      inbox.push(
+        sql(
+          db,
+          "INSERT INTO messages(id,task_id,sender_id,role,body,created_at) VALUES(?,?,?,'user',?,?)",
+          body.inbox_message_id,
+          body.inbox_task_id,
+          body.user_id,
+          body.message,
+          Date.now()
+        )
+      )
+    }
     await commit(db, g, 'input', a.id, {}, [
+      ...inbox,
       ...(!serialWork
         ? [
             sql(
