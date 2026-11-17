@@ -204,6 +204,14 @@ export async function run(db: D1Database, graphId: string, command: string, body
   const status = command === 'run' ? 'running' : command === 'pause' ? 'paused' : 'stopped'
   const ops: D1PreparedStatement[] = [sql(db, 'UPDATE graphs SET status=? WHERE id=?', status, g.id)]
   if (command === 'run') {
+    ops.push(
+      sql(
+        db,
+        "UPDATE graph_assignments SET status='pending',cancel_reason=NULL,available_at=? WHERE graph_id=? AND status='cancelled' AND cancel_reason='stop'",
+        Date.now(),
+        g.id
+      )
+    )
     const previous = await sql(db, 'SELECT id FROM graph_assignments WHERE graph_id=? LIMIT 1', g.id).first()
     if (!previous) {
       const next = await assignment(db, g, 'decompose', {
@@ -215,10 +223,32 @@ export async function run(db: D1Database, graphId: string, command: string, body
     }
   }
   if (command === 'stop') {
+    const ordinary = "('decompose','plan','merge','execute','report')"
+    const unopened = `SELECT t.id FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=? AND a.role IN ${ordinary} AND t.status='pending' AND t.session_id IS NULL`
     ops.push(
       sql(
         db,
-        "UPDATE graph_assignments SET status='cancelled' WHERE graph_id=? AND status='pending' AND role NOT IN ('undo','reconcile','grade','project')",
+        `UPDATE graph_budgets SET recovery_reserved=MAX(0,recovery_reserved-COALESCE((SELECT SUM(json_extract(a.input,'$.plan.recovery_cost')) FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=? AND a.role='execute' AND t.status='pending' AND t.session_id IS NULL),0)) WHERE graph_id=?`,
+        g.id,
+        g.id
+      ),
+      sql(
+        db,
+        `UPDATE tasks SET status='cancelled',completed_at=? WHERE id IN (SELECT task_id FROM graph_attempts WHERE id IN (${unopened}))`,
+        Date.now(),
+        g.id
+      ),
+      sql(db, `DELETE FROM graph_reservations WHERE attempt_id IN (${unopened})`, g.id),
+      sql(
+        db,
+        `UPDATE graph_assignments SET status='cancelled',cancel_reason='stop' WHERE graph_id=? AND (status='pending' OR id IN (SELECT assignment_id FROM graph_attempts WHERE id IN (${unopened}))) AND role IN ${ordinary}`,
+        g.id,
+        g.id
+      ),
+      sql(
+        db,
+        `UPDATE graph_attempts SET status='cancelled',completed_at=? WHERE id IN (${unopened})`,
+        Date.now(),
         g.id
       )
     )

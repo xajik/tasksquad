@@ -219,6 +219,32 @@ afterAll(async () => {
 })
 
 describe('durable inbox graph workflow', () => {
+  it('cancels a dispatched but unopened execution on Stop, and Run creates a fresh attempt', async () => {
+    const { g, agent, assignmentId } = await preparedExecution()
+    const old = (
+      await rows<{ task_id: string; id: string }>(
+        db,
+        'SELECT * FROM graph_attempts WHERE assignment_id=?',
+        assignmentId
+      )
+    )[0]
+    await run(db, g.id, 'stop')
+    expect(
+      (await rows<{ status: string }>(db, 'SELECT status FROM tasks WHERE id=?', old.task_id))[0].status
+    ).toBe('cancelled')
+    expect(await rows(db, 'SELECT * FROM graph_reservations WHERE attempt_id=?', old.id)).toHaveLength(0)
+    await expect(bindStatement(db, old.task_id, agent, crypto.randomUUID())).rejects.toThrow('Unexpected')
+    await run(db, g.id, 'run')
+    await tick(env(), g.id)
+    const attempts = await rows<{ epoch: number; status: string }>(
+      db,
+      'SELECT * FROM graph_attempts WHERE assignment_id=? ORDER BY epoch',
+      assignmentId
+    )
+    expect(attempts).toHaveLength(2)
+    expect(attempts[1]).toMatchObject({ epoch: 2, status: 'pending' })
+  })
+
   it('enforces execution capacity independently of available agent count', async () => {
     const { g, team, assignmentId } = await preparedExecution()
     const c = await configuration(db, await graph(db, g.id)),
