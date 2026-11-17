@@ -220,7 +220,7 @@ export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], incl
   }
   const positions = new Map<string, Box>(),
     visited = new Set<string>()
-  let top = 48
+  const tops = { execution: 48, guidance: 48 }
   for (const first of nodes) {
     if (visited.has(first.id)) continue
     const component: string[] = [],
@@ -235,6 +235,10 @@ export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], incl
           pending.push(next)
         }
     }
+    const side = component.every((id) => isGuidance(nodes.find((n) => n.id === id)!))
+      ? 'guidance'
+      : 'execution'
+    const top = tops[side]
     const ranks = flowRanks(component, outgoing)
     const columns = new Map<number, string[]>()
     for (const id of component) {
@@ -251,15 +255,30 @@ export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], incl
           height: NODE_HEIGHT
         })
       )
-    top += rows * 140 + 64
+    tops[side] += rows * 140 + 64
   }
-  // Share one canvas while mirroring only planning hierarchy, never execution.
-  const right = Math.max(48 + NODE_WIDTH, ...[...positions.values()].map((box) => box.x + box.width))
-  for (const node of nodes)
-    if (isGuidance(node)) {
-      const box = positions.get(node.id)!
-      box.x = 48 + right - box.x - box.width
-    }
+  // Strict spatial partition: all guidance sits beyond every execution card.
+  const executionNodes = nodes.filter((n) => !isGuidance(n))
+  const guidanceNodes = nodes.filter(isGuidance)
+  const executionRight = Math.max(
+    48,
+    ...executionNodes.map((n) => {
+      const box = positions.get(n.id)!
+      return box.x + box.width
+    })
+  )
+  const guidanceRight = Math.max(
+    48 + NODE_WIDTH,
+    ...guidanceNodes.map((n) => {
+      const box = positions.get(n.id)!
+      return box.x + box.width
+    })
+  )
+  const guidanceLeft = executionNodes.length ? executionRight + 180 : 48
+  for (const node of guidanceNodes) {
+    const box = positions.get(node.id)!
+    box.x = guidanceLeft + guidanceRight - box.x - box.width
+  }
   const nodeBoxes = [...positions.values()],
     obstacleBoxes = nodeBoxes.map((b) => expanded(b))
   const maxX = Math.max(480, ...nodeBoxes.map((b) => b.x + b.width)),

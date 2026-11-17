@@ -90,6 +90,31 @@ describe('execution graph layout', () => {
         expect(segmentHits(projection[i - 1], projection[i], box)).toBe(false)
     expect([...layout.positions]).toEqual(before)
   })
+  it('keeps even the leftmost milestone strictly beyond the rightmost execution card', () => {
+    const nodes = [
+      node('goal', 'goal'),
+      node('m1', 'milestone'),
+      node('m2', 'milestone'),
+      ...['a', 'b', 'c', 'd', 'e'].map((id) => node(id))
+    ]
+    const edges = [
+      { ...edge('g1', 'goal', 'm1'), lineage: true },
+      { ...edge('g2', 'm1', 'm2'), lineage: true },
+      ...['a', 'b', 'c', 'd'].map((id, i) => edge(`action-${id}`, id, ['b', 'c', 'd', 'e'][i]))
+    ]
+    const layout = layoutGraph(nodes, edges, true)
+    const executionRight = Math.max(
+      ...['a', 'b', 'c', 'd', 'e'].map((id) => {
+        const b = layout.positions.get(id)!
+        return b.x + b.width
+      })
+    )
+    const guidanceLeft = Math.min(...['goal', 'm1', 'm2'].map((id) => layout.positions.get(id)!.x))
+    expect(guidanceLeft - executionRight).toBeGreaterThanOrEqual(180)
+    expect(layout.positions.get('m2')!.x).toBeLessThan(layout.positions.get('m1')!.x)
+    expect(layout.positions.get('m1')!.x).toBeLessThan(layout.positions.get('goal')!.x)
+    assertClear(layout, edges)
+  })
   it('routes branches, long edges, cycles, parallel edges and self loops around cards and labels', () => {
     const nodes = Array.from({ length: 12 }, (_, i) => node(String(i), 'outcome', i))
     const edges = [
