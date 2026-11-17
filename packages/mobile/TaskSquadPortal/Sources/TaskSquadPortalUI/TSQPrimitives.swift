@@ -56,23 +56,27 @@ public struct TSQErrorBanner: View {
     }
 }
 
-/// Live/offline indicator; pulses while active. Status is never color alone,
-/// so pair it with a label.
+/// Live/offline indicator. Status is never color alone, so pair it with a label.
+/// It is static: a dot that pulses forever in a toolbar or sidebar reads as the
+/// window flickering. `pulse` is opt-in for a screen that is itself about
+/// something live, and it is ignored when Reduce Motion is on.
 public struct TSQStatusDot: View {
     let active: Bool
     let color: Color?
     let size: CGFloat
-    @State private var pulse = false
+    let pulse: Bool
+    @State private var dim = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    public init(active: Bool, color: Color? = nil, size: CGFloat = 8) { self.active = active; self.color = color; self.size = size }
+    public init(active: Bool, color: Color? = nil, size: CGFloat = 8, pulse: Bool = false) { self.active = active; self.color = color; self.size = size; self.pulse = pulse }
     public var body: some View {
         Circle().fill(color ?? (active ? TSQTheme.live : TSQTheme.mutedForeground)).frame(width: size, height: size)
-            .opacity(active && pulse ? 0.45 : 1)
-            .animation(active ? .easeInOut(duration: 1).repeatForever(autoreverses: true) : .default, value: pulse)
-            .onAppear { pulse = active && !reduceMotion }
-            .onChange(of: active) { _, value in pulse = value && !reduceMotion }
+            .opacity(pulses && dim ? 0.45 : 1)
+            .animation(pulses ? .easeInOut(duration: 1).repeatForever(autoreverses: true) : nil, value: dim)
+            .onAppear { dim = pulses }
+            .onChange(of: pulses) { _, value in dim = value }
             .accessibilityHidden(true)
     }
+    private var pulses: Bool { pulse && active && !reduceMotion }
 }
 
 /// Section title with optional subtitle and trailing controls.
