@@ -10,7 +10,7 @@ export async function getInboxVersion(env: Env, agentId: string): Promise<string
  * Call this whenever a new pending task or user reply is written for the agent
  * so the next heartbeat ETag check detects the change.
  */
-export async function bumpInboxVersion(env: Env, agentId: string): Promise<void> {
+export async function bumpInboxVersion(env: { POLL_CACHE: Pick<KVNamespace, 'put'> }, agentId: string): Promise<void> {
   await env.POLL_CACHE.put(`inbox_v:${agentId}`, Date.now().toString())
 }
 

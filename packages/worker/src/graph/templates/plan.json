@@ -84,6 +84,14 @@
                 "maxLength": 299
               },
               "maxItems": 20
+            },
+            "expected_quality": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1
             }
           },
           "required": [
@@ -98,7 +106,8 @@
             "cost",
             "recovery_cost",
             "resource_versions",
-            "effects"
+            "effects",
+            "expected_quality"
           ]
         },
         "maxItems": 5

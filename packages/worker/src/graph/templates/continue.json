@@ -1,5 +1,5 @@
 {
-  "instruction": "After user input, verify checkpoint and baseline; decide resume, restart or blocked. Do not repeat an external action.",
+  "instruction": "After user input, verify checkpoint and baseline; decide resume, restart or blocked. Do not repeat an external action. Confirm termination and baseline restoration before authorizing another side-effecting attempt. Resume requires a verified checkpoint.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
@@ -15,11 +15,23 @@
       "reason": {
         "type": "string",
         "maxLength": 3999
+      },
+      "checkpoint_verified": {
+        "type": "boolean"
+      },
+      "baseline_unchanged": {
+        "type": "boolean"
+      },
+      "termination_verified": {
+        "type": "boolean"
       }
     },
     "required": [
       "decision",
-      "reason"
+      "reason",
+      "checkpoint_verified",
+      "baseline_unchanged",
+      "termination_verified"
     ]
   }
 }
