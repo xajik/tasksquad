@@ -582,7 +582,7 @@ Alert dialogs have no close X: **Cancel** (`outline`) + **Action** (`default` or
 
 | Element | Spec |
 |---|---|
-| Live dot | 8 × 8px circle, green-500, `animate-pulse` |
+| Live dot | 8 × 8px circle, green-500. Static in the native apps: a dot that pulses forever in a toolbar or sidebar reads as flicker. `animate-pulse` is web only. |
 | Offline dot | 8 × 8px circle, `muted-foreground` |
 | Spinner | Lucide `Loader2`, `animate-spin`, 14–16px, `brand` or `currentColor` |
 | Step progress | 15px icon: `CheckCircle2` green-600 (done), `Loader2` blue-600 spinning (active), gray-400 (upcoming) |
@@ -627,7 +627,7 @@ Order: primary, secondary, feedback, then state changes with destructive items l
 
 - **`fade-in`:** opacity 0 → 1 with translateY 8px → 0, 200ms ease-out. Use it for content arriving after a load.
 - **Popover/menu enter:** fade + zoom 95% + 8px slide from the trigger side.
-- **Looping:** `animate-spin` for loading only; `animate-pulse` for live/active indicators only.
+- **Looping:** `animate-spin` for loading only; `animate-pulse` for live/active indicators on the web only; the native apps keep them static.
 - Respect `prefers-reduced-motion`: drop translate/zoom and keep the opacity change.
 
 ---
@@ -684,9 +684,11 @@ The macOS and iOS apps are native first. They use the system's controls, layout 
 - Navigation: `NavigationSplitView` with `List` sidebars on macOS and iPad, `TabView` on iPhone.
 - Lists: `List` with selection, so arrow keys, type-select, context menus, swipe actions and separators work.
 - Toolbars, menus, search (`.searchable`), pickers, toggles, forms (`Form`), sheets and confirmation dialogs.
-- Buttons: `.borderedProminent` for the one primary action, `.bordered` otherwise, `.borderless` for icon buttons. Toolbar items get Liquid Glass from the system; do not paint backgrounds behind them.
+- Buttons: `.glassProminent` for the one primary action, `.glass` otherwise, `.borderless` for icon buttons and for controls inside a glass surface. Toolbar items, sidebars and the tab bar get Liquid Glass from the system; do not paint backgrounds behind them.
 - Surfaces and text: system semantic colours. Do not paint opaque backgrounds on sidebars or window roots; they hide the system material.
 - Empty states: `ContentUnavailableView`.
+
+**Liquid Glass is for the controls layer, never for content.** Surfaces that float above content use `tsqGlass()` (`TaskSquadDesign/TSQGlass.swift`): the reply bar, a pending-permission prompt, an error banner on iOS and the sign-in card. Apply it once per surface and never to a message, record, card or Markdown, and do not put glass on glass: controls inside a glass surface are borderless, except the one prominent action. Related glass surfaces sit in one container (`tsqGlassContainer`) so they blend as they move together. Floating bars are placed with `safeAreaBar`, so scrolled content fades out under them (`scrollEdgeEffectStyle(.soft)`). Corners are concentric with the window or screen corners (`TSQGlassShape`).
 
 **Branded:**
 
