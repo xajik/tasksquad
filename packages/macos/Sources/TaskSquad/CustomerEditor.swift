@@ -12,6 +12,8 @@ struct CustomerEditorRequest: Identifiable {
     let fields: [CustomerField]
     var attachments = false
     var phases = false
+    /// Portals open only on online agents, as on the web.
+    var portalAgentsOnly = false
     var submitLabel = "Save"
     /// `WorkspaceDraftScope.key`; values persist until a successful submit.
     var draftKey: String? = nil
@@ -87,7 +89,8 @@ struct CustomerEditor: View {
         case .agent:
             Picker(field.label, selection: string(field.id)) {
                 Text(field.required ? "Select an agent" : "None").tag("")
-                ForEach(model.agents) { Text($0.title).tag($0.id) }
+                ForEach(request.portalAgentsOnly ? model.workspace.portalAgents : model.agents) { Text($0.title).tag($0.id) }
+                if request.portalAgentsOnly, model.workspace.portalAgents.isEmpty { Text("No active agents").tag("__none__").disabled(true) }
             }
         case .subAgent:
             Picker(field.label, selection: string(field.id)) {

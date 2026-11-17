@@ -95,7 +95,7 @@ struct CustomerText: Identifiable { let id = UUID(); let title: String, text: St
         if duplicate, let index = fields.firstIndex(where: { $0.id == "name" }) { fields[index].initial = .string((record?.title ?? "") + "-copy") }
         let item = Self.capitalized(section.itemName)
         let title = !updating ? createTitle : section == .agents ? "Edit Role" : "Edit " + item
-        editor = CustomerEditorRequest(title: title, fields: fields, attachments: section == .inbox, phases: section == .planners, submitLabel: updating ? "Save" : section == .inbox ? "Send" : "Create",
+        editor = CustomerEditorRequest(title: title, fields: fields, attachments: section == .inbox, phases: section == .planners, portalAgentsOnly: section == .portals, submitLabel: updating ? "Save" : section == .inbox ? "Send" : "Create",
                                         draftKey: updating || duplicate ? nil : model.workspace.draftScope("create." + section.rawValue).key) { [model] values, files in
             let operation: WorkspaceOperation = if updating, let id = record?.id { .update(section, project: team, id: id, values: values, files: files) }
                 else { .create(section, project: team, values: values, files: files) }
