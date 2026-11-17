@@ -39,3 +39,17 @@ check:
 .PHONY: format-graph
 format-graph:
 	bunx prettier@3.6.2 --write --no-semi --single-quote --trailing-comma none --print-width 110 src/graph/*.ts src/routes/graphs.ts
+
+# Real local Worker + portal + isolated CLI test agents (never production data).
+GRAPH_AGENTS ?= claude
+.PHONY: graph-local
+graph-local:
+	node scripts/local-graph.mjs --agents "$(GRAPH_AGENTS)"
+
+.PHONY: format-local-graph
+format-local-graph:
+	bunx prettier@3.6.2 --write --no-semi --single-quote --trailing-comma none --print-width 110 scripts/local-graph.mjs
+
+.PHONY: graph-local-check
+graph-local-check:
+	node --check scripts/local-graph.mjs

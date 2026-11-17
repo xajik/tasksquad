@@ -1,3 +1,4 @@
+import { localGraphToken } from '../lib/localGraph'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { signOut } from 'firebase/auth'
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom'
@@ -2195,7 +2196,7 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
   const [showHowItWorks, setShowHowItWorks] = useState(false)
-  const currentUserId = internalUserId || auth.currentUser?.uid
+  const currentUserId = internalUserId || auth?.currentUser?.uid
   const nav = useNavigate()
 
   const isOwner = currentTeam?.role === 'owner'
@@ -2737,7 +2738,7 @@ export default function Dashboard() {
 
   async function handleLeaveProject() {
     if (!teamId) return
-    const id = internalUserId || auth.currentUser?.uid
+    const id = internalUserId || auth?.currentUser?.uid
     if (!id) return
     await api.members.remove(teamId, id)
     trackEvent('project_left', { team_id: teamId, member_id: id });
@@ -2933,9 +2934,9 @@ export default function Dashboard() {
             <BookMarked className="mr-2 h-4 w-4" />
             Docs
           </Button>
-          <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { trackEvent('user_logged_out'); auth && signOut(auth); }}>
+          <Button disabled={!!localGraphToken()} variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { trackEvent('user_logged_out'); auth && signOut(auth); }}>
             <LogOut className="mr-2 h-4 w-4" />
-            Sign out
+            {localGraphToken() ? 'Local session' : 'Sign out'}
           </Button>
         </div>
       </aside>

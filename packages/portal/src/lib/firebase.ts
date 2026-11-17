@@ -1,3 +1,4 @@
+import { localGraphToken } from './localGraph'
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider, GithubAuthProvider, signInWithPopup, signInWithRedirect } from 'firebase/auth'
 import { getMessaging, getToken as getFCMTokenRaw } from 'firebase/messaging'
@@ -67,6 +68,8 @@ export async function signInWithGitHubRedirect(): Promise<void> {
 }
 
 export async function getToken(): Promise<string | null> {
+  const local = localGraphToken()
+  if (local) return local
   if (!auth) return null
   const user = auth.currentUser
   if (!user) return null

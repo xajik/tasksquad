@@ -5,6 +5,7 @@ import { HelmetProvider } from 'react-helmet-async'
 import { onAuthStateChanged } from 'firebase/auth'
 import { useState, useEffect } from 'react'
 import { auth } from './lib/firebase'
+import { localGraphToken } from './lib/localGraph'
 import { identifyUser, initAnalytics } from './lib/analytics'
 import Landing from './pages/Landing'
 import HowTo from './pages/HowTo'
@@ -27,6 +28,7 @@ function App() {
   console.log('[App] render, authed=', authed, 'path=', window.location.pathname)
 
   useEffect(() => {
+    if (localGraphToken()) { setAuthed(true); return }
     if (!auth) {
       console.warn('[App] Firebase auth not configured, skipping auth state subscription')
       setAuthed(false)
@@ -46,6 +48,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      {localGraphToken() && <div role="status" className="border-b bg-secondary px-4 py-2 text-center text-sm">Local test environment · separate database · agents: {import.meta.env.VITE_LOCAL_GRAPH_AGENTS ?? 'local'}</div>}
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/howto" element={<HowTo />} />
