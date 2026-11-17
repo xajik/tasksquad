@@ -22,13 +22,8 @@ import { GraphCanvas } from '@/components/GraphCanvas'
 import { isGuidance } from '@/lib/graphLayout'
 import { goalProjection } from '@/lib/graphProjection'
 import { graphAttention } from '@/lib/graphAttention'
+import { errorText } from '@/lib/graphError'
 
-const errorText = (error: unknown) =>
-  error instanceof Error
-    ? error.message
-    : error && typeof error === 'object' && 'error' in error
-      ? String(error.error)
-      : String(error)
 const pretty = (value: string) => {
   try {
     return JSON.stringify(JSON.parse(value), null, 2)

@@ -1,5 +1,5 @@
 {
-  "instruction": "Perform only the assigned compensation. Verify restoration predicates without overwriting unrelated changes. Report observed evidence. Failed restoration is a separate recovery problem.",
+  "instruction": "Perform only the assigned compensation. Verify restoration predicates without overwriting unrelated changes. Report observed evidence. Failed restoration is a separate recovery problem. Every evidence.resource_id must be exactly one of the resource IDs listed in the plan's resource_versions; never invent paths or names.",
   "schema": {
     "type": "object",
     "additionalProperties": false,

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { GraphInboxContext } from '@/lib/api'
 import { graphApi, type GraphSnapshot, type GraphResult } from '@/lib/graph'
+import { errorText } from '@/lib/graphError'
 import { Button } from './ui/button'
 
 /** Inbox owns exact-output review; the thread's regular composer owns recovery replies. */
@@ -28,7 +29,7 @@ export function GraphInboxPanel({
         const next = await graphApi.get(context.team_id, context.graph_id)
         if (active) setGraph(next)
       } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : String(e))
+        if (active) setError(errorText(e))
       }
     }
     void load()
@@ -56,7 +57,7 @@ export function GraphInboxPanel({
       setGraph(await graphApi.get(context.team_id, context.graph_id))
       onChange()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(false)
     }

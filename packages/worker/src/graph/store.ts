@@ -310,6 +310,17 @@ export async function create(db: D1Database, teamId: string, ownerId: string, da
     ),
     ...start.statements,
     ...goal.statements,
+    // Evidence must cite a supplied resource, so every graph starts with its declared evidence source.
+    sql(
+      db,
+      "INSERT INTO graph_resources(id,graph_id,version,title,description,body,visibility,created_at) VALUES(?,?,1,?,?,?,'execution',?)",
+      id(),
+      g.id,
+      `Evidence source · ${(rule.scope as string).normalize('NFC').slice(0, 250)}`,
+      'Default source for evidence within the success rule scope.',
+      `Observations reported for scope "${(rule.scope as string).normalize('NFC').slice(0, 250)}". Cite this resource as evidence.resource_id.`,
+      now
+    ),
     sql(db, 'INSERT INTO graph_budgets(graph_id) VALUES(?)', g.id),
     ...['cleanup', 'revival', 'decomposition', 'timeout'].map((k) =>
       sql(

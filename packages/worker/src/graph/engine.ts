@@ -467,7 +467,9 @@ export async function processResults(db: D1Database, g: Graph): Promise<void> {
       continue
     }
     try {
-      r.parsed = json(parseResult(original.role as keyof typeof templates, r.raw))
+      const parsed = parseResult(original.role as keyof typeof templates, r.raw)
+      assertEvidenceResources(original, parsed as Data)
+      r.parsed = json(parsed)
     } catch (e) {
       const ops = [
         sql(db, "UPDATE graph_results SET status='invalid',validation_error=? WHERE id=?", String(e), r.id),
@@ -503,6 +505,17 @@ export async function processResults(db: D1Database, g: Graph): Promise<void> {
       }
     }
   }
+}
+
+/** Evidence must cite a resource version supplied with the plan; checked when parsing so a repair can fix it. */
+function assertEvidenceResources(original: Assignment, d: Data): void {
+  if (!['execute', 'undo', 'reconcile'].includes(original.role)) return
+  const plan = (JSON.parse(original.input) as Data).plan as Data | undefined
+  const permitted = (plan?.resource_versions ?? []) as string[]
+  if (((d.evidence as Data[]) ?? []).some((e) => !permitted.includes(String(e.resource_id))))
+    throw new Error(
+      `Evidence references an unsupplied resource version; use only these resource IDs: ${JSON.stringify(permitted)}`
+    )
 }
 
 async function evidenceStatements(
@@ -570,10 +583,7 @@ export async function accept(
   const d = JSON.parse(r.parsed) as Data,
     input = JSON.parse(original.input) as Data
   if (['execute', 'undo', 'reconcile'].includes(original.role)) {
-    const plan = input.plan as Data | undefined
-    const permitted = (plan?.resource_versions ?? []) as string[]
-    if ((d.evidence as Data[]).some((e) => !permitted.includes(String(e.resource_id))))
-      throw new Error('Evidence references an unsupplied resource version')
+    assertEvidenceResources(original, d)
   }
   const ops: D1PreparedStatement[] = [
     ...extra,

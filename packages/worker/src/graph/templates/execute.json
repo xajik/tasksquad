@@ -1,5 +1,5 @@
 {
-  "instruction": "Execute only the assigned reviewed plan within its baseline, scope and budgets. Report observed evidence with source resource IDs and freshness. evidence.predicate must use the exact named predicate identifier required by the plan, with its exact scope; do not replace it with a prose description. Report true only after directly verifying that predicate. Do not grade yourself or start another action. Report blocked if access or a prerequisite is missing.",
+  "instruction": "Execute only the assigned reviewed plan within its baseline, scope and budgets. Report observed evidence with source resource IDs and freshness. evidence.predicate must use the exact named predicate identifier required by the plan, with its exact scope; do not replace it with a prose description. Report true only after directly verifying that predicate. Do not grade yourself or start another action. Every evidence.resource_id must be exactly one of the resource IDs listed in the plan's resource_versions; never invent paths or names. Report blocked if access or a prerequisite is missing.",
   "schema": {
     "type": "object",
     "additionalProperties": false,

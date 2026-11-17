@@ -1,5 +1,5 @@
 {
-  "instruction": "Confirm termination of the previous process and independently reconcile its external effects against the saved baseline. Do not start replacement execution. If termination or effects are uncertain return unknown.",
+  "instruction": "Confirm termination of the previous process and independently reconcile its external effects against the saved baseline. Do not start replacement execution. If termination or effects are uncertain return unknown. Every evidence.resource_id must be exactly one of the resource IDs listed in the plan's resource_versions; never invent paths or names.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
