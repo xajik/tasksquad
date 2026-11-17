@@ -238,6 +238,42 @@ export async function run(db: D1Database, graphId: string, command: string, body
         g.id
       )
     )
+    // Edges published while paused never received an execute assignment; create them on resume.
+    const orphaned = await rows<Data>(
+      db,
+      `SELECT e.id,e.to_id,e.title,e.description,e.body,e.from_id,e.expected_score,p.baseline,p.predicates,p.steps,p.undo_steps,p.cost,p.recovery_cost,p.resource_versions,p.effects
+       FROM graph_edges e JOIN graph_plans p ON p.edge_id=e.id
+       WHERE e.graph_id=? AND NOT EXISTS (SELECT 1 FROM graph_assignments a WHERE a.edge_id=e.id AND a.role='execute')`,
+      g.id
+    )
+    for (const e of orphaned) {
+      const next = await assignment(
+        db,
+        g,
+        'execute',
+        {
+          plan: {
+            title: e.title,
+            description: e.description,
+            body: e.body,
+            from_id: e.from_id,
+            baseline: e.baseline,
+            restoration_predicates: JSON.parse(String(e.predicates)),
+            steps: JSON.parse(String(e.steps)),
+            undo_steps: JSON.parse(String(e.undo_steps)),
+            cost: e.cost,
+            recovery_cost: e.recovery_cost,
+            resource_versions: JSON.parse(String(e.resource_versions)),
+            effects: JSON.parse(String(e.effects)),
+            expected_quality: e.expected_score ?? null
+          },
+          target_node: e.to_id,
+          resources: await executionResources(db, g.id)
+        },
+        { node: String(e.to_id), edge: String(e.id) }
+      )
+      ops.push(...next.statements)
+    }
     const previous = await sql(db, 'SELECT id FROM graph_assignments WHERE graph_id=? LIMIT 1', g.id).first()
     if (!previous) {
       const next = await assignment(db, g, 'decompose', {

@@ -1009,4 +1009,61 @@ describe('durable inbox graph workflow', () => {
     ).first<{ status: string }>()
     expect(result?.status).toBe('stale')
   })
+
+  it('creates the missing execute assignment for an edge published while paused when the graph resumes', async () => {
+    const f = await fixture(false, true)
+    const g = await graph(db, f.g.id)
+    const source = (
+      await rows<{ id: string }>(db, "SELECT id FROM graph_nodes WHERE graph_id=? AND kind='observed'", g.id)
+    )[0].id
+    const ref = (await rows<{ id: string }>(db, 'SELECT id FROM graph_resources WHERE graph_id=?', g.id))[0].id
+    const target = nodeStatements(db, g, 'outcome', { title: 'Late target', description: '', body: 'x' }, null)
+    const edge = crypto.randomUUID()
+    await commit(db, g, 'seed_paused_edge', null, {}, [
+      ...target.statements,
+      sql(
+        db,
+        'INSERT INTO graph_edges(id,graph_id,from_id,to_id,title,description,body,source_result_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)',
+        edge,
+        g.id,
+        source,
+        target.id,
+        'Late action',
+        '',
+        '',
+        'fixture',
+        Date.now()
+      ),
+      sql(
+        db,
+        'INSERT INTO graph_plans(edge_id,baseline,predicates,steps,undo_steps,cost,recovery_cost,resource_versions,effects) VALUES(?,?,?,?,?,?,?,?,?)',
+        edge,
+        'base',
+        JSON.stringify(['restored']),
+        JSON.stringify(['do']),
+        JSON.stringify(['undo']),
+        1,
+        1,
+        JSON.stringify([ref]),
+        JSON.stringify(['effect'])
+      )
+    ])
+    expect(
+      await rows(db, "SELECT id FROM graph_assignments WHERE edge_id=? AND role='execute'", edge)
+    ).toHaveLength(0)
+    await run(db, g.id, 'run')
+    const created = await rows<{ status: string }>(
+      db,
+      "SELECT status FROM graph_assignments WHERE edge_id=? AND role='execute'",
+      edge
+    )
+    expect(created).toHaveLength(1)
+    expect(created[0].status).toBe('pending')
+    // Resuming again must not duplicate the assignment.
+    await run(db, g.id, 'pause')
+    await run(db, g.id, 'run')
+    expect(
+      await rows(db, "SELECT id FROM graph_assignments WHERE edge_id=? AND role='execute'", edge)
+    ).toHaveLength(1)
+  })
 })
