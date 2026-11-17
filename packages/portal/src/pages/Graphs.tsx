@@ -24,6 +24,17 @@ import { goalProjection } from '@/lib/graphProjection'
 import { graphAttention } from '@/lib/graphAttention'
 import { errorText } from '@/lib/graphError'
 
+/** What the person must look at first: their decisions, then recovery, running work, then queued work by priority. */
+const workRank = (status: string) =>
+  ['review', 'blocked', 'error'].includes(status)
+    ? 0
+    : ['reconciling', 'restoring'].includes(status)
+      ? 1
+      : status === 'running'
+        ? 2
+        : status === 'pending'
+          ? 3
+          : 4
 const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
 /** Where a pending proposal really stands: its independent merge review may be queued, running, held for you or blocked. */
 function proposalState(graph: GraphSnapshot, proposalId: string, status: string): string {
@@ -869,11 +880,14 @@ export function Graphs({
             {tab === 'next' && (
               <div className="divide-y">
                 {current.assignments
-                  .filter((a) => ['pending', 'running', 'review'].includes(a.status))
-                  .sort((a, b) => b.priority - a.priority)
+                  .filter((a) => workRank(a.status) < 4)
+                  .sort((a, b) => workRank(a.status) - workRank(b.status) || b.priority - a.priority)
                   .map((a) => (
                     <div key={a.id} className="py-3 text-sm flex justify-between gap-3">
                       <span>
+                        {workRank(a.status) === 0 && (
+                          <b className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs">Needs you</b>
+                        )}
                         {a.role} · {a.status} · priority {a.priority.toFixed(2)} · {a.attempt_count} attempts
                       </span>
                       {current.attempts
