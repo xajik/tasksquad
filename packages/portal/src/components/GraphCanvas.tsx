@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Network } from 'lucide-react'
 import type { GraphSnapshot } from '@/lib/graph'
-import { isGuidance, layoutGraph, projectionRoute } from '@/lib/graphLayout'
+import {
+  fallbackLabel,
+  isGuidance,
+  layoutGraph,
+  projectionRoute,
+  resolveCollisions,
+  type Point
+} from '@/lib/graphLayout'
 import { Button } from './ui/button'
 import { goalProjection } from '@/lib/graphProjection'
 import { graphAttention } from '@/lib/graphAttention'
@@ -23,6 +30,25 @@ export function GraphCanvas({
   const [zoom, setZoom] = useState(1),
     [offset, setOffset] = useState({ x: 0, y: 0 })
   const drag = useRef<{ x: number; y: number; origin: { x: number; y: number } } | null>(null)
+  const nodeDrag = useRef<{ id: string; x: number; y: number; origin: Point; moved: boolean } | null>(null)
+  const svgRef = useRef<SVGSVGElement | null>(null)
+  // Manual placement survives polling and reloads; Regroup discards it.
+  const storageKey = `graph-layout:${graph.id}`
+  const [manual, setManual] = useState<Record<string, Point>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(storageKey) ?? '{}')
+    } catch {
+      return {}
+    }
+  })
+  function saveManual(next: Record<string, Point>) {
+    setManual(next)
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(next))
+    } catch {
+      /* storage unavailable: placement lasts for this view only */
+    }
+  }
   const attention = graphAttention(graph)
   const nodes = graph.nodes
   const ids = new Set(nodes.map((n) => n.id))
@@ -61,8 +87,10 @@ export function GraphCanvas({
   })
   const layout = useMemo(() => {
     const data = JSON.parse(topology)
-    return layoutGraph(data.nodes, data.edges, true)
-  }, [topology])
+    return layoutGraph(data.nodes, data.edges, true, new Map(Object.entries(manual)))
+  }, [topology, manual])
+  const [live, setLive] = useState<{ id: string; at: Point } | null>(null)
+  const shown = (id: string) => (live?.id === id ? live.at : (layout.positions.get(id) as Point))
   const selectedExecution = nodes.find((n) => n.id === selected && !isGuidance(n))
   const projection = selectedExecution ? goalProjection(graph, selectedExecution.id) : null
   const projectionLabel = projection?.evaluated
@@ -78,10 +106,52 @@ export function GraphCanvas({
     setZoom(1)
     setOffset({ x: 0, y: 0 })
   }
+  function regroup() {
+    saveManual({})
+    fit()
+  }
   useEffect(() => {
     setZoom(1)
     setOffset({ x: 0, y: 0 })
   }, [graph.id, topology])
+  // Excalidraw-style: wheel pans, Ctrl/⌘+wheel (or pinch) zooms towards the pointer.
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = svg.getBoundingClientRect()
+      const scale = Math.max(layout.bounds.width / rect.width, layout.bounds.height / rect.height)
+      if (e.ctrlKey || e.metaKey) {
+        const factor = Math.exp(-e.deltaY * 0.01)
+        setZoom((z) => {
+          const next = Math.min(6, Math.max(0.3, z * factor))
+          const px = (e.clientX - rect.left) * scale + layout.bounds.x,
+            py = (e.clientY - rect.top) * scale + layout.bounds.y
+          setOffset((o) => ({
+            x: px - ((px - o.x) / z) * next,
+            y: py - ((py - o.y) / z) * next
+          }))
+          return next
+        })
+      } else setOffset((o) => ({ x: o.x - e.deltaX * scale, y: o.y - e.deltaY * scale }))
+    }
+    svg.addEventListener('wheel', onWheel, { passive: false })
+    return () => svg.removeEventListener('wheel', onWheel)
+  }, [layout.bounds.width, layout.bounds.height, layout.bounds.x, layout.bounds.y])
+  // Backward propagation: evidence flows from the selected result back along its executed lineage.
+  const backedUp = useMemo(() => {
+    const path: string[] = []
+    if (!selectedExecution) return path
+    let cursor = selectedExecution.id
+    for (let guard = 0; guard < 64; guard++) {
+      const incoming = graph.edges.find((e) => e.to_id === cursor)
+      if (!incoming || path.includes(incoming.id)) break
+      path.push(incoming.id)
+      cursor = incoming.from_id
+    }
+    return path
+  }, [graph.edges, selectedExecution])
   const matched = (n: (typeof graph.nodes)[number]) =>
     matchedIds
       ? matchedIds.includes(n.id)
@@ -133,7 +203,7 @@ export function GraphCanvas({
           <Button variant="ghost" size="sm" onClick={fit}>
             Fit
           </Button>
-          <Button variant="ghost" size="sm" aria-label="Regroup graph" onClick={fit}>
+          <Button variant="ghost" size="sm" aria-label="Regroup graph" onClick={regroup}>
             Regroup
           </Button>
           <Button
@@ -164,16 +234,31 @@ export function GraphCanvas({
         </div>
       )}
       <svg
+        ref={svgRef}
         aria-label="Action graph: guidance, execution states and actions"
         role="group"
         viewBox={`${layout.bounds.x} ${layout.bounds.y} ${layout.bounds.width} ${layout.bounds.height}`}
-        className="w-full min-h-80 max-h-[650px] touch-none"
+        className="w-full min-h-80 max-h-[650px] touch-none cursor-grab"
         onPointerDown={(e) => {
           if ((e.target as Element).closest('[data-entity]')) return
-          e.currentTarget.setPointerCapture(e.pointerId)
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId)
+          } catch {
+            /* see node drag */
+          }
           drag.current = { x: e.clientX, y: e.clientY, origin: offset }
         }}
         onPointerMove={(e) => {
+          const nd = nodeDrag.current
+          if (nd) {
+            const r = e.currentTarget.getBoundingClientRect()
+            const k = Math.max(layout.bounds.width / r.width, layout.bounds.height / r.height) / zoom
+            const dx = (e.clientX - nd.x) * k,
+              dy = (e.clientY - nd.y) * k
+            if (Math.abs(dx) + Math.abs(dy) > 3 / zoom) nd.moved = true
+            if (nd.moved) setLive({ id: nd.id, at: { x: nd.origin.x + dx, y: nd.origin.y + dy } })
+            return
+          }
           if (!drag.current) return
           const rect = e.currentTarget.getBoundingClientRect()
           const scale = Math.max(layout.bounds.width / rect.width, layout.bounds.height / rect.height)
@@ -183,16 +268,25 @@ export function GraphCanvas({
           })
         }}
         onPointerUp={() => {
+          const nd = nodeDrag.current
+          nodeDrag.current = null
+          if (nd?.moved && live?.id === nd.id) {
+            // Drop resolves collisions, then routing re-runs around the new placement.
+            saveManual({ ...manual, [nd.id]: resolveCollisions(layout.positions, nd.id, live.at) })
+          }
+          setLive(null)
           drag.current = null
         }}
         onPointerCancel={() => {
+          nodeDrag.current = null
+          setLive(null)
           drag.current = null
         }}
       >
         <title>{graph.title} — goals, milestones, execution states and actions</title>
         <desc>
           Dashed goal and milestone cards provide planning guidance; solid state cards participate in
-          execution. Use Tab and Enter to inspect states and actions. Drag the background to pan. New states
+          execution. Use Tab and Enter to inspect states and actions. Drag cards to rearrange (overlaps are resolved on drop), drag the background or scroll to pan, and hold Ctrl or Command while scrolling to zoom. New states
           trigger automatic regrouping and collision-aware routing.
         </desc>
         <defs>
@@ -250,9 +344,15 @@ export function GraphCanvas({
                   d={path}
                   fill="none"
                   className={
-                    selected === id ? 'stroke-primary' : lineage ? 'stroke-border' : 'stroke-muted-foreground'
+                    backedUp.includes(link.id)
+                      ? 'stroke-emerald-600 dark:stroke-emerald-400'
+                      : selected === id
+                        ? 'stroke-primary'
+                        : lineage
+                          ? 'stroke-border'
+                          : 'stroke-muted-foreground'
                   }
-                  strokeWidth={selected === id ? 2.5 : 1.5}
+                  strokeWidth={selected === id || backedUp.includes(link.id) ? 2.5 : 1.5}
                   strokeDasharray={lineage ? '5 4' : undefined}
                   markerEnd={guidance || !lineage ? 'url(#graph-arrow)' : undefined}
                   strokeLinejoin="round"
@@ -265,19 +365,29 @@ export function GraphCanvas({
                       : 'Observed result lineage'
                     : `${edge!.title} · expected ${edge!.expected_score?.toFixed(2) ?? 'unknown'} · observed ${score(link.id)}`}
                 </title>
-                {geometry.label && edge && (
-                  <g data-edge-label={link.id}>
-                    <rect {...geometry.label} rx={5} className="fill-background stroke-border" />
-                    <text
-                      x={geometry.label.x + geometry.label.width / 2}
-                      y={geometry.label.y + 15}
-                      textAnchor="middle"
-                      className="fill-muted-foreground text-[10px]"
-                    >
-                      {edge.expected_score?.toFixed(2) ?? '?'} → {score(link.id)}
-                    </text>
-                  </g>
-                )}
+                {edge && (() => {
+                  const label = geometry.label ?? fallbackLabel(geometry.points)
+                  if (!label) return null
+                  const up = backedUp.includes(link.id)
+                  return (
+                    <g data-edge-label={link.id} data-backed-up={up ? 'true' : undefined}>
+                      <rect
+                        {...label}
+                        rx={5}
+                        className={`fill-background ${up ? 'stroke-emerald-600 dark:stroke-emerald-400' : 'stroke-border'}`}
+                      />
+                      <text
+                        x={label.x + label.width / 2}
+                        y={label.y + 15}
+                        textAnchor="middle"
+                        className={`text-[10px] ${up ? 'fill-emerald-700 dark:fill-emerald-400 font-medium' : 'fill-muted-foreground'}`}
+                      >
+                        {up ? '↩ ' : ''}
+                        {edge.expected_score?.toFixed(2) ?? '?'} → {score(link.id)}
+                      </text>
+                    </g>
+                  )
+                })()}
               </g>
             )
           })}
@@ -302,7 +412,9 @@ export function GraphCanvas({
             </g>
           ))}
           {nodes.map((n) => {
-            const p = layout.positions.get(n.id)!
+            const box = layout.positions.get(n.id)!
+            const at = shown(n.id)
+            const p = { ...box, x: at.x, y: at.y }
             const observed =
               n.kind === 'observed' || (n.source_result_id && observedResults.has(n.source_result_id))
             const guidance = isGuidance(n)
@@ -330,9 +442,19 @@ export function GraphCanvas({
                 role="button"
                 tabIndex={0}
                 aria-label={`${n.title}: ${label}${guidance ? '' : `, ${n.state}`}${needsAttention ? `, ${needsAttention.label}` : ''}`}
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return
+                  e.stopPropagation()
+                  try {
+                    svgRef.current?.setPointerCapture(e.pointerId)
+                  } catch {
+                    /* capture is an optimisation; dragging still works without it */
+                  }
+                  nodeDrag.current = { id: n.id, x: e.clientX, y: e.clientY, origin: { x: at.x, y: at.y }, moved: false }
+                }}
                 onClick={() => onSelect(n.id)}
                 onKeyDown={(e) => inspectKey(e, n.id)}
-                className="cursor-pointer"
+                className={live?.id === n.id ? 'cursor-grabbing' : 'cursor-grab'}
                 opacity={matched(n) ? (n.state === 'deactivated' ? 0.5 : 1) : 0.25}
               >
                 <rect

@@ -4,6 +4,8 @@ import {
   projectionRoute,
   intersects,
   segmentHits,
+  resolveCollisions,
+  fallbackLabel,
   type LayoutNode,
   type LayoutEdge
 } from './graphLayout'
@@ -142,5 +144,24 @@ describe('execution graph layout', () => {
     expect(after.positions.size).toBe(4)
     expect(after.positions.get('a')).not.toEqual(before.positions.get('a'))
     assertClear(after, nextEdges)
+  })
+
+  it('honours manual positions, keeps routes clear and always labels action weights', () => {
+    const nodes = [node('a'), node('b', 'outcome', 1), node('c', 'outcome', 2)],
+      edges = [edge('ab', 'a', 'b'), edge('ac', 'a', 'c')]
+    const layout = layoutGraph(nodes, edges, true, new Map([['b', { x: 700, y: 400 }]]))
+    expect(layout.positions.get('b')).toMatchObject({ x: 700, y: 400 })
+    for (const id of ['ab', 'ac']) {
+      const route = layout.edges.get(id)!
+      expect(route.label ?? fallbackLabel(route.points)).not.toBeNull()
+    }
+    assertClear(layout, edges)
+  })
+  it('pushes a dropped card out of overlaps with a visible gap', () => {
+    const layout = layoutGraph([node('a'), node('b', 'outcome', 1)], [edge('ab', 'a', 'b')], true)
+    const a = layout.positions.get('a')!
+    const at = resolveCollisions(layout.positions, 'b', { x: a.x + 10, y: a.y + 5 })
+    const moved = { ...layout.positions.get('b')!, ...at }
+    expect(intersects(moved, a)).toBe(false)
   })
 })

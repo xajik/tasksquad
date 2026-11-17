@@ -203,7 +203,12 @@ function flowRanks(ids: string[], outgoing: Map<string, string[]>) {
   return new Map(ids.map((id) => [id, ranks[owner.get(id)!]]))
 }
 
-export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], includeGuidance = false) {
+export function layoutGraph(
+  allNodes: LayoutNode[],
+  allEdges: LayoutEdge[],
+  includeGuidance = false,
+  overrides: ReadonlyMap<string, Point> = new Map()
+) {
   const nodes = allNodes
     .filter((n) => includeGuidance || !isGuidance(n))
     .sort((a, b) => a.created_at - b.created_at || a.id.localeCompare(b.id))
@@ -278,6 +283,14 @@ export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], incl
   for (const node of guidanceNodes) {
     const box = positions.get(node.id)!
     box.x = guidanceLeft + guidanceRight - box.x - box.width
+  }
+  // Manual placement wins over packing; routing below then avoids the moved cards.
+  for (const [id, at] of overrides) {
+    const box = positions.get(id)
+    if (box) {
+      box.x = at.x
+      box.y = at.y
+    }
   }
   const nodeBoxes = [...positions.values()],
     obstacleBoxes = nodeBoxes.map((b) => expanded(b))
@@ -406,4 +419,45 @@ export function projectionRoute(layout: ReturnType<typeof layoutGraph>, fromId: 
     height: layout.bounds.height - 16
   }
   return [source, ...route(start, end, obstacles, bounds, new Set()), target]
+}
+
+/** Nudge the moved card out of any overlap (minimum-translation push), keeping a visible gap. */
+export function resolveCollisions(
+  positions: ReadonlyMap<string, Box>,
+  movedId: string,
+  at: Point,
+  gap = 24
+): Point {
+  const others = [...positions.entries()].filter(([id]) => id !== movedId).map(([, box]) => box)
+  const moved = positions.get(movedId)
+  if (!moved) return at
+  const box = { x: at.x, y: at.y, width: moved.width, height: moved.height }
+  for (let pass = 0; pass < 24; pass++) {
+    const hit = others.find((o) => intersects(expanded(box, gap / 2), expanded(o, gap / 2)))
+    if (!hit) break
+    const dx = box.x + box.width / 2 - (hit.x + hit.width / 2),
+      dy = box.y + box.height / 2 - (hit.y + hit.height / 2)
+    const px = (box.width + hit.width) / 2 + gap - Math.abs(dx),
+      py = (box.height + hit.height) / 2 + gap - Math.abs(dy)
+    if (px < py) box.x += (dx >= 0 ? 1 : -1) * px
+    else box.y += (dy >= 0 ? 1 : -1) * py
+  }
+  return { x: Math.round(box.x), y: Math.round(box.y) }
+}
+
+/** Weights must stay visible even in dense graphs: when routing found no free slot, sit on the longest run. */
+export function fallbackLabel(points: Point[]): Box | null {
+  if (points.length < 2) return null
+  let best = 0,
+    longest = -1
+  for (let i = 1; i < points.length; i++) {
+    const length = Math.abs(points[i].x - points[i - 1].x) + Math.abs(points[i].y - points[i - 1].y)
+    if (length > longest) {
+      longest = length
+      best = i - 1
+    }
+  }
+  const a = points[best],
+    b = points[best + 1]
+  return { x: (a.x + b.x) / 2 - 50, y: (a.y + b.y) / 2 - 11, width: 100, height: 22 }
 }
