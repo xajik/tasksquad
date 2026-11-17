@@ -1,0 +1,124 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import type { GraphInboxContext } from '@/lib/api'
+import { graphApi, type GraphSnapshot, type GraphResult } from '@/lib/graph'
+import { Button } from './ui/button'
+
+/** Inbox owns exact-output review; the thread's regular composer owns recovery replies. */
+export function GraphInboxPanel({
+  taskId,
+  context,
+  interval,
+  onChange
+}: {
+  taskId: string
+  context: GraphInboxContext
+  interval: number
+  onChange: () => void
+}) {
+  const [graph, setGraph] = useState<GraphSnapshot | null>(null),
+    [error, setError] = useState(''),
+    [busy, setBusy] = useState(false)
+  useEffect(() => {
+    let active = true
+    setGraph(null)
+    setError('')
+    async function load() {
+      try {
+        const next = await graphApi.get(context.team_id, context.graph_id)
+        if (active) setGraph(next)
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : String(e))
+      }
+    }
+    void load()
+    const timer = setInterval(() => {
+      void load()
+    }, interval)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
+  }, [taskId, context.team_id, context.graph_id, interval])
+  const attemptIds = new Set(graph?.attempts.filter((a) => a.task_id === taskId).map((a) => a.id))
+  const reviews = graph?.results.filter((r) => r.status === 'review' && attemptIds.has(r.attempt_id)) ?? []
+  async function review(result: GraphResult, verdict: string) {
+    if (!graph) return
+    setBusy(true)
+    setError('')
+    try {
+      await graphApi.command(context.team_id, context.graph_id, 'review', {
+        result_id: result.id,
+        output_hash: result.output_hash,
+        config_version: graph.config.version,
+        verdict
+      })
+      setGraph(await graphApi.get(context.team_id, context.graph_id))
+      onChange()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <section
+      aria-label="Graph inbox task"
+      className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3"
+    >
+      <div className="flex justify-between gap-3 flex-wrap">
+        <strong className="text-sm">Graph task · {context.role}</strong>
+        <Link className="text-sm underline" to={`/dashboard/graphs/${context.graph_id}`}>
+          Open graph
+        </Link>
+      </div>
+      {context.can_reply && (
+        <p className="text-sm">
+          The agent needs your response. Reply in this thread to request a checked continuation.
+        </p>
+      )}
+      {!context.can_manage && ['blocked', 'error'].includes(context.status) && (
+        <p className="text-sm">An owner or maintainer must reply to continue this task.</p>
+      )}
+      {context.status === 'continuation' && (
+        <p className="text-sm">
+          Reply received. A continuation is checking the checkpoint; follow-up work appears as a new inbox
+          task.
+        </p>
+      )}
+      {!context.latest && (
+        <p className="text-sm text-muted-foreground">
+          This is an earlier attempt. Continue the conversation in the latest inbox task.
+        </p>
+      )}
+      {reviews.map((result) => (
+        <article key={result.id} className="space-y-2">
+          <h3 className="text-sm font-medium">Review {context.role} result</h3>
+          <details>
+            <summary className="text-xs cursor-pointer">Exact result to review</summary>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs mt-2">
+              {result.parsed ?? result.raw}
+            </pre>
+          </details>
+          {context.can_manage ? (
+            <div className="flex gap-2">
+              <Button size="sm" disabled={busy} onClick={() => review(result, 'accept')}>
+                Accept result
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => review(result, 'reject')}>
+                Reject result
+              </Button>
+            </div>
+          ) : (
+            <p className="text-xs">An owner or maintainer must review this result.</p>
+          )}
+        </article>
+      ))}
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+    </section>
+  )
+}

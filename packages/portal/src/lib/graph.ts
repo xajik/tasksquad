@@ -85,6 +85,9 @@ export interface GraphAssignment {
   input: string
 }
 export interface GraphAttempt {
+  epoch?: number
+  task_status?: string
+  tui_blocked?: number | boolean
   id: string
   assignment_id: string
   task_id: string

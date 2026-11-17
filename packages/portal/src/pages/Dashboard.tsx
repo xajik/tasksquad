@@ -1,3 +1,4 @@
+import { GraphInboxPanel } from '@/components/GraphInboxPanel'
 import { localGraphToken } from '../lib/localGraph'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { signOut } from 'firebase/auth'
@@ -1138,6 +1139,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
   const [task, setTask] = useState<Task | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
+  const [replyError, setReplyError] = useState('')
   const [reply, setReply] = useState('')
   const [sending, setSending] = useState(false)
   const replyAttach = useImageAttachments()
@@ -1199,10 +1201,10 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
   const pollInterval = plan === 'pro' ? 2000 : 5000
   useEffect(() => {
     if (!task) return
-    if (!['running', 'waiting_input', 'pending'].includes(task.status)) return
+    if (!task.graph && !['running', 'waiting_input', 'pending'].includes(task.status)) return
     const t = setInterval(load, pollInterval)
     return () => clearInterval(t)
-  }, [task?.status, load, pollInterval])
+  }, [task?.status, task?.graph?.graph_id, load, pollInterval])
 
   // Notify on every status transition (running, waiting_input, done, failed)
   const prevStatusRef = useRef<string | undefined>(undefined)
@@ -1281,19 +1283,20 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
     e.preventDefault()
     if (!taskId || !reply.trim()) return
     setSending(true)
+    setReplyError('')
     try {
       let scheduledAt: number | undefined
-      if (scheduledDate && scheduledDate.getTime() > Date.now()) {
+      if (!task?.graph?.can_reply && scheduledDate && scheduledDate.getTime() > Date.now()) {
         scheduledAt = scheduledDate.getTime()
       }
-      await api.messages.create(taskId, reply, scheduledAt, replyAttach.files)
+      await api.messages.create(taskId, reply, scheduledAt, task?.graph?.can_reply ? [] : replyAttach.files)
       trackEvent('message_sent', { task_id: taskId, role: 'user', scheduled: !!scheduledAt });
       setReply('')
       setShowSchedulePicker(false)
       setScheduledDate(undefined)
       replyAttach.clear()
       load()
-    } finally { setSending(false) }
+    } catch (error) { setReplyError(error instanceof Error ? error.message : String(error)) } finally { setSending(false) }
   }
 
   async function deleteScheduledMessage(msgId: string) {
@@ -1603,8 +1606,9 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
         </div>
       )}
 
+      {task?.graph && taskId && <GraphInboxPanel taskId={taskId} context={task.graph} interval={pollInterval} onChange={() => { void load() }} />}
       {/* ── Reply box when agent is waiting for input ── */}
-      {task && task.status === 'waiting_input' && !pendingScheduledReply && !editingMessage && (
+      {task && ((task.status === 'waiting_input' && (!task.graph || task.graph.can_manage)) || task.graph?.can_reply) && !pendingScheduledReply && !editingMessage && (
         <div className={cn('border rounded-xl overflow-hidden shadow-sm bg-background', permissionOptions ? 'border-amber-200 dark:border-amber-800' : 'border-border/60')}>
           <div className={cn('px-4 py-2.5 border-b flex items-center gap-2', permissionOptions ? 'border-amber-200/60 dark:border-amber-800/60' : 'border-border/40')}>
             {permissionOptions ? (
@@ -1639,24 +1643,26 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
           )}
           <form ref={replyFormRef} onSubmit={sendReply}>
             <Textarea
+              maxLength={task.graph?.can_reply ? 3999 : undefined}
               value={reply}
               onChange={e => setReply(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendReply(e as any) }}
-              onDrop={replyAttach.onDrop}
-              onDragOver={replyAttach.onDragOver}
-              onPaste={replyAttach.onPaste}
+              onDrop={task.graph?.can_reply ? undefined : replyAttach.onDrop}
+              onDragOver={task.graph?.can_reply ? undefined : replyAttach.onDragOver}
+              onPaste={task.graph?.can_reply ? undefined : replyAttach.onPaste}
               placeholder="Write your reply… (drag, paste, or attach up to 3 images)"
               rows={4}
               className="border-0 rounded-none resize-none focus-visible:ring-0 text-sm px-4 py-3 bg-transparent"
             />
-            <ImageAttachmentPicker attach={replyAttach} className="px-4 pb-2" />
-            {showSchedulePicker && (
+            {replyError && <p role="alert" className="px-4 pb-2 text-sm text-destructive">{replyError}</p>}
+            {!task.graph?.can_reply && <ImageAttachmentPicker attach={replyAttach} className="px-4 pb-2" />}
+            {!task.graph?.can_reply && showSchedulePicker && (
               <div className="px-4 py-3 border-t border-border/20">
                 <DateTimePicker date={scheduledDate} setDate={setScheduledDate} />
               </div>
             )}
             <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/30 bg-muted/10">
-              <Button
+              {!task.graph?.can_reply && <Button
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -1665,7 +1671,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
               >
                 <Clock className="h-3.5 w-3.5 mr-1.5" />
                 {showSchedulePicker ? 'Cancel schedule' : 'Schedule'}
-              </Button>
+              </Button>}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground hidden sm:block">⌘ Enter to send</span>
                 <Button type="submit" disabled={sending || !reply.trim()} size="sm">

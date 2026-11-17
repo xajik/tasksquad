@@ -1,3 +1,4 @@
+import { Play, Pause } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, type Agent } from '../lib/api'
@@ -8,7 +9,6 @@ import {
   type GraphSummary,
   type NewGraph,
   type GraphPolicy,
-  type GraphResult,
   type GraphSearchHit,
   type GraphResource
 } from '../lib/graph'
@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { GraphCanvas } from '@/components/GraphCanvas'
 import { isGuidance } from '@/lib/graphLayout'
 import { goalProjection } from '@/lib/graphProjection'
+import { graphAttention } from '@/lib/graphAttention'
 
 const errorText = (error: unknown) =>
   error instanceof Error
@@ -395,17 +396,14 @@ export function Graphs({
       setBusy(false)
     }
   }
-  async function review(result: GraphResult, verdict: string) {
-    if (!current) return
-    await command('review', {
-      result_id: result.id,
-      output_hash: result.output_hash,
-      config_version: current.config.version,
-      verdict
-    })
-  }
   const node = current?.nodes.find((n) => n.id === selected),
     edge = current?.edges.find((e) => e.id === selected)
+  const attention = current ? graphAttention(current) : null
+  const nodeAttention = node
+    ? (attention?.nodes.get(node.id) ?? [])
+    : edge
+      ? (attention?.edges.get(edge.id) ?? [])
+      : []
   const projection = current && node && !isGuidance(node) ? goalProjection(current, node.id) : null
   const reviews = current?.results.filter((r) => r.status === 'review') ?? [],
     blocked =
@@ -518,25 +516,16 @@ export function Graphs({
               </p>
             </div>
             {isMaintainer && (
-              <div className="flex gap-2">
-                <Button disabled={busy || current.status === 'running'} onClick={() => command('run')}>
-                  Run
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={busy || current.status !== 'running'}
-                  onClick={() => command('pause')}
-                >
-                  Pause
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={busy || current.status === 'stopped'}
-                  onClick={() => command('stop')}
-                >
-                  Stop
-                </Button>
-              </div>
+              <Button
+                size="icon"
+                variant={current.status === 'running' ? 'outline' : 'default'}
+                disabled={busy}
+                aria-label={current.status === 'running' ? 'Pause graph' : 'Run graph'}
+                title={current.status === 'running' ? 'Pause graph' : 'Run graph'}
+                onClick={() => command(current.status === 'running' ? 'pause' : 'run')}
+              >
+                {current.status === 'running' ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              </Button>
             )}
           </section>
           <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
@@ -567,70 +556,13 @@ export function Graphs({
             </section>
           )}
           {(reviews.length > 0 || blocked.length > 0) && (
-            <section className="rounded-lg border p-4 space-y-4">
-              <h3 className="font-semibold">Needs attention</h3>
-              {reviews.map((r) => {
-                const attempt = current.attempts.find((a) => a.id === r.attempt_id),
-                  assignment = current.assignments.find((a) => a.id === attempt?.assignment_id)
-                return (
-                  <article key={r.id} className="border-t pt-3 space-y-2">
-                    <div className="flex justify-between gap-3 flex-wrap">
-                      <span className="text-sm font-medium">
-                        Review {assignment?.role} · {stamp(r.created_at)}
-                      </span>
-                      {isMaintainer && (
-                        <div className="flex gap-2">
-                          <Button size="sm" disabled={busy} onClick={() => review(r, 'accept')}>
-                            Accept this result
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => review(r, 'reject')}
-                          >
-                            Reject
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                    {r.validation_error && <p className="text-sm text-destructive">{r.validation_error}</p>}
-                    <pre className="max-h-64 overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap">
-                      {pretty(r.parsed ?? r.raw)}
-                    </pre>
-                    <p className="text-xs text-muted-foreground">
-                      Approval applies to this exact response and configuration version{' '}
-                      {assignment?.config_version}.
-                    </p>
-                  </article>
-                )
-              })}
-              {blocked.map((a) => (
-                <article key={a.id} className="border-t pt-3 space-y-2">
-                  <p className="text-sm font-medium">
-                    {a.role} · {a.status} · attempt {a.attempt_count}/{a.max_attempts}
-                  </p>
-                  {isMaintainer && a.status !== 'reconciling' && (
-                    <div className="flex gap-2">
-                      <Input
-                        aria-label={`Input for ${a.role}`}
-                        value={input[a.id] ?? ''}
-                        onChange={(e) => setInput({ ...input, [a.id]: e.target.value })}
-                        placeholder="Provide the missing input or authorize one extra attempt"
-                        maxLength={3999}
-                      />
-                      <Button
-                        disabled={busy || !input[a.id]?.trim()}
-                        variant="outline"
-                        onClick={() => command('input', { assignment_id: a.id, message: input[a.id] })}
-                      >
-                        Send for review
-                      </Button>
-                    </div>
-                  )}
-                </article>
-              ))}
-            </section>
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              Replies and result reviews are handled in{' '}
+              <Link className="underline font-medium" to="/dashboard">
+                Inbox
+              </Link>
+              . Select a highlighted node to open its task.
+            </p>
           )}
           {showSearch && (
             <Input
@@ -694,6 +626,31 @@ export function Graphs({
             />
             <aside className="border-t xl:border-t-0 xl:border-l p-4 space-y-3 text-sm min-w-0">
               <h3 className="font-semibold">{node?.title ?? edge?.title ?? 'Inspector'}</h3>
+              {nodeAttention.length > 0 && (
+                <section
+                  aria-label="Inbox attention"
+                  className="rounded border border-amber-500/30 bg-amber-500/10 p-3 space-y-2"
+                >
+                  <p className="font-medium text-amber-700 dark:text-amber-400">
+                    {nodeAttention.some((a) => a.kind === 'reply')
+                      ? 'Waiting for your response'
+                      : nodeAttention.some((a) => a.kind === 'review')
+                        ? 'Result awaiting review'
+                        : 'Recovery in progress'}
+                  </p>
+                  {nodeAttention.map((item) => (
+                    <Button
+                      key={item.assignmentId}
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => nav(item.taskId ? `/dashboard/tasks/${item.taskId}` : '/dashboard')}
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </section>
+              )}
               {node ? (
                 <>
                   <Badge variant="outline">

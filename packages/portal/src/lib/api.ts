@@ -523,7 +523,21 @@ export interface TaskSettings {
   save_tokens?: { enabled: boolean; level: 'lite' | 'full' | 'ultra' }
 }
 
+export interface GraphInboxContext {
+  graph_id: string
+  team_id: string
+  assignment_id: string
+  node_id: string | null
+  edge_id: string | null
+  role: string
+  status: string
+  latest: boolean
+  can_manage: boolean
+  can_reply: boolean
+}
+
 export interface Task {
+  graph?: GraphInboxContext | null
   id: string
   agent_id: string
   sender_id: string

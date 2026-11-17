@@ -23,4 +23,4 @@ install:
 
 .PHONY: format-graph
 format-graph:
-	bunx prettier@3.6.2 --write --no-semi --single-quote --trailing-comma none --print-width 110 src/lib/graph.ts src/lib/graphLayout.ts src/lib/graphLayout.test.ts src/lib/graphProjection.ts src/lib/graphProjection.test.ts src/pages/Graphs.tsx src/components/GraphCanvas.tsx
+	bunx prettier@3.6.2 --write --no-semi --single-quote --trailing-comma none --print-width 110 src/lib/graph.ts src/lib/graphLayout.ts src/lib/graphLayout.test.ts src/lib/graphProjection.ts src/lib/graphProjection.test.ts src/lib/graphAttention.ts src/lib/graphAttention.test.ts src/components/GraphInboxPanel.tsx src/pages/Graphs.tsx src/components/GraphCanvas.tsx

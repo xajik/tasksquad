@@ -4,6 +4,7 @@ import type { GraphSnapshot } from '@/lib/graph'
 import { isGuidance, layoutGraph, projectionRoute } from '@/lib/graphLayout'
 import { Button } from './ui/button'
 import { goalProjection } from '@/lib/graphProjection'
+import { graphAttention } from '@/lib/graphAttention'
 
 /** Guidance and execution share a canvas, with distinct styling and relationships. */
 export function GraphCanvas({
@@ -22,6 +23,7 @@ export function GraphCanvas({
   const [zoom, setZoom] = useState(1),
     [offset, setOffset] = useState({ x: 0, y: 0 })
   const drag = useRef<{ x: number; y: number; origin: { x: number; y: number } } | null>(null)
+  const attention = graphAttention(graph)
   const nodes = graph.nodes
   const ids = new Set(nodes.map((n) => n.id))
   const links = [
@@ -304,6 +306,7 @@ export function GraphCanvas({
             const observed =
               n.kind === 'observed' || (n.source_result_id && observedResults.has(n.source_result_id))
             const guidance = isGuidance(n)
+            const needsAttention = attention.nodes.get(n.id)?.[0]
             const projectedGoal = !!selectedExecution && goals.some((goal) => goal.id === n.id)
             const label = guidance
               ? n.kind === 'goal'
@@ -321,11 +324,12 @@ export function GraphCanvas({
                 data-entity={n.id}
                 data-execution-node={guidance ? undefined : n.id}
                 data-guidance={guidance ? n.id : undefined}
+                data-attention={needsAttention?.kind}
                 data-flow={guidance ? 'rtl' : 'ltr'}
                 data-projection-target={projectedGoal ? 'true' : undefined}
                 role="button"
                 tabIndex={0}
-                aria-label={`${n.title}: ${label}${guidance ? '' : `, ${n.state}`}`}
+                aria-label={`${n.title}: ${label}${guidance ? '' : `, ${n.state}`}${needsAttention ? `, ${needsAttention.label}` : ''}`}
                 onClick={() => onSelect(n.id)}
                 onKeyDown={(e) => inspectKey(e, n.id)}
                 className="cursor-pointer"
@@ -335,7 +339,7 @@ export function GraphCanvas({
                   width={p.width}
                   height={p.height}
                   rx={8}
-                  className={`${selected === n.id ? 'stroke-primary' : projectedGoal ? 'stroke-blue-500 dark:stroke-blue-400' : guidance ? 'stroke-muted-foreground' : 'stroke-border'} ${guidance ? 'fill-secondary/40' : 'fill-background'}`}
+                  className={`${needsAttention ? 'stroke-amber-600 dark:stroke-amber-400' : selected === n.id ? 'stroke-primary' : projectedGoal ? 'stroke-blue-500 dark:stroke-blue-400' : guidance ? 'stroke-muted-foreground' : 'stroke-border'} ${needsAttention ? 'fill-amber-500/10' : guidance ? 'fill-secondary/40' : 'fill-background'}`}
                   strokeWidth={selected === n.id ? 2 : 1}
                   strokeDasharray={guidance ? '6 4' : n.state === 'deactivated' ? '1 3' : undefined}
                 />
@@ -346,6 +350,23 @@ export function GraphCanvas({
                 <text x={14} y={47} className="fill-foreground text-[12px] font-medium">
                   {n.title.length > 29 ? n.title.slice(0, 28) + '…' : n.title}
                 </text>
+                {needsAttention && (
+                  <a
+                    href={needsAttention.taskId ? `/dashboard/tasks/${needsAttention.taskId}` : '/dashboard'}
+                    aria-label={`${needsAttention.label}: ${n.title}`}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <rect x={8} y={52} width={204} height={20} fill="transparent" />
+                    <text
+                      x={14}
+                      y={66}
+                      className="fill-amber-700 dark:fill-amber-400 text-[10px] font-medium underline"
+                    >
+                      {needsAttention.label} →
+                    </text>
+                  </a>
+                )}
                 <title>{n.title}</title>
               </g>
             )
