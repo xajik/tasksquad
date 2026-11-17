@@ -1,5 +1,5 @@
 {
-  "instruction": "Propose bounded actions from permitted observations. Include baseline, restoration predicates, steps, undo, resources and both budgets. Do not execute.",
+  "instruction": "Propose bounded actions from permitted observations. Include baseline, restoration predicates, steps, undo, resources and both budgets. resource_versions must contain the exact immutable resource row IDs supplied in context, without appending @version or any other suffix. from_id must be the ID of a supplied active observation, never an unexecuted milestone or goal. Do not execute.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
