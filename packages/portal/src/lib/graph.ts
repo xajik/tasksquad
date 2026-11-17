@@ -204,3 +204,11 @@ export const defaultGraphPolicy: GraphPolicy = {
   maintenance_ms: 3600_000,
   freshness_ms: 86400_000
 }
+
+/** A format-repair assignment stands in for its parent role: its accepted result IS the parent's result. */
+export function effectiveRole(graph: Pick<GraphSnapshot, 'assignments'>, assignmentId: string | undefined): string {
+  let a = graph.assignments.find((x) => x.id === assignmentId)
+  for (let guard = 0; a && a.role === 'repair' && a.parent_id && guard < 4; guard++)
+    a = graph.assignments.find((x) => x.id === a!.parent_id)
+  return a?.role ?? ''
+}

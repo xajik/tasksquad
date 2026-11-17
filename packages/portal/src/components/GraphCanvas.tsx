@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Network } from 'lucide-react'
-import type { GraphSnapshot } from '@/lib/graph'
+import { effectiveRole, type GraphSnapshot } from '@/lib/graph'
 import {
   fallbackLabel,
   isGuidance,
@@ -165,9 +165,7 @@ export function GraphCanvas({
         (r) =>
           r.status === 'accepted' &&
           ['execute', 'undo'].includes(
-            graph.assignments.find(
-              (a) => a.id === graph.attempts.find((t) => t.id === r.attempt_id)?.assignment_id
-            )?.role ?? ''
+            effectiveRole(graph, graph.attempts.find((t) => t.id === r.attempt_id)?.assignment_id)
           )
       )
       .map((r) => r.id)

@@ -88,4 +88,30 @@ describe('selected state goal projection', () => {
       reason: 'Evidence uncertain'
     })
   })
+  it('treats an accepted repair of an execute result as that execution', () => {
+    const graph = fixture()
+    // The execute attempt was repaired: the node's source result now belongs to a repair assignment.
+    ;(graph.assignments as unknown as { id: string; role: string; parent_id?: string; input: string }[]).push({
+      id: 'repair',
+      role: 'repair',
+      parent_id: 'execute',
+      input: '{}'
+    })
+    ;(graph.attempts as unknown as { id: string; assignment_id: string }[]).push({
+      id: 'repair-attempt',
+      assignment_id: 'repair'
+    })
+    ;(graph.results as unknown as Record<string, unknown>[]).push({
+      id: 'repaired',
+      attempt_id: 'repair-attempt',
+      status: 'accepted',
+      accepted_at: 5,
+      created_at: 5
+    })
+    graph.nodes.push({ id: 'repaired-node', kind: 'outcome', source_result_id: 'repaired' } as never)
+    ;(graph.assignments.find((a) => a.id === 'project') as unknown as { input: string }).input = JSON.stringify({
+      execution_result_id: 'repaired'
+    })
+    expect(goalProjection(graph, 'repaired-node')).toMatchObject({ evaluated: true, executionResultId: 'repaired' })
+  })
 })

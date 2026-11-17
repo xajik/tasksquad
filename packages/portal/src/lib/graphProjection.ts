@@ -1,4 +1,4 @@
-import type { GraphSnapshot } from './graph'
+import { effectiveRole, type GraphSnapshot } from './graph'
 
 const object = (text: string | null) => {
   try {
@@ -17,9 +17,7 @@ export function goalProjection(graph: GraphSnapshot, nodeId: string) {
     (r) =>
       r.status === 'accepted' &&
       ['execute', 'undo'].includes(
-        graph.assignments.find(
-          (a) => a.id === graph.attempts.find((t) => t.id === r.attempt_id)?.assignment_id
-        )?.role ?? ''
+        effectiveRole(graph, graph.attempts.find((t) => t.id === r.attempt_id)?.assignment_id)
       )
   )
   let execution = outcomes.find((r) => r.id === node?.source_result_id)
