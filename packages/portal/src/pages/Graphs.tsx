@@ -24,6 +24,31 @@ import { goalProjection } from '@/lib/graphProjection'
 import { graphAttention } from '@/lib/graphAttention'
 import { errorText } from '@/lib/graphError'
 
+const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
+/** Where a pending proposal really stands: its independent merge review may be queued, running, held for you or blocked. */
+function proposalState(graph: GraphSnapshot, proposalId: string, status: string): string {
+  const merge = graph.assignments.find((a) => {
+    if (a.role !== 'merge') return false
+    try {
+      return (JSON.parse(a.input) as { proposal_id?: string }).proposal_id === proposalId
+    } catch {
+      return false
+    }
+  })
+  switch (merge?.status) {
+    case 'pending':
+      return 'merge review queued'
+    case 'running':
+      return 'merge review running'
+    case 'review':
+      return 'merge review waiting for your decision in the inbox'
+    case 'blocked':
+    case 'error':
+      return 'merge review blocked or rejected — reply in the inbox to continue'
+    default:
+      return status
+  }
+}
 const pretty = (value: string) => {
   try {
     return JSON.stringify(JSON.parse(value), null, 2)
@@ -506,8 +531,8 @@ export function Graphs({
                       ? 'Not met'
                       : 'Unverified'}
                 </b>{' '}
-                · {current.status} · {current.nodes.filter((n) => !isGuidance(n)).length} execution states ·{' '}
-                {current.edges.length} actions · {current.nodes.filter(isGuidance).length} guidance items
+                · {current.status} · {plural(current.nodes.filter((n) => !isGuidance(n)).length, 'execution state')} ·{' '}
+                {plural(current.edges.length, 'action')} · {plural(current.nodes.filter(isGuidance).length, 'guidance item')}
               </p>
             </div>
             {isMaintainer && (
@@ -551,7 +576,7 @@ export function Graphs({
             </section>
           )}
           {(reviews.length > 0 || blocked.length > 0) && (
-            <p className="text-sm text-amber-700 dark:text-amber-400">
+            <p className="text-sm rounded border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2">
               Replies and result reviews are handled in{' '}
               <Link className="underline font-medium" to="/dashboard">
                 Inbox
@@ -603,7 +628,7 @@ export function Graphs({
                     }
                     return (
                       <li key={p.id} className="py-2 text-sm">
-                        <b>{proposal.title ?? proposal.kind ?? 'Proposal'}</b> · {p.status}
+                        <b>{proposal.title ?? proposal.kind ?? 'Proposal'}</b> · {proposalState(current, p.id, p.status)}
                         <p className="text-muted-foreground">{proposal.description}</p>
                       </li>
                     )
