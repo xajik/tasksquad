@@ -56,6 +56,7 @@
 @media(max-width:590px){.int-columns{grid-template-columns:1fr;gap:0}.int-columns p,.int-stages{font-size:13px;line-height:1.45}.int-table{font-size:12px}.int-table code{font-size:10px}.int-baseline,.int-stages span,.int-sources{font-size:11px}.int-flow{font-size:12px}.integration-page h2{font-size:15px}}
 @media print{.integration-page h1{font-size:18pt}.int-columns{grid-template-columns:1fr 1fr;gap:23px}.int-table{font-size:7.9pt}.int-columns p,.int-stages{font-size:8.25pt;line-height:1.3}.int-stages span,.int-baseline{font-size:7.5pt}.int-table code{font-size:6.4pt}.int-sources{font-size:7.1pt}.integration-page h2{font-size:9.8pt}.int-section{break-inside:avoid}.int-stages li{break-inside:avoid}}
 
+.int-prompt{margin:7px 0 10px;padding:10px;background:#f6f6f6;border:1px solid #ddd;font:10px/1.4 "Courier New",monospace;white-space:pre-wrap;overflow-wrap:anywhere}.int-small{font-size:10px!important}.int-small code{font-size:9.5px}@media(max-width:590px){.int-prompt{font-size:11.5px}.int-small{font-size:12px!important}}@media print{.int-prompt{font-size:7.5pt;line-height:1.4}.int-small{font-size:7.5pt!important}}
 </style>
 </head>
 <body data-new-gr-c-s-check-loaded="14.1347.0" data-gr-ext-installed="" data-gr-ext-go-mode="" data-gr-aaa-loaded="14.1347.0">
@@ -204,45 +205,59 @@
   <footer class="page-foot"><span>One-page summary of the authoritative requirements · native runtime enforcement remains implementation work</span><span>4 / 5</span></footer>
 </article>
 </main>
-<article class="sheet integration-page" id="page-five" aria-label="Page 5: Graph tab and TaskSquad delivery plan">
-  <div class="running-head"><span>Action Graph / TaskSquad integration</span><span>Graph tab · inbox pipeline · 16 November 2026</span></div>
-  <h1>A Graph tab built on the existing inbox</h1>
-  <p class="int-deck"><b>Delivery decision.</b> Add Graph inside each existing TaskSquad project. The cloud owns graph state, scheduling and acceptance. Existing agents execute every role through ordinary inbox assignments—including decomposition, merge review, grading, projection and undo.</p>
-  <p class="int-baseline">Based on <a href="https://github.com/xajik/tasksquad/tree/2fb4168d69d985d5716cdf00de81fa2363f60330" target="_blank" rel="noreferrer">xajik/tasksquad @ 2fb4168</a>. Reuse projects, agents, tasks/messages, sessions, resources and notifications. Proposed integration; TaskSquad runtime changes are pending.</p>
+<article class="sheet integration-page" id="page-five" aria-label="Page 5: practical TaskSquad implementation plan">
+  <div class="running-head"><span>Action Graph / TaskSquad implementation</span><span>Prompts + inbox parsing · 16 November 2026</span></div>
+  <h1>Implementation: prompts and inbox parsing</h1>
+  <p class="int-deck"><b>First-release approach.</b> Extend the existing cloud inbox dispatcher and session-completion handler. One task requests one operation; a prompt specifies the required JSON result. The cloud validates the expected run’s final response and applies the selected review policy.</p>
+  <p class="int-baseline">Reuse TaskSquad projects, agents, tasks/messages and resources. Graph tab setup collects name, start state, goal, agents, N, necessity threshold (default 0.5), review mode and advanced budgets. New graph CLI/submission infrastructure is deferred.</p>
 
-  <section class="int-section"><h2>1. Create a graph: configure once, version every change</h2>
-    <table class="int-table"><thead><tr><th>Creation step</th><th>Required inputs and visible defaults</th></tr></thead><tbody>
-      <tr><td><b>Basics</b></td><td>Name, observed start state, goal, evidence/resources and measurable success predicates. Keep unknown starting metrics explicit.</td></tr>
-      <tr><td><b>Agents</b></td><td>Choose current execution agents, grader and fallbacks. Select decomposition agent; default reasoning/merge to execution-capable agents, with advanced overrides.</td></tr>
-      <tr><td><b>Capacity + weights</b></td><td>Execution cap N; necessity-confidence threshold in [0,1], default 0.5. Keep optional priority floor separate; scores alone never prove success.</td></tr>
-      <tr><td><b>Message policy</b></td><td>User chooses auto-close or require user review for all graph tasks, including grader/decomposer. A valid response and any required approval gate cloud acceptance.</td></tr>
-      <tr><td><b>Advanced policies</b></td><td>Retries/backoff, deadlines, stale-node TTL, planning/cost/exploration limits, four maintenance schedules, freshness and undo budgets.</td></tr>
-    </tbody></table>
-  </section>
-
-  <div class="int-flow" aria-label="Graph creation and first assignment"><b>Graph tab</b> → New graph → configure → create draft → Run<br><b>Existing inbox:</b> decomposition assignment → expected run’s result → review / accept → subgoals</div>
+  <div class="int-flow" aria-label="Practical inbox result pipeline"><b>Prompt</b> → inbox task → expected final response → JSON + schema checks<br>auto-accept or user review → <b>normalized graph update</b></div>
 
   <div class="int-columns">
-    <section class="int-section"><h2>2. One reusable assignment contract</h2>
-      <p><b>Inject a fixed response.</b> Every task includes its role-specific closed JSON schema, correlation IDs, input/config/template versions and permitted resources. Keep templates in separate cloud source files. Agent judgments propose changes; cloud validation commits them.</p>
-      <p><b>Parse only the expected run.</b> Bind project/graph, task, assigned agent, attempt, session/run, role and lease epoch server-side. Accept its final response only. Ignore user comments, other agents, progress and stale runs; reject malformed output and deduplicate callbacks.</p>
-      <p><b>Review is an explicit gate.</b> Auto-close still requires schema/evidence checks. Review mode holds the transition until approval of that exact run/output. Grader/decomposition tasks follow the same policy; a FIFO head awaiting review holds later grades.</p>
-      <p><b>Cloud storage.</b> Reuse R2 for immutable graph snapshots, documents and resources. Recommended: existing D1 stores normalized topology, weights, task links, queue/lease state and committed versions. R2 is object storage; snapshot/index writes use a retryable outbox.</p>
-      <p><b>Cloudflare vectorization.</b> Workers AI generates embeddings; Vectorize indexes versioned, scoped content. No separate embedding API key is required from the user. Similarity retrieves candidates; structured merge review authorizes equivalence.</p>
+    <section class="int-section"><h2>1. Inject a clear response contract</h2>
+      <p>Keep prompt, response example and closed JSON schema as separate source files for decomposition, plan, execution result, merge review, local grade, projection and continuation. Inject only the context allowed for that role.</p>
+      <pre class="int-prompt">Decompose the supplied goal into up to
+5 useful subgoals. Do not execute work.
+
+Return exactly one JSON object matching
+the supplied template. No Markdown,
+outside explanations or extra fields.
+
+short_description &lt;300; body &lt;4000.
+Confidence: 0–1, a belief, not proof.
+
+Goal: {{goal}}</pre>
+      <p class="int-small"><b>Illustrative decomposition response</b></p>
+      <pre class="int-prompt">{
+  "type": "decomposition",
+  "subgoals": [{
+    "title": "Verify demand",
+    "short_description": "...",
+    "body": "...",
+    "necessity_confidence": 0.8
+  }]
+}</pre>
+      <p>The cloud selects the schema from the task’s operation and assigns record IDs. Routing IDs do not need to be repeated by the model. Validate entity references and evidence when present.</p>
+      <h2>2. Add one small linkage table</h2>
+      <p class="int-small"><code>graph_task_runs</code>: graph/node/task references; operation; expected agent/session; template/config/input versions; parse status; response hash; acceptance timestamp; repair source.</p>
+      <p>Retain raw output/errors for troubleshooting. Accepted subgoals, plans and results become normalized domain records. Node lifecycle remains candidate / active / deactivated; parser status is separate.</p>
     </section>
-    <section class="int-section"><h2>3. Four vertical delivery slices</h2>
+    <section class="int-section"><h2>3. Parse only the expected final result</h2>
       <ol class="int-stages">
-        <li><b>Create + decompose.</b> Ship Graph tab/list, creation form, cloud records/R2 snapshots and one decomposition inbox round trip.<span>Gate: selected review mode works; wrong-agent, stale-run, duplicate response and repeated approval cannot alter the graph.</span></li>
-        <li><b>One reversible cycle.</b> Reason/plan → candidate/merge → N=1 execution → single FIFO local-grade/projection chain.<span>Gate: expected-run binding, predeclared undo, evidence and unique graph credit are enforced end to end.</span></li>
-        <li><b>Concurrency + recovery.</b> Enable configured N, four cloud crons, backoff/fallback, undo tasks, blocked continuation and daily ledger.<span>Gate: completion-order grading, capacity, late-worker fencing and failed restoration survive replay/crash.</span></li>
-        <li><b>Search + complete graph UI.</b> Enable Workers AI/Vectorize, exports, canvas/inspector, resources and expected/observed weights.<span>Gate: scoped current-version search, model rebuild, no false merge/goal success and affected client/Worker checks pass.</span></li>
+        <li><b>Match the run.</b> Read <code>final_text</code> from the existing completion handler. Check linked task, authenticated agent and expected session.<span>Ignore user/supervisor messages, tool output, intermediate replies and stale runs.</span></li>
+        <li><b>Parse + validate.</b> Allow whitespace or one enclosing JSON code fence; parse the complete document against the operation’s schema.<span>Reject extra fields, invalid references, oversized content and out-of-range values. Never extract JSON from arbitrary prose.</span></li>
+        <li><b>Repair format only.</b> Preserve invalid output as <code>parse_error</code>. Use a bounded formatting-only inbox follow-up with a newly expected run.<span>“Preserve the existing facts. Do not execute the task or repeat any actions.” No new execution attempt is granted.</span></li>
+        <li><b>Apply the review policy.</b> Auto-close still requires validation. Review mode holds the transition until approval of that exact result.<span>Store results durably; duplicate callbacks/approvals cannot apply graph changes twice.</span></li>
       </ol>
-      <p class="int-scope"><b>First shipped milestone:</b> create a graph → assign decomposition in the current inbox → validate/approve exactly that run → display subgoals. Persist indexing outbox entries from day one; parallel autonomy follows the working contract.</p>
+      <h2>4. Deliver the shared parser first</h2>
+      <p><b>Milestone 1:</b> Graph creation → decomposition inbox task → parsed/approved response → visible subgoals. Test malformed JSON, wrong run, repair and both review modes.</p>
+      <p><b>Then reuse it:</b> planning/merge → one reversible execution → single FIFO local-grade/projection chain. Add configured concurrency, four cloud crons, recovery and daily logs after the round trip works.</p>
+      <p><b>Acceptance gates remain.</b> Candidate merge review, predeclared undo, evidence-based AND/OR verification and duplicate-safe lineage credit are enforced by cloud code. A parse error is not an execution failure. Grading/repair preserves the original completion-order position.</p>
     </section>
   </div>
 
-  <section class="int-sources"><b>Implementation basis.</b> Existing cloud <a href="https://github.com/xajik/tasksquad/blob/2fb4168d69d985d5716cdf00de81fa2363f60330/packages/worker/src/planner/dispatcher.ts" target="_blank" rel="noreferrer">inbox dispatcher</a> and <a href="https://github.com/xajik/tasksquad/blob/2fb4168d69d985d5716cdf00de81fa2363f60330/packages/worker/src/routes/daemon.ts" target="_blank" rel="noreferrer">session handlers</a> · <a href="https://developers.cloudflare.com/vectorize/get-started/embeddings/" target="_blank" rel="noreferrer">Workers AI + Vectorize</a> · <a href="https://developers.cloudflare.com/r2/" target="_blank" rel="noreferrer">R2 storage</a>. Full creation fields, run/approval binding and delivery gates: plan §25.</section>
-  <footer class="page-foot"><span>Cloud owns decisions · every agent role uses inbox · fixed response + expected run + selected review policy</span><span>5 / 5</span></footer>
+  <section class="int-sources"><b>Existing infrastructure.</b> D1: normalized graph/run/queue state. R2: snapshots, raw documents and resources. Workers AI + Vectorize: derived embeddings/search. <b>Runtime work remains pending.</b> Detailed parser and repair flow: implementation plan §25.6; delivery gates: §25.9.</section>
+  <footer class="page-foot"><span>Practical first release · one operation per inbox task · fixed response · expected run · validation + review</span><span>5 / 5</span></footer>
 </article>
 
 
@@ -379,6 +394,6 @@ render();
 })();
 
 </script>
-<script type="module">import { mountAutoSiteWidget } from "/_sites/dispatch-assets/sites-widget.js";mountAutoSiteWidget({"kind":"auto","toolbarOrigin":null,"viewerRemixEnabled":false,"invitationBanner":true,"mobileEnabled":false,"environment":"production","chatgptOrigin":"https://chatgpt.com","locale":"uk-UA","accountId":"personal","projectId":"appgprj_6af9bde60e5081919798699cc48ae706","projectTitle":"Action Graph — A Living Plan"});</script>
+<script type="module">import { mountAutoSiteWidget } from "/_sites/dispatch-assets/sites-widget.js";mountAutoSiteWidget({"kind":"auto","toolbarOrigin":null,"viewerRemixEnabled":false,"invitationBanner":true,"mobileEnabled":false,"environment":"production","chatgptOrigin":"https://chatgpt.com","locale":"uk-UA","accountId":"personal","projectId":"appgprj_6af9bde60e5081919798699cc48ae706","projectTitle":"Action Graph — A Living Plan"});</script><script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a5bf401d8ea1de08',t:'MTc5NDkyMzkwOA=='};var l=window.parent.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/jsd/main.js?ray=a5bf401d8ea1de08',a=document.createElement('script');a.src=o?new URL(u,o).href:u;document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><iframe height="1" width="1" style="position: absolute; top: 0px; left: 0px; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; visibility: hidden;"></iframe>
 
-<div data-sites-widget="editor-composer" popover="manual"></div></body><grammarly-desktop-integration data-grammarly-shadow-root="true" style="visibility: visible !important;"></grammarly-desktop-integration><grammarly-assistant-notch-view role="presentation" data-grammarly-ignore-keyboard-events="true" data-grammarly-notch-instance-id="check:8a5e491e-b07e-4bfa-be69-09c030cc89dd" data-grammarly-shadow-root="true" class="gr_no_print" style="visibility: visible !important; --rem: 16;"></grammarly-assistant-notch-view></html>
+</body><grammarly-desktop-integration data-grammarly-shadow-root="true" style="visibility: visible !important;"></grammarly-desktop-integration><grammarly-assistant-notch-view role="presentation" data-grammarly-ignore-keyboard-events="true" data-grammarly-notch-instance-id="check:9ee4c226-974b-491f-b2d4-300e1dfbd002" data-grammarly-shadow-root="true" class="gr_no_print" style="visibility: visible !important; --rem: 16;"></grammarly-assistant-notch-view></html>
