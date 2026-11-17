@@ -182,7 +182,7 @@ struct MobileSignInView: View {
             Text("Manage tasks, projects and remote agent sessions.").foregroundStyle(MobileTheme.mutedForeground).multilineTextAlignment(.center)
             Button { Task { await auth.signIn(presentation: presenter) } } label: {
                 HStack { if auth.signingIn { ProgressView() }; Text("Continue to sign in") }.frame(maxWidth: .infinity)
-            }.buttonStyle(.borderedProminent).controlSize(.large).disabled(auth.signingIn)
+            }.buttonStyle(.glassProminent).controlSize(.large).disabled(auth.signingIn)
             if let error = auth.error { Text(error).font(.footnote).foregroundStyle(MobileTheme.destructive).accessibilityIdentifier("auth-error") }
         }.padding(28).frame(maxWidth: 420).frame(maxWidth: .infinity, maxHeight: .infinity)
     }

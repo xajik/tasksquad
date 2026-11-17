@@ -1,6 +1,7 @@
 import TaskSquadPortalUI
 import SwiftUI
 import TaskSquadPortal
+import TaskSquadDesign
 
 struct MobileRecordDetail: View {
     @ObservedObject var model: WorkspaceStore
@@ -26,15 +27,14 @@ struct MobileRecordDetail: View {
             if model.section == .portals, let record { portal(record) }
             else { recordList }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .safeAreaBar(edge: .bottom, spacing: 0) {
             if model.section != .portals {
                 VStack(spacing: 0) {
                     if let error = actions.error ?? error ?? model.error {
                         TSQErrorBanner(error, identifier: "detail-error").fixedSize(horizontal: false, vertical: true).padding(.horizontal).padding(.vertical, 8).frame(maxWidth: .infinity).background(.bar)
                     }
                     if taskSection, record != nil {
-                        permissionBar
-                        replyComposer
+                        VStack(spacing: 8) { permissionBar; replyComposer }.tsqGlassContainer(spacing: 8)
                     }
                 }
             }
@@ -121,15 +121,15 @@ struct MobileRecordDetail: View {
                         VStack(alignment: .leading) { permissionButtons(options) }
                     }
                 }
-                .padding(.horizontal, 16).padding(.vertical, 10).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity)
-                .background(.bar).overlay(alignment: .top) { Divider() }
+                .padding(14).tsqGlass(tint: MobileTheme.amber.opacity(0.3), radius: 20)
+                .padding(.horizontal, 8).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity)
                 .accessibilityIdentifier("permission-bar")
             }
         }
     }
     private func permissionButtons(_ options: [String]) -> some View {
         ForEach(options, id: \.self) { option in
-            Button(option) { Task { await run(.answerPermission(task: id, option: option)) } }.buttonStyle(.bordered).disabled(model.busy)
+            Button(option) { Task { await run(.answerPermission(task: id, option: option)) } }.buttonStyle(.glass).disabled(model.busy)
         }
     }
     private var replyComposer: some View {

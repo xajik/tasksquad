@@ -1,5 +1,6 @@
 import SwiftUI
 import TaskSquadPortal
+import TaskSquadDesign
 
 /// A reply stays beside the conversation. Secondary scheduling remains optional.
 struct MobileReplyComposer: View {
@@ -47,10 +48,11 @@ struct MobileReplyComposer: View {
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
-        .frame(maxWidth: 680).frame(maxWidth: .infinity)
+        // The reply bar floats over the conversation as Liquid Glass.
+        .tsqGlass(radius: 26)
+        .padding(.horizontal, 8).padding(.bottom, 4)
+        .frame(maxWidth: 720).frame(maxWidth: .infinity)
         .fixedSize(horizontal: false, vertical: true)
-        .background(.bar)
-        .overlay(alignment: .top) { Divider() }
         .onChange(of: values) { old, value in
             MobileDraftStore.save(value, key: draftKey)
             if old["body"] != value["body"], !unavailableImages { error = nil }
@@ -85,7 +87,7 @@ struct MobileReplyComposer: View {
                 Button { Task { await submit() } } label: {
                     HStack(spacing: 6) { if submitting { ProgressView().tint(.white) }; Text(submitting ? "Sending…" : "Send") }
                 }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                     .disabled(submitting || model.busy || unavailableImages || loadingImages).accessibilityIdentifier("editor-submit")
             }.font(.subheadline)
         }.disabled(submitting)

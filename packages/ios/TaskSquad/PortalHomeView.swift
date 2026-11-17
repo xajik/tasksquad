@@ -203,7 +203,7 @@ struct MobileSectionScreen: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if let error = actions.error ?? model.error, current {
                 TSQErrorBanner(error, identifier: "workspace-error") { actions.error = nil; model.error = nil }
-                    .padding(.horizontal).padding(.vertical, 8).background(.bar)
+                    .padding(.horizontal).padding(.vertical, 8).tsqGlass(tint: MobileTheme.destructive.opacity(0.15), radius: 20).padding(.horizontal, 8)
             }
         }
         .onChange(of: model.archived) { _, _ in Task { await model.refresh() } }
