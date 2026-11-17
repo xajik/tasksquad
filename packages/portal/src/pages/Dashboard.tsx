@@ -104,6 +104,7 @@ import { Skills } from './Skills'
 import { Memory } from './Memory'
 import { Analytics } from './Analytics'
 import { Supervisor } from './Supervisor'
+import { Graphs } from './Graphs'
 import { Planners } from './Planners'
 import { Portals } from './Portals'
 import { AgentWorkflow } from '../components/AgentWorkflow'
@@ -2689,6 +2690,7 @@ export default function Dashboard() {
   const isMembers = location.pathname === '/dashboard/members'
   const isConveyors = location.pathname === '/dashboard/conveyor'
   const isSettings = location.pathname === '/dashboard/settings'
+  const isGraph = location.pathname.startsWith('/dashboard/graphs')
   const isNotes = location.pathname.startsWith('/dashboard/notes')
   const isSkills = location.pathname.startsWith('/dashboard/skills')
   const isMemory = location.pathname.startsWith('/dashboard/memory')
@@ -2779,7 +2781,7 @@ export default function Dashboard() {
         </div>
         <nav className="flex-1 px-2">
           <Button
-            variant={!isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills && !isMemory && !isPlanner && !isSupervisor && !isPortals && !isAnalytics ? 'secondary' : 'ghost'}
+            variant={!isGraph && !isAgents && !isSettings && !isMembers && !isNotes && !isConveyors && !isSkills && !isMemory && !isPlanner && !isSupervisor && !isPortals && !isAnalytics ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
             onClick={() => handleNav('/dashboard')}
           >
@@ -2802,6 +2804,7 @@ export default function Dashboard() {
             <FileText className="mr-2 h-4 w-4" />
             Notes
             </Button>
+          {import.meta.env.VITE_ACTION_GRAPH_ENABLED === 'true' && <Button variant={isGraph ? 'secondary' : 'ghost'} className="justify-start gap-2" onClick={() => handleNav('/dashboard/graphs')}>Graph</Button>}
             <Button
             variant={isConveyors ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
@@ -2959,6 +2962,8 @@ export default function Dashboard() {
           <Route path="/notes/:noteId" element={<NoteDetail teamId={teamId} />} />
           <Route path="/portals/*" element={<Portals teamId={teamId} plan={plan} />} />
           <Route path="/conveyor" element={<Conveyors teamId={teamId} />} />
+          <Route path="/graphs" element={<Graphs key={teamId} teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />
+          <Route path="/graphs/:graphId" element={<Graphs key={teamId} teamId={teamId} isMaintainer={isMaintainer} plan={plan} />} />
           <Route path="/planner" element={<Planners teamId={teamId} />} />
           <Route path="/planner/:plannerId" element={<Planners teamId={teamId} />} />
           <Route path="/supervisor" element={<Supervisor teamId={teamId} />} />
