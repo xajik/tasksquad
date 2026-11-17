@@ -283,6 +283,23 @@ private actor WorkspaceTransport: HTTPTransport {
         XCTAssertEqual(rows.first, 1, "record list shows the fixture task")
     }
 
+    /// The window restores a saved session by itself when it appears, with no
+    /// help from the caller: this is what happens when the installed app launches.
+    func testWindowRestoresTheSavedSessionOnItsOwn() async throws {
+        _ = NSApplication.shared
+        let model = fixture()
+        XCTAssertNil(model.profile)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        let view = NSHostingView(rootView: self.window(model))
+        window.contentView = view; defer { window.contentView = nil }
+        window.orderFront(nil)
+        for _ in 0..<60 where model.profile == nil { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertNotNil(model.profile, "the window never restored the session")
+        for _ in 0..<60 where model.records.isEmpty { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertFalse(model.records.isEmpty, "the inbox never loaded")
+        XCTAssertEqual(model.teamID, "team-1")
+    }
+
     private func tableRowCounts<V: View>(_ value: V) throws -> [Int] {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         let view = NSHostingView(rootView: value)

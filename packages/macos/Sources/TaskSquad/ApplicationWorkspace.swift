@@ -58,10 +58,16 @@ struct MainWindow: View {
         }
         .onDisappear { customer.active = false }
         .onChange(of: customer.section) { _, value in UserDefaults.standard.set(value.rawValue, forKey: Self.selectionKey) }
-        .task(id: "\(customer.active):\(customer.selectionKey)") {
-            guard customer.active else { return }
-            await customer.restore()
-            await customer.poll()
+        // Restoring the session and polling belong to the window, not to whichever
+        // screen is showing: the content switches from sign-in to the workspace
+        // while the restore is still running, and a task on that content would be
+        // cancelled with it.
+        .background {
+            Color.clear.task(id: "\(customer.active):\(customer.selectionKey)") {
+                guard customer.active else { return }
+                await customer.restore()
+                await customer.poll()
+            }
         }
     }
 

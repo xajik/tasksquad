@@ -100,12 +100,17 @@ extension WorkspaceSection {
         let authentication = auth()
         return CustomerAPI(baseURL: url) { try await authentication.token(forceRotation: $0) }
     }
+    /// Restores a saved sign-in. Runs to completion even if the view task that
+    /// started it is cancelled, because it only ever runs once.
     func restore() async {
         guard !didRestore else { return }; didRestore = true
-        guard suppliedAPI == nil else { await connect(); return }
-        let store = store
-        let saved = await Task.detached { try? store.readWithoutPrompt(.email) }.value
-        if saved != nil { await connect() }
+        let work = Task { @MainActor in
+            guard suppliedAPI == nil else { await connect(); return }
+            let store = store
+            let saved = await Task.detached { try? store.readWithoutPrompt(.email) }.value
+            if saved != nil { await connect() }
+        }
+        await work.value
     }
     func signIn() {
         guard !signingIn else { return }
