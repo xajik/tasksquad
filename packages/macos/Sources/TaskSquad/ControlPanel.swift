@@ -30,7 +30,7 @@ import TaskSquadDesign
     @Published var observationDate: Date?
     @Published var observationError: String?
     func observeAgents() async {
-        guard !engineRunning, let configuration else { observedAgents = []; return }
+        guard !engineRunning, let configuration else { if !observedAgents.isEmpty { observedAgents = [] }; return }
         do {
             let values = try await AgentObservation.read(port: configuration.ui.port)
             guard !engineRunning else { return }
@@ -38,17 +38,23 @@ import TaskSquadDesign
             terminals.managedSessions = values.filter { !$0.session.isEmpty && !$0.taskID.isEmpty }.reduce(into: [:]) {
                 $0[$1.session] = ManagedTerminalTarget(agentID: $1.id, taskID: $1.taskID, session: $1.session)
             }
-            observedAgents = values.filter { value in configuration.agents.contains { $0.id == value.id } }
-            observationDate = Date(); observationError = nil
+            let visible = values.filter { value in configuration.agents.contains { $0.id == value.id } }
+            if observedAgents != visible { observedAgents = visible }
+            // The timestamp only matters while it is shown; refresh it on change or after a minute.
+            if observationDate == nil || observationError != nil || Date().timeIntervalSince(observationDate!) > 60 { observationDate = Date() }
+            if observationError != nil { observationError = nil }
         } catch {
-            observedAgents = []; observationError = "Existing daemon is unavailable"; observationDate = nil
+            if !observedAgents.isEmpty { observedAgents = [] }
+            if observationError == nil { observationError = "Existing daemon is unavailable" }
+            if observationDate != nil { observationDate = nil }
             terminals.managedSessions = [:]
             terminals.managedClient = nil
         }
     }
     func applyNativeSnapshots(_ snapshots: [AgentSnapshot]) {
-        agentSnapshots = snapshots
-        observedAgents = []
+        // Assign only on change: every assignment republishes and redraws the toolbar.
+        if agentSnapshots != snapshots { agentSnapshots = snapshots }
+        if !observedAgents.isEmpty { observedAgents = [] }
         terminals.managedClient = appliedConfiguration.map { ManagedTerminalClient(port: $0.hooks.port) }
         terminals.managedSessions = snapshots.filter { !$0.sessionID.isEmpty && !$0.taskID.isEmpty }.reduce(into: [:]) {
             let session = "tsq-" + $1.sessionID
@@ -189,7 +195,7 @@ import TaskSquadDesign
             snapshotTask = Task {
                 while !Task.isCancelled {
                     applyNativeSnapshots(await candidate.snapshots())
-                    engineCanDrain = await candidate.canDrain()
+                    let canDrain = await candidate.canDrain(); if engineCanDrain != canDrain { engineCanDrain = canDrain }
                     do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
                 }
             }

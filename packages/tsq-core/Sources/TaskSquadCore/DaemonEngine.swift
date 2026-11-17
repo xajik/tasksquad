@@ -1,6 +1,6 @@
 import Foundation
 
-public struct AgentSnapshot: Sendable, Identifiable {
+public struct AgentSnapshot: Sendable, Identifiable, Equatable {
     public let id: String
     public let name: String
     public let mode: AgentMode

@@ -296,6 +296,18 @@ private actor WorkspaceTransport: HTTPTransport {
         XCTAssertEqual(redraws, 0, "five identical refreshes redrew the window \(redraws) times")
     }
 
+    /// The daemon pill observes the control model, which re-reads the engine twice
+    /// a second. Unchanged snapshots must not republish, or the pill blinks.
+    func testUnchangedDaemonSnapshotsDoNotRedrawThePill() {
+        let control = ControlPanelModel(paths: TaskSquadPaths(home: FileManager.default.temporaryDirectory.appendingPathComponent("tsq-preview-fixture")), loadSavedAccount: false)
+        control.applyNativeSnapshots([])
+        var redraws = 0
+        let subscription = control.objectWillChange.sink { redraws += 1 }
+        for _ in 0..<5 { control.applyNativeSnapshots([]) }
+        subscription.cancel()
+        XCTAssertEqual(redraws, 0, "identical snapshots redrew the toolbar \(redraws) times")
+    }
+
     /// The window restores a saved session by itself when it appears, with no
     /// help from the caller: this is what happens when the installed app launches.
     func testWindowRestoresTheSavedSessionOnItsOwn() async throws {
