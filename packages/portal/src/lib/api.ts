@@ -8,7 +8,7 @@ function del(path: string) {
   return request<{ ok: boolean }>(path, { method: 'DELETE' })
 }
 
-async function request<T>(path: string, init: RequestInit = {}, rawText = false): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}, rawText = false): Promise<T> {
   const token = await getToken()
   const res = await fetch(BASE + path, {
     ...init,
