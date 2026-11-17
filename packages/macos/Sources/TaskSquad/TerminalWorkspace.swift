@@ -176,7 +176,7 @@ struct TerminalWorkspace: View {
                             Toggle("History", isOn: $model.history).toggleStyle(.button).help("Read the last 2,000 lines; input is paused while viewing history")
                             Toggle("Fit", isOn: $model.fitWindow).toggleStyle(.button).help("Let this window influence tmux's terminal size")
                             Button("Detach") { model.detach() }
-                        } else { Button("Attach") { model.attach(pane) }.buttonStyle(.borderedProminent) }
+                        } else { Button("Attach") { model.attach(pane) }.buttonStyle(.glassProminent) }
                         Button(role: .destructive) { closing = true } label: { Label("Close Session…", systemImage: "xmark.circle") }.labelStyle(.iconOnly).help("Close this session and its processes")
                     }.padding(.horizontal, 16).padding(.vertical, 10)
                     Divider()

@@ -59,7 +59,7 @@ struct CustomerEditor: View {
                 Spacer()
                 if submitting { ProgressView().controlSize(.small) }
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction).disabled(submitting)
-                Button(request.submitLabel) { Task { await submit() } }.buttonStyle(.borderedProminent)
+                Button(request.submitLabel) { Task { await submit() } }.buttonStyle(.glassProminent)
                     .keyboardShortcut(.defaultAction).disabled(submitting || model.busy).accessibilityIdentifier("editor-submit")
             }.padding(16)
         }.frame(minWidth: 520, idealWidth: 620, minHeight: 360, idealHeight: request.phases ? 720 : 600)

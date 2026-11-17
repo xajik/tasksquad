@@ -358,14 +358,14 @@ struct LocalSectionView: View {
                             .font(Theme.caption).foregroundStyle(Theme.mutedForeground)
                         Spacer()
                         Button("Drain and Restart") { Task { await model.drainAndRestart() } }
-                            .buttonStyle(.borderedProminent).disabled(model.engineBusy || !model.engineCanDrain)
+                            .buttonStyle(.glassProminent).disabled(model.engineBusy || !model.engineCanDrain)
                     }.padding(.horizontal, 20).padding(.top, 12)
                 }
                 HStack {
                     Spacer()
                     Button("Discard Changes") { model.document = model.savedDocument }
                         .disabled(model.document == model.savedDocument)
-                    Button("Save") { Task { await model.save() } }.buttonStyle(.borderedProminent).keyboardShortcut("s")
+                    Button("Save") { Task { await model.save() } }.buttonStyle(.glassProminent).keyboardShortcut("s")
                         .disabled(model.document == model.savedDocument).help("Save configuration (⌘S)")
                 }.padding(20)
             }
@@ -411,7 +411,7 @@ struct LocalSectionView: View {
                             if let email = model.loginEmail { row("Signed in", email) }
                             if model.loginInProgress {
                                 HStack { ProgressView().controlSize(.small); Text("Waiting for browser sign-in").foregroundStyle(Theme.mutedForeground); Spacer(); Button("Cancel") { model.cancelLogin() } }
-                            } else if model.loginEmail == nil { Button("Sign In…") { model.signIn() }.buttonStyle(.borderedProminent) }
+                            } else if model.loginEmail == nil { Button("Sign In…") { model.signIn() }.buttonStyle(.glassProminent) }
                             Text("The local daemon signs in separately from the project workspace.").font(Theme.caption).foregroundStyle(Theme.mutedForeground)
                         }
                     }

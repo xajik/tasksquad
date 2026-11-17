@@ -43,7 +43,7 @@ struct CustomerNoteDetail: View {
                 Button("Add Comment") {
                     let operation = WorkspaceOperation.comment(project: model.teamID, note: record.id, content: comment)
                     Task { if await model.perform(operation) != nil { comment = ""; await model.refresh() } }
-                }.buttonStyle(.borderedProminent).disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
+                }.buttonStyle(.glassProminent).disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
             }.padding(24).frame(maxWidth: 760, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
         }
     }

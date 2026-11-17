@@ -35,7 +35,6 @@ struct CustomerTaskDetail: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             ScrollViewReader { reader in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
@@ -54,19 +53,30 @@ struct CustomerTaskDetail: View {
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }.padding(20).frame(maxWidth: 860).frame(maxWidth: .infinity)
-                }.onChange(of: shownMessages.count) { if follow { reader.scrollTo("bottom", anchor: .bottom) } }
+                }
+                // Messages fade out under the header and the floating reply bar.
+                .scrollEdgeEffectStyle(.soft, for: .vertical)
+                .onChange(of: shownMessages.count) { if follow { reader.scrollTo("bottom", anchor: .bottom) } }
+                .safeAreaBar(edge: .bottom, spacing: 0) { bottomBar }
             }
-            if let pendingReply {
-                Divider()
-                HStack {
-                    Label("Your reply is scheduled for " + Date(timeIntervalSince1970: pendingReply.number("scheduled_at") / 1000).formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
-                    Spacer()
-                    Button("Edit…") { editMessage(pendingReply) }
-                    Button("Cancel Reply…") { deleteMessage(pendingReply) }
-                }.padding(12)
-            } else if !supervisorOnly { Divider(); composer }
         }
         .onChange(of: ui.replyFocus) { replyFocused = true }
+    }
+    /// The controls layer: a permission prompt and the reply field float over the
+    /// conversation as Liquid Glass, blending when they sit together.
+    @ViewBuilder private var bottomBar: some View {
+        if let pendingReply {
+            HStack {
+                Label("Your reply is scheduled for " + Date(timeIntervalSince1970: pendingReply.number("scheduled_at") / 1000).formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
+                Spacer()
+                Button("Edit…") { editMessage(pendingReply) }
+                Button("Cancel Reply…") { deleteMessage(pendingReply) }
+            }
+            .padding(12).tsqGlass().padding(10)
+        } else if !supervisorOnly {
+            VStack(spacing: 8) { permissionBar; composer }
+                .tsqGlassContainer(spacing: 8).padding(10).frame(maxWidth: 860).frame(maxWidth: .infinity)
+        }
     }
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -185,14 +195,13 @@ struct CustomerTaskDetail: View {
                 Spacer()
                 ForEach(permissionOptions, id: \.self) { option in Button(option) { Task { await send(option) } }.disabled(model.busy || sending) }
             }
-            .padding(10).background(Theme.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radius))
+            .padding(10).tsqGlass(tint: Theme.amber.opacity(0.3), radius: 14)
             .accessibilityIdentifier("permission-bar")
         }
     }
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            permissionBar
-            TextEditor(text: $reply).font(Theme.body).scrollContentBackground(.hidden).focused($replyFocused)
+            TextEditor(text: $reply).font(Theme.body).scrollContentBackground(.hidden).scrollIndicators(.hidden).focused($replyFocused)
                 .onAppear { reply = model.drafts.load(replyDraft)?["body"]?.string ?? reply }
                 .onChange(of: reply) { _, text in if text.isEmpty { model.drafts.remove(replyDraft) } else { model.drafts.save(["body": .string(text)], scope: replyDraft) } }
                 .frame(minHeight: 44, maxHeight: 140).fixedSize(horizontal: false, vertical: true)
@@ -214,19 +223,19 @@ struct CustomerTaskDetail: View {
             if scheduled { DatePicker("Send at", selection: $scheduledDate, in: Date()...) }
             HStack(spacing: 10) {
                 Button { do { files += try CustomerFiles.chooseImages() } catch { model.error = error.localizedDescription } } label: { Label("Attach Images…", systemImage: "paperclip") }
-                    .help("Attach images, or drop them here")
-                Toggle(isOn: $scheduled) { Label("Send Later", systemImage: "clock") }.toggleStyle(.button).help("Schedule this reply")
+                    .buttonStyle(.borderless).help("Attach images, or drop them here")
+                Toggle(isOn: $scheduled) { Label("Send Later", systemImage: "clock") }.toggleStyle(.button).buttonStyle(.borderless).help("Schedule this reply")
                 Spacer()
                 Button { Task { await send(reply) } } label: {
                     HStack(spacing: 6) { if sending { ProgressView().controlSize(.mini) }; Text(scheduled ? "Schedule" : "Send") }
                 }
-                .buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command).help("Send (⌘↩)")
+                .buttonStyle(.glassProminent).keyboardShortcut(.return, modifiers: .command).help("Send (⌘↩)")
                 .disabled(sending || model.busy || (reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && files.isEmpty))
                 .accessibilityIdentifier("editor-submit")
             }.labelStyle(.iconOnly)
         }
         .padding(12)
-        .background(dropTargeted ? AnyShapeStyle(Theme.tint.opacity(0.1)) : AnyShapeStyle(.bar))
+        .tsqGlass(tint: dropTargeted ? Theme.tint.opacity(0.35) : nil, radius: 18)
         .dropDestination(for: URL.self) { urls, _ in
             do { files += try urls.map(CustomerFiles.upload); return true }
             catch { model.error = error.localizedDescription; return false }

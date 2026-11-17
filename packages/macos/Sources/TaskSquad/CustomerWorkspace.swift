@@ -314,27 +314,29 @@ struct CustomerSignIn: View {
             BrandLogo(size: 56)
             Text("Sign in to TaskSquad").font(Theme.largeTitle)
             Text("Tasks, notes and projects, shared with the TaskSquad web app. Local agents are optional.")
-                .foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 380)
+                .foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 360)
             if model.signingIn {
                 HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Complete sign-in in your browser").foregroundStyle(.secondary) }
-                Button("Cancel") { model.cancelLogin() }
+                Button("Cancel") { model.cancelLogin() }.buttonStyle(.glass)
             } else {
                 Button { model.signIn() } label: { Text("Continue in Browser").frame(minWidth: 200) }
-                    .buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
+                    .buttonStyle(.glassProminent).controlSize(.large).keyboardShortcut(.defaultAction)
                 if model.loading {
                     HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Restoring your account…").font(Theme.callout).foregroundStyle(.secondary) }
                 }
             }
             Button("Connection Settings…") { connectionSettings = true }.buttonStyle(.link).disabled(model.signingIn)
         }
+        .padding(36).tsqGlass(radius: 28)
         .padding(40).frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(LinearGradient(colors: [Theme.tint.opacity(0.22), Theme.brand.opacity(0.06), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
         .sheet(isPresented: $connectionSettings) {
             VStack(alignment: .leading, spacing: 0) {
                 CustomerConnectionForm(model: model)
                 HStack {
                     Spacer()
                     Button("Cancel") { connectionSettings = false }.keyboardShortcut(.cancelAction)
-                    Button("Save") { Task { await model.saveConnection(); connectionSettings = false } }.keyboardShortcut(.defaultAction)
+                    Button("Save") { Task { await model.saveConnection(); connectionSettings = false } }.keyboardShortcut(.defaultAction).buttonStyle(.glassProminent)
                 }.padding(16)
             }.frame(width: 480)
         }
@@ -365,7 +367,7 @@ struct CustomerProjectPage: View {
         Group {
             if model.teamID.isEmpty {
                 EmptyState(icon: .folderPlus, title: "Create Your First Project", message: "Projects group your agents, tasks and team members.") {
-                    Button("New Project…") { ui.newProject() }.buttonStyle(.borderedProminent)
+                    Button("New Project…") { ui.newProject() }.buttonStyle(.glassProminent)
                 }
             } else if model.section == .analytics { CustomerAnalytics(model: model) }
             else { settings }
