@@ -461,8 +461,12 @@ export async function processResults(db: D1Database, g: Graph): Promise<void> {
     const { a, original, t } = await resolve(db, r),
       c = await configuration(db, g)
     if (a.config_version !== c.version) {
+      // A stale result is discarded, but its agent must be released and the work must not stay 'running'.
+      // Blocked (not pending) so a possibly side-effecting action is never silently repeated.
       await commit(db, g, 'stale', r.id, {}, [
-        sql(db, "UPDATE graph_results SET status='stale' WHERE id=?", r.id)
+        sql(db, "UPDATE graph_results SET status='stale' WHERE id=?", r.id),
+        sql(db, 'DELETE FROM graph_reservations WHERE attempt_id=?', t.id),
+        sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=? AND status='running'", a.id)
       ])
       continue
     }
