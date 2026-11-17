@@ -644,6 +644,39 @@ describe('durable inbox graph workflow', () => {
       agent,
       Date.now()
     ).run()
+    const privateMilestone = nodeStatements(
+      db,
+      await graph(db, g.id),
+      'milestone',
+      { title: 'Private hierarchy only', description: '', body: 'Private milestone body' },
+      null
+    )
+    const unpublished = nodeStatements(
+      db,
+      await graph(db, g.id),
+      'outcome',
+      { title: 'Unexecuted proposal', description: '', body: 'Not observed' },
+      null
+    )
+    const inactive = nodeStatements(
+      db,
+      await graph(db, g.id),
+      'observed',
+      { title: 'Retired observation', description: '', body: 'Stale' },
+      null
+    )
+    await commit(db, await graph(db, g.id), 'seed_context_boundaries', null, {}, [
+      ...privateMilestone.statements,
+      ...unpublished.statements,
+      ...inactive.statements,
+      sql(
+        db,
+        "INSERT INTO graph_node_states(graph_id,node_id,state,reason,created_at) VALUES(?,?,'deactivated','test',?)",
+        g.id,
+        inactive.id,
+        Date.now()
+      )
+    ])
     await run(db, g.id, 'run')
     await tick(env(), g.id)
     await deliver(
@@ -660,6 +693,12 @@ describe('durable inbox graph workflow', () => {
       JSON.stringify({ decision: 'distinct', equivalent_node_id: null, reason: 'Useful milestone' })
     )
     await tick(env(), g.id)
+    const planContext = JSON.parse(
+      (
+        await rows<Assignment>(db, "SELECT * FROM graph_assignments WHERE graph_id=? AND role='plan'", g.id)
+      )[0].input
+    )
+    expect(planContext.observations.map((n: { id: string }) => n.id)).toEqual([source])
     const action = {
       title: 'Bounded action',
       expected_quality: 0.7,
@@ -677,6 +716,16 @@ describe('durable inbox graph workflow', () => {
     }
     await deliver(g.id, agent, JSON.stringify({ actions: [action] }))
     await tick(env(), g.id)
+    const forwardContext = JSON.parse(
+      (
+        await rows<Assignment>(
+          db,
+          "SELECT * FROM graph_assignments WHERE graph_id=? AND role='merge' ORDER BY created_at DESC,id DESC",
+          g.id
+        )
+      )[0].input
+    )
+    expect(forwardContext.existing_states.map((n: { id: string }) => n.id)).toEqual([source])
     await deliver(
       g.id,
       agent,

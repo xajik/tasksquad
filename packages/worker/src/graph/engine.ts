@@ -1072,8 +1072,15 @@ export async function accept(
               input.serial_work_id
             )
           )
+        const previousContext = JSON.parse(parent.input)
         const context = {
-          ...JSON.parse(parent.input),
+          ...previousContext,
+          ...(parent.role === 'merge' && previousContext.direction !== 'backward'
+            ? { existing_states: await executionNodes(db, g.id) }
+            : {}),
+          ...(parent.role === 'plan'
+            ? { observations: await executionNodes(db, g.id), resources: await executionResources(db, g.id) }
+            : {}),
           continuation: d,
           user_input: input.user_input,
           ...(input.serial_work_id ? { serial_work_id: input.serial_work_id } : {})
@@ -1172,7 +1179,12 @@ async function executionResources(db: D1Database, graphId: string): Promise<Data
 async function executionNodes(db: D1Database, graphId: string): Promise<Data[]> {
   return rows(
     db,
-    "SELECT id,kind,title,description,body FROM graph_nodes WHERE graph_id=? AND kind!='goal'",
+    `SELECT n.id,n.kind,n.title,n.description,n.body,n.source_result_id,s.state
+     FROM graph_nodes n JOIN graph_node_states s ON s.id=(SELECT MAX(id) FROM graph_node_states WHERE node_id=n.id)
+     WHERE n.graph_id=? AND s.state='active' AND
+       (n.kind='observed' OR EXISTS(SELECT 1 FROM graph_results r
+        JOIN graph_attempts t ON t.id=r.attempt_id JOIN graph_assignments a ON a.id=t.assignment_id
+        WHERE r.id=n.source_result_id AND r.status='accepted' AND a.role IN ('execute','undo')))`,
     graphId
   )
 }

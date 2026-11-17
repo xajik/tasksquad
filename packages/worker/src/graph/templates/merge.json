@@ -1,5 +1,5 @@
 {
-  "instruction": "Independently review the candidate. Similarity alone is not equivalence. Compare inputs, resource versions, effects and state predicates. Uncertainty must remain unpublished. Backward review receives only the private hierarchy; forward review receives only execution context. For retirement, distinct means the retirement is justified, otherwise return uncertain or reject.",
+  "instruction": "Independently review the candidate. Similarity alone is not equivalence. Compare inputs, resource versions, effects and state predicates. Uncertainty must remain unpublished. Backward review receives only the private hierarchy; forward review receives only execution context. An active outcome sourced from an accepted execution is an observed state and a permitted action source. Unexecuted milestones are not observations or equivalent completed states. For retirement, distinct means the retirement is justified, otherwise return uncertain or reject.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
