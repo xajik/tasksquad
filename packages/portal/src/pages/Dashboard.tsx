@@ -2950,10 +2950,12 @@ export default function Dashboard() {
             <BookMarked className="mr-2 h-4 w-4" />
             Docs
           </Button>
-          <Button disabled={!!localGraphToken()} variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { trackEvent('user_logged_out'); auth && signOut(auth); }}>
-            <LogOut className="mr-2 h-4 w-4" />
-            {localGraphToken() ? 'Local session' : 'Sign out'}
-          </Button>
+          {!localGraphToken() && (
+            <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { trackEvent('user_logged_out'); auth && signOut(auth); }}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
+            </Button>
+          )}
         </div>
       </aside>
 
