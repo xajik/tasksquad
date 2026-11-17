@@ -6,7 +6,7 @@ struct MobileEditorRequest: Identifiable {
     let title: String
     let fields: [WorkspaceField]
     var draftKey: String? = nil
-    var eligibleAgentsOnly = false
+    var portalAgentsOnly = false
     var attachments = false
     var phases = false
     var submitLabel = "Save"
@@ -187,7 +187,7 @@ struct MobileEditor: View {
         case .choice(let choices): Picker(field.label, selection: string(field.id)) { ForEach(choices, id: \.self) { Text($0.capitalized).tag($0) } }.accessibilityIdentifier("field-" + field.id)
         case .agent, .subAgent: Picker(selection: string(field.id)) {
             Text("Select an agent").tag("")
-            ForEach(isSubAgent(field) ? subAgents : request.eligibleAgentsOnly ? model.eligibleAgents : model.agents) { Text($0.title).tag($0.id) }
+            ForEach(isSubAgent(field) ? subAgents : request.portalAgentsOnly ? model.portalAgents : model.agents) { Text($0.title).tag($0.id) }
         } label: { fieldLabel(field) }.accessibilityIdentifier("field-" + field.id)
         case .date:
             Toggle(field.label, isOn: Binding(get: { values[field.id]?.number != nil }, set: { values[field.id] = $0 ? .number(Date().addingTimeInterval(3600).timeIntervalSince1970*1000) : .null }))

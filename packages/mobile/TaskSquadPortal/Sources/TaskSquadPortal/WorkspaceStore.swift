@@ -40,6 +40,7 @@ import Combine
     public var canManage: Bool { WorkspacePolicy.canManage(role: currentProject?.text("role") ?? "") }
     public var isOwner: Bool { currentProject?.text("role") == "owner" }
     public var isPro: Bool { profile?.text("plan") == "pro" }
+    public var portalAgents: [CustomerRecord] { agents.filter(WorkspacePolicy.portalAgent) }
     public var eligibleAgents: [CustomerRecord] { agents.filter(WorkspacePolicy.eligible) }
     public var context: String { "\(generation):\(projectID):\(section.rawValue)" }
     public var visibleRecords: [CustomerRecord] {

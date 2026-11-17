@@ -38,7 +38,7 @@ struct MobileTerminal: Identifiable { let id: String }
     func create(opened: @escaping (String) -> Void) {
         let section = model.section, project = model.projectID, context = model.context
         model.error = nil
-        editor = MobileEditorRequest(title: createTitle, fields: WorkspaceField.fields(for: section), draftKey: model.draftScope("create." + section.rawValue).key, eligibleAgentsOnly: section == .portals, attachments: section == .inbox, phases: section == .planners, submitLabel: section == .inbox ? "Send" : "Create") { [model] body, files in
+        editor = MobileEditorRequest(title: createTitle, fields: WorkspaceField.fields(for: section), draftKey: model.draftScope("create." + section.rawValue).key, portalAgentsOnly: section == .portals, attachments: section == .inbox, phases: section == .planners, submitLabel: section == .inbox ? "Send" : "Create") { [model] body, files in
             guard context == model.context, let result = await model.perform(.create(section, project: project, values: body, files: files)) else { return false }
             await model.refresh()
             let record = CustomerRecord(result)
