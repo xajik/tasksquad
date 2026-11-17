@@ -74,6 +74,38 @@ cannot establish success.
 
 ## Local verification
 
+Start the real Worker and portal with an isolated local database and CLI agents:
+
+```bash
+make -C packages/worker graph-local
+```
+
+Open `http://127.0.0.1:5180`. The command prints a direct link to the seeded
+**Local reversible file test** graph. It starts in Draft: click **Run**, then
+approve the results shown under **Needs attention** as they arrive. The installed,
+authenticated Claude CLI runs each role in a fresh session. Model calls begin
+only after Run. The sample changes `.runtime/action-graph-local/sandbox/verification.txt`
+from `TaskSquad local graph baseline` to `TaskSquad local graph works`, then
+independently reads the file to establish the goal predicate. Its restoration
+contract restores the original text.
+
+This needs Bun, Node, Python 3 and an authenticated `claude` CLI. The local CLI
+runner exposes file tools within the sample sandbox and does not expose shell
+tools. It exercises real inbox assignments, session callbacks, review and graph
+coordination; it does not test the installed daemon's polling or tmux integration.
+For the same sample without model calls, use:
+
+```bash
+make -C packages/worker graph-local GRAPH_AGENTS=deterministic
+```
+
+The API listens on `127.0.0.1:8788`. A seeded local CLI token uses the standard
+API authentication path; the portal accepts it only in development on loopback
+with a loopback API. No Firebase setup is needed. D1, R2, KV and coordinator
+state persist under ignored `.runtime/action-graph-local/`; production resources
+and installed daemon settings are untouched. Keep the terminal running and use
+Ctrl+C to stop its services. Restarting preserves graphs and review progress.
+
 Use package Make targets:
 
 ```bash
@@ -90,14 +122,14 @@ The Worker suite applies the entire SQL migration chain to local D1 and exercise
 real coordinator RPC, runtime reload, alarm replay, duplicate notify/close intake,
 exact-result approval, downward regrading, serial continuation, compensation and
 late-result fencing. It does not invoke production models or perform production
-side effects. The portal currently has no automated unit-test suite; its build
+side effects. The portal tests the local authentication guard; its build
 checks TypeScript and the PWA bundle. With `make -C packages/portal dev`, open
 `/scripts/graph-preview.html` for a synthetic interactive workspace, or append
 `?readOnly` for member controls. This fixture is not a production build entry.
 
 ## Rollout (not performed by implementation)
 
-1. Apply migrations `0051` through `0058` with the existing Worker migration Make
+1. Apply migrations `0051` through `0059` with the existing Worker migration Make
    target before deploying this Worker. The coordinator adds Durable Object
    migration `v5`. Preserve existing migrations, WebSocket guards and bindings.
 2. Deploy with `ACTION_GRAPH_ENABLED="false"`, then release/install compatible
