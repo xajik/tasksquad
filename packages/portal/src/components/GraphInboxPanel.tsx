@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { GraphInboxContext } from '@/lib/api'
 import { graphApi, type GraphSnapshot, type GraphResult } from '@/lib/graph'
 import { errorText } from '@/lib/graphError'
+import { summarizeResult } from '@/lib/graphSummary'
 import { Button } from './ui/button'
 
 /** Inbox owns exact-output review; the thread's regular composer owns recovery replies. */
@@ -75,7 +76,8 @@ export function GraphInboxPanel({
       </div>
       {context.can_reply && (
         <p className="text-sm">
-          The agent needs your response. Reply in this thread to request a checked continuation.
+          This {context.role} step is blocked — either the agent asked for input or a result was rejected. Reply
+          in this thread to request a checked continuation.
         </p>
       )}
       {!context.can_manage && ['blocked', 'error'].includes(context.status) && (
@@ -95,8 +97,25 @@ export function GraphInboxPanel({
       {reviews.map((result) => (
         <article key={result.id} className="space-y-2">
           <h3 className="text-sm font-medium">Review {context.role} result</h3>
+          {(() => {
+            const summary = summarizeResult(context.role, result.parsed ?? result.raw)
+            return summary ? (
+              <div className="space-y-1 text-sm" data-graph-summary>
+                <p>{summary.headline}</p>
+                <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-3 gap-y-1 text-xs">
+                  {summary.rows.map((row, i) => (
+                    <div key={i} className="contents">
+                      <dt className="text-muted-foreground whitespace-pre">{row.label}</dt>
+                      <dd className="break-words">{row.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="text-xs text-muted-foreground">{summary.consequence}</p>
+              </div>
+            ) : null
+          })()}
           <details>
-            <summary className="text-xs cursor-pointer">Exact result to review</summary>
+            <summary className="text-xs cursor-pointer">Exact result to review (raw)</summary>
             <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs mt-2">
               {result.parsed ?? result.raw}
             </pre>
