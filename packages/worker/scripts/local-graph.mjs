@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 const workerRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const root = path.resolve(workerRoot, '../..')
 const runtime = path.join(root, '.runtime/action-graph-local')
-const sandbox = path.join(runtime, 'sandbox')
+const sandbox = path.resolve(process.env.GRAPH_LOCAL_SANDBOX ?? path.join(runtime, 'sandbox'))
 const apiPort = 8788
 const portalPort = 5180
 const apiBase = `http://127.0.0.1:${apiPort}`

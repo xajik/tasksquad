@@ -1,3 +1,5 @@
+import { create as inboxReply } from '../routes/messages.js'
+import { graphInboxTask } from './inbox.js'
 import { beforeAll, afterAll, describe, it, expect } from 'vitest'
 import { Miniflare } from 'miniflare'
 import { buildSync } from 'esbuild'
@@ -219,6 +221,96 @@ afterAll(async () => {
 })
 
 describe('durable inbox graph workflow', () => {
+  it('routes an owner inbox reply through continuation atomically without reopening execution', async () => {
+    const { g, agent, user, team, assignmentId } = await preparedExecution()
+    await deliver(
+      g.id,
+      agent,
+      JSON.stringify({
+        outcome: 'blocked',
+        title: 'Need input',
+        description: '',
+        body: 'Please provide the fixture value',
+        evidence: [],
+        actual_cost: 0
+      })
+    )
+    await tick(env(), g.id)
+    const attempt = (
+      await rows<{ task_id: string }>(db, 'SELECT * FROM graph_attempts WHERE assignment_id=?', assignmentId)
+    )[0]
+    await sql(db, "UPDATE tasks SET status='done' WHERE id=?", attempt.task_id).run()
+    const bridged = {
+      ...env(),
+      GRAPH_COORDINATOR: {
+        idFromName: () => team,
+        get: () => ({
+          command: async (id: string, command: string, body: Record<string, unknown>) =>
+            run(db, id, command, body)
+        })
+      }
+    } as unknown as Env
+    const context = await graphInboxTask(bridged, attempt.task_id, user)
+    expect(context).toMatchObject({ can_reply: true, can_manage: true, latest: true })
+    const request = (body: Record<string, unknown>) =>
+      new Request(`https://fixture.test/tasks/${attempt.task_id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+    const auth = { uid: user, userId: user, email: 'owner@test.com', plan: 'pro' as const }
+    const member = crypto.randomUUID()
+    await db.batch([
+      sql(
+        db,
+        'INSERT INTO users(id,firebase_uid,email,created_at) VALUES(?,?,?,0)',
+        member,
+        member,
+        member + '@test.com'
+      ),
+      sql(db, "INSERT INTO team_members(team_id,user_id,role,joined_at) VALUES(?,?,'member',0)", team, member)
+    ])
+    expect(
+      (
+        await inboxReply(
+          request({ body: 'Unauthorized' }),
+          bridged,
+          {},
+          { ...auth, uid: member, userId: member }
+        )
+      ).status
+    ).toBe(403)
+    expect(
+      (await inboxReply(request({ body: 'Delayed', scheduled_at: Date.now() + 60_000 }), bridged, {}, auth))
+        .status
+    ).toBe(400)
+    const response = await inboxReply(request({ body: 'Use value 42' }), bridged, {}, auth)
+    expect(response.status).toBe(201)
+    expect(
+      await rows(
+        db,
+        "SELECT * FROM messages WHERE task_id=? AND role='user' AND body='Use value 42'",
+        attempt.task_id
+      )
+    ).toHaveLength(1)
+    const continued = await rows<Assignment>(
+      db,
+      "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'",
+      assignmentId
+    )
+    expect(continued).toHaveLength(1)
+    expect(JSON.parse(continued[0].input).user_input).toBe('Use value 42')
+    expect(
+      (await rows<{ status: string }>(db, 'SELECT status FROM tasks WHERE id=?', attempt.task_id))[0].status
+    ).toBe('done')
+    expect(
+      (await inboxReply(request({ body: 'Duplicate' }), bridged, {}, auth)).status
+    ).toBeGreaterThanOrEqual(400)
+    expect(
+      await rows(db, "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'", assignmentId)
+    ).toHaveLength(1)
+  })
+
   it('cancels a dispatched but unopened execution on Stop, and Run creates a fresh attempt', async () => {
     const { g, agent, assignmentId } = await preparedExecution()
     const old = (
