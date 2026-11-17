@@ -35,6 +35,7 @@ func readClawSettings(t *testing.T, dir string) (clawSettings, string) {
 }
 
 func TestClawSetupWritesTOMLStopHook(t *testing.T) {
+	t.Setenv("TSQ_STATE_DIR", t.TempDir())
 	dir := t.TempDir()
 	if err := (&Claw{}).Setup(dir, 7374, "agent-123", "task-456"); err != nil {
 		t.Fatal(err)

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tasksquad/daemon/config"
 	"github.com/tasksquad/daemon/util"
 )
 
@@ -19,12 +20,7 @@ var (
 )
 
 func Init() error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("get home dir: %w", err)
-	}
-
-	logsDir = filepath.Join(home, ".tasksquad", "logs")
+	logsDir = filepath.Join(config.DefaultDir(), "logs")
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		return fmt.Errorf("create logs dir: %w", err)
 	}

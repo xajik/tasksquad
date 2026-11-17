@@ -240,3 +240,18 @@ is_supervisor = true
 		t.Errorf("old is_supervisor flag should not populate Supervisor section, got %+v", cfg.Supervisor)
 	}
 }
+
+func TestIsolatedStateDirectory(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TSQ_STATE_DIR", dir)
+	if DefaultDir() != dir || DefaultPath() != filepath.Join(dir, "config.toml") {
+		t.Fatal("state override not respected")
+	}
+	first := DeviceID()
+	if first == "" || DeviceID() != first {
+		t.Fatal("isolated device ID must persist")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "device-id")); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/tasksquad/daemon/config"
 )
 
 // TaskLog is an append-only JSONL writer for a single task's lifecycle events.
@@ -17,11 +19,7 @@ type TaskLog struct {
 
 // Open creates (or appends to) ~/.tasksquad/tasks/<taskID>.jsonl.
 func Open(taskID string) (*TaskLog, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-	dir := filepath.Join(home, ".tasksquad", "tasks")
+	dir := filepath.Join(config.DefaultDir(), "tasks")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}

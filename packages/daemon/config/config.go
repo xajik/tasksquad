@@ -90,18 +90,19 @@ func expandHome(path string) string {
 }
 
 func DefaultPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".tasksquad", "config.toml")
+	return filepath.Join(DefaultDir(), "config.toml")
 }
 
 func DefaultDir() string {
+	if dir := os.Getenv("TSQ_STATE_DIR"); filepath.IsAbs(dir) {
+		return dir
+	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".tasksquad")
 }
 
 func DeviceID() string {
-	home, _ := os.UserHomeDir()
-	idPath := filepath.Join(home, ".tasksquad", "device-id")
+	idPath := filepath.Join(DefaultDir(), "device-id")
 	if data, err := os.ReadFile(idPath); err == nil {
 		return string(bytes.TrimSpace(data))
 	}
@@ -118,10 +119,16 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 	cfg, err := LoadCustomer(path)
-	if err != nil { return nil, err }
-	if len(cfg.Agents) == 0 { return nil, fmt.Errorf("at least one [[agents]] entry is required") }
+	if err != nil {
+		return nil, err
+	}
+	if len(cfg.Agents) == 0 {
+		return nil, fmt.Errorf("at least one [[agents]] entry is required")
+	}
 	for i, a := range cfg.Agents {
-		if a.ID == "" { return nil, fmt.Errorf("agents[%d].id is required", i) }
+		if a.ID == "" {
+			return nil, fmt.Errorf("agents[%d].id is required", i)
+		}
 	}
 	return cfg, nil
 }

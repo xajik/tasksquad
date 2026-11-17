@@ -12,11 +12,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/tasksquad/daemon/config"
 )
 
 func Path(port int) string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".tasksquad", fmt.Sprintf("hooks-%d.token", port))
+	return filepath.Join(config.DefaultDir(), fmt.Sprintf("hooks-%d.token", port))
 }
 
 func Read(port int) (string, error) {
