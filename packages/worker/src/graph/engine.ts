@@ -1517,7 +1517,10 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
     budgets.execution_cost += cost
     budgets.recovery_reserved += recovery
     used.push({ agent_id: agent, kind: a.role === 'execute' ? 'execution' : 'control', graph_id: g.id })
-    if (a.role === 'execute') executions++
+    if (a.role === 'execute') {
+      executions++
+      budgets.allocations++ // keeps the every-fifth weak-candidate trial correct within one tick
+    }
     if (budgets.attempts >= c.policy.attempt_budget) break
   }
 }

@@ -307,7 +307,14 @@ export default {
     ctx.waitUntil(runRollups(env))
     if (env.ACTION_GRAPH_ENABLED === 'true') ctx.waitUntil((async () => {
       const teams = await env.DB.prepare('SELECT team_id, MIN(id) as id FROM graphs GROUP BY team_id').all<{team_id:string;id:string}>()
-      for (const team of teams.results) await env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(team.team_id)).command(team.id,'tick',{team_id:team.team_id})
+      // One failing team must not stop the others, and teams are independent coordinators.
+      await Promise.allSettled(teams.results.map(async team => {
+        try {
+          await env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(team.team_id)).command(team.id,'tick',{team_id:team.team_id})
+        } catch (error) {
+          console.error(JSON.stringify({ event: 'graph_cron_tick_failed', team_id: team.team_id, error: String(error) }))
+        }
+      }))
     })())
   },
 }
