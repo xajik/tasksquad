@@ -16,6 +16,13 @@ public enum WorkspacePolicy {
         if section == .members { return role == "owner" }
         return canManage(role: role) && ![.supervisor, .memory, .analytics, .settings].contains(section)
     }
+    /// Why a new Portal cannot be opened right now, or nil when it can.
+    public static func portalBlocker(isPro: Bool, agents: [CustomerRecord], records: [CustomerRecord]) -> String? {
+        if !isPro { return "Portals require Pro." }
+        if !agents.contains(where: eligible) { return "Portals need an agent that is active or idle and not paused. Start the daemon and resume an agent." }
+        if records.filter({ PortalLifecycle.isLive($0.status) }).count >= 3 { return "Three Portals are already open. Close one to open another." }
+        return nil
+    }
     public static func createPayload(_ values: [String: JSONValue], section: WorkspaceSection, project: String) -> [String: JSONValue] {
         var body = values
         if [.inbox, .portals].contains(section) { body["team_id"] = .string(project) }

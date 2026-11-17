@@ -13,8 +13,8 @@ struct CustomerRecordList: View {
 
     var body: some View {
         List(selection: $model.selectedID) {
-            if model.section == .portals, !model.isPro {
-                Text("Portals require Pro. Existing portal details remain available.").font(Theme.callout).foregroundStyle(.secondary)
+            if model.section == .portals, let reason = WorkspacePolicy.portalBlocker(isPro: model.isPro, agents: model.workspace.agents, records: model.workspace.records) {
+                Text(reason).font(Theme.callout).foregroundStyle(.secondary)
             }
             ForEach(model.visibleRecords) { record in
                 CustomerRecordRow(model: model, record: record).tag(record.id)
