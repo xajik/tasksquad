@@ -59,6 +59,10 @@ package:
 install: app-check
 	APP_DIR="$(APP_DIR)" ./scripts/install-app.sh
 
+# Removes the installed app, its daemon, login item and CLI link; PURGE=1 also removes ~/.tasksquad and sign-ins.
+uninstall:
+	APP_DIR="$(APP_DIR)" PURGE="$(PURGE)" ./scripts/uninstall-app.sh
+
 # Standalone tsq tarball (CLI + headless daemon), like the Go release archives.
 cli:
 	VERSION="$(VERSION)" ./scripts/build-cli.sh
@@ -81,7 +85,7 @@ clean:
 	$(SWIFT) package clean
 	rm -rf dist
 
-.PHONY: ui-fixture-up ui-fixture-down
+.PHONY: uninstall ui-fixture-up ui-fixture-down
 ui-fixture-up:
 	python3 scripts/ui-fixture.py start
 
