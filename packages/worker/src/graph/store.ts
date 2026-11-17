@@ -359,7 +359,7 @@ export async function snapshot(db: D1Database, g: Graph): Promise<Data> {
   ] = await Promise.all([
     rows(
       db,
-      `SELECT n.*,s.state,s.reason FROM graph_nodes n LEFT JOIN graph_node_states s ON s.id=(SELECT MAX(id) FROM graph_node_states WHERE node_id=n.id) WHERE n.graph_id=?`,
+      `SELECT n.*,s.state,s.reason,s.created_at AS state_changed_at FROM graph_nodes n LEFT JOIN graph_node_states s ON s.id=(SELECT MAX(id) FROM graph_node_states WHERE node_id=n.id) WHERE n.graph_id=?`,
       g.id
     ),
     rows(

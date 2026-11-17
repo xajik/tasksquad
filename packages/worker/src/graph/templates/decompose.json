@@ -1,5 +1,5 @@
 {
-  "instruction": "Decompose the supplied goal into up to five useful subgoals. Do not execute work. Necessity is a planning belief, not proof.",
+  "instruction": "Decompose the supplied goal into up to five useful subgoals. Do not execute work. Necessity is a planning belief, not proof. Compare with existing milestones and evidence when supplied. Return only missing subgoals; optional retire_ids names obsolete milestone IDs. All candidates require separate merge review.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
@@ -37,6 +37,15 @@
           ]
         },
         "maxItems": 5
+      },
+      "retire_ids": {
+        "type": "array",
+        "maxItems": 20,
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 299
+        }
       }
     },
     "required": [

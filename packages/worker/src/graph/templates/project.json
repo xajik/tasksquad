@@ -1,5 +1,5 @@
 {
-  "instruction": "Evaluate private goal alignment using supplied evidence. Scores do not prove goal achievement. Use only evidence IDs supplied in context.",
+  "instruction": "Evaluate private goal alignment using supplied evidence. Scores do not prove goal achievement. Use only evidence IDs supplied in context. For decomposition_review, compare active evidence with the private goal, then provide abstract decomposition_feedback. Do not copy execution details or raw evidence into feedback for the decomposer.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
@@ -24,6 +24,14 @@
       "reason": {
         "type": "string",
         "maxLength": 3999
+      },
+      "decomposition_feedback": {
+        "type": "array",
+        "maxItems": 10,
+        "items": {
+          "type": "string",
+          "maxLength": 299
+        }
       }
     },
     "required": [

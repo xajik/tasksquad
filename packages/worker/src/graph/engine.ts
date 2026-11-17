@@ -66,6 +66,13 @@ export async function run(db: D1Database, graphId: string, command: string, body
     await commit(db, g, 'regrade_requested', r.id, {}, [
       sql(
         db,
+        "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'execution',?,?)",
+        g.id,
+        r.id,
+        Date.now()
+      ),
+      sql(
+        db,
         `INSERT INTO graph_grading(graph_id,execution_result_id,created_at,revision) SELECT ?,?,?,COALESCE(MAX(revision),0)+1 FROM graph_grading WHERE execution_result_id=?`,
         g.id,
         r.id,
@@ -104,7 +111,7 @@ export async function run(db: D1Database, graphId: string, command: string, body
         sql(db, "UPDATE graph_results SET status='rejected' WHERE id=?", r.id),
         sql(
           db,
-          "UPDATE graph_assignments SET status='rejected' WHERE id=(SELECT assignment_id FROM graph_attempts WHERE id=?)",
+          "UPDATE graph_assignments SET status='blocked' WHERE id=(SELECT assignment_id FROM graph_attempts WHERE id=?)",
           r.attempt_id
         )
       ])
@@ -146,6 +153,18 @@ export async function run(db: D1Database, graphId: string, command: string, body
     ).first<Assignment>()
     if (!a || typeof body.message !== 'string' || body.message.length > 3999)
       throw new Error('A blocked assignment and bounded input are required')
+    if (a.role === 'repair') throw new Error('Provide input to the original assignment')
+    const unresolved = await sql(
+      db,
+      `SELECT q.work_id FROM graph_serial_queue q JOIN graph_results r ON r.id=q.work_id JOIN graph_attempts t ON t.id=r.attempt_id WHERE q.graph_id=? AND q.status='pending' AND q.kind='execution' AND t.assignment_id=? AND r.status IN ('invalid','rejected') ORDER BY q.sequence LIMIT 1`,
+      g.id,
+      a.id
+    ).first<{ work_id: string }>()
+    const previousInput = JSON.parse(a.input) as Data
+    const serialWork =
+      previousInput.serial_work_id ??
+      unresolved?.work_id ??
+      (['grade', 'project'].includes(a.role) ? (previousInput.execution_result_id ?? a.id) : undefined)
     const previousResults = await rows(
       db,
       `SELECT r.id,r.raw,r.parsed,r.status FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id WHERE t.assignment_id=?`,
@@ -159,11 +178,23 @@ export async function run(db: D1Database, graphId: string, command: string, body
         assignment: a.id,
         previous: JSON.parse(a.input),
         previous_results: previousResults,
-        user_input: body.message
+        user_input: body.message,
+        ...(serialWork ? { serial_work_id: serialWork } : {})
       },
       { parent: a.id, node: a.node_id, edge: a.edge_id }
     )
     await commit(db, g, 'input', a.id, {}, [
+      ...(!serialWork
+        ? [
+            sql(
+              db,
+              "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'assignment',?,?)",
+              g.id,
+              next.id,
+              Date.now()
+            )
+          ]
+        : []),
       ...next.statements,
       sql(db, "UPDATE graph_assignments SET status='continuation' WHERE id=?", a.id)
     ])
@@ -233,7 +264,7 @@ export async function bindStatement(
 ): Promise<D1PreparedStatement[]> {
   const t = await sql(db, 'SELECT * FROM graph_attempts WHERE task_id=?', taskId).first<Attempt>()
   if (!t) return []
-  if (t.agent_id !== agentId || t.status !== 'pending' || t.session_id)
+  if (t.agent_id !== agentId || t.status !== 'pending' || t.session_id || t.deadline <= Date.now())
     throw new Error('Unexpected graph run')
   return [
     sql(db, 'INSERT INTO graph_run_claims(task_id,session_id) VALUES(?,?)', taskId, sessionId),
@@ -300,6 +331,17 @@ export async function intake(
           sql(
             env.DB,
             `INSERT OR IGNORE INTO graph_grading(graph_id,execution_result_id,created_at) SELECT ?,id,? FROM graph_results WHERE attempt_id=?`,
+            a.graph_id,
+            now,
+            t.id
+          )
+        ]
+      : []),
+    ...(a.role === 'execute' && !stale
+      ? [
+          sql(
+            env.DB,
+            `INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) SELECT ?,'execution',id,? FROM graph_results WHERE attempt_id=? AND NOT EXISTS(SELECT 1 FROM graph_serial_queue WHERE work_id=graph_results.id AND kind='execution')`,
             a.graph_id,
             now,
             t.id
@@ -480,7 +522,16 @@ export async function accept(
   const ops: D1PreparedStatement[] = [
     ...extra,
     sql(db, "UPDATE graph_results SET status='accepted',accepted_at=? WHERE id=?", Date.now(), r.id),
-    sql(db, "UPDATE graph_assignments SET status='accepted' WHERE id IN (?,?)", a.id, original.id)
+    sql(db, "UPDATE graph_assignments SET status='accepted' WHERE id IN (?,?)", a.id, original.id),
+    ...(a.role === 'repair'
+      ? [
+          sql(
+            db,
+            "UPDATE graph_assignments SET status='cancelled' WHERE parent_id=? AND role='continue' AND status='pending'",
+            original.id
+          )
+        ]
+      : [])
   ]
   const enqueue = async (
     role: Role,
@@ -492,29 +543,71 @@ export async function accept(
     return next.id
   }
   switch (original.role) {
-    case 'decompose':
+    case 'decompose': {
+      const parent = await sql(
+        db,
+        "SELECT id FROM graph_nodes WHERE graph_id=? AND kind='goal' LIMIT 1",
+        g.id
+      ).first<{ id: string }>()
+      const hierarchy = await rows(
+        db,
+        "SELECT id,title,description,body,parent_id FROM graph_nodes WHERE graph_id=? AND kind IN ('goal','milestone')",
+        g.id
+      )
       for (const sub of d.subgoals as Data[])
         if (Number(sub.necessity_confidence) >= c.policy.threshold) {
-          const parent = await sql(
-            db,
-            "SELECT id FROM graph_nodes WHERE graph_id=? AND kind='goal' LIMIT 1",
-            g.id
-          ).first<{ id: string }>()
-          const n = nodeStatements(db, g, 'milestone', sub, r.id, parent?.id ?? null)
-          ops.push(...n.statements)
-          if (g.status === 'running')
-            await enqueue(
-              'plan',
-              {
-                task: sub,
-                observed_start: g.start_state,
-                observations: await executionNodes(db, g.id),
-                resources: await executionResources(db, g.id)
-              },
-              { node: n.id }
+          const proposal = id(),
+            candidate = { ...sub, kind: 'milestone', parent_id: parent?.id ?? null }
+          ops.push(
+            sql(
+              db,
+              'INSERT INTO graph_proposals(id,graph_id,source_result_id,content,created_at) VALUES(?,?,?,?,?)',
+              proposal,
+              g.id,
+              r.id,
+              json(candidate),
+              Date.now()
             )
+          )
+          await enqueue('merge', {
+            direction: 'backward',
+            proposal_id: proposal,
+            candidate,
+            existing_hierarchy: hierarchy
+          })
         }
+      for (const node of (d.retire_ids ?? []) as string[]) {
+        if (
+          !(await sql(
+            db,
+            "SELECT id FROM graph_nodes WHERE id=? AND graph_id=? AND kind='milestone'",
+            node,
+            g.id
+          ).first())
+        )
+          throw new Error('Retirement outside milestone hierarchy')
+        const proposal = id(),
+          candidate = { kind: 'retire', node_id: node }
+        ops.push(
+          sql(
+            db,
+            'INSERT INTO graph_proposals(id,graph_id,source_result_id,content,created_at) VALUES(?,?,?,?,?)',
+            proposal,
+            g.id,
+            r.id,
+            json(candidate),
+            Date.now()
+          )
+        )
+        await enqueue('merge', {
+          direction: 'backward',
+          proposal_id: proposal,
+          candidate,
+          existing_hierarchy: hierarchy
+        })
+      }
       break
+    }
     case 'plan':
       for (const action of d.actions as Data[]) {
         if (
@@ -581,7 +674,69 @@ export async function accept(
         )
         break
       }
+      if (input.direction === 'backward') {
+        const candidate = JSON.parse(p.content) as Data
+        if (candidate.kind === 'retire') {
+          ops.push(
+            sql(
+              db,
+              "INSERT INTO graph_node_states(graph_id,node_id,state,reason,created_at) VALUES(?,?,'deactivated','obsolete',?)",
+              g.id,
+              candidate.node_id,
+              Date.now()
+            ),
+            sql(
+              db,
+              "UPDATE graph_assignments SET status='cancelled' WHERE graph_id=? AND node_id=? AND status='pending'",
+              g.id,
+              candidate.node_id
+            )
+          )
+        } else {
+          const existing = await sql(
+            db,
+            "SELECT id FROM graph_nodes WHERE graph_id=? AND kind='milestone' AND title=? AND body=? AND parent_id=?",
+            g.id,
+            candidate.title,
+            candidate.body,
+            candidate.parent_id
+          ).first<{ id: string }>()
+          if (d.decision === 'equivalent' && existing?.id !== d.equivalent_node_id)
+            throw new Error('Backward equivalence not established')
+          if (!existing) {
+            const n = nodeStatements(db, g, 'milestone', candidate, r.id, String(candidate.parent_id))
+            ops.push(...n.statements)
+            await enqueue(
+              'plan',
+              {
+                task: candidate,
+                observed_start: g.start_state,
+                observations: await executionNodes(db, g.id),
+                resources: await executionResources(db, g.id)
+              },
+              { node: n.id }
+            )
+          }
+        }
+        ops.push(sql(db, "UPDATE graph_proposals SET status='published' WHERE id=?", p.id))
+        break
+      }
       const action = JSON.parse(p.content) as Data
+      const duplicate = await sql(
+        db,
+        `SELECT e.id FROM graph_edges e JOIN graph_plans p ON p.edge_id=e.id WHERE e.graph_id=? AND e.from_id=? AND p.baseline=? AND p.resource_versions=? AND p.effects=? AND p.steps=? AND p.undo_steps=? LIMIT 1`,
+        g.id,
+        action.from_id,
+        action.baseline,
+        json(action.resource_versions),
+        json(action.effects),
+        json(action.steps),
+        json(action.undo_steps)
+      ).first<{ id: string }>()
+      if (duplicate) {
+        ops.push(sql(db, "UPDATE graph_proposals SET status='published' WHERE id=?", p.id))
+        break
+      }
       let target: string
       if (d.decision === 'equivalent') {
         const match = await sql(
@@ -656,6 +811,15 @@ export async function accept(
         ops.push(
           sql(
             db,
+            `UPDATE graph_serial_queue SET work_id=? WHERE kind='execution' AND work_id IN (SELECT r.id FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id WHERE t.assignment_id=?)`,
+            r.id,
+            original.id
+          )
+        )
+      if (a.role === 'repair')
+        ops.push(
+          sql(
+            db,
             `UPDATE graph_grading SET execution_result_id=? WHERE execution_result_id IN (SELECT r.id FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id WHERE t.assignment_id=?)`,
             r.id,
             original.id
@@ -684,9 +848,42 @@ export async function accept(
     }
     case 'grade':
     case 'project': {
+      if (original.role === 'project' && input.operation === 'decomposition_review') {
+        const allowed = (input.evidence as Data[]).map((e) => e.id)
+        if ((d.evidence_ids as string[]).some((e) => !allowed.includes(e)))
+          throw new Error('Review references unsupplied evidence')
+        await enqueue('decompose', {
+          goal: g.body,
+          title: g.title,
+          success_rule: c.rule,
+          existing_milestones: input.hierarchy,
+          abstract_feedback: d.decomposition_feedback ?? []
+        })
+        ops.push(
+          sql(
+            db,
+            "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='assignment' AND work_id=?",
+            g.id,
+            input.serial_work_id ?? original.id
+          )
+        )
+        break
+      }
+
       const ids = d.evidence_ids as string[]
       const allowed = (input.evidence as Data[]).map((e) => e.id)
       if (ids.some((e) => !allowed.includes(e))) throw new Error('Grade references unsupplied evidence')
+      ops.push(
+        sql(
+          db,
+          'INSERT INTO graph_evaluation_revisions(graph_id,execution_result_id,role,source_result_id,created_at) VALUES(?,?,?,?,?)',
+          g.id,
+          input.execution_result_id,
+          original.role,
+          r.id,
+          Date.now()
+        )
+      )
       const lineage = await executedLineage(db, g.id, original.edge_id)
       for (const edge of lineage)
         for (const evidence of ids)
@@ -713,6 +910,15 @@ export async function accept(
           input.grading_sequence
         )
       )
+      if (original.role === 'project')
+        ops.push(
+          sql(
+            db,
+            "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='execution' AND work_id=? AND status='pending'",
+            g.id,
+            input.execution_result_id
+          )
+        )
       if (
         original.role === 'project' &&
         (input.result as Data).outcome === 'complete' &&
@@ -786,6 +992,15 @@ export async function accept(
       break
     }
     case 'continue': {
+      if (!input.serial_work_id)
+        ops.push(
+          sql(
+            db,
+            "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='assignment' AND work_id=?",
+            g.id,
+            original.id
+          )
+        )
       const parent = await sql(
         db,
         'SELECT * FROM graph_assignments WHERE id=?',
@@ -812,7 +1027,27 @@ export async function accept(
             (d.decision === 'resume' && d.checkpoint_verified !== true))
         )
           throw new Error('Continuation needs verified termination, baseline and checkpoint')
-        const context = { ...JSON.parse(parent.input), continuation: d, user_input: input.user_input }
+        if (parent.role === 'execute' && input.serial_work_id)
+          ops.push(
+            sql(
+              db,
+              "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND work_id=? AND status='pending'",
+              g.id,
+              input.serial_work_id
+            ),
+            sql(
+              db,
+              "UPDATE graph_grading SET status='done' WHERE graph_id=? AND execution_result_id=?",
+              g.id,
+              input.serial_work_id
+            )
+          )
+        const context = {
+          ...JSON.parse(parent.input),
+          continuation: d,
+          user_input: input.user_input,
+          ...(input.serial_work_id ? { serial_work_id: input.serial_work_id } : {})
+        }
         const next = await assignment(db, g, parent.role, context, {
           parent: parent.id,
           node: parent.node_id,
@@ -913,10 +1148,17 @@ async function executionNodes(db: D1Database, graphId: string): Promise<Data[]> 
 }
 
 export async function advanceGrading(db: D1Database, g: Graph): Promise<void> {
+  const serial = await sql(
+    db,
+    "SELECT * FROM graph_serial_queue WHERE graph_id=? AND status='pending' ORDER BY sequence LIMIT 1",
+    g.id
+  ).first<{ kind: string; work_id: string }>()
+  if (!serial || serial.kind !== 'execution') return
   const head = await sql(
     db,
-    "SELECT * FROM graph_grading WHERE graph_id=? AND status!='done' ORDER BY sequence LIMIT 1",
-    g.id
+    "SELECT * FROM graph_grading WHERE graph_id=? AND execution_result_id=? AND status!='done' ORDER BY sequence LIMIT 1",
+    g.id,
+    serial.work_id
   ).first<{
     sequence: number
     stage: 'grade' | 'project'
@@ -984,14 +1226,19 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
           local_score: number | null
           goal_score: number | null
           created_at: number
-        }>(db, 'SELECT * FROM graph_evaluations WHERE edge_id=? ORDER BY id', a.edge_id)
+          role: string
+        }>(
+          db,
+          `SELECT e.*,r.role FROM graph_evaluations e JOIN graph_evaluation_revisions r ON r.source_result_id=e.source_result_id WHERE e.edge_id=? AND NOT EXISTS(SELECT 1 FROM graph_evaluation_revisions newer WHERE newer.execution_result_id=r.execution_result_id AND newer.role=r.role AND newer.id>r.id) ORDER BY e.id`,
+          a.edge_id
+        )
       : []
     const unique = new Map<string, { local: number | null; goal: number | null; at: number }>()
     for (const e of evaluations) {
       const previous = unique.get(e.evidence_id) ?? { local: null, goal: null, at: e.created_at }
       unique.set(e.evidence_id, {
-        local: e.local_score ?? previous.local,
-        goal: e.goal_score ?? previous.goal,
+        local: e.role === 'grade' ? e.local_score : previous.local,
+        goal: e.role === 'project' ? e.goal_score : previous.goal,
         at: e.created_at
       })
     }
@@ -1032,12 +1279,36 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
       !['undo', 'reconcile', 'grade', 'project', 'continue', 'repair'].includes(a.role)
     )
       continue
+    let serialAssignment = a
+    if (a.role === 'repair' && a.parent_id)
+      serialAssignment = (await sql(
+        db,
+        'SELECT * FROM graph_assignments WHERE id=?',
+        a.parent_id
+      ).first<Assignment>())!
+    if (['grade', 'project', 'continue'].includes(serialAssignment.role)) {
+      const context = JSON.parse(serialAssignment.input) as Data
+      const work = String(context.serial_work_id ?? context.execution_result_id ?? serialAssignment.id)
+      const head = await sql(
+        db,
+        "SELECT work_id FROM graph_serial_queue WHERE graph_id=? AND status='pending' ORDER BY sequence LIMIT 1",
+        g.id
+      ).first<{ work_id: string }>()
+      if (head?.work_id !== work) continue
+      const running = await sql(
+        db,
+        `SELECT 1 FROM graph_attempts t JOIN graph_assignments active ON active.id=t.assignment_id LEFT JOIN graph_assignments parent ON parent.id=active.parent_id WHERE active.graph_id=? AND t.status IN ('pending','running') AND (active.role IN ('grade','project','continue') OR (active.role='repair' AND parent.role IN ('grade','project','continue'))) LIMIT 1`,
+        g.id
+      ).first()
+      if (running) continue
+    }
     if (a.attempt_count >= a.max_attempts) continue
     if (a.role === 'execute' && executions >= c.policy.capacity) continue
+    const selectionRole = serialAssignment.role
     const primary =
-      a.role === 'decompose'
+      selectionRole === 'decompose'
         ? [c.policy.decomposer]
-        : ['grade', 'project', 'continue', 'reconcile'].includes(a.role)
+        : ['grade', 'project', 'continue', 'reconcile'].includes(selectionRole)
           ? [c.policy.grader]
           : c.policy.agents
     const agentIds = [...new Set([...primary, ...(c.policy.fallback ? [c.policy.fallback] : [])])]
@@ -1114,7 +1385,7 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
         g.team_id,
         agent,
         g.owner_id,
-        `[Graph] ${a.role}`,
+        `[Graph ${g.id.slice(-8)}] ${a.role}`,
         now
       ),
       sql(

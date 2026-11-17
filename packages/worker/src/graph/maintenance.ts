@@ -134,12 +134,12 @@ export async function maintenance(env: Pick<Env, 'DB'>, graphId: string): Promis
       if (!busy) {
         const paths = await rows(
           db,
-          `SELECT n.id,n.title,n.description,n.body,s.reason FROM graph_nodes n JOIN graph_node_states s ON s.id=(SELECT MAX(id) FROM graph_node_states WHERE node_id=n.id) WHERE n.graph_id=? AND s.state='deactivated' AND s.reason='expired'`,
+          `SELECT n.id,n.title,n.description,n.body,s.reason FROM graph_nodes n JOIN graph_node_states s ON s.id=(SELECT MAX(id) FROM graph_node_states WHERE node_id=n.id) WHERE n.graph_id=? AND s.state='deactivated' `,
           g.id
         )
         if (paths.length) {
           const next = await assignment(db, g, 'plan', {
-            task: 'Review expired paths; propose new bounded alternatives. Preserve user gates.',
+            task: 'Review deactivated paths and their reasons. Propose new bounded alternatives; preserve user gates.',
             paths,
             observed_start: g.start_state
           })
@@ -159,12 +159,23 @@ export async function maintenance(env: Pick<Env, 'DB'>, graphId: string): Promis
           "SELECT title,description,body FROM graph_nodes WHERE graph_id=? AND kind='milestone'",
           g.id
         )
-        const next = await assignment(db, g, 'decompose', {
-          goal: g.body,
-          success_rule: c.rule,
-          existing_milestones: milestones,
-          instruction: 'Compare existing decomposition with evidence; return only missing milestones.'
+        const evidence = await rows(db, 'SELECT * FROM graph_evidence WHERE graph_id=?', g.id)
+        const next = await assignment(db, g, 'project', {
+          operation: 'decomposition_review',
+          private_goal: g.body,
+          rule: c.rule,
+          hierarchy: milestones,
+          evidence
         })
+        ops.push(
+          sql(
+            db,
+            "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'assignment',?,?)",
+            g.id,
+            next.id,
+            Date.now()
+          )
+        )
         ops.push(...next.statements)
       }
     }

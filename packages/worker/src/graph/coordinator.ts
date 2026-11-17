@@ -20,6 +20,7 @@ export class GraphCoordinator extends DurableObject<Env> {
       )
         throw new Error('Action Graph dispatch is disabled')
       await this.ctx.storage.put('team_id', body.team_id)
+      await this.ctx.storage.setAlarm(Date.now() + 30_000)
       if (command !== 'tick') await run(this.env.DB, graphId, command, body)
       await maintenance(this.env, graphId)
       await tick(this.env, graphId)
