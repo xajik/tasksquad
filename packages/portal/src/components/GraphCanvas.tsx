@@ -145,13 +145,16 @@ export function GraphCanvas({
     if (!selectedExecution) return path
     let cursor = selectedExecution.id
     for (let guard = 0; guard < 64; guard++) {
-      const incoming = graph.edges.find((e) => e.to_id === cursor)
+      // Follow actions first, then result lineage, so credit visibly reaches the observed start.
+      const incoming =
+        graph.edges.find((e) => e.to_id === cursor) ??
+        links.find((l) => 'lineage' in l && !l.guidance && l.to_id === cursor)
       if (!incoming || path.includes(incoming.id)) break
       path.push(incoming.id)
       cursor = incoming.from_id
     }
     return path
-  }, [graph.edges, selectedExecution])
+  }, [graph.edges, links, selectedExecution])
   const matched = (n: (typeof graph.nodes)[number]) =>
     matchedIds
       ? matchedIds.includes(n.id)
@@ -171,7 +174,7 @@ export function GraphCanvas({
   )
   function score(edge: string) {
     const values = graph.evaluations.filter((e) => e.edge_id === edge && e.local_score !== null)
-    return values[values.length - 1]?.local_score?.toFixed(2) ?? 'unknown'
+    return values[values.length - 1]?.local_score?.toFixed(2) ?? '—'
   }
   function inspectKey(event: React.KeyboardEvent, id: string) {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -380,10 +383,10 @@ export function GraphCanvas({
                         x={label.x + label.width / 2}
                         y={label.y + 15}
                         textAnchor="middle"
-                        className={`text-[10px] ${up ? 'fill-emerald-700 dark:fill-emerald-400 font-medium' : 'fill-muted-foreground'}`}
+                        className={`text-[11px] ${up ? 'fill-emerald-700 dark:fill-emerald-400 font-medium' : 'fill-muted-foreground'}`}
                       >
                         {up ? '↩ ' : ''}
-                        {edge.expected_score?.toFixed(2) ?? '?'} → {score(link.id)}
+                        {edge.expected_score?.toFixed(2) ?? '—'} → {score(link.id)}
                       </text>
                     </g>
                   )
@@ -465,12 +468,12 @@ export function GraphCanvas({
                   strokeWidth={selected === n.id ? 2 : 1}
                   strokeDasharray={guidance ? '6 4' : n.state === 'deactivated' ? '1 3' : undefined}
                 />
-                <text x={14} y={23} className="fill-muted-foreground text-[10px]">
+                <text x={14} y={23} className="fill-muted-foreground text-[12px]">
                   {label}
                   {guidance ? '' : ` · ${n.state}`}
                 </text>
-                <text x={14} y={47} className="fill-foreground text-[12px] font-medium">
-                  {n.title.length > 29 ? n.title.slice(0, 28) + '…' : n.title}
+                <text x={14} y={48} className="fill-foreground text-[14px] font-medium">
+                  {n.title.length > 25 ? n.title.slice(0, 24) + '…' : n.title}
                 </text>
                 {needsAttention && (
                   <a
@@ -483,7 +486,7 @@ export function GraphCanvas({
                     <text
                       x={14}
                       y={66}
-                      className="fill-amber-700 dark:fill-amber-400 text-[10px] font-medium underline"
+                      className="fill-amber-700 dark:fill-amber-400 text-[12px] font-medium underline"
                     >
                       {needsAttention.label} →
                     </text>
