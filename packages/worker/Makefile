@@ -35,3 +35,7 @@ new-migration:
 .PHONY: check
 check:
 	bunx tsc --project tsconfig.check.json --noEmit
+
+.PHONY: format-graph
+format-graph:
+	bunx prettier@3.6.2 --write --no-semi --single-quote --trailing-comma none --print-width 110 src/graph/*.ts src/routes/graphs.ts
