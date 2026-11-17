@@ -88,7 +88,9 @@ export function summarizeResult(role: string, raw: string | null | undefined): R
       return { headline: `Local grade ${num(d.local_score)} for the executed action.`, rows, consequence: 'Accepting records the score and backs it up along the executed path.' }
     case 'project':
       rows.push({ label: 'Goal alignment', value: num(d.goal_score) })
-      rows.push({ label: 'Reason', value: text(d.reason, 320) })
+      rows.push({ label: 'Reason', value: text(d.reason, 420) })
+      if (Array.isArray(d.decomposition_feedback))
+        d.decomposition_feedback.forEach((f, i) => rows.push({ label: `Feedback ${i + 1}`, value: text(f, 320) }))
       return { headline: `Goal alignment ${num(d.goal_score)} (a belief, not proof).`, rows, consequence: 'Accepting records the projection; the goal stays unverified until evidence satisfies the success rule.' }
     case 'continue':
       rows.push({ label: 'Decision', value: text(d.decision) })
