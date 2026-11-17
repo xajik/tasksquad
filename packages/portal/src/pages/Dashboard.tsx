@@ -55,6 +55,7 @@ import {
 } from '@/components/ui/select'
 import {
   Inbox,
+  Network,
   Settings,
   Bot,
   User,
@@ -2805,7 +2806,16 @@ export default function Dashboard() {
             <FileText className="mr-2 h-4 w-4" />
             Notes
             </Button>
-          {import.meta.env.VITE_ACTION_GRAPH_ENABLED === 'true' && <Button variant={isGraph ? 'secondary' : 'ghost'} className="justify-start gap-2" onClick={() => handleNav('/dashboard/graphs')}>Graph</Button>}
+          {import.meta.env.VITE_ACTION_GRAPH_ENABLED === 'true' && (
+            <Button
+              variant={isGraph ? 'secondary' : 'ghost'}
+              className="w-full justify-start mb-1"
+              onClick={() => handleNav('/dashboard/graphs')}
+            >
+              <Network className="mr-2 h-4 w-4" />
+              Graph
+            </Button>
+          )}
             <Button
             variant={isConveyors ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
