@@ -384,8 +384,10 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   if (env.ACTION_GRAPH_ENABLED !== undefined) {
     const capable = agentEntries.filter(e => e.graph_isolation_version === 1)
     if (capable.length) await env.DB.batch(capable.map(e => env.DB.prepare('INSERT INTO graph_agent_capabilities(agent_id,version,seen_at) VALUES(?,1,?) ON CONFLICT(agent_id) DO UPDATE SET version=1,seen_at=excluded.seen_at').bind(e.id,now)))
-    const idle = agentEntries.filter(e => e.status === AgentStatus.Idle && e.task_id)
-    if (idle.length) await env.DB.batch(idle.map(e => env.DB.prepare('UPDATE graph_attempts SET termination_confirmed_at=? WHERE agent_id=? AND task_id=? AND session_id IS NOT NULL').bind(now,e.id,e.task_id)))
+    // The daemon clears its task id on returning to idle, so an idle heartbeat carries none. An idle agent has no
+    // live process, which confirms termination of every attempt already closed out (completed/timeout/cancelled).
+    const idle = agentEntries.filter(e => e.status === AgentStatus.Idle)
+    if (idle.length) await env.DB.batch(idle.map(e => env.DB.prepare("UPDATE graph_attempts SET termination_confirmed_at=? WHERE agent_id=? AND session_id IS NOT NULL AND termination_confirmed_at IS NULL AND status!='running'").bind(now,e.id)))
   }
   const nextPollMs = POLL_BASE_MS + Math.floor(Math.random() * POLL_JITTER_MS)
 
