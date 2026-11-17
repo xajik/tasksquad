@@ -20,3 +20,7 @@ clean:
 
 install:
 	bun install
+
+.PHONY: format-graph
+format-graph:
+	bunx prettier@3.6.2 --write --no-semi --single-quote --trailing-comma none --print-width 110 src/lib/graph.ts src/pages/Graphs.tsx src/components/GraphCanvas.tsx
