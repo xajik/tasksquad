@@ -283,6 +283,19 @@ private actor WorkspaceTransport: HTTPTransport {
         XCTAssertEqual(rows.first, 1, "record list shows the fixture task")
     }
 
+    /// Polling that finds nothing new must not redraw the window. Every redraw
+    /// rebuilds the toolbar, which showed as it flickering every poll.
+    func testRefreshingUnchangedDataDoesNotRedrawTheWindow() async throws {
+        let model = fixture(); await model.restore()
+        model.section = .inbox; model.selectedID = "item-1"
+        await model.refresh(); await model.refresh()
+        var redraws = 0
+        let subscription = model.objectWillChange.sink { redraws += 1 }
+        for _ in 0..<5 { await model.refresh() }
+        subscription.cancel()
+        XCTAssertEqual(redraws, 0, "five identical refreshes redrew the window \(redraws) times")
+    }
+
     /// The window restores a saved session by itself when it appears, with no
     /// help from the caller: this is what happens when the installed app launches.
     func testWindowRestoresTheSavedSessionOnItsOwn() async throws {

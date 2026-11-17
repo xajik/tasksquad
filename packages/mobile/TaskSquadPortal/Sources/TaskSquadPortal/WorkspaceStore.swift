@@ -107,8 +107,11 @@ import Combine
     private func load(loadMore: Bool) async {
         guard !projectID.isEmpty else { return }
         let key = context, team = projectID, section = section, requestID = UUID(), loadedCount = records.count
-        refreshID = requestID; loading = records.isEmpty
-        defer { if refreshID == requestID { loading = false } }
+        refreshID = requestID
+        // @Published emits on every assignment, even of an equal value, and every
+        // emission redraws the window: set only when the value changes.
+        if loading != records.isEmpty { loading = records.isEmpty }
+        defer { if refreshID == requestID, loading { loading = false } }
         do {
             async let agents = api.request(["teams", team, "agents"])
             var query: [String: String] = [:]
@@ -141,14 +144,19 @@ import Combine
             }
             let agentResponse = try await agents
             guard key == context, refreshID == requestID, !Task.isCancelled else { return }
-            self.agents = CustomerRecord(agentResponse).records("agents")
+            // A poll that finds nothing new must not publish: every publish redraws
+            // the window, its toolbar included, so assign only what changed.
+            let nextAgents = CustomerRecord(agentResponse).records("agents")
+            if self.agents != nextAgents { self.agents = nextAgents }
             if loadMore {
                 var seen = Set(records.map(\.id))
                 records += values.filter { seen.insert($0.id).inserted }
-            } else { records = values }
-            hasMore = CustomerRecord(response).flag("has_more")
-            rollups = nextRollups
-            refreshedAt = Date(); error = nil
+            } else if records != values { records = values }
+            let more = CustomerRecord(response).flag("has_more")
+            if hasMore != more { hasMore = more }
+            if rollups != nextRollups { rollups = nextRollups }
+            if refreshedAt == nil { refreshedAt = Date() } // Only "has loaded" is used.
+            if error != nil { error = nil }
         } catch { if key == context, refreshID == requestID { handle(error) } }
     }
     nonisolated public static func operationKey(_ path: [String], method: String) -> String { method + " " + path.joined(separator: "/") }

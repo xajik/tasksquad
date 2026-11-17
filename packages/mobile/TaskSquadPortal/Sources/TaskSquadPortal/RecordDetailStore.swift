@@ -18,8 +18,9 @@ import Combine
         let key = workspace.context, section = workspace.section, project = workspace.projectID
         let nextScope = key + ":" + id
         if scope != nextScope { reset(); scope = nextScope }
-        let request = UUID(); generation = request; loading = detail == nil
-        defer { if generation == request { loading = false } }
+        let request = UUID(); generation = request
+        if loading != (detail == nil) { loading = detail == nil }
+        defer { if generation == request, loading { loading = false } }
         do {
             let next: CustomerRecord?
             if [.agents, .members, .conveyors].contains(section) { next = workspace.records.first { $0.id == id } }
@@ -37,7 +38,12 @@ import Combine
                 nextRelated = ((try? await workspace.api.request(["teams", project, "conveyors", id, "tasks"])).map { CustomerRecord($0).records("tasks") }) ?? []
             }
             guard key == workspace.context, generation == request, !Task.isCancelled else { return }
-            detail = next; messages = nextMessages; comments = nextComments; related = nextRelated; error = nil
+            // Assign only what changed: each publish redraws the window.
+            if detail != next { detail = next }
+            if messages != nextMessages { messages = nextMessages }
+            if comments != nextComments { comments = nextComments }
+            if related != nextRelated { related = nextRelated }
+            if error != nil { error = nil }
         } catch {
             guard key == workspace.context, generation == request, !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return }
             self.error = error.localizedDescription
