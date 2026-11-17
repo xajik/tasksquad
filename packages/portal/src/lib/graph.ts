@@ -18,6 +18,12 @@ export interface GraphPolicy {
   maintenance_ms: number
   freshness_ms: number
 }
+export interface GraphSearchHit {
+  id: string
+  title: string
+  description: string
+  body: string
+}
 export interface GraphRule {
   op: 'AND' | 'OR'
   predicates: string[]
@@ -173,7 +179,7 @@ export const graphApi = {
       body: JSON.stringify(body)
     }),
   search: (team: string, graph: string, q: string) =>
-    request<{ nodes: GraphNode[]; resources: GraphResource[] }>(
+    request<{ nodes: GraphSearchHit[]; resources: GraphResource[]; edges: GraphSearchHit[] }>(
       `${base(team)}/${graph}/search?q=${encodeURIComponent(q)}`
     )
 }

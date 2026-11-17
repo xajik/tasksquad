@@ -9,7 +9,7 @@ import {
   type NewGraph,
   type GraphPolicy,
   type GraphResult,
-  type GraphNode,
+  type GraphSearchHit,
   type GraphResource
 } from '../lib/graph'
 import { Button } from '@/components/ui/button'
@@ -300,7 +300,11 @@ export function Graphs({
     [selected, setSelected] = useState<string | null>(null)
   const [input, setInput] = useState<Record<string, string>>({}),
     [resourceOpen, setResourceOpen] = useState(false)
-  const [matches, setMatches] = useState<{ nodes: GraphNode[]; resources: GraphResource[] } | null>(null)
+  const [matches, setMatches] = useState<{
+    nodes: GraphSearchHit[]
+    resources: GraphResource[]
+    edges: GraphSearchHit[]
+  } | null>(null)
   const generation = useRef(0),
     searchRef = useRef<HTMLInputElement>(null)
   const refresh = useCallback(async () => {
@@ -639,6 +643,11 @@ export function Graphs({
               {matches.nodes.map((n) => (
                 <Button size="sm" variant="outline" key={n.id} onClick={() => setSelected(n.id)}>
                   {n.title}
+                </Button>
+              ))}
+              {(matches.edges ?? []).map((e) => (
+                <Button size="sm" variant="outline" key={e.id} onClick={() => setSelected(e.id)}>
+                  {e.title}
                 </Button>
               ))}
               {matches.resources.map((r) => (
