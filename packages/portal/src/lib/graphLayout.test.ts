@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { layoutGraph, intersects, segmentHits, type LayoutNode, type LayoutEdge } from './graphLayout'
+import {
+  layoutGraph,
+  projectionRoute,
+  intersects,
+  segmentHits,
+  type LayoutNode,
+  type LayoutEdge
+} from './graphLayout'
 const node = (id: string, kind = 'observed', created_at = 0): LayoutNode => ({ id, kind, created_at })
 const edge = (id: string, from_id: string, to_id: string): LayoutEdge => ({ id, from_id, to_id })
 function assertClear(layout: ReturnType<typeof layoutGraph>, edges: LayoutEdge[]) {
@@ -49,6 +56,39 @@ describe('execution graph layout', () => {
     const layout = layoutGraph(nodes, edges, true)
     expect(layout.positions.size).toBe(5)
     assertClear(layout, edges)
+  })
+  it('keeps the goal hierarchy RTL and all acyclic execution actions LTR', () => {
+    const nodes = [
+      node('goal', 'goal'),
+      node('m1', 'milestone'),
+      node('m2', 'milestone'),
+      ...['a', 'b', 'c', 'd'].map((id) => node(id))
+    ]
+    const edges = [
+      { ...edge('g1', 'goal', 'm1'), lineage: true },
+      { ...edge('g2', 'm1', 'm2'), lineage: true },
+      edge('ab', 'a', 'b'),
+      edge('bc', 'b', 'c'),
+      edge('cd', 'c', 'd'),
+      edge('ad', 'a', 'd')
+    ]
+    const layout = layoutGraph(nodes, edges, true)
+    for (const e of edges) {
+      const a = layout.positions.get(e.from_id)!,
+        b = layout.positions.get(e.to_id)!
+      if (e.id.startsWith('g')) {
+        expect(a.x).toBeGreaterThan(b.x)
+        expect(layout.edges.get(e.id)!.points[0].x).toBe(a.x)
+      } else expect(a.x).toBeLessThan(b.x)
+    }
+    assertClear(layout, edges)
+    const before = [...layout.positions].map(([id, b]) => [id, { ...b }])
+    const projection = projectionRoute(layout, 'd', 'goal')
+    expect(projection.length).toBeGreaterThan(2)
+    for (let i = 1; i < projection.length; i++)
+      for (const box of layout.positions.values())
+        expect(segmentHits(projection[i - 1], projection[i], box)).toBe(false)
+    expect([...layout.positions]).toEqual(before)
   })
   it('routes branches, long edges, cycles, parallel edges and self loops around cards and labels', () => {
     const nodes = Array.from({ length: 12 }, (_, i) => node(String(i), 'outcome', i))

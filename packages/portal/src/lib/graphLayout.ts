@@ -145,6 +145,64 @@ function route(start: Point, end: Point, obstacles: Box[], bounds: Box, occupied
   throw new Error('Unable to route graph edge around obstacles')
 }
 
+/** Condense cycles before ranking so every inter-component execution edge flows LTR. */
+function flowRanks(ids: string[], outgoing: Map<string, string[]>) {
+  let clock = 0
+  const index = new Map<string, number>(),
+    low = new Map<string, number>(),
+    stack: string[] = [],
+    active = new Set<string>(),
+    components: string[][] = []
+  function visit(id: string) {
+    index.set(id, clock)
+    low.set(id, clock++)
+    stack.push(id)
+    active.add(id)
+    for (const next of outgoing.get(id) ?? []) {
+      if (!index.has(next)) {
+        visit(next)
+        low.set(id, Math.min(low.get(id)!, low.get(next)!))
+      } else if (active.has(next)) low.set(id, Math.min(low.get(id)!, index.get(next)!))
+    }
+    if (low.get(id) === index.get(id)) {
+      const members: string[] = []
+      let member: string
+      do {
+        member = stack.pop()!
+        active.delete(member)
+        members.push(member)
+      } while (member !== id)
+      components.push(members)
+    }
+  }
+  ids.forEach((id) => {
+    if (!index.has(id)) visit(id)
+  })
+  const owner = new Map<string, number>()
+  components.forEach((members, i) => members.forEach((id) => owner.set(id, i)))
+  const targets = components.map(() => new Set<number>()),
+    incoming = components.map(() => 0),
+    ranks = components.map(() => 0)
+  for (const id of ids)
+    for (const next of outgoing.get(id) ?? []) {
+      const a = owner.get(id)!,
+        b = owner.get(next)!
+      if (a !== b && !targets[a].has(b)) {
+        targets[a].add(b)
+        incoming[b]++
+      }
+    }
+  const queue = components.map((_, i) => i).filter((i) => incoming[i] === 0)
+  while (queue.length) {
+    const a = queue.shift()!
+    for (const b of targets[a]) {
+      ranks[b] = Math.max(ranks[b], ranks[a] + 1)
+      if (--incoming[b] === 0) queue.push(b)
+    }
+  }
+  return new Map(ids.map((id) => [id, ranks[owner.get(id)!]]))
+}
+
 export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], includeGuidance = false) {
   const nodes = allNodes
     .filter((n) => includeGuidance || !isGuidance(n))
@@ -155,12 +213,10 @@ export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], incl
       .sort((a, b) => a.id.localeCompare(b.id))
   const neighbors = new Map(nodes.map((n) => [n.id, new Set<string>()]))
   const outgoing = new Map(nodes.map((n) => [n.id, [] as string[]]))
-  const incoming = new Map(nodes.map((n) => [n.id, 0]))
   for (const e of edges) {
     neighbors.get(e.from_id)!.add(e.to_id)
     neighbors.get(e.to_id)!.add(e.from_id)
     outgoing.get(e.from_id)!.push(e.to_id)
-    incoming.set(e.to_id, incoming.get(e.to_id)! + 1)
   }
   const positions = new Map<string, Box>(),
     visited = new Set<string>()
@@ -179,22 +235,7 @@ export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], incl
           pending.push(next)
         }
     }
-    const ranks = new Map<string, number>()
-    let roots = component.filter((id) => incoming.get(id) === 0)
-    if (!roots.length)
-      roots = [component.find((id) => nodes.find((n) => n.id === id)?.kind === 'observed') ?? component[0]]
-    const queue = [...roots]
-    roots.forEach((id) => ranks.set(id, 0))
-    while (queue.length) {
-      const id = queue.shift()!
-      for (const next of outgoing.get(id)!)
-        if (!ranks.has(next)) {
-          ranks.set(next, ranks.get(id)! + 1)
-          queue.push(next)
-        }
-    }
-    // Disconnected direction / cycle entry points still pack into unique slots.
-    for (const id of component) if (!ranks.has(id)) ranks.set(id, 0)
+    const ranks = flowRanks(component, outgoing)
     const columns = new Map<number, string[]>()
     for (const id of component) {
       const rank = ranks.get(id)!
@@ -212,6 +253,13 @@ export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], incl
       )
     top += rows * 140 + 64
   }
+  // Share one canvas while mirroring only planning hierarchy, never execution.
+  const right = Math.max(48 + NODE_WIDTH, ...[...positions.values()].map((box) => box.x + box.width))
+  for (const node of nodes)
+    if (isGuidance(node)) {
+      const box = positions.get(node.id)!
+      box.x = 48 + right - box.x - box.width
+    }
   const nodeBoxes = [...positions.values()],
     obstacleBoxes = nodeBoxes.map((b) => expanded(b))
   const maxX = Math.max(480, ...nodeBoxes.map((b) => b.x + b.width)),
@@ -230,8 +278,13 @@ export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], incl
   edges.forEach((edge, index) => {
     const a = positions.get(edge.from_id)!,
       b = positions.get(edge.to_id)!
-    const start = { x: a.x + a.width + PAD, y: portY(a, sourceGroups.get(edge.from_id)!, edge) }
-    const end = { x: b.x - PAD, y: portY(b, targetGroups.get(edge.to_id)!, edge) }
+    const rtl =
+      isGuidance(nodes.find((n) => n.id === edge.from_id)!) &&
+      isGuidance(nodes.find((n) => n.id === edge.to_id)!)
+    const sourceX = rtl ? a.x : a.x + a.width,
+      targetX = rtl ? b.x + b.width : b.x
+    const start = { x: sourceX + (rtl ? -PAD : PAD), y: portY(a, sourceGroups.get(edge.from_id)!, edge) }
+    const end = { x: targetX + (rtl ? PAD : -PAD), y: portY(b, targetGroups.get(edge.to_id)!, edge) }
     const lane = 24 + index * 10
     const path = route(
       start,
@@ -252,7 +305,7 @@ export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], incl
           (path[i - 1].y === p.y && p.y === path[i + 1].y)
         )
     )
-    const points = [{ x: a.x + a.width, y: start.y }, ...simplified, { x: b.x, y: end.y }]
+    const points = [{ x: sourceX, y: start.y }, ...simplified, { x: targetX, y: end.y }]
     let label: Box | null = null
     if (!edge.lineage) {
       const segments = points
@@ -300,4 +353,38 @@ export function layoutGraph(allNodes: LayoutNode[], allEdges: LayoutEdge[], incl
       height: Math.max(280, ...points.map((p) => p.y)) - minY + 28
     }
   }
+}
+
+/** Selection-only overlay: route without repacking the canvas or moving its viewport. */
+export function projectionRoute(layout: ReturnType<typeof layoutGraph>, fromId: string, goalId: string) {
+  const a = layout.positions.get(fromId),
+    b = layout.positions.get(goalId)
+  if (!a || !b || fromId === goalId) return []
+  const below = b.y >= a.y + a.height,
+    above = b.y + b.height <= a.y
+  let source: Point, target: Point, start: Point, end: Point
+  if (below || above) {
+    const direction = below ? 1 : -1
+    source = { x: a.x + a.width / 2, y: below ? a.y + a.height : a.y }
+    target = { x: b.x + b.width / 2, y: below ? b.y : b.y + b.height }
+    start = { x: source.x, y: source.y + direction * PAD }
+    end = { x: target.x, y: target.y - direction * PAD }
+  } else {
+    const direction = b.x > a.x ? 1 : -1
+    source = { x: direction > 0 ? a.x + a.width : a.x, y: a.y + a.height / 2 }
+    target = { x: direction > 0 ? b.x : b.x + b.width, y: b.y + b.height / 2 }
+    start = { x: source.x + direction * PAD, y: source.y }
+    end = { x: target.x - direction * PAD, y: target.y }
+  }
+  const obstacles = [
+    ...[...layout.positions.values()].map((box) => expanded(box)),
+    ...[...layout.edges.values()].flatMap((e) => (e.label ? [expanded(e.label, 6)] : []))
+  ]
+  const bounds = {
+    x: layout.bounds.x + 8,
+    y: layout.bounds.y + 8,
+    width: layout.bounds.width - 16,
+    height: layout.bounds.height - 16
+  }
+  return [source, ...route(start, end, obstacles, bounds, new Set()), target]
 }
