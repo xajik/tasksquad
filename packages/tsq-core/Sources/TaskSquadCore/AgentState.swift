@@ -136,7 +136,7 @@ public struct AgentState: Sendable, Equatable {
 
     public func heartbeat(agentID: String, uptimeMilliseconds: Int64) -> JSONValue {
         var object: [String: JSONValue] = ["id": .string(agentID), "status": .string(mode.rawValue),
-                                          "daemon_uptime_ms": .number(Double(uptimeMilliseconds))]
+                                          "daemon_uptime_ms": .number(Double(uptimeMilliseconds)), "graph_isolation_version": .number(1)]
         if mode == .learning { object["close_step_idx"] = .number(Double(executedSteps.count)) }
         if portalActive { object["portal_active"] = .bool(true) }
         if !taskID.isEmpty { object["task_id"] = .string(taskID); object["tui_blocked"] = .bool(tuiBlocked) }

@@ -76,6 +76,11 @@ func TestResumeTarget(t *testing.T) {
 	if got := claude.resumeTarget(task("claude-code", id)); got != id {
 		t.Fatalf("got %q, want %q", got, id)
 	}
+	graphTask := task("claude-code", id)
+	graphTask["graph"] = map[string]any{"isolation_version": 1}
+	if got := claude.resumeTarget(graphTask); got != "" {
+		t.Fatalf("graph roles must start a fresh provider session, got %q", got)
+	}
 	if got := claude.resumeTarget(map[string]any{"id": "t"}); got != "" {
 		t.Fatalf("task without resume: got %q", got)
 	}

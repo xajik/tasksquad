@@ -73,6 +73,7 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 				"id":               a.Config.ID,
 				"status":           a.st.Mode(),
 				"daemon_uptime_ms": uptimeMs,
+                "graph_isolation_version": 1,
 			}
 			if a.st.ModeValue() == ModeLearning {
 				_, executed := a.st.CloseSteps()

@@ -91,6 +91,11 @@ func buildBasePrompt(subject string, rawMsgs any) string {
 }
 
 func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup string) {
+	_, graphTask := task["graph"].(map[string]any)
+	if graphTask {
+		memoryRollup = ""
+	}
+
 	taskID, _ := task["id"].(string)
 	subject, _ := task["subject"].(string)
 
@@ -225,7 +230,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 		}
 	} else {
 		prompt = buildConversationPrompt(subject, msgs, memoryRollup)
-		prompt = injectKBNote(prompt, a.Config.WorkDir)
+		if !graphTask {
+			prompt = injectKBNote(prompt, a.Config.WorkDir)
+		}
 	}
 	a.st.mu.Lock()
 	a.st.lastPrompt = prompt
@@ -526,6 +533,10 @@ func (a *Agent) finishPipeTurn(cfg *config.Config) bool {
 // resume and the session is in the CLI's local store (it isn't after a switch
 // of machine or provider, or once the CLI has pruned it).
 func (a *Agent) resumeTarget(task map[string]any) string {
+	if _, graphTask := task["graph"].(map[string]any); graphTask {
+		return ""
+	}
+
 	r, _ := task["resume"].(map[string]any)
 	if r == nil {
 		return ""

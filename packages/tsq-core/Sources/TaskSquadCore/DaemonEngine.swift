@@ -314,7 +314,7 @@ public actor DaemonEngine {
                 Log.info("[\(name(id))] Task received: \(task["id"]?.string ?? "") — \"\(task["subject"]?.string ?? "")\"")
                 analytics.track("task_received", ["task_id": .string(task["id"]?.string ?? ""), "agent_id": .string(id),
                                                   "agent_name": .string(agent.configuration.name)])
-                beginTask(agentID: id, task: task, memoryRollup: item["memory_rollup"]?.string ?? "")
+                beginTask(agentID: id, task: task, memoryRollup: task["graph"] == nil ? (item["memory_rollup"]?.string ?? "") : "")
             } else if mode == .idle {
                 Log.debug("[\(name(id))] No pending tasks")
             }
@@ -416,8 +416,8 @@ public actor DaemonEngine {
                 try? await artifacts?.writeTimestamped("[EVENT] event=resuming cli_session=\(resumeID)")
                 try? await artifacts?.event(["type": "resume", "provider": provider.rawValue, "cli_session_id": resumeID])
             } else {
-                prompt = Self.injectKBNote(TaskPrompt.build(subject: subject, messages: messages, memoryRollup: memoryRollup),
-                                           workDir: agent.configuration.workDir)
+                let supplied = TaskPrompt.build(subject: subject, messages: messages, memoryRollup: task["graph"] == nil ? memoryRollup : "")
+                prompt = task["graph"] == nil ? Self.injectKBNote(supplied, workDir: agent.configuration.workDir) : supplied
             }
             agents[agentID]?.lastPrompt = prompt
             recordTyped(agentID: agentID, prompt)
@@ -720,7 +720,7 @@ public actor DaemonEngine {
     /// only when this agent's provider can resume and the session is in the CLI's
     /// local store (Go: Agent.resumeTarget).
     private func resumeTarget(agent: AgentRuntime, task: JSONValue) async -> String? {
-        guard let resume = task["resume"], let id = resume["session_id"]?.string,
+        guard task["graph"] == nil, let resume = task["resume"], let id = resume["session_id"]?.string,
               resume["provider"]?.string == agent.provider.rawValue, agent.provider.resumable,
               ProviderKind.validResumeID(id) else { return nil }
         guard await agent.provider.canResume(id: id, command: agent.configuration.command, workDir: agent.configuration.workDir,
