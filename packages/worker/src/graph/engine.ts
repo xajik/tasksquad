@@ -1081,14 +1081,13 @@ export async function accept(
         ops.push(sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", parent.id))
       else {
         // A fresh attempt is explicit; context records checkpoint semantics for the executor.
-        if (
-          actionable(parent.role) &&
-          !(await sql(
-            db,
-            'SELECT id FROM graph_attempts WHERE assignment_id=? AND (session_id IS NULL OR termination_confirmed_at IS NOT NULL) ORDER BY epoch DESC LIMIT 1',
-            parent.id
-          ).first())
-        )
+        // Judge the newest attempt: an older confirmed attempt must not mask a live later one.
+        const latest = await sql(
+          db,
+          'SELECT session_id,termination_confirmed_at FROM graph_attempts WHERE assignment_id=? ORDER BY epoch DESC LIMIT 1',
+          parent.id
+        ).first<{ session_id: string | null; termination_confirmed_at: number | null }>()
+        if (actionable(parent.role) && latest && latest.session_id && !latest.termination_confirmed_at)
           throw new Error('Previous process has not confirmed termination')
         if (
           actionable(parent.role) &&
