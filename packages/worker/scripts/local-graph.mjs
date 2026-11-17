@@ -616,8 +616,9 @@ try {
     }),
     { mode: 0o600 }
   )
+  const graphState = await query('SELECT status FROM graphs WHERE id=?', graphId).first()
   console.log(
-    `\nLocal Graph test environment (${mode} agents)\nPortal: ${portalBase}/dashboard/graphs/${graphId}\nAPI: ${apiBase}\nSandbox: ${sandbox}\nSample graph is Draft. Press Run to begin. Each role requires your review.\nCtrl+C stops this local environment; data persists in ${runtime}.\n`
+    `\nLocal Graph test environment (${mode} agents)\nPortal: ${portalBase}/dashboard/graphs/${graphId}\nAPI: ${apiBase}\nSandbox: ${sandbox}\nSample graph status: ${graphState.status}. Use Run to start or resume. Each role requires your review.\nCtrl+C stops this local environment; data persists in ${runtime}.\n`
   )
   if (mode === 'daemon') {
     const state = path.join(runtime, 'daemon-state')
