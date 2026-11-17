@@ -13,7 +13,7 @@ const result = spawnSync('claude', [
   '--restricted', '--safe-mode', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
   '--tools', tools, '--allowedTools', tools, '--permission-mode', 'acceptEdits',
   '--permission-prompts', 'none',
-  `${prompt}\n\nLocal runtime: work only inside ${process.cwd()}.${prompt.includes("matching this closed schema") ? ` Read ${clock} for now_ms and expires_at_ms when reporting evidence timestamps. This clock is runtime metadata, not a separate goal or action. Return only the required JSON. For resource_versions, copy exact resource IDs from context; do not append @version or other suffixes. from_id must be an active observed state ID, never an unexecuted milestone or goal.` : ""}`
+  `${prompt}\n\nLocal runtime: work only inside ${process.cwd()}.${prompt.includes("matching this closed schema") ? ` Read ${clock} for now_ms and expires_at_ms when reporting evidence timestamps. This clock is runtime metadata unique to this invocation, not a separate goal or action. Earlier role results legitimately cite their own invocation clocks, which differ from yours. Return only the required JSON. For resource_versions, copy exact resource IDs from context; do not append @version or other suffixes. from_id must be an active observed state ID, never an unexecuted milestone or goal.` : ""}`
 ], { stdio: 'inherit', env: {...process.env, CLAUDE_CODE_SAFE_MODE: '1'} })
 if (result.error) console.error(result.error.message)
 process.exit(result.status ?? 1)

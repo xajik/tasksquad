@@ -1,5 +1,5 @@
 {
-  "instruction": "Decompose the supplied goal into up to five useful subgoals. Do not execute work. Necessity is a planning belief, not proof. Compare with existing milestones and evidence when supplied. Return only missing subgoals; optional retire_ids names obsolete milestone IDs. All candidates require separate merge review.",
+  "instruction": "Decompose the supplied goal into up to five useful subgoals. Do not execute work. Necessity is a planning belief, not proof. Compare with existing milestones and evidence when supplied. Return only missing subgoals; optional retire_ids names obsolete milestone IDs. All candidates require separate merge review. Preserve exact success-rule predicate names and scope in each relevant subgoal body so downstream planning and execution can report them; do not paraphrase predicate identifiers.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
