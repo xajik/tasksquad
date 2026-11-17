@@ -14,14 +14,13 @@ public enum WorkspacePolicy {
     public static func canCreate(section: WorkspaceSection, project: String, role: String, isPro: Bool, agents: [CustomerRecord], records: [CustomerRecord]) -> Bool {
         guard !project.isEmpty else { return false }
         if [.inbox, .notes].contains(section) { return true }
-        if section == .portals { return isPro && agents.contains(where: portalAgent) && records.filter { PortalLifecycle.isLive($0.status) }.count < 3 }
+        if section == .portals { return isPro && records.filter { PortalLifecycle.isLive($0.status) }.count < 3 }
         if section == .members { return role == "owner" }
         return canManage(role: role) && ![.supervisor, .memory, .analytics, .settings].contains(section)
     }
     /// Why a new Portal cannot be opened right now, or nil when it can.
-    public static func portalBlocker(isPro: Bool, agents: [CustomerRecord], records: [CustomerRecord]) -> String? {
+    public static func portalBlocker(isPro: Bool, records: [CustomerRecord]) -> String? {
         if !isPro { return "Portals require Pro." }
-        if !agents.contains(where: portalAgent) { return "Portals need an agent that is active or idle. Start the daemon to bring an agent online." }
         if records.filter({ PortalLifecycle.isLive($0.status) }).count >= 3 { return "Three Portals are already open. Close one to open another." }
         return nil
     }

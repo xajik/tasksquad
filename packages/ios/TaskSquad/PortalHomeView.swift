@@ -274,7 +274,6 @@ struct MobileSectionScreen: View {
     }
     private var portalNote: String? {
         if !model.isPro { return "Interactive Portals require an eligible account." }
-        if model.portalAgents.isEmpty { return "No available agents. Bring an agent online to open a Portal." }
         if model.records.filter({ PortalLifecycle.isLive($0.status) }).count >= 3 { return "Three sessions are active. Close one to open another." }
         return nil
     }
