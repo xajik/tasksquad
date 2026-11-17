@@ -532,6 +532,7 @@ export async function processResults(db: D1Database, g: Graph): Promise<void> {
     try {
       const parsed = parseResult(original.role as keyof typeof templates, r.raw)
       assertEvidenceResources(original, parsed as Data)
+      await assertReconcileRestoration(db, original, parsed as Data)
       r.parsed = json(parsed)
     } catch (e) {
       const ops = [
@@ -568,6 +569,22 @@ export async function processResults(db: D1Database, g: Graph): Promise<void> {
       }
     }
   }
+}
+
+/** A 'restored' reconcile must verify every restoration predicate by exact text; checked at parse so repair can fix it. */
+async function assertReconcileRestoration(db: D1Database, original: Assignment, d: Data): Promise<void> {
+  if (original.role !== 'reconcile' || d.decision !== 'terminated_restored') return
+  const prior = await sql(db, 'SELECT * FROM graph_assignments WHERE id=?', original.parent_id).first<Assignment>()
+  const predicates = (((JSON.parse(prior?.input ?? '{}') as Data).plan as Data | undefined)?.restoration_predicates ??
+    []) as string[]
+  const evidence = (d.evidence as Data[]) ?? []
+  const missing = predicates.filter(
+    (p) => !evidence.some((e) => e.predicate === p && e.value === 'true' && Number(e.expires_at) > Date.now())
+  )
+  if (!predicates.length || missing.length)
+    throw new Error(
+      `Restoration predicates are not verified; report evidence with these exact predicate strings: ${JSON.stringify(predicates)}`
+    )
 }
 
 /** Evidence must cite a resource version supplied with the plan; checked when parsing so a repair can fix it. */

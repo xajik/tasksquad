@@ -1,5 +1,5 @@
 {
-  "instruction": "Confirm termination of the previous process and independently reconcile its external effects against the saved baseline. Do not start replacement execution. If termination or effects are uncertain return unknown. Every evidence.resource_id must be exactly one of the resource IDs listed in the plan's resource_versions; never invent paths or names.",
+  "instruction": "Confirm termination of the previous process and independently reconcile its external effects against the saved baseline. Do not start replacement execution. If termination or effects are uncertain return unknown. Every evidence.resource_id must be exactly one of the resource IDs listed in the plan's resource_versions; never invent paths or names. For each restoration predicate in the plan, report one evidence item whose predicate is that predicate copied character for character, with value 'true' only when you verified it; do not paraphrase predicate text.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
