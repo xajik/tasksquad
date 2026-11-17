@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { GraphCanvas } from '@/components/GraphCanvas'
+import { isGuidance } from '@/lib/graphLayout'
 
 const errorText = (error: unknown) =>
   error instanceof Error
@@ -510,7 +511,8 @@ export function Graphs({
                       ? 'Not met'
                       : 'Unverified'}
                 </b>{' '}
-                · {current.status} · {current.nodes.length} nodes · {current.edges.length} edges
+                · {current.status} · {current.nodes.filter((n) => !isGuidance(n)).length} execution states ·{' '}
+                {current.edges.length} actions · {current.nodes.filter(isGuidance).length} guidance items
               </p>
             </div>
             {isMaintainer && (
@@ -693,9 +695,14 @@ export function Graphs({
               {node ? (
                 <>
                   <Badge variant="outline">
-                    {node.kind} · {node.state}
+                    {isGuidance(node) ? `Guidance · ${node.kind}` : `${node.kind} · ${node.state}`}
                     {node.reason ? ` / ${node.reason}` : ''}
                   </Badge>
+                  {isGuidance(node) && (
+                    <p className="text-xs text-muted-foreground">
+                      Guidance for planning. This item is not an execution state.
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-1">
                     {node.tags?.map((tag) => (
                       <Badge variant="secondary" key={tag}>
@@ -731,7 +738,9 @@ export function Graphs({
                   )}
                   <p>{node.description}</p>
                   <p className="whitespace-pre-wrap">{node.body}</p>
-                  <p className="text-xs text-muted-foreground">Observed {stamp(node.created_at)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {isGuidance(node) ? 'Created' : 'Observed'} {stamp(node.created_at)}
+                  </p>
                 </>
               ) : edge ? (
                 <>

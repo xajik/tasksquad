@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Network } from 'lucide-react'
 import type { GraphSnapshot } from '@/lib/graph'
+import { isGuidance, layoutGraph } from '@/lib/graphLayout'
 import { Button } from './ui/button'
 
-/** SVG keeps graph navigation accessible without a large canvas dependency. */
+/** Guidance and execution share a canvas, with distinct styling and relationships. */
 export function GraphCanvas({
   graph,
   selected,
@@ -19,30 +21,92 @@ export function GraphCanvas({
   const [zoom, setZoom] = useState(1),
     [offset, setOffset] = useState({ x: 0, y: 0 })
   const drag = useRef<{ x: number; y: number; origin: { x: number; y: number } } | null>(null)
-  const positions = useMemo(() => {
-    const result = new Map<string, { x: number; y: number }>(),
-      counts: Record<number, number> = {}
-    for (const n of graph.nodes) {
-      const lane = n.kind === 'observed' ? 0 : n.kind === 'milestone' ? 1 : n.kind === 'goal' ? 3 : 2
-      const row = counts[lane] ?? 0
-      counts[lane] = row + 1
-      result.set(n.id, { x: 40 + lane * 230, y: 50 + row * 100 + (lane % 2) * 80 })
-    }
-    return result
-  }, [graph.nodes])
-  const height = Math.max(400, ...[...positions.values()].map((p) => p.y + 100))
+  const nodes = graph.nodes
+  const ids = new Set(nodes.map((n) => n.id))
+  const links = [
+    ...graph.edges.filter(
+      (e) =>
+        ids.has(e.from_id) &&
+        ids.has(e.to_id) &&
+        !isGuidance(nodes.find((n) => n.id === e.from_id)!) &&
+        !isGuidance(nodes.find((n) => n.id === e.to_id)!)
+    ),
+    ...nodes
+      .filter(
+        (n) =>
+          n.parent_id &&
+          ids.has(n.parent_id) &&
+          isGuidance(n) === isGuidance(nodes.find((parent) => parent.id === n.parent_id)!) &&
+          !graph.edges.some((e) => e.from_id === n.parent_id && e.to_id === n.id)
+      )
+      .map((n) => ({
+        id: `lineage-${n.id}`,
+        from_id: n.parent_id!,
+        to_id: n.id,
+        lineage: true,
+        guidance: isGuidance(n)
+      }))
+  ]
+  // Polling updates titles, reviews and scores without moving the viewport.
+  const topology = JSON.stringify({
+    nodes: nodes
+      .map(({ id, kind, created_at }) => ({ id, kind, created_at }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+    edges: links
+      .map((e) => ({ id: e.id, from_id: e.from_id, to_id: e.to_id, lineage: 'lineage' in e }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+  })
+  const layout = useMemo(() => {
+    const data = JSON.parse(topology)
+    return layoutGraph(data.nodes, data.edges, true)
+  }, [topology])
+  function fit() {
+    setZoom(1)
+    setOffset({ x: 0, y: 0 })
+  }
+  useEffect(() => {
+    setZoom(1)
+    setOffset({ x: 0, y: 0 })
+  }, [graph.id, topology])
+  const matched = (n: (typeof graph.nodes)[number]) =>
+    matchedIds
+      ? matchedIds.includes(n.id)
+      : !search || `${n.title} ${n.description} ${n.body}`.toLowerCase().includes(search.toLowerCase())
+  const observedResults = new Set(
+    graph.results
+      .filter(
+        (r) =>
+          r.status === 'accepted' &&
+          ['execute', 'undo'].includes(
+            graph.assignments.find(
+              (a) => a.id === graph.attempts.find((t) => t.id === r.attempt_id)?.assignment_id
+            )?.role ?? ''
+          )
+      )
+      .map((r) => r.id)
+  )
   function score(edge: string) {
-    const values = graph.evaluations.filter((e) => e.edge_id === edge)
-    const locals = values.filter((e) => e.local_score !== null)
-    const latest = locals[locals.length - 1]
-    return latest?.local_score?.toFixed(2) ?? 'unknown'
+    const values = graph.evaluations.filter((e) => e.edge_id === edge && e.local_score !== null)
+    return values[values.length - 1]?.local_score?.toFixed(2) ?? 'unknown'
+  }
+  function inspectKey(event: React.KeyboardEvent, id: string) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onSelect(id)
+    }
   }
   return (
     <div className="min-w-0 bg-muted/10">
-      <div className="flex items-center justify-between px-4 py-2 border-b">
-        <span className="text-sm text-muted-foreground">
-          Observed context → competing actions → measurable goal
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b">
+        <div>
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <Network className="h-4 w-4" />
+            Action graph
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Dashed cards: goals & milestones · Solid cards: execution states
+          </p>
+        </div>
         <div className="flex gap-1">
           <Button
             variant="ghost"
@@ -52,30 +116,26 @@ export function GraphCanvas({
           >
             −
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setZoom(1)
-              setOffset({ x: 0, y: 0 })
-            }}
-          >
+          <Button variant="ghost" size="sm" onClick={fit}>
             Fit
+          </Button>
+          <Button variant="ghost" size="sm" aria-label="Regroup graph" onClick={fit}>
+            Regroup
           </Button>
           <Button
             variant="ghost"
             size="sm"
             aria-label="Zoom in"
-            onClick={() => setZoom((z) => Math.min(2.5, z + 0.2))}
+            onClick={() => setZoom((z) => Math.min(6, z + 0.2))}
           >
             +
           </Button>
         </div>
       </div>
       <svg
-        aria-label="Action graph: select a node or action"
+        aria-label="Action graph: guidance, execution states and actions"
         role="group"
-        viewBox={`0 0 950 ${height}`}
+        viewBox={`${layout.bounds.x} ${layout.bounds.y} ${layout.bounds.width} ${layout.bounds.height}`}
         className="w-full min-h-80 max-h-[650px] touch-none"
         onPointerDown={(e) => {
           if ((e.target as Element).closest('[data-entity]')) return
@@ -84,7 +144,8 @@ export function GraphCanvas({
         }}
         onPointerMove={(e) => {
           if (!drag.current) return
-          const scale = 950 / e.currentTarget.getBoundingClientRect().width
+          const rect = e.currentTarget.getBoundingClientRect()
+          const scale = Math.max(layout.bounds.width / rect.width, layout.bounds.height / rect.height)
           setOffset({
             x: drag.current.origin.x + (e.clientX - drag.current.x) * scale,
             y: drag.current.origin.y + (e.clientY - drag.current.y) * scale
@@ -97,8 +158,12 @@ export function GraphCanvas({
           drag.current = null
         }}
       >
-        <title>{graph.title}</title>
-        <desc>Use Tab and Enter to inspect nodes and actions. Drag the background to pan.</desc>
+        <title>{graph.title} — goals, milestones, execution states and actions</title>
+        <desc>
+          Dashed goal and milestone cards provide planning guidance; solid state cards participate in
+          execution. Use Tab and Enter to inspect states and actions. Drag the background to pan. New states
+          trigger automatic regrouping and collision-aware routing.
+        </desc>
         <defs>
           <marker
             id="graph-arrow"
@@ -113,103 +178,112 @@ export function GraphCanvas({
           </marker>
         </defs>
         <g transform={`translate(${offset.x} ${offset.y}) scale(${zoom})`}>
-          {graph.nodes
-            .filter((n) => n.parent_id && positions.has(n.parent_id))
-            .map((n) => {
-              const a = positions.get(n.parent_id!)!,
-                b = positions.get(n.id)!
-              return (
-                <path
-                  key={`lineage-${n.id}`}
-                  d={`M${a.x + 85},${a.y + 62} Q${a.x + 85},${b.y + 85} ${b.x + 85},${b.y + 62}`}
-                  fill="none"
-                  className="stroke-border"
-                  strokeDasharray="4 4"
-                >
-                  <title>
-                    {n.kind === 'milestone' ? 'Goal decomposition hypothesis' : 'Observed lineage'}
-                  </title>
-                </path>
-              )
-            })}
-          {graph.edges.map((e) => {
-            const a = positions.get(e.from_id),
-              b = positions.get(e.to_id)
-            if (!a || !b) return null
-            const path = `M${a.x + 170},${a.y + 25} C${a.x + 220},${a.y + 25} ${b.x - 50},${b.y + 25} ${b.x},${b.y + 25}`
+          {links.map((link) => {
+            const geometry = layout.edges.get(link.id)
+            if (!geometry) return null
+            const lineage = 'lineage' in link
+            const guidance = 'guidance' in link && link.guidance
+            const edge = graph.edges.find((e) => e.id === link.id)
+            const id = lineage ? link.to_id : link.id
+            const path = geometry.points.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ')
             return (
               <g
-                key={e.id}
-                data-entity={e.id}
+                key={link.id}
+                data-entity={id}
+                data-edge={link.id}
                 role="button"
                 tabIndex={0}
-                aria-label={`Inspect action ${e.title}, expected ${e.expected_score?.toFixed(2) ?? 'unknown'}, observed ${score(e.id)}`}
-                onClick={() => onSelect(e.id)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    onSelect(e.id)
-                  }
-                }}
+                aria-label={
+                  lineage
+                    ? guidance
+                      ? 'Inspect planning hierarchy'
+                      : 'Inspect observed result lineage'
+                    : `Inspect action ${edge!.title}, expected ${edge!.expected_score?.toFixed(2) ?? 'unknown'}, observed ${score(link.id)}`
+                }
+                onClick={() => onSelect(id)}
+                onKeyDown={(e) => inspectKey(e, id)}
                 className="cursor-pointer"
               >
                 <path
                   d={path}
                   fill="none"
-                  className={selected === e.id ? 'stroke-primary' : 'stroke-muted-foreground'}
-                  strokeWidth={selected === e.id ? 3 : 1.5}
-                  markerEnd="url(#graph-arrow)"
+                  className={
+                    selected === id ? 'stroke-primary' : lineage ? 'stroke-border' : 'stroke-muted-foreground'
+                  }
+                  strokeWidth={selected === id ? 2.5 : 1.5}
+                  strokeDasharray={lineage ? '5 4' : undefined}
+                  markerEnd={lineage ? undefined : 'url(#graph-arrow)'}
+                  strokeLinejoin="round"
                 />
-                <path d={path} fill="none" stroke="transparent" strokeWidth={18} />
-                <text
-                  x={(a.x + b.x + 170) / 2}
-                  y={(a.y + b.y) / 2 + 15}
-                  textAnchor="middle"
-                  className="fill-muted-foreground text-[10px]"
-                >
-                  {e.expected_score?.toFixed(2) ?? 'unknown'} → {score(e.id)}
-                </text>
+                <path d={path} fill="none" stroke="transparent" strokeWidth={14} />
+                <title>
+                  {lineage
+                    ? guidance
+                      ? 'Planning guidance hierarchy'
+                      : 'Observed result lineage'
+                    : `${edge!.title} · expected ${edge!.expected_score?.toFixed(2) ?? 'unknown'} · observed ${score(link.id)}`}
+                </title>
+                {geometry.label && edge && (
+                  <g data-edge-label={link.id}>
+                    <rect {...geometry.label} rx={5} className="fill-background stroke-border" />
+                    <text
+                      x={geometry.label.x + geometry.label.width / 2}
+                      y={geometry.label.y + 15}
+                      textAnchor="middle"
+                      className="fill-muted-foreground text-[10px]"
+                    >
+                      {edge.expected_score?.toFixed(2) ?? '?'} → {score(link.id)}
+                    </text>
+                  </g>
+                )}
               </g>
             )
           })}
-          {graph.nodes.map((n) => {
-            const p = positions.get(n.id)!
-            const matched = matchedIds
-              ? matchedIds.includes(n.id)
-              : !search ||
-                `${n.title} ${n.description} ${n.body}`.toLowerCase().includes(search.toLowerCase())
+          {nodes.map((n) => {
+            const p = layout.positions.get(n.id)!
+            const observed =
+              n.kind === 'observed' || (n.source_result_id && observedResults.has(n.source_result_id))
+            const guidance = isGuidance(n)
+            const label = guidance
+              ? n.kind === 'goal'
+                ? `Goal · guidance · ${graph.goal_verification === 'true' ? 'Verified' : graph.goal_verification === 'false' ? 'Not met' : 'Unverified'}`
+                : 'Milestone · guidance'
+              : observed
+                ? 'Observed state'
+                : n.kind === 'restoration'
+                  ? 'Restoration'
+                  : 'Proposed state'
             return (
               <g
                 key={n.id}
                 transform={`translate(${p.x},${p.y})`}
                 data-entity={n.id}
+                data-execution-node={guidance ? undefined : n.id}
+                data-guidance={guidance ? n.id : undefined}
                 role="button"
                 tabIndex={0}
-                aria-label={`${n.title}: ${n.kind}, ${n.state}`}
+                aria-label={`${n.title}: ${label}${guidance ? '' : `, ${n.state}`}`}
                 onClick={() => onSelect(n.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    onSelect(n.id)
-                  }
-                }}
+                onKeyDown={(e) => inspectKey(e, n.id)}
                 className="cursor-pointer"
-                opacity={matched ? 1 : 0.25}
+                opacity={matched(n) ? (n.state === 'deactivated' ? 0.5 : 1) : 0.25}
               >
                 <rect
-                  width={170}
-                  height={62}
-                  rx={6}
-                  className={`${selected === n.id ? 'stroke-primary' : 'stroke-border'} ${n.kind === 'goal' ? 'fill-secondary' : 'fill-background'}`}
+                  width={p.width}
+                  height={p.height}
+                  rx={8}
+                  className={`${selected === n.id ? 'stroke-primary' : guidance ? 'stroke-muted-foreground' : 'stroke-border'} ${guidance ? 'fill-secondary/40' : 'fill-background'}`}
                   strokeWidth={selected === n.id ? 2 : 1}
-                  strokeDasharray={n.state === 'deactivated' ? '4 3' : undefined}
+                  strokeDasharray={guidance ? '6 4' : n.state === 'deactivated' ? '1 3' : undefined}
                 />
-                <text x={12} y={24} className="fill-foreground text-[12px]">
-                  {n.title.length > 23 ? n.title.slice(0, 22) + '…' : n.title}
+                <text x={14} y={23} className="fill-muted-foreground text-[10px]">
+                  {label}
+                  {guidance ? '' : ` · ${n.state}`}
                 </text>
-                <text x={12} y={44} className="fill-muted-foreground text-[10px]">
-                  {n.kind} · {n.kind === 'goal' ? graph.goal_verification : n.state}
+                <text x={14} y={47} className="fill-foreground text-[12px] font-medium">
+                  {n.title.length > 29 ? n.title.slice(0, 28) + '…' : n.title}
                 </text>
+                <title>{n.title}</title>
               </g>
             )
           })}
