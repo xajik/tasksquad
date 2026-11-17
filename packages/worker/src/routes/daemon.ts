@@ -1,3 +1,4 @@
+import { bindStatement, intake } from '../graph/engine.js'
 import { ulid } from 'ulidx'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
@@ -194,6 +195,7 @@ async function processAgentHeartbeat(
     return { agent_id: agentId, ok: true, next_poll_ms: nextPollMs }
   }
 
+  const graphRecoveryGuard = env.ACTION_GRAPH_ENABLED !== undefined ? ' AND NOT EXISTS (SELECT 1 FROM graph_attempts ga WHERE ga.task_id = tasks.id)' : ''
   // Idle: heal tasks left in 'running' or 'wrapping_up' state by a daemon crash/restart.
   // 'running' → reset to 'pending' so the task is retried.
   // 'wrapping_up' → set to 'done': close sequence is the final phase; just complete it.
@@ -203,15 +205,16 @@ async function processAgentHeartbeat(
         status = CASE status WHEN ? THEN ? WHEN ? THEN ? END,
         completed_at = CASE status WHEN ? THEN ? ELSE NULL END
       WHERE id = (SELECT current_task_id FROM agent_state WHERE agent_id = ?)
-        AND status IN (?, ?)
+        AND status IN (?, ?) ${graphRecoveryGuard}
     `).bind(TaskStatus.Running, TaskStatus.Pending, TaskStatus.WrappingUp, TaskStatus.Done, TaskStatus.WrappingUp, now, agentId, TaskStatus.Running, TaskStatus.WrappingUp),
     env.DB.prepare("UPDATE agent_state SET current_task_id = NULL, current_session = NULL, updated_at = ? WHERE agent_id = ? AND current_task_id IS NOT NULL")
       .bind(now, agentId),
   ])
 
+  const graphDispatchGuard = env.ACTION_GRAPH_ENABLED !== undefined ? " AND (NOT EXISTS (SELECT 1 FROM graph_attempts ga WHERE ga.task_id=t.id) OR EXISTS (SELECT 1 FROM graph_attempts ga WHERE ga.task_id=t.id AND ga.status='pending'))" : ''
   // Idle: query for pending task
   const task = await env.DB
-    .prepare("SELECT t.id, t.subject, t.settings, t.resume_provider, t.resume_session_id FROM tasks t WHERE t.agent_id = ? AND t.status = ? ORDER BY t.created_at ASC LIMIT 1")
+    .prepare(`SELECT t.id, t.subject, t.settings, t.resume_provider, t.resume_session_id FROM tasks t WHERE t.agent_id = ? AND t.status = ? ${graphDispatchGuard} ORDER BY t.created_at ASC LIMIT 1`)
     .bind(agentId, TaskStatus.Pending)
     .first<{ id: string; subject: string; settings: string | null; resume_provider: string | null; resume_session_id: string | null }>()
 
@@ -253,11 +256,12 @@ async function processAgentHeartbeat(
     // resumes it instead of replaying the thread as plain text.
     const resume = parseResume(task.resume_provider, task.resume_session_id)
 
+    const graphAssignment = env.ACTION_GRAPH_ENABLED !== undefined ? await env.DB.prepare(`SELECT a.role,t.id AS attempt_id,t.epoch FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE t.task_id=? AND t.status='pending'`).bind(task.id).first<{role:string;attempt_id:string;epoch:number}>() : null
     return {
       agent_id: agentId,
       ok: true,
-      task: { id: task.id, subject: task.subject, messages, ...(resume ? { resume } : {}) },
-      ...(memoryRollup ? { memory_rollup: memoryRollup } : {}),
+      task: { id: task.id, subject: task.subject, messages, ...(!graphAssignment && resume ? { resume } : {}), ...(graphAssignment ? { graph: { ...graphAssignment, isolation_version: 1 } } : {}) },
+      ...(!graphAssignment && memoryRollup ? { memory_rollup: memoryRollup } : {}),
       next_poll_ms: nextPollMs,
     }
   }
@@ -356,7 +360,7 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
  * the entire batch when all agents are idle and nothing has changed.
  */
 export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Promise<Response> {
-  type AgentEntry = { id: string; status: string; close_step_idx?: number; portal_active?: boolean; daemon_uptime_ms?: number; task_id?: string; tui_blocked?: boolean }
+  type AgentEntry = { id: string; status: string; close_step_idx?: number; portal_active?: boolean; graph_isolation_version?: number; daemon_uptime_ms?: number; task_id?: string; tui_blocked?: boolean }
   const body = await req
     .json<{ agents?: Array<AgentEntry> }>()
     .catch(() => ({} as { agents?: Array<AgentEntry> }))
@@ -377,6 +381,12 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   if (authResult instanceof Response) return authResult
 
   const now = Date.now()
+  if (env.ACTION_GRAPH_ENABLED !== undefined) {
+    const capable = agentEntries.filter(e => e.graph_isolation_version === 1)
+    if (capable.length) await env.DB.batch(capable.map(e => env.DB.prepare('INSERT INTO graph_agent_capabilities(agent_id,version,seen_at) VALUES(?,1,?) ON CONFLICT(agent_id) DO UPDATE SET version=1,seen_at=excluded.seen_at').bind(e.id,now)))
+    const idle = agentEntries.filter(e => e.status === AgentStatus.Idle && e.task_id)
+    if (idle.length) await env.DB.batch(idle.map(e => env.DB.prepare('UPDATE graph_attempts SET termination_confirmed_at=? WHERE agent_id=? AND task_id=? AND session_id IS NOT NULL').bind(now,e.id,e.task_id)))
+  }
   const nextPollMs = POLL_BASE_MS + Math.floor(Math.random() * POLL_JITTER_MS)
 
   // Run conveyor check once per hour per team
@@ -537,6 +547,7 @@ export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon:
     )
   }
 
+  if (env.ACTION_GRAPH_ENABLED !== undefined) openOps.push(...await bindStatement(env.DB, task_id, agentId, sessionId))
   await env.DB.batch(openOps)
 
   await notifyTeamMembers(env, task_id, `${task.agent_name} picked up a task`, task.subject)
@@ -553,6 +564,8 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   const { session_id, status = SessionStatus.Closed, final_text } = body
   const agentId = daemon.agentId
   if (!session_id) return err('missing_fields', 400)
+  const graphResult = await captureGraphResult(env, session_id, agentId, final_text ?? '', status === SessionStatus.Closed || status === SessionStatus.WaitingInput)
+  if (graphResult) return graphResult
 
   if (status === SessionStatus.Detached) {
     return sessionDetach(env, daemon, session_id, body.resume_failed === true)
@@ -747,6 +760,8 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
   const resume = parseResume(body.provider, body.provider_session_id)
   const agentId = daemon.agentId
   if (!session_id || !message) return err('missing_fields', 400)
+  const graphResult = await captureGraphResult(env, session_id, agentId, message)
+  if (graphResult) return graphResult
 
   const session = await env.DB
     .prepare('SELECT s.task_id, t.subject, t.auto_close, a.name as agent_name FROM sessions s JOIN tasks t ON t.id = s.task_id JOIN agents a ON a.id = s.agent_id WHERE s.id = ? AND s.agent_id = ?')
@@ -1153,3 +1168,24 @@ export async function sessionState(req: Request, env: Env, _ctx: unknown): Promi
   return json({ states })
 }
 
+
+/** Graph finals never flow through ordinary completion hooks or learning exports. */
+async function captureGraphResult(env: Env, sessionId: string, agentId: string, text: string, completed = true): Promise<Response | null> {
+  if (env.ACTION_GRAPH_ENABLED === undefined) return null
+  const attempt = await env.DB.prepare(`SELECT t.id,t.status,t.task_id,a.graph_id,g.team_id
+    FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id JOIN graphs g ON g.id=a.graph_id
+    WHERE t.session_id=? AND t.agent_id=?`).bind(sessionId,agentId).first<{id:string;status:string;task_id:string;graph_id:string;team_id:string}>()
+  if (!attempt) return null
+  if (!completed && attempt.status === 'running') {
+    await env.DB.prepare('UPDATE graph_attempts SET deadline=? WHERE id=?').bind(Date.now(),attempt.id).run()
+    await env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(attempt.team_id)).command(attempt.graph_id,'tick',{team_id:attempt.team_id})
+    return json({ok:true,close:true,session_id:sessionId,graph_reconciliation:true})
+  }
+  const graphId = await intake(env,sessionId,agentId,text)
+
+  if (graphId) {
+    try { await env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(attempt.team_id)).command(graphId,'tick',{team_id:attempt.team_id}) } catch(error) {console.error(JSON.stringify({event:'graph_result_wake_failed',graph_id:graphId,error:String(error)}))}
+  }
+  const result=await env.DB.prepare('SELECT id FROM graph_results WHERE attempt_id=?').bind(attempt.id).first<{id:string}>()
+  return json({ok:true,close:true,session_id:sessionId,message_id:result?.id??null,graph_result:true})
+}
