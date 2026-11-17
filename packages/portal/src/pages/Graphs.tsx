@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { GraphCanvas } from '@/components/GraphCanvas'
 import { isGuidance } from '@/lib/graphLayout'
+import { goalProjection } from '@/lib/graphProjection'
 
 const errorText = (error: unknown) =>
   error instanceof Error
@@ -405,6 +406,7 @@ export function Graphs({
   }
   const node = current?.nodes.find((n) => n.id === selected),
     edge = current?.edges.find((e) => e.id === selected)
+  const projection = current && node && !isGuidance(node) ? goalProjection(current, node.id) : null
   const reviews = current?.results.filter((r) => r.status === 'review') ?? [],
     blocked =
       current?.assignments.filter(
@@ -702,6 +704,38 @@ export function Graphs({
                     <p className="text-xs text-muted-foreground">
                       Guidance for planning. This item is not an execution state.
                     </p>
+                  )}
+                  {projection && (
+                    <section
+                      aria-label="Projection towards goal"
+                      className="rounded border border-blue-500/20 bg-blue-500/5 p-3 space-y-2"
+                    >
+                      <h4 className="font-medium">Projection towards goal</h4>
+                      <p>
+                        {projection.evaluated
+                          ? `Goal alignment: ${projection.score === null ? 'Unknown' : projection.score.toFixed(2)}`
+                          : 'Not evaluated'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{projection.reason}</p>
+                      <p className="text-xs">
+                        Goal verification:{' '}
+                        {current.goal_verification === 'true'
+                          ? 'Verified'
+                          : current.goal_verification === 'false'
+                            ? 'Not met'
+                            : 'Unverified'}
+                      </p>
+                      {projection.evidenceIds.length > 0 && (
+                        <details>
+                          <summary className="cursor-pointer text-xs">Projection evidence</summary>
+                          <ul className="text-xs break-all mt-2 list-disc pl-4">
+                            {projection.evidenceIds.map((id) => (
+                              <li key={id}>{id}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </section>
                   )}
                   <div className="flex flex-wrap gap-1">
                     {node.tags?.map((tag) => (
