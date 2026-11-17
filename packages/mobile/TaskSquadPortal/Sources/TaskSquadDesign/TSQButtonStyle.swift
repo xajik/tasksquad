@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// Maps the app's button roles onto system button styles, so buttons get the
-/// platform's metrics, focus ring, pressed and disabled states, and accent colour.
+/// Maps the app's button roles onto the system Liquid Glass button styles, so
+/// buttons get the platform's metrics, focus ring, pressed and disabled states,
+/// and accent colour: prominent glass for the one primary action, glass for the
+/// rest, borderless for icon buttons.
 public struct TSQButtonStyle: PrimitiveButtonStyle {
     public enum Variant { case `default`, secondary, ghost, outline, destructive }
     public enum Size { case `default`, sm, icon }
@@ -15,9 +17,9 @@ public struct TSQButtonStyle: PrimitiveButtonStyle {
     }
     @ViewBuilder private func styled(_ button: Button<PrimitiveButtonStyleConfiguration.Label>) -> some View {
         switch variant {
-        case .default: button.buttonStyle(.borderedProminent)
-        case .destructive: button.buttonStyle(.borderedProminent).tint(TSQTheme.destructive)
-        case .secondary, .outline: button.buttonStyle(.bordered)
+        case .default: button.buttonStyle(.glassProminent)
+        case .destructive: button.buttonStyle(.glassProminent).tint(TSQTheme.destructive)
+        case .secondary, .outline: button.buttonStyle(.glass)
         case .ghost: button.buttonStyle(.borderless)
         }
     }
