@@ -53,3 +53,9 @@ format-local-graph:
 .PHONY: graph-local-check
 graph-local-check:
 	node --check scripts/local-graph.mjs
+	node --check ../daemon/scripts/local-graph-daemon/claude.mjs
+
+.PHONY: graph-local-daemon
+graph-local-daemon:
+	$(MAKE) -C ../daemon build-local-graph
+	node scripts/local-graph.mjs --agents daemon

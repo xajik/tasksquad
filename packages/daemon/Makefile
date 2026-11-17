@@ -21,6 +21,14 @@ build:
 build-debug:
 	go build -tags debug $(LDFLAGS) -o tsq .
 
+.PHONY: build-local-graph format-local-graph
+build-local-graph:
+	mkdir -p ../../.runtime/action-graph-local
+	go build -o ../../.runtime/action-graph-local/local-daemon ./scripts/local-graph-daemon
+
+format-local-graph:
+	gofmt -w config/config.go logger/logger.go tasklog/tasklog.go hookauth/auth.go scripts/local-graph-daemon/main.go config/config_test.go provider/claw_test.go
+
 build-all:
 	mkdir -p dist
 	GOOS=darwin  GOARCH=arm64 go build $(LDFLAGS) -o dist/tsq-darwin-arm64 .

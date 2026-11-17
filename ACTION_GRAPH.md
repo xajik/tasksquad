@@ -74,6 +74,23 @@ cannot establish success.
 
 ## Local verification
 
+For real daemon polling and provider lifecycle with real Claude model calls:
+
+```bash
+make -C packages/worker graph-local-daemon
+```
+
+This builds a headless development entry point around the shipping Go daemon's
+heartbeat, assignment handling, process spawning, terminal relay and session
+callbacks. Its `stdout` provider runs a restricted Claude adapter. It uses
+`TSQ_STATE_DIR` for local logs, task journals, device ID and hook capabilities,
+and process-local credential storage; it never changes the login Keychain,
+autostart or the installed daemon. The normal approximately 60-second polling
+interval applies. The hook server uses port 17374. R2 presigned log uploads need
+cloud credentials and are not configured here; full logs remain in
+`.runtime/action-graph-local/daemon-state/`. This mode does not test interactive
+tmux providers or the desktop daemon UI.
+
 Start the real Worker and portal with an isolated local database and CLI agents:
 
 ```bash

@@ -18,7 +18,8 @@ const apiBase = `http://127.0.0.1:${apiPort}`
 const portalBase = `http://127.0.0.1:${portalPort}`
 const modeIndex = process.argv.indexOf('--agents')
 const mode = modeIndex < 0 ? 'claude' : process.argv[modeIndex + 1]
-if (!['claude', 'deterministic'].includes(mode)) throw new Error('--agents must be claude or deterministic')
+if (!['claude', 'deterministic', 'daemon'].includes(mode))
+  throw new Error('--agents must be claude, deterministic or daemon')
 const ids = {
   user: 'local-graph-owner',
   team: 'local-graph-project',
@@ -31,6 +32,7 @@ const scenario = 'reversible-file-v2'
 const tasks = new Map()
 let stopping = false
 let frontend
+let daemon
 let mf
 let timer
 let token
@@ -99,6 +101,11 @@ print(json.dumps(statements))
     for (const sql of statements) await db.prepare(sql).run()
     await query('INSERT INTO local_graph_migrations(name,hash) VALUES(?,?)', filename, hash).run()
   }
+  // Migration 0016 was historically a no-op after a manual production ALTER.
+  // Complete that prerequisite for a fresh, isolated local database.
+  const messageColumns = (await db.prepare('PRAGMA table_info(messages)').all()).results
+  if (!messageColumns.some((column) => column.name === 'json_payload'))
+    await db.prepare('ALTER TABLE messages ADD COLUMN json_payload TEXT').run()
 }
 
 async function seed() {
@@ -523,6 +530,7 @@ async function shutdown() {
   stopping = true
   clearInterval(timer)
   for (const active of tasks.values()) kill(active.child)
+  daemon?.kill('SIGTERM')
   frontend?.kill('SIGTERM')
   await delay(3500)
   await mf?.dispose()
@@ -611,12 +619,45 @@ try {
   console.log(
     `\nLocal Graph test environment (${mode} agents)\nPortal: ${portalBase}/dashboard/graphs/${graphId}\nAPI: ${apiBase}\nSandbox: ${sandbox}\nSample graph is Draft. Press Run to begin. Each role requires your review.\nCtrl+C stops this local environment; data persists in ${runtime}.\n`
   )
-  await poll()
-  timer = setInterval(() => {
-    void poll()
-  }, 1500)
+  if (mode === 'daemon') {
+    const state = path.join(runtime, 'daemon-state')
+    await mkdir(state, { recursive: true, mode: 0o700 })
+    const configFile = path.join(runtime, 'daemon.toml')
+    const adapter = path.join(root, 'packages/daemon/scripts/local-graph-daemon/claude.mjs')
+    await writeFile(
+      configFile,
+      `[server]\nurl = "${apiBase}"\npoll_interval = 60\n[hooks]\nport = 17374\n[analytics]\nenabled = false\n` +
+        [
+          [ids.executor, 'Local Explorer'],
+          [ids.grader, 'Local Reviewer']
+        ]
+          .map(
+            ([id, name]) =>
+              `[[agents]]\nid = "${id}"\nname = "${name}"\ncommand = "node ${adapter}${id === ids.grader ? ' --read-only' : ''}"\nprovider = "stdout"\nwork_dir = "${sandbox}"\n`
+          )
+          .join(''),
+      { mode: 0o600 }
+    )
+    daemon = spawn(
+      path.join(runtime, 'local-daemon'),
+      ['--config', configFile, '--session', path.join(runtime, 'session.json')],
+      { env: { ...process.env, TSQ_STATE_DIR: state }, stdio: ['ignore', 'inherit', 'inherit'] }
+    )
+    daemon.once('exit', (code) => {
+      if (!stopping) {
+        console.error(`Local daemon exited ${code}`)
+        void shutdown()
+      }
+    })
+  } else {
+    await poll()
+    timer = setInterval(() => {
+      void poll()
+    }, 1500)
+  }
 } catch (error) {
   console.error(error)
+  daemon?.kill('SIGTERM')
   frontend?.kill('SIGTERM')
   await mf?.dispose()
   process.exit(1)
