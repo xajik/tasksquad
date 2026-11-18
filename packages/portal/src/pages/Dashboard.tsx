@@ -1775,7 +1775,7 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
   const [creating, setCreating] = useState(false)
   const [newToken, setNewToken] = useState<{ agentId: string; token: string; agentName: string } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'claude' | 'gemini' | 'opencode' | 'codex'>('claude')
+  const [activeTab, setActiveTab] = useState<'codex' | 'claude' | 'opencode' | 'pi'>('codex')
   const [editingRole, setEditingRole] = useState<{ agentId: string; name: string; role: string } | null>(null)
   const [savingRole, setSavingRole] = useState(false)
   const [showHowItWorks, setShowHowItWorks] = useState(false)
@@ -2090,8 +2090,8 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
       {newToken && (() => {
         const config = activeTab === 'claude' 
           ? { cmd: 'claude --dangerously-skip-permissions', dir: '~/Projects/my-tasksquad-project' }
-          : activeTab === 'gemini'
-          ? { cmd: 'gemini --yolo', dir: '~/Projects/my-tasksquad-project' }
+          : activeTab === 'pi'
+          ? { cmd: 'pi', dir: '~/Projects/my-tasksquad-project' }
           : activeTab === 'opencode'
           ? { cmd: 'opencode', dir: '~/Projects/my-tasksquad-project' }
           : { cmd: 'codex --yolo', dir: '~/Projects/my-tasksquad-project' }
@@ -2108,43 +2108,25 @@ work_dir = "${config.dir}"`
             <CardHeader>
               <CardTitle className="text-green-700 dark:text-green-400">Token generated</CardTitle>
               <CardDescription className="mb-4">Choose your agent and copy the config</CardDescription>
-              <div className="flex bg-muted p-1 rounded-lg text-sm gap-1 w-fit">
-                <button 
-                  onClick={() => setActiveTab('claude')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-md transition-all font-medium",
-                    activeTab === 'claude' ? "bg-blue-600 text-white shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                  )}
-                >
-                  Claude
-                </button>
-                <button 
-                  onClick={() => setActiveTab('gemini')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-md transition-all font-medium",
-                    activeTab === 'gemini' ? "bg-purple-600 text-white shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                  )}
-                >
-                  Gemini
-                </button>
-                <button 
-                  onClick={() => setActiveTab('opencode')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-md transition-all font-medium",
-                    activeTab === 'opencode' ? "bg-orange-600 text-white shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                  )}
-                >
-                  OpenCode
-                </button>
-                <button 
-                  onClick={() => setActiveTab('codex')}
-                  className={cn(
-                    "px-4 py-1.5 rounded-md transition-all font-medium",
-                    activeTab === 'codex' ? "bg-green-600 text-white shadow-md" : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                  )}
-                >
-                  Codex
-                </button>
+              <div className="flex flex-wrap bg-muted p-1 rounded-lg text-sm gap-1 w-fit">
+                {([
+                  { id: 'codex', label: 'Codex', activeClass: 'bg-green-600 text-white shadow-md' },
+                  { id: 'claude', label: 'Claude', activeClass: 'bg-blue-600 text-white shadow-md' },
+                  { id: 'opencode', label: 'OpenCode', activeClass: 'bg-orange-600 text-white shadow-md' },
+                  { id: 'pi', label: 'PI', activeClass: 'bg-purple-600 text-white shadow-md' },
+                ] as const).map(provider => (
+                  <button
+                    key={provider.id}
+                    onClick={() => setActiveTab(provider.id)}
+                    aria-pressed={activeTab === provider.id}
+                    className={cn(
+                      "px-4 py-1.5 rounded-md transition-all font-medium",
+                      activeTab === provider.id ? provider.activeClass : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                    )}
+                  >
+                    {provider.label}
+                  </button>
+                ))}
               </div>
             </CardHeader>
             <CardContent>
