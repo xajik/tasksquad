@@ -4,6 +4,8 @@ import { graphHelp, type GraphHelpKey } from '@/lib/graphHelp'
 
 const WIDTH = 320
 const MARGIN = 12
+/** Only one help popup is open at a time, even when the pointer jumps between buttons. */
+let closeActive: (() => void) | null = null
 
 /** A small (i) button that shows an explanation and two examples on hover or keyboard focus. The popup is portalled to the page body so a transformed dialog never offsets or clips it. */
 export function FieldHelp({ field }: { field: GraphHelpKey }) {
@@ -11,14 +13,16 @@ export function FieldHelp({ field }: { field: GraphHelpKey }) {
   const button = useRef<HTMLButtonElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null)
   const id = useId()
+  const close = useCallback(() => setPos(null), [])
   const open = useCallback(() => {
+    if (closeActive && closeActive !== close) closeActive()
+    closeActive = close
     const rect = button.current?.getBoundingClientRect()
     if (!rect) return
     const left = Math.min(Math.max(MARGIN, rect.left + rect.width / 2 - WIDTH / 2), window.innerWidth - WIDTH - MARGIN)
     const above = rect.bottom + 220 > window.innerHeight && rect.top > 240
     setPos({ left, top: above ? rect.top - 8 : rect.bottom + 8, above })
-  }, [])
-  const close = useCallback(() => setPos(null), [])
+  }, [close])
   return (
     <span className="inline-flex" onMouseEnter={open} onMouseLeave={close}>
       <button
