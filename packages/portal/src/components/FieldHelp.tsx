@@ -1,10 +1,11 @@
 import { useCallback, useId, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { graphHelp, type GraphHelpKey } from '@/lib/graphHelp'
 
 const WIDTH = 320
 const MARGIN = 12
 
-/** A small (i) button that shows an explanation and two examples on hover or keyboard focus. The popup is fixed-position so dialog scrolling never clips it. */
+/** A small (i) button that shows an explanation and two examples on hover or keyboard focus. The popup is portalled to the page body so a transformed dialog never offsets or clips it. */
 export function FieldHelp({ field }: { field: GraphHelpKey }) {
   const help = graphHelp[field]
   const button = useRef<HTMLButtonElement>(null)
@@ -32,22 +33,24 @@ export function FieldHelp({ field }: { field: GraphHelpKey }) {
       >
         i
       </button>
-      {pos && (
-        <span
-          id={id}
-          role="tooltip"
-          style={{ left: pos.left, top: pos.top, width: WIDTH, transform: pos.above ? 'translateY(-100%)' : undefined }}
-          className="pointer-events-none fixed z-[100] space-y-2 rounded-md border bg-popover p-3 text-xs font-normal leading-snug text-popover-foreground shadow-lg"
-        >
-          <span className="block">{help.what}</span>
-          {help.examples.map((example, i) => (
-            <span key={i} className="block rounded bg-muted px-2 py-1 whitespace-pre-line">
-              <span className="font-semibold">Example {i + 1}: </span>
-              {example}
-            </span>
-          ))}
-        </span>
-      )}
+      {pos &&
+        createPortal(
+          <span
+            id={id}
+            role="tooltip"
+            style={{ left: pos.left, top: pos.top, width: WIDTH, transform: pos.above ? 'translateY(-100%)' : undefined }}
+            className="pointer-events-none fixed z-[100] space-y-2 rounded-md border bg-popover p-3 text-xs font-normal leading-snug text-popover-foreground shadow-lg"
+          >
+            <span className="block">{help.what}</span>
+            {help.examples.map((example, i) => (
+              <span key={i} className="block rounded bg-muted px-2 py-1 whitespace-pre-line">
+                <span className="font-semibold">Example {i + 1}: </span>
+                {example}
+              </span>
+            ))}
+          </span>,
+          document.body
+        )}
     </span>
   )
 }
