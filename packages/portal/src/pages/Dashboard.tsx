@@ -2812,7 +2812,6 @@ export default function Dashboard() {
             <FileText className="mr-2 h-4 w-4" />
             Notes
             </Button>
-          {import.meta.env.VITE_ACTION_GRAPH_ENABLED === 'true' && (
             <Button
               variant={isGraph ? 'secondary' : 'ghost'}
               className="w-full justify-start mb-1"
@@ -2821,7 +2820,6 @@ export default function Dashboard() {
               <Network className="mr-2 h-4 w-4" />
               Graph
             </Button>
-          )}
             <Button
             variant={isConveyors ? 'secondary' : 'ghost'}
             className="w-full justify-start mb-1"
