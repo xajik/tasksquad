@@ -68,7 +68,7 @@ class_name = "AuthLimiter"
 # OAuth callbacks of the TaskSquad MCP server (packages/mcp) allowed to receive
 # /mobile/authorization codes. Exact match, comma-separated.
 [vars]
-ACTION_GRAPH_ENABLED = "false"
+ACTION_GRAPH_ENABLED = "true"
 MCP_REDIRECT_URIS = "https://tasksquad-mcp.xajik0.workers.dev/oauth/callback,https://tasksquad.ai/oauth/callback,http://localhost:8788/oauth/callback"
 
 [observability]
