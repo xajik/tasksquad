@@ -19,6 +19,8 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { GraphCanvas } from '@/components/GraphCanvas'
+import { FieldHelp, LabelText } from '@/components/FieldHelp'
+import type { GraphHelpKey } from '@/lib/graphHelp'
 import { isGuidance } from '@/lib/graphLayout'
 import { goalProjection } from '@/lib/graphProjection'
 import { graphAttention } from '@/lib/graphAttention'
@@ -80,10 +82,10 @@ function PolicyFields({
 }) {
   const field = (key: keyof GraphPolicy, next: unknown) => onChange({ ...value, [key]: next })
   const agentSelect = (key: 'grader' | 'decomposer' | 'fallback', label: string) => (
-    <Label className="grid gap-2">
-      {label}
+    <Label className="grid min-w-0 gap-2">
+      <LabelText field={key}>{label}</LabelText>
       <select
-        className="h-9 rounded-md border bg-background px-2"
+        className="h-9 w-full min-w-0 rounded-md border bg-background px-2"
         value={value[key] ?? ''}
         onChange={(e) => field(key, e.target.value || null)}
         required={key !== 'fallback'}
@@ -100,7 +102,10 @@ function PolicyFields({
   return (
     <>
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Execution agents</legend>
+        <legend className="inline-flex items-center text-sm font-medium">
+          Execution agents
+          <FieldHelp field="agents" />
+        </legend>
         {agents.map((a) => (
           <Label key={a.id} className="inline-flex items-center gap-2 mr-4">
             <input
@@ -126,9 +131,9 @@ function PolicyFields({
         Execution needs an agent separate from the grader. Existing local agents remain trusted with machine
         access.
       </p>
-      <div className="grid sm:grid-cols-3 gap-4">
-        <Label className="grid gap-2">
-          Execution slots
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Label className="grid min-w-0 gap-2">
+          <LabelText field="capacity">Execution slots</LabelText>
           <Input
             type="number"
             min={1}
@@ -137,8 +142,8 @@ function PolicyFields({
             onChange={(e) => field('capacity', Number(e.target.value))}
           />
         </Label>
-        <Label className="grid gap-2">
-          Necessity threshold
+        <Label className="grid min-w-0 gap-2">
+          <LabelText field="threshold">Necessity threshold</LabelText>
           <Input
             type="number"
             min={0}
@@ -148,10 +153,10 @@ function PolicyFields({
             onChange={(e) => field('threshold', Number(e.target.value))}
           />
         </Label>
-        <Label className="grid gap-2">
-          Result acceptance
+        <Label className="grid min-w-0 gap-2 sm:col-span-2">
+          <LabelText field="review">Result acceptance</LabelText>
           <select
-            className="h-9 rounded-md border bg-background px-2"
+            className="h-9 w-full min-w-0 rounded-md border bg-background px-2"
             value={value.review ? 'review' : 'auto'}
             onChange={(e) => field('review', e.target.value === 'review')}
           >
@@ -176,8 +181,8 @@ function PolicyFields({
               ['freshness_ms', 'Evidence freshness (hours)', 1, 1, 3600_000]
             ] as const
           ).map(([key, label, min, step, unit = 1]) => (
-            <Label key={key} className="grid gap-2">
-              {label}
+            <Label key={key} className="grid min-w-0 gap-2">
+              <LabelText field={key as GraphHelpKey}>{label}</LabelText>
               <Input
                 type="number"
                 min={min}
@@ -240,14 +245,16 @@ function CreateGraph({
     <form onSubmit={submit} className="grid gap-4">
       {(['title', 'description', 'body', 'start_state'] as const).map((key) => (
         <Label className="grid gap-2" key={key}>
-          {
+          <LabelText field={key}>
             {
-              title: 'Graph name',
-              description: 'Short description',
-              body: 'Goal and success definition',
-              start_state: 'Observed start state'
-            }[key]
-          }
+              {
+                title: 'Graph name',
+                description: 'Short description',
+                body: 'Goal and success definition',
+                start_state: 'Observed start state'
+              }[key]
+            }
+          </LabelText>
           {key === 'title' || key === 'description' ? (
             <Input
               required={key === 'title'}
@@ -266,7 +273,7 @@ function CreateGraph({
         </Label>
       ))}
       <Label className="grid gap-2">
-        Success predicates (one per line)
+        <LabelText field="predicates">Success predicates (one per line)</LabelText>
         <Textarea
           required
           value={predicates}
@@ -274,11 +281,11 @@ function CreateGraph({
           placeholder="Measured result meets the target over the declared window"
         />
       </Label>
-      <div className="grid grid-cols-2 gap-4">
-        <Label className="grid gap-2">
-          Sufficient rule
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Label className="grid min-w-0 gap-2">
+          <LabelText field="rule">Sufficient rule</LabelText>
           <select
-            className="h-9 rounded-md border bg-background px-2"
+            className="h-9 w-full min-w-0 rounded-md border bg-background px-2"
             value={form.rule.op}
             onChange={(e) => setForm({ ...form, rule: { ...form.rule, op: e.target.value as 'AND' | 'OR' } })}
           >
@@ -286,8 +293,8 @@ function CreateGraph({
             <option>OR</option>
           </select>
         </Label>
-        <Label className="grid gap-2">
-          Evidence scope
+        <Label className="grid min-w-0 gap-2">
+          <LabelText field="scope">Evidence scope</LabelText>
           <Input
             required
             maxLength={299}
