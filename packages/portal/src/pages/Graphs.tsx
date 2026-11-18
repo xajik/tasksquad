@@ -990,7 +990,7 @@ export function Graphs({
         </>
       )}
       <Dialog open={create} onOpenChange={setCreate}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>New action graph</DialogTitle>
             <DialogDescription>
@@ -1008,7 +1008,7 @@ export function Graphs({
         </DialogContent>
       </Dialog>
       <Dialog open={settings} onOpenChange={setSettings}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>Graph settings</DialogTitle>
             <DialogDescription>
