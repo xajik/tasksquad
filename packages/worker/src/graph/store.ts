@@ -3,6 +3,7 @@ import {
   hash,
   policy,
   prompt,
+  skillInstruction,
   templates,
   type Policy,
   type Role,
@@ -143,6 +144,19 @@ export async function commit(
   g.version++
 }
 
+/** Role identity comes from the team's Skills page (`tsq-graph-<role>`, team copy beats the default);
+ * the built-in template instruction is only the fallback. */
+export async function roleInstruction(db: D1Database, g: Graph, role: Role): Promise<string | undefined> {
+  const row = await sql(
+    db,
+    `SELECT content FROM skills WHERE name=? AND (team_id=? OR is_default=1)
+     ORDER BY (team_id IS NOT NULL) DESC LIMIT 1`,
+    `tsq-graph-${role}`,
+    g.team_id
+  ).first<{ content: string }>()
+  return row ? skillInstruction(row.content) || undefined : undefined
+}
+
 export async function assignment(
   db: D1Database,
   g: Graph,
@@ -158,7 +172,7 @@ export async function assignment(
 ): Promise<{ id: string; statements: D1PreparedStatement[] }> {
   const c = await configuration(db, g)
   const assignmentId = id(),
-    body = prompt(role, input, links.originalRole)
+    body = prompt(role, input, links.originalRole, await roleInstruction(db, g, role))
   return {
     id: assignmentId,
     statements: [
