@@ -62,7 +62,7 @@ func PastePromptFile(session, bufName, promptFile string) error {
 	if err := exec.Command(tmuxBin, "load-buffer", "-b", bufName, promptFile).Run(); err != nil {
 		return err
 	}
-	if err := exec.Command(tmuxBin, "paste-buffer", "-b", bufName, "-t", session).Run(); err != nil {
+	if err := exec.Command(tmuxBin, "paste-buffer", "-p", "-b", bufName, "-t", session).Run(); err != nil {
 		return err
 	}
 	time.Sleep(SubmitWait)

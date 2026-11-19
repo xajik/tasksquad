@@ -97,7 +97,7 @@ struct TmuxTaskSession: Sendable {
         try Data(text.utf8).write(to: file)
         defer { try? FileManager.default.removeItem(at: file) }
         _ = try await tmux.run(["load-buffer", "-b", "tsq-codex-reply", file.path])
-        _ = try await tmux.run(["paste-buffer", "-b", "tsq-codex-reply", "-t", name])
+        _ = try await tmux.run(["paste-buffer", "-p", "-b", "tsq-codex-reply", "-t", name])
         try await Task.sleep(for: timing.submitWait)
         _ = try await tmux.run(["send-keys", "-t", name, "C-m"])
     }
