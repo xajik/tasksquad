@@ -77,7 +77,15 @@ struct TmuxTaskSession: Sendable {
         }
     }
 
+    /// Longest single-line prompt typed with send-keys. Graph prompts are multi-KB, multi-line
+    /// YAML: typed, they arrive truncated or submit line by line, so they are pasted.
+    static let maxTypedPrompt = 800
+
     func sendText(_ text: String, timing: InteractiveTiming) async throws {
+        if text.utf8.count > Self.maxTypedPrompt || text.contains(where: \.isNewline) {
+            try await pasteText(text, timing: timing)
+            return
+        }
         _ = try await tmux.run(["send-keys", "-t", name, "-l", text])
         try await Task.sleep(for: timing.submitWait)
         _ = try await tmux.run(["send-keys", "-t", name, "C-m"])
