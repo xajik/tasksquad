@@ -26,3 +26,16 @@ describe('skill identities', () => {
     expect(prompt('grade', {}, undefined, 'You are the grader.')).toMatch(/^You are the grader\./)
   })
 })
+
+import { parseResult } from './contracts.js'
+describe('yaml replies', () => {
+  it('accepts a YAML reply and a JSON reply', () => {
+    const y = 'decision: distinct\nequivalent_node_id: null\nreason: "ok: fine"\n'
+    expect(parseResult('merge', y)).toEqual({ decision: 'distinct', equivalent_node_id: null, reason: 'ok: fine' })
+    expect(parseResult('merge', '```yaml\n' + y + '```').decision).toBe('distinct')
+    expect(parseResult('merge', '{"decision":"reject","equivalent_node_id":null,"reason":"x"}').decision).toBe('reject')
+  })
+  it('rejects prose', () => {
+    expect(() => parseResult('merge', "I can't complete this retry")).toThrow()
+  })
+})

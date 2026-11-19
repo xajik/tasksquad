@@ -239,7 +239,7 @@ describe('durable inbox graph workflow', () => {
     const attempt = (
       await rows<{ task_id: string }>(db, 'SELECT * FROM graph_attempts WHERE assignment_id=?', assignmentId)
     )[0]
-    await sql(db, "UPDATE tasks SET status='done' WHERE id=?", attempt.task_id).run()
+    await sql(db, "UPDATE tasks SET status='waiting_input' WHERE id=?", attempt.task_id).run()
     const bridged = {
       ...env(),
       GRAPH_COORDINATOR: {
@@ -252,6 +252,10 @@ describe('durable inbox graph workflow', () => {
     } as unknown as Env
     const context = await graphInboxTask(bridged, attempt.task_id, user)
     expect(context).toMatchObject({ can_reply: true, can_manage: true, latest: true })
+    // A finished session cannot take a reply.
+    await sql(db, "UPDATE tasks SET status='done' WHERE id=?", attempt.task_id).run()
+    expect(await graphInboxTask(bridged, attempt.task_id, user)).toMatchObject({ can_reply: false })
+    await sql(db, "UPDATE tasks SET status='waiting_input' WHERE id=?", attempt.task_id).run()
     const request = (body: Record<string, unknown>) =>
       new Request(`https://fixture.test/tasks/${attempt.task_id}/messages`, {
         method: 'POST',
@@ -302,7 +306,7 @@ describe('durable inbox graph workflow', () => {
     expect(JSON.parse(continued[0].input).user_input).toBe('Use value 42')
     expect(
       (await rows<{ status: string }>(db, 'SELECT status FROM tasks WHERE id=?', attempt.task_id))[0].status
-    ).toBe('done')
+    ).toBe('waiting_input')
     expect(
       (await inboxReply(request({ body: 'Duplicate' }), bridged, {}, auth)).status
     ).toBeGreaterThanOrEqual(400)

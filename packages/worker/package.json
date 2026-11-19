@@ -14,7 +14,8 @@
     "@aws-sdk/s3-request-presigner": "^3.1004.0",
     "cloudfire-auth": "^0.4.0",
     "itty-router": "^5.0.18",
-    "ulidx": "^2.3.0"
+    "ulidx": "^2.3.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241127.0",
