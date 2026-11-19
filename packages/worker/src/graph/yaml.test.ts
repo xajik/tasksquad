@@ -17,3 +17,12 @@ describe('graph prompt yaml', () => {
     expect(p).toContain('context:')
   })
 })
+
+describe('skill identities', () => {
+  it('strips frontmatter, bounds length and replaces the instruction', async () => {
+    const { skillInstruction } = await import('./contracts.js')
+    expect(skillInstruction('---\nname: tsq-graph-grade\n---\nYou are the grader.')).toBe('You are the grader.')
+    expect(skillInstruction('x'.repeat(5000)).length).toBeLessThan(1600)
+    expect(prompt('grade', {}, undefined, 'You are the grader.')).toMatch(/^You are the grader\./)
+  })
+})
