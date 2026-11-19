@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -66,6 +67,35 @@ func PastePromptFile(session, bufName, promptFile string) error {
 	}
 	time.Sleep(SubmitWait)
 	return exec.Command(tmuxBin, "send-keys", "-t", session, "C-m").Run()
+}
+
+// MaxKeysPrompt is the longest single-line prompt typed with send-keys. Longer
+// or multi-line prompts (graph tasks are multi-KB YAML) are truncated or
+// submitted line by line when typed, so they go through a paste buffer.
+const MaxKeysPrompt = 800
+
+// SendPrompt delivers a prompt to a session: typed for short single-line text,
+// pasted through a tmux buffer otherwise.
+func SendPrompt(session, text string) error {
+	if len(text) <= MaxKeysPrompt && !strings.ContainsAny(text, "\r\n") {
+		return SendKeys(session, text)
+	}
+	f, err := os.CreateTemp("", "tsq-prompt-*.txt")
+	if err != nil {
+		return err
+	}
+	path := f.Name()
+	defer os.Remove(path)
+	_, werr := f.WriteString(text)
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return werr
+	}
+	buf := "tsq-" + strings.TrimPrefix(session, "tsq-")
+	defer DeleteBuffer(buf)
+	return PastePromptFile(session, buf, path)
 }
 
 // DeleteBuffer removes a named tmux buffer.

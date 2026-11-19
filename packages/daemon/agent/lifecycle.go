@@ -349,7 +349,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 			tmux.WaitForReady()
 		}
 		if !promptInArgs {
-			tmux.SendKeys(sessionName, stdinData)
+			tmux.SendPrompt(sessionName, stdinData)
 		} //nolint:errcheck
 
 		logger.Info(fmt.Sprintf("[%s] tmux session started — attach: tmux attach-session -t %s", a.Config.Name, sessionName))

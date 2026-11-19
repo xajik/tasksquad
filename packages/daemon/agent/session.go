@@ -501,7 +501,7 @@ func (a *Agent) injectNextStep(sess string) {
 func (a *Agent) sendTmuxPrompt(sess, prompt string) error {
 	a.recordTyped(prompt)
 	if a.prov.Name() != "codex" {
-		return tmux.SendKeys(sess, prompt)
+		return tmux.SendPrompt(sess, prompt)
 	}
 	f, err := os.CreateTemp("", "tsq-codex-reply-*.txt")
 	if err != nil {
