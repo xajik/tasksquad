@@ -19,6 +19,8 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { GraphCanvas } from '@/components/GraphCanvas'
+import { GraphSection } from '@/components/GraphSection'
+import { dailyReport, latestMessage } from '@/lib/graphReport'
 import { FieldHelp, LabelText } from '@/components/FieldHelp'
 import type { GraphHelpKey } from '@/lib/graphHelp'
 import { isGuidance } from '@/lib/graphLayout'
@@ -539,7 +541,9 @@ export function Graphs({
           <section className="flex justify-between gap-4 flex-wrap border-b pb-4">
             <div>
               <h3 className="font-semibold">{current.title}</h3>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{current.body}</p>
+              <GraphSection id="goal" title="Goal description" help="section_goal" className="text-sm">
+                <p className="text-muted-foreground whitespace-pre-wrap">{current.body}</p>
+              </GraphSection>
               <p className="mt-2 text-sm">
                 Goal:{' '}
                 <b>
@@ -566,6 +570,28 @@ export function Graphs({
               </Button>
             )}
           </section>
+          {(() => {
+            const latest = latestMessage(current)
+            if (!latest) return null
+            return (
+              <GraphSection
+                id="latest"
+                title="Latest message"
+                help="section_latest"
+                className="rounded border bg-muted/30 px-3 py-2 text-sm"
+              >
+                <p>
+                  <b>{latest.role}</b> · {latest.status} · {stamp(latest.at)}
+                </p>
+                <p className="text-muted-foreground">{latest.text}</p>
+                {latest.taskId && (
+                  <Link className="text-primary underline" to={`/dashboard/tasks/${latest.taskId}`}>
+                    Open inbox task
+                  </Link>
+                )}
+              </GraphSection>
+            )
+          })()}
           <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
             <span>
               {active.length} active jobs · {current.config.policy.capacity} execution slots
@@ -633,8 +659,12 @@ export function Graphs({
             </section>
           )}
           {(current.proposals ?? []).some((p) => p.status === 'pending' || p.status === 'uncertain') && (
-            <section className="rounded border p-4">
-              <h3 className="font-semibold">Proposals awaiting independent review</h3>
+            <GraphSection
+              id="proposals"
+              title="Proposals awaiting independent review"
+              help="section_proposals"
+              className="rounded border p-4"
+            >
               <ul className="divide-y">
                 {(current.proposals ?? [])
                   .filter((p) => p.status === 'pending' || p.status === 'uncertain')
@@ -652,8 +682,9 @@ export function Graphs({
                     )
                   })}
               </ul>
-            </section>
+            </GraphSection>
           )}
+          <GraphSection id="canvas" title="Action graph and inspector" help="section_canvas">
           <section className="grid xl:grid-cols-[minmax(0,1fr)_300px] rounded-lg border overflow-hidden">
             <GraphCanvas
               graph={current}
@@ -870,69 +901,25 @@ export function Graphs({
               </details>
             </aside>
           </section>
-          <section>
-            <div className="flex gap-2 border-b pb-2" role="tablist" aria-label="Graph work">
-              {(['next', 'activity', 'report'] as const).map((t) => (
-                <Button
-                  key={t}
-                  role="tab"
-                  aria-selected={tab === t}
-                  variant={tab === t ? 'secondary' : 'ghost'}
-                  onClick={() => setTab(t)}
-                >
-                  {{ next: 'Up next', activity: 'Activity', report: 'Daily report' }[t]}
-                </Button>
-              ))}
-            </div>
-            {tab === 'next' && (
-              <div className="divide-y">
-                {current.assignments
-                  .filter((a) => workRank(a.status) < 4)
-                  .sort((a, b) => workRank(a.status) - workRank(b.status) || b.priority - a.priority)
-                  .map((a) => (
-                    <div key={a.id} className="py-3 text-sm flex justify-between gap-3">
-                      <span>
-                        {workRank(a.status) === 0 && (
-                          <b className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs">Needs you</b>
-                        )}
-                        {a.role} · {a.status} · priority {a.priority.toFixed(2)} · {a.attempt_count} attempts
-                      </span>
-                      {current.attempts
-                        .filter((t) => t.assignment_id === a.id)
-                        .slice(-1)
-                        .map((t) => (
-                          <Link
-                            key={t.id}
-                            className="text-primary underline"
-                            to={`/dashboard/tasks/${t.task_id}`}
-                          >
-                            Open inbox task
-                          </Link>
-                        ))}
-                    </div>
+          </GraphSection>
+          {(() => {
+            const report = dailyReport(current)
+            return (
+              <GraphSection
+                id="report"
+                title="Daily report"
+                help="section_report"
+                className="rounded border p-4 text-sm"
+              >
+                <p className="font-medium">{report.headline}</p>
+                <ul className="mt-1 list-disc pl-5 space-y-0.5 text-muted-foreground">
+                  {report.lines.map((l) => (
+                    <li key={l}>{l}</li>
                   ))}
-                <p className="text-xs text-muted-foreground pt-3">
-                  Grading follows durable completion intake. Review at the head holds later grades. Dispatch
-                  also checks agent availability, role isolation and budgets.
-                </p>
-              </div>
-            )}
-            {tab === 'activity' && (
-              <ol className="divide-y">
-                {current.events.map((e) => (
-                  <li key={e.sequence} className="py-3 text-sm">
-                    <span className="text-muted-foreground mr-4">{stamp(e.created_at)}</span>
-                    {e.kind.replace(/_/g, ' ')}
-                    <details className="text-xs">
-                      <summary className="cursor-pointer">Event #{e.sequence}</summary>
-                      <pre className="whitespace-pre-wrap">{pretty(e.data)}</pre>
-                    </details>
-                  </li>
-                ))}
-              </ol>
-            )}
-            {tab === 'report' && (
-              <div className="space-y-4 pt-4">
+                </ul>
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs text-muted-foreground">Details</summary>
+                  <div className="space-y-4 pt-2">
                 <p className="text-sm">
                   Today ({new Date().toISOString().slice(0, 10)}, UTC) · goal {current.goal_verification}
                 </p>
@@ -985,8 +972,72 @@ export function Graphs({
                   </p>
                 ))}
               </div>
+                </details>
+              </GraphSection>
+            )
+          })()}
+          <GraphSection id="work" title="Work queue" help="section_work">
+            <div className="flex gap-2 border-b pb-2" role="tablist" aria-label="Graph work">
+              {(['next', 'activity'] as const).map((t) => (
+                <Button
+                  key={t}
+                  role="tab"
+                  aria-selected={tab === t}
+                  variant={tab === t ? 'secondary' : 'ghost'}
+                  onClick={() => setTab(t)}
+                >
+                  {{ next: 'Up next', activity: 'Activity' }[t]}
+                </Button>
+              ))}
+            </div>
+            {tab === 'next' && (
+              <div className="divide-y">
+                {current.assignments
+                  .filter((a) => workRank(a.status) < 4)
+                  .sort((a, b) => workRank(a.status) - workRank(b.status) || b.priority - a.priority)
+                  .map((a) => (
+                    <div key={a.id} className="py-3 text-sm flex justify-between gap-3">
+                      <span>
+                        {workRank(a.status) === 0 && (
+                          <b className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs">Needs you</b>
+                        )}
+                        {a.role} · {a.status} · priority {a.priority.toFixed(2)} · {a.attempt_count} attempts
+                      </span>
+                      {current.attempts
+                        .filter((t) => t.assignment_id === a.id)
+                        .slice(-1)
+                        .map((t) => (
+                          <Link
+                            key={t.id}
+                            className="text-primary underline"
+                            to={`/dashboard/tasks/${t.task_id}`}
+                          >
+                            Open inbox task
+                          </Link>
+                        ))}
+                    </div>
+                  ))}
+                <p className="text-xs text-muted-foreground pt-3">
+                  Grading follows durable completion intake. Review at the head holds later grades. Dispatch
+                  also checks agent availability, role isolation and budgets.
+                </p>
+              </div>
             )}
-          </section>
+            {tab === 'activity' && (
+              <ol className="divide-y">
+                {current.events.map((e) => (
+                  <li key={e.sequence} className="py-3 text-sm">
+                    <span className="text-muted-foreground mr-4">{stamp(e.created_at)}</span>
+                    {e.kind.replace(/_/g, ' ')}
+                    <details className="text-xs">
+                      <summary className="cursor-pointer">Event #{e.sequence}</summary>
+                      <pre className="whitespace-pre-wrap">{pretty(e.data)}</pre>
+                    </details>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </GraphSection>
         </>
       )}
       <Dialog open={create} onOpenChange={setCreate}>

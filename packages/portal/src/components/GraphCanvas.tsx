@@ -271,6 +271,9 @@ export function GraphCanvas({
         onPointerUp={() => {
           const nd = nodeDrag.current
           nodeDrag.current = null
+          // The svg holds pointer capture during a card press, so the browser delivers the click to the
+          // svg instead of the card. Selecting here (when the card was not dragged) is what makes cards clickable.
+          if (nd && !nd.moved) onSelect(nd.id)
           if (nd?.moved && live?.id === nd.id) {
             // Drop resolves collisions, then routing re-runs around the new placement.
             saveManual({ ...manual, [nd.id]: resolveCollisions(layout.positions, nd.id, live.at) })

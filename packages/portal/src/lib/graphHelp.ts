@@ -105,6 +105,30 @@ export const graphHelp = {
   freshness_ms: {
     what: 'Hours for which evidence still counts. Older evidence must be collected again before the goal can be verified.',
     examples: ['24: metrics must be from the last day', '168: weekly reports are good enough']
+  },
+  section_goal: {
+    what: 'The goal text for this graph, written by its owner. Agents split it into sub-goals. Collapse it when you only need the work below.',
+    examples: ['Open: re-read what "done" means before approving a step', 'Collapsed: you are only triaging blocked tasks']
+  },
+  section_latest: {
+    what: 'The most recent result an agent returned for this graph, in plain words, with a link to the inbox task it came from. It updates as the graph polls.',
+    examples: ['A grader scored a step 0 because no evidence was supplied', 'An executor reported blocked: approvals are missing']
+  },
+  section_report: {
+    what: 'A readable summary of what the graph did today: steps finished, what needs you, nodes that changed and budget used. The detailed list is under "Details".',
+    examples: ['5 steps finished: 3 merge, 2 project. 1 needs you.', 'Budget: 86 of 10000 attempts, cost 500 of 10000']
+  },
+  section_proposals: {
+    what: 'Candidate sub-goals drafted by a decompose step. Each waits for an independent merge review that decides if it is new (distinct), a duplicate, unsure or rejected. Only distinct ones join the graph.',
+    examples: ['pending: the review has not run yet', 'uncertain: the reviewer was unsure, so it stays unpublished']
+  },
+  section_canvas: {
+    what: 'The action graph. Goals and milestones are dashed guidance cards; solid cards are execution states. Click a card to inspect it, drag to rearrange, scroll to pan, Ctrl or Command with scroll to zoom.',
+    examples: ['Click a milestone to see its evidence and linked inbox tasks', 'Highlighted amber cards need your reply']
+  },
+  section_work: {
+    what: 'The work queue and history. Up next lists assignments by urgency (yours first); Activity is the event log.',
+    examples: ['Needs you: a blocked step waiting on a reply', 'Activity: dispatched, accepted, rejected events in order']
   }
 } satisfies Record<string, FieldHelp>
 
