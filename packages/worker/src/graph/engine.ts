@@ -1148,12 +1148,25 @@ export async function accept(
             original.id
           )
         )
-      const parent = await sql(
+      const found = await sql(
         db,
         'SELECT * FROM graph_assignments WHERE id=?',
         original.parent_id
       ).first<Assignment>()
-      if (!parent) throw new Error('Missing blocked assignment')
+      if (!found) throw new Error('Missing blocked assignment')
+      // A reply to a blocked continue must resume the step that started it, never spawn another
+      // continue (that looped: continue -> restart -> continue ...).
+      let parent: Assignment = found
+      for (let hops = 0; parent.role === 'continue' && parent.parent_id && hops < 10; hops++) {
+        const up: Assignment | null = await sql(
+          db,
+          'SELECT * FROM graph_assignments WHERE id=?',
+          parent.parent_id
+        ).first<Assignment>()
+        if (!up) break
+        parent = up
+      }
+      if (parent.role === 'continue') throw new Error('Continuation has no original assignment')
       if (d.decision === 'blocked')
         ops.push(sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", parent.id))
       else {
