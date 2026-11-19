@@ -142,7 +142,12 @@ function route(start: Point, end: Point, obstacles: Box[], bounds: Box, occupied
       push({ id: next, score: cost + heuristic(q) })
     }
   }
-  throw new Error('Unable to route graph edge around obstacles')
+  // No obstacle-free path (dense graph, or an endpoint boxed in): degrade to a plain elbow
+  // instead of throwing, which would unmount the whole graph page.
+  const midX = (start.x + end.x) / 2
+  return start.x === end.x || start.y === end.y
+    ? [start, end]
+    : [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]
 }
 
 /** Condense cycles before ranking so every inter-component execution edge flows LTR. */
