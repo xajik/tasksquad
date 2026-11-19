@@ -176,6 +176,7 @@ export async function run(db: D1Database, graphId: string, command: string, body
       'continue',
       {
         assignment: a.id,
+        original_role: a.role,
         previous: JSON.parse(a.input),
         previous_results: previousResults,
         user_input: body.message,

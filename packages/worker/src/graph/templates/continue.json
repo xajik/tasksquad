@@ -1,5 +1,5 @@
 {
-  "instruction": "After user input, verify checkpoint and baseline; decide resume, restart or blocked. Do not repeat an external action. Confirm termination and baseline restoration before authorizing another side-effecting attempt. Resume requires a verified checkpoint.",
+  "instruction": "After user input, verify checkpoint and baseline; decide resume, restart or blocked. Do not repeat an external action. Confirm termination and baseline restoration before authorizing another side-effecting attempt. Resume requires a verified checkpoint. If original_role is merge, project, grade, decompose, plan or reconcile the original step is read-only analysis with no external effects: when its previous results are invalid or unparsed (formatting or delivery failures), decide restart with checkpoint_verified false, baseline_unchanged true and termination_verified true; do not answer blocked for that reason. Fields ending in [truncated N chars] were shortened only to fit the message and are not an error.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
