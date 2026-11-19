@@ -125,9 +125,15 @@ export async function run(db: D1Database, graphId: string, command: string, body
       "SELECT id FROM graph_assignments WHERE graph_id=? AND status IN ('running','pending','review','blocked','reconciling') LIMIT 1",
       g.id
     ).first()
-    if (active) throw new Error('Resolve existing assignments before changing configuration')
     const { policy: normalize } = await import('./contracts.js')
     const p = normalize(body.policy as Partial<Policy>)
+    // Budgets can be raised mid-run (a spent planning budget otherwise strands every pending
+    // assignment); anything structural still needs the graph drained first.
+    const budgetKeys = new Set(['attempt_budget', 'planning_budget', 'cost_budget', 'recovery_budget'])
+    const structural = (Object.keys(p) as (keyof Policy)[]).some(
+      (k) => !budgetKeys.has(k) && JSON.stringify(p[k]) !== JSON.stringify(c.policy[k])
+    )
+    if (active && structural) throw new Error('Resolve existing assignments before changing configuration')
     for (const a of [...p.agents, p.grader, p.decomposer, ...(p.fallback ? [p.fallback] : [])])
       if (!(await sql(db, 'SELECT id FROM agents WHERE id=? AND team_id=?', a, g.team_id).first()))
         throw new Error('Agent outside project')
