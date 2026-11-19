@@ -148,12 +148,12 @@ export function toYaml(value: unknown, indent = 0): string {
 }
 
 /** Inbox messages are pasted into an interactive agent TUI: keep them small. */
-export const MAX_PROMPT_CHARS = 6000
+export const MAX_PROMPT_CHARS = 16000
 export const MAX_REPLY_CHARS = 4000
 
 /** Shrink the longest strings in the context until the rendered YAML fits the budget. */
 export function capContext(input: unknown, budget: number): string {
-  let limit = 2000
+  let limit = 6000
   for (;;) {
     const shrink = (v: unknown): unknown =>
       typeof v === 'string'

@@ -13,7 +13,7 @@ describe('graph prompt yaml', () => {
   })
   it('keeps merge prompts small', () => {
     const p = prompt('merge', { candidate: { body: 'z'.repeat(9000) }, existing_hierarchy: [{ body: 'q'.repeat(9000) }] })
-    expect(p.length).toBeLessThan(7500)
+    expect(p.length).toBeLessThan(17500)
     expect(p).toContain('context:')
   })
 })
