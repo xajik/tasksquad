@@ -47,39 +47,7 @@ export async function run(db: D1Database, graphId: string, command: string, body
     return
   }
   if (command === 'dismiss') {
-    // Clears finished-session noise: planning/review steps whose result went stale, and repair errors.
-    // Execute/undo steps are never cancelled here: they may hold side effects or owner approvals.
-    const stale = await rows<{ id: string }>(
-      db,
-      `SELECT a.id FROM graph_assignments a WHERE a.graph_id=? AND a.status IN ('blocked','error')
-       AND a.role NOT IN ('execute','undo','reconcile')
-       AND (a.role='repair' OR EXISTS(SELECT 1 FROM graph_attempts t JOIN graph_results r ON r.attempt_id=t.id
-            WHERE t.assignment_id=a.id AND r.status='stale'))`,
-      g.id
-    )
-    // The serial queue is strictly ordered: an entry whose work was cancelled, or whose execution result
-    // is stale/invalid/rejected, would hold every later grade and projection forever. Skip those entries.
-    const ops: D1PreparedStatement[] = []
-    if (stale.length)
-      ops.push(
-        sql(
-          db,
-          `UPDATE graph_assignments SET status='cancelled',cancel_reason='dismissed' WHERE graph_id=? AND id IN (${stale.map(() => '?').join(',')})`,
-          g.id,
-          ...stale.map((a) => a.id)
-        )
-      )
-    ops.push(
-      sql(
-        db,
-        `UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND status='pending' AND (
-           (kind='assignment' AND work_id IN (SELECT id FROM graph_assignments WHERE graph_id=? AND status='cancelled'))
-           OR (kind='execution' AND work_id IN (SELECT id FROM graph_results WHERE status IN ('stale','invalid','rejected'))))`,
-        g.id,
-        g.id
-      )
-    )
-    await commit(db, g, 'dismissed', null, { count: stale.length }, ops)
+    await dismissStale(db, g)
     return
   }
   if (command === 'regrade') {
@@ -1661,6 +1629,57 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
   }
 }
 
+/** Work (execution result ids) that an open continue step still needs at the head of the serial queue. */
+const ACTIVE_CONTINUE_WORK = `SELECT json_extract(input,'$.serial_work_id') FROM graph_assignments
+  WHERE graph_id=? AND role='continue' AND status IN ('pending','running') AND json_extract(input,'$.serial_work_id') IS NOT NULL`
+
+/** Clears finished-session noise: planning/review steps whose result went stale, and repair errors.
+ * Execute/undo steps are never cancelled here (they may hold side effects or owner approvals), and the queue
+ * entry an open continue still needs is kept. The serial queue is strictly ordered, so an entry whose work was
+ * cancelled, or whose execution result is stale/invalid/rejected, would hold every later grade forever. */
+async function dismissStale(db: D1Database, g: Graph): Promise<number> {
+  const stale = await rows<{ id: string }>(
+    db,
+    `SELECT a.id FROM graph_assignments a WHERE a.graph_id=? AND a.status IN ('blocked','error')
+     AND a.role NOT IN ('execute','undo','reconcile')
+     AND (a.role='repair' OR EXISTS(SELECT 1 FROM graph_attempts t JOIN graph_results r ON r.attempt_id=t.id
+          WHERE t.assignment_id=a.id AND r.status='stale'))`,
+    g.id
+  )
+  const queueSql = `UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND status='pending' AND (
+       (kind='assignment' AND work_id IN (SELECT id FROM graph_assignments WHERE graph_id=? AND status='cancelled'))
+       OR (kind='execution' AND work_id IN (SELECT id FROM graph_results WHERE status IN ('stale','invalid','rejected'))
+           AND work_id NOT IN (${ACTIVE_CONTINUE_WORK})))`
+  const ops: D1PreparedStatement[] = []
+  if (stale.length)
+    ops.push(
+      sql(
+        db,
+        `UPDATE graph_assignments SET status='cancelled',cancel_reason='dismissed' WHERE graph_id=? AND id IN (${stale.map(() => '?').join(',')})`,
+        g.id,
+        ...stale.map((a) => a.id)
+      )
+    )
+  ops.push(sql(db, queueSql, g.id, g.id, g.id))
+  const pending = await rows<{ n: number }>(
+    db,
+    `SELECT COUNT(*) AS n FROM graph_serial_queue WHERE graph_id=? AND status='pending' AND kind='assignment'
+     AND work_id IN (SELECT id FROM graph_assignments WHERE graph_id=? AND status='cancelled')`,
+    g.id,
+    g.id
+  )
+  if (stale.length || pending[0]?.n) await commit(db, g, 'dismissed', null, { count: stale.length }, ops)
+  // An open continue needs its execution at the head of the queue even if that entry was skipped earlier.
+  await sql(
+    db,
+    `UPDATE graph_serial_queue SET status='pending' WHERE graph_id=? AND kind='execution' AND status='done'
+     AND work_id IN (${ACTIVE_CONTINUE_WORK})`,
+    g.id,
+    g.id
+  ).run()
+  return stale.length
+}
+
 /** Inbox tasks of steps that wait for the owner stay in `waiting_input` (pending input) instead of `done`;
  * they return to `done` once the step is answered, cancelled or otherwise no longer needs the owner.
  * Planning/review steps whose result merely went out of date are noise, not owner input, and stay done. */
@@ -1687,6 +1706,7 @@ export async function tick(env: GraphEnv, graphId: string): Promise<void> {
   const g = await graph(env.DB, graphId)
   await processResults(env.DB, g)
   await advanceGrading(env.DB, g)
+  await dismissStale(env.DB, g)
   await syncInboxStatus(env.DB, g)
   await dispatch(env, g)
 }
