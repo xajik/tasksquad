@@ -437,6 +437,50 @@ describe('durable inbox graph workflow', () => {
     ).toBe('running')
   })
 
+  it.each(['blocked', 'error'])('parks a %s continuation without retrying it or blocking later reviews', async (status) => {
+    const { g } = await fixture(false)
+    const original = await assignment(db, g, 'execute', { plan: {} })
+    const continuation = await assignment(db, g, 'continue', { original_role: 'execute' }, { parent: original.id })
+    const review = await assignment(db, g, 'project', { operation: 'decomposition_review', hierarchy: [], evidence: [] })
+    await db.batch([
+      ...original.statements, ...continuation.statements, ...review.statements,
+      sql(db, "UPDATE graph_assignments SET status='continuation' WHERE id=?", original.id),
+      sql(db, 'UPDATE graph_assignments SET status=? WHERE id=?', status, continuation.id),
+      sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'assignment',?,0)", g.id, continuation.id),
+      sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'assignment',?,1)", g.id, review.id)
+    ])
+    await tick(env(), g.id)
+    expect((await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', continuation.id))[0].status).toBe(status)
+    expect((await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', review.id))[0].status).toBe('running')
+    expect(await rows(db, 'SELECT * FROM graph_attempts WHERE assignment_id=?', continuation.id)).toHaveLength(0)
+    // A later owner answer still creates a checked continuation in the queue.
+    await run(db, g.id, 'input', { assignment_id: continuation.id, message: 'Check the baseline again' })
+    const followup = (await rows<Assignment>(db, "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'", continuation.id))[0]
+    expect(await rows(db, "SELECT * FROM graph_serial_queue WHERE work_id=? AND status='pending'", followup.id)).toHaveLength(1)
+  })
+
+  it('keeps a continuation formatting repair at its original assignment queue position', async () => {
+    const { g, agent } = await fixture(false)
+    const original = await assignment(db, g, 'execute', { plan: {} })
+    const continuation = await assignment(db, g, 'continue', { original_role: 'execute' }, { parent: original.id })
+    const review = await assignment(db, g, 'project', { operation: 'decomposition_review', hierarchy: [], evidence: [] })
+    await db.batch([
+      ...original.statements, ...continuation.statements, ...review.statements,
+      sql(db, "UPDATE graph_assignments SET status='continuation' WHERE id=?", original.id),
+      sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'assignment',?,0)", g.id, continuation.id),
+      sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'assignment',?,1)", g.id, review.id)
+    ])
+    await tick(env(), g.id)
+    await deliver(g.id, agent, 'not structured output')
+    await tick(env(), g.id)
+    const repair = (await rows<Assignment>(db, "SELECT * FROM graph_assignments WHERE parent_id=? AND role='repair'", continuation.id))[0]
+    expect(repair.status).toBe('running')
+    expect((await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', review.id))[0].status).toBe('pending')
+    await sql(db, "UPDATE graph_serial_queue SET status='done' WHERE work_id=?", continuation.id).run()
+    await tick(env(), g.id)
+    expect(await rows(db, "SELECT * FROM graph_serial_queue WHERE work_id=? AND status='pending'", continuation.id)).toHaveLength(1)
+  })
+
   it('keeps each repeated continuation approval answerable and restarts only the original role', async () => {
     const { g, agent, grader, user, assignmentId } = await preparedExecution()
     await deliver(
@@ -523,6 +567,20 @@ describe('durable inbox graph workflow', () => {
     expect(restarted).toHaveLength(1)
     expect(JSON.parse(restarted[0].input).user_input).toContain('First approval')
     expect(JSON.parse(restarted[0].input).user_input).toContain('Approval answer 3')
+    // The restarted executor may encounter a different missing prerequisite.
+    // Its next continuation must retain all earlier answers, not only the new one.
+    await sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", restarted[0].id).run()
+    await run(db, g.id, 'input', { assignment_id: restarted[0].id, message: 'Second execution answer' })
+    const followup = (await rows<Assignment>(db, "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'", restarted[0].id))[0]
+    expect(JSON.parse(followup.input).prior_user_inputs.join('\n')).toContain('First approval')
+    expect(JSON.parse(followup.input).prior_user_inputs.join('\n')).toContain('Approval answer 3')
+    // Recover a legacy restart that already lost those answers from its own input.
+    const legacy = await assignment(db, await graph(db, g.id), 'execute', { plan: {}, user_input: 'Later legacy answer' }, { parent: restarted[0].id })
+    await db.batch([...legacy.statements, sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", legacy.id)])
+    await run(db, g.id, 'input', { assignment_id: legacy.id, message: 'Newest answer' })
+    const recovered = (await rows<Assignment>(db, "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'", legacy.id))[0]
+    expect(JSON.parse(recovered.input).prior_user_inputs.join('\n')).toContain('First approval')
+    expect(JSON.parse(recovered.input).prior_user_inputs.join('\n')).toContain('Later legacy answer')
   })
 
   it('coalesces decomposition maintenance and skips unchanged reviewed contexts', async () => {

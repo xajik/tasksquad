@@ -30,6 +30,27 @@ const controlRank = (role: Role) =>
   role === 'undo' || role === 'reconcile' ? 0 : ['grade', 'project', 'continue'].includes(role) ? 1 : 2
 const actionable = (role: Role) => role === 'execute' || role === 'undo'
 
+/** Restarted steps retain the answers on every earlier execution of that step. */
+async function restartOwnerHistory(db: D1Database, graphId: string, root: Assignment): Promise<string[]> {
+  const inputs: string[] = [], seen = new Set<string>()
+  let prior: Assignment | null = root
+  while (prior && prior.role === root.role && !seen.has(prior.id)) {
+    seen.add(prior.id)
+    const text = JSON.parse(prior.input).user_input
+    if (typeof text === 'string' && text) inputs.unshift(text)
+    prior = prior.parent_id
+      ? await sql(db, 'SELECT * FROM graph_assignments WHERE id=? AND graph_id=?', prior.parent_id, graphId).first<Assignment>()
+      : null
+  }
+  return inputs
+}
+
+function compactOwnerHistory(inputs: string[]): string[] {
+  return inputs.filter((text, index) =>
+    text && !inputs.slice(index + 1).some((later) => later.includes(text))
+  )
+}
+
 export async function run(db: D1Database, graphId: string, command: string, body: Data = {}): Promise<void> {
   // 'stopped' is the terminal Closed state: immutable and irreversible, like a Done inbox task.
   if (await sql(db, "SELECT 1 FROM graphs WHERE id=? AND status='stopped'", graphId).first()) {
@@ -195,6 +216,12 @@ export async function run(db: D1Database, graphId: string, command: string, body
       a.id
     ).first<{ work_id: string }>()
     const previousInput = JSON.parse(a.input) as Data
+    // Restarted executions point to the previous execution. Recover owner answers
+    // across that lineage too, including legacy restarts that replaced user_input.
+    const priorInputs = await restartOwnerHistory(db, g.id, root)
+    if (a.role === 'continue')
+      priorInputs.push(...((previousInput.prior_user_inputs as string[]) ?? []), String(previousInput.user_input ?? ''))
+    const ownerHistory = compactOwnerHistory(priorInputs)
     const serialWork =
       previousInput.serial_work_id ??
       unresolved?.work_id ??
@@ -212,13 +239,7 @@ export async function run(db: D1Database, graphId: string, command: string, body
         assignment: a.id,
         original_role: root.role,
         previous: JSON.parse(root.input),
-        prior_user_inputs:
-          a.role === 'continue'
-            ? [
-                ...((previousInput.prior_user_inputs as string[]) ?? []),
-                String(previousInput.user_input ?? '')
-              ]
-            : [],
+        prior_user_inputs: ownerHistory,
         previous_results: previousResults,
         user_input: body.message,
         ...(serialWork ? { serial_work_id: serialWork } : {})
@@ -1353,9 +1374,11 @@ export async function accept(
             ? { observations: await executionNodes(db, g.id), resources: await executionResources(db, g.id) }
             : {}),
           continuation: d,
-          user_input: [...((input.prior_user_inputs as string[]) ?? []), input.user_input]
-            .filter(Boolean)
-            .join('\n\nFollow-up:\n'),
+          user_input: compactOwnerHistory([
+            ...(await restartOwnerHistory(db, g.id, parent)),
+            ...((input.prior_user_inputs as string[]) ?? []),
+            String(input.user_input ?? '')
+          ]).join('\n\nFollow-up:\n'),
           ...(input.serial_work_id ? { serial_work_id: input.serial_work_id } : {})
         }
         const next = await assignment(db, g, parent.role, context, {
@@ -1651,7 +1674,10 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
 /** Queue ownership survives format repairs and checked continuations, including review. */
 const ACTIVE_CONTINUE_WORK = `SELECT json_extract(input,'$.serial_work_id') FROM graph_assignments
   WHERE graph_id=? AND role='continue' AND status IN ('pending','running','review') AND json_extract(input,'$.serial_work_id') IS NOT NULL`
-const ACTIVE_REPAIR_WORK = `SELECT r.id FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id
+const ACTIVE_REPAIR_WORK = `SELECT CASE WHEN original.role IN ('grade','project','continue')
+  THEN COALESCE(json_extract(original.input,'$.serial_work_id'),json_extract(original.input,'$.execution_result_id'),original.id)
+  ELSE r.id END FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id
+  JOIN graph_assignments original ON original.id=t.assignment_id
   JOIN graph_assignments repair ON repair.parent_id=t.assignment_id
   WHERE repair.graph_id=? AND repair.role='repair' AND repair.status IN ('pending','running','review')
   AND r.status='invalid' AND t.epoch=(SELECT MAX(epoch) FROM graph_attempts WHERE assignment_id=t.assignment_id)`
@@ -1706,12 +1732,15 @@ async function dismissStale(db: D1Database, g: Graph): Promise<number> {
         ...stale.map((a) => a.id)
       )
     )
+  // Park blocked/error continuations without retrying them. A live formatting
+  // repair still owns the same serial work until its result is resolved.
   // Inspect queue transitions even when there is no assignment noise to dismiss.
   const release = await rows<{ sequence: number }>(
     db,
     `SELECT q.sequence FROM graph_serial_queue q WHERE q.graph_id=? AND q.status='pending'
      AND q.work_id NOT IN (${ACTIVE_CONTINUE_WORK}) AND q.work_id NOT IN (${ACTIVE_REPAIR_WORK}) AND (
-       (q.kind='assignment' AND q.work_id IN (SELECT id FROM graph_assignments WHERE graph_id=? AND status IN ('cancelled','expired','accepted','continuation')))
+       (q.kind='assignment' AND q.work_id IN (SELECT id FROM graph_assignments WHERE graph_id=?
+         AND (status IN ('cancelled','expired','accepted','continuation') OR (role='continue' AND status IN ('blocked','error')))))
        OR (q.kind='execution' AND q.work_id IN (SELECT id FROM graph_results WHERE status IN ('stale','invalid','rejected')
          OR (status='accepted' AND json_extract(parsed,'$.outcome')='blocked'))))`,
     g.id,
