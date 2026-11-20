@@ -73,7 +73,7 @@ export function GraphInboxPanel({
   return (
     <section
       aria-label="Graph inbox task"
-      className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3"
+      className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3 mb-4"
     >
       <div className="flex justify-between gap-3 flex-wrap">
         <strong className="text-sm">Graph task · {context.role}</strong>
