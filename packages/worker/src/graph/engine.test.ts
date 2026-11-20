@@ -1317,6 +1317,31 @@ describe('durable inbox graph workflow', () => {
     expect(assignments.filter((a) => a.role === 'repair')).toHaveLength(1)
     expect(assignments.filter((a) => a.role === 'execute')).toHaveLength(0)
   })
+  it('treats a hand-closed invalid planning step as failed and queues a fresh copy', async () => {
+    const { g, agent } = await fixture(false)
+    await run(db, g.id, 'run')
+    await tick(env(), g.id)
+    await deliver(g.id, agent, '{"title":"Decompose goal into subgoals"}')
+    await processResults(db, await graph(db, g.id))
+    const [failed] = await rows<Assignment>(
+      db,
+      "SELECT * FROM graph_assignments WHERE graph_id=? AND role='decompose'",
+      g.id
+    )
+    expect(failed.status).toBe('error')
+    await run(db, g.id, 'fail', { assignment_id: failed.id })
+    const all = await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE graph_id=?', g.id)
+    expect(all.find((a) => a.id === failed.id)?.status).toBe('cancelled')
+    expect(all.filter((a) => a.role === 'repair').every((a) => a.status === 'cancelled')).toBe(true)
+    const fresh = all.filter((a) => a.role === 'decompose' && a.id !== failed.id)
+    expect(fresh).toHaveLength(1)
+    expect(fresh[0]).toMatchObject({ status: 'pending', attempt_count: 0, input: failed.input })
+    // A second close of the same, now cancelled, step is a no-op.
+    await run(db, g.id, 'fail', { assignment_id: failed.id })
+    expect(
+      await rows(db, "SELECT * FROM graph_assignments WHERE graph_id=? AND role='decompose'", g.id)
+    ).toHaveLength(2)
+  })
   it('rejects a wrong agent and repeat session open', async () => {
     const { g, agent } = await fixture()
     await run(db, g.id, 'run')

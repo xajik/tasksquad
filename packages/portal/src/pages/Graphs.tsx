@@ -1032,6 +1032,19 @@ export function Graphs({
                             {current.waiting?.[a.id]?.action === 'reply' ? 'Answer in inbox' : current.waiting?.[a.id]?.action === 'review' ? 'Review in inbox' : 'Open inbox task'}
                           </Link>
                         ))}
+                      {isMaintainer &&
+                        ['decompose', 'plan', 'merge'].includes(a.role) &&
+                        ['blocked', 'error'].includes(a.status) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            title="Marks this planning step as failed, cancels it and queues a fresh attempt. Safe: planning steps have no side effects."
+                            onClick={() => command('fail', { assignment_id: a.id })}
+                          >
+                            Fail &amp; retry
+                          </Button>
+                        )}
                     </div>
                   ))}
                 {isMaintainer && blocked.length > 0 && (

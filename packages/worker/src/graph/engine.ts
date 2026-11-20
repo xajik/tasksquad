@@ -56,6 +56,10 @@ export async function run(db: D1Database, graphId: string, command: string, body
     await dismissStale(db, g)
     return
   }
+  if (command === 'fail') {
+    await failAssignment(db, g, String(body.assignment_id))
+    return
+  }
   if (command === 'regrade') {
     const r = await sql(
       db,
@@ -1586,6 +1590,37 @@ const ACTIVE_REPAIR_WORK = `SELECT r.id FROM graph_results r JOIN graph_attempts
   JOIN graph_assignments repair ON repair.parent_id=t.assignment_id
   WHERE repair.graph_id=? AND repair.role='repair' AND repair.status IN ('pending','running','review')
   AND r.status='invalid' AND t.epoch=(SELECT MAX(epoch) FROM graph_attempts WHERE assignment_id=t.assignment_id)`
+
+/** Planning steps are side-effect free, so a blocked/errored one the owner closes by hand is treated as
+ * failed: cancel it (and any open repair) and queue a fresh copy. Execution, review and recovery steps
+ * are never retried this way — repeating them could repeat a side effect. */
+const RETRY_ON_CLOSE: Role[] = ['decompose', 'plan', 'merge']
+export async function failAssignment(db: D1Database, g: Graph, assignmentId: string): Promise<void> {
+  const a = await sql(
+    db,
+    "SELECT * FROM graph_assignments WHERE id=? AND graph_id=? AND status IN ('blocked','error')",
+    assignmentId,
+    g.id
+  ).first<Assignment>()
+  if (!a || !RETRY_ON_CLOSE.includes(a.role)) return
+  const next = await assignment(db, g, a.role, JSON.parse(a.input), {
+    node: a.node_id,
+    edge: a.edge_id,
+    parent: a.parent_id,
+    priority: a.priority
+  })
+  await commit(db, g, 'assignment_failed', a.id, { retry: next.id }, [
+    sql(
+      db,
+      `UPDATE graph_assignments SET status='cancelled',cancel_reason='closed'
+       WHERE graph_id=? AND (id=? OR (parent_id=? AND role='repair' AND status IN ('pending','running','review','blocked','error')))`,
+      g.id,
+      a.id,
+      a.id
+    ),
+    ...next.statements
+  ])
+}
 
 async function dismissStale(db: D1Database, g: Graph): Promise<number> {
   const stale = await rows<{ id: string }>(

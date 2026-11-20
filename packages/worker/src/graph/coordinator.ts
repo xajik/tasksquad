@@ -16,7 +16,7 @@ export class GraphCoordinator extends DurableObject<Env> {
     return this.serial(async () => {
       if (
         this.env.ACTION_GRAPH_ENABLED !== 'true' &&
-        !['tick', 'pause', 'stop', 'review', 'input'].includes(command)
+        !['tick', 'pause', 'stop', 'review', 'input', 'fail'].includes(command)
       )
         throw new Error('Action Graph dispatch is disabled')
       await this.ctx.storage.put('team_id', body.team_id)
