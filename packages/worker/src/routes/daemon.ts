@@ -1,3 +1,4 @@
+import { extractApprovalRequest } from '../approval.js'
 import { bindStatement, intake, releaseAgentStatements } from '../graph/engine.js'
 import { bumpInboxVersion } from '../inbox_version.js'
 import { ulid } from 'ulidx'
@@ -581,7 +582,12 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   if (!session) return err('not_found', 404)
 
   // If auto_close is set and the agent finished its first turn (waiting_input), close automatically
-  const effectiveStatus = (status === SessionStatus.WaitingInput && session.auto_close) ? SessionStatus.Closed : status
+  // A reply that asks the owner for approval is never auto-closed: whoever owns the follow-up closes it.
+  // Graph tasks are the exception for the CLI session (the agent must be freed); the graph holds their
+  // inbox task at waiting_input itself (syncInboxStatus) until the answer is accepted.
+  const asksOwner = status === SessionStatus.WaitingInput && session.auto_close && !!extractApprovalRequest(final_text) &&
+    !(await env.DB.prepare('SELECT 1 AS x FROM graph_attempts WHERE task_id = ? LIMIT 1').bind(session.task_id).first())
+  const effectiveStatus = (status === SessionStatus.WaitingInput && session.auto_close && !asksOwner) ? SessionStatus.Closed : status
 
   const taskStatus = effectiveStatus === SessionStatus.Closed ? TaskStatus.Done
     : effectiveStatus === SessionStatus.WaitingInput ? TaskStatus.WaitingInput
@@ -631,7 +637,7 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
     }
   }
   const notifTitle = taskStatus === TaskStatus.Done ? `${agentName} completed a task`
-    : taskStatus === TaskStatus.WaitingInput ? `${agentName} needs your input`
+    : taskStatus === TaskStatus.WaitingInput ? (asksOwner ? `${agentName} needs your approval` : `${agentName} needs your input`)
     : `${agentName} failed`
   const notifBody = taskStatus === TaskStatus.WaitingInput && final_text
     ? `${session.subject} · ${truncate(final_text)}`

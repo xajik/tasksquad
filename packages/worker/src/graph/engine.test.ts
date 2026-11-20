@@ -232,7 +232,11 @@ describe('durable inbox graph workflow', () => {
         description: '',
         body: 'Please provide the fixture value',
         evidence: [],
-        actual_cost: 0
+        actual_cost: 0,
+        needs_input: {
+          title: 'Fixture value',
+          fields: [{ id: 'value', type: 'text', label: 'Which value?', required: true }]
+        }
       })
     )
     await tick(env(), g.id)

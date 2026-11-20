@@ -1,4 +1,7 @@
 import { GraphInboxPanel } from '@/components/GraphInboxPanel'
+import { ApprovalForm } from '@/components/ApprovalForm'
+import { extractApprovalRequest } from '../lib/approval'
+import { formatBody } from '../lib/formatBody'
 import { localGraphToken } from '../lib/localGraph'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { signOut } from 'firebase/auth'
@@ -939,6 +942,7 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit, onGrade }
   const isSupervisor = message.role === 'supervisor'
   const isScheduled = isUser && message.scheduled_at != null && message.scheduled_at > Date.now()
   const [copied, setCopied] = useState(false)
+  const [showRaw, setShowRaw] = useState(false)
 
   function copyBody() {
     navigator.clipboard.writeText(message.body).then(() => {
@@ -1116,9 +1120,34 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit, onGrade }
         )}
       </div>
       <div className="px-4 py-3.5">
-        <div className={cn('text-sm leading-relaxed whitespace-pre-wrap select-text', isScheduled ? 'text-foreground/80' : 'text-foreground/90')}>
-          {message.body}
-        </div>
+        {(() => {
+          const formatted = isAgent && !showRaw ? formatBody(message.body) : null
+          if (!formatted) {
+            return (
+              <div className={cn('text-sm leading-relaxed whitespace-pre-wrap select-text', isScheduled ? 'text-foreground/80' : 'text-foreground/90')}>
+                {message.body}
+              </div>
+            )
+          }
+          return (
+            <div className="space-y-2 text-sm select-text" data-structured-body>
+              {formatted.headline && <p className="leading-relaxed text-foreground/90">{formatted.headline}</p>}
+              <dl className="grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-3 gap-y-1.5 text-xs">
+                {formatted.rows.map((row, i) => (
+                  <div key={i} className="contents">
+                    <dt className="text-muted-foreground">{row.label}</dt>
+                    <dd className="break-words whitespace-pre-wrap">{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )
+        })()}
+        {isAgent && formatBody(message.body) && (
+          <button type="button" className="mt-2 text-xs underline text-muted-foreground" onClick={() => setShowRaw((v) => !v)}>
+            {showRaw ? 'Show formatted' : 'Show raw'}
+          </button>
+        )}
         {message.attachments?.length > 0 && taskId && (
           <div className="mt-3 pt-2.5 border-t border-border/30">
             <MessageAttachments taskId={taskId} msgId={message.id} attachments={message.attachments} />
@@ -1367,6 +1396,15 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
     return null
   }, [messages])
 
+  // The newest agent message may ask the owner for approval (needs_input); it is answered with a form while the
+  // task waits for input and nothing newer has been said.
+  const approvalRequest = useMemo(() => {
+    if (task?.status !== 'waiting_input' && !task?.graph?.can_reply) return null
+    const last = messages[messages.length - 1]
+    return last && last.role === 'agent' ? extractApprovalRequest(last.body) : null
+  }, [messages, task?.status, task?.graph?.can_reply])
+  const [freeText, setFreeText] = useState(false)
+
   return (
     <div className="animate-fade-in w-full">
 
@@ -1607,8 +1645,19 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
       )}
 
       {task?.graph && taskId && <GraphInboxPanel taskId={taskId} context={task.graph} interval={pollInterval} onChange={() => { void load() }} />}
+      {approvalRequest && !freeText && taskId && !pendingScheduledReply && !editingMessage && (task?.graph ? task.graph.can_reply : task?.status === 'waiting_input') && (
+        <ApprovalForm
+          request={approvalRequest}
+          onFreeText={() => setFreeText(true)}
+          onSubmit={async (text) => {
+            await api.messages.create(taskId, text, undefined, [])
+            trackEvent('approval_sent', { task_id: taskId })
+            load()
+          }}
+        />
+      )}
       {/* ── Reply box when agent is waiting for input ── */}
-      {task && ((task.status === 'waiting_input' && (!task.graph || task.graph.can_manage)) || task.graph?.can_reply) && !pendingScheduledReply && !editingMessage && (
+      {task && !(approvalRequest && !freeText) && ((task.status === 'waiting_input' && (!task.graph || task.graph.can_manage)) || task.graph?.can_reply) && !pendingScheduledReply && !editingMessage && (
         <div className={cn('border rounded-xl overflow-hidden shadow-sm bg-background', permissionOptions ? 'border-amber-200 dark:border-amber-800' : 'border-border/60')}>
           <div className={cn('px-4 py-2.5 border-b flex items-center gap-2', permissionOptions ? 'border-amber-200/60 dark:border-amber-800/60' : 'border-border/40')}>
             {permissionOptions ? (
