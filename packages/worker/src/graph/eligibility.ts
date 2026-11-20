@@ -1,5 +1,7 @@
 import { configuration, rows, sql, type Assignment, type Graph } from './store.js'
 
+const BLOCKED_STREAK = 3
+const BLOCKED_COOLDOWN_MS = 30 * 60_000
 const recovery = ['undo', 'reconcile']
 const control = [...recovery, 'grade', 'project', 'continue', 'repair']
 export interface Eligibility {
@@ -96,6 +98,27 @@ export async function eligibility(
     return wait('retry_limit', 'This step has exhausted its retry limit.')
   if (a.role === 'execute' && ctx.executions >= c.policy.capacity)
     return wait('capacity', 'Execution capacity is occupied.')
+  if (a.role === 'execute') {
+    // Circuit breaker: a shared blocker (unreadable instructions, missing access) blocks every execution the same
+    // way. After repeated consecutive blocked outcomes probe only occasionally instead of burning attempts.
+    const recent = await rows<{ outcome: string | null; at: number }>(
+      db,
+      `SELECT json_extract(r.parsed,'$.outcome') AS outcome, r.accepted_at AS at FROM graph_results r
+       JOIN graph_attempts t ON t.id=r.attempt_id JOIN graph_assignments x ON x.id=t.assignment_id
+       WHERE x.graph_id=? AND x.role='execute' AND r.status='accepted' ORDER BY r.accepted_at DESC LIMIT ?`,
+      g.id,
+      BLOCKED_STREAK
+    )
+    if (
+      recent.length === BLOCKED_STREAK &&
+      recent.every((r) => r.outcome === 'blocked') &&
+      now - Number(recent[0].at) < BLOCKED_COOLDOWN_MS
+    )
+      return wait(
+        'blocked_streak',
+        `The last ${BLOCKED_STREAK} executions were blocked, likely by a shared problem (access or missing files). Pausing new executions until ${new Date(Number(recent[0].at) + BLOCKED_COOLDOWN_MS).toISOString()}; resolve the blocker and one attempt will probe again.`
+      )
+  }
   if (['execute', 'undo'].includes(a.role)) {
     const previousId = a.attempt_count > 0 ? a.id : a.parent_id
     if (previousId) {
