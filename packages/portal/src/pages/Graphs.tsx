@@ -433,6 +433,20 @@ export function Graphs({
       setBusy(false)
     }
   }
+  async function cloneGraph(withNodes: boolean) {
+    if (!graphId) return
+    setBusy(true)
+    setError('')
+    try {
+      const g = await graphApi.clone(teamId, graphId, withNodes)
+      setSettings(false)
+      nav(`/dashboard/graphs/${g.id}`)
+    } catch (e) {
+      setError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
   const node = current?.nodes.find((n) => n.id === selected),
     edge = current?.edges.find((e) => e.id === selected)
   const attention = current ? graphAttention(current) : null
@@ -473,7 +487,7 @@ export function Graphs({
           {!current && isMaintainer && <Button onClick={() => setCreate(true)}>New graph</Button>}
           {current && (
             <>
-              {isMaintainer && current.status !== 'stopped' && (
+              {isMaintainer && (
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -539,31 +553,6 @@ export function Graphs({
             </div>
             {current.status === 'stopped' && (
               <span className="rounded border px-2 py-1 text-sm text-muted-foreground">Closed</span>
-            )}
-            {isMaintainer && current.status !== 'stopped' && (
-              <Button
-                variant="outline"
-                disabled={busy}
-                title="Close graph permanently: stops all work and cannot be reopened"
-                onClick={() => {
-                  if (window.confirm('Close this graph? This is permanent: all work stops and it cannot be reopened.'))
-                    command('stop')
-                }}
-              >
-                Close
-              </Button>
-            )}
-            {isMaintainer && current.status !== 'stopped' && (
-              <Button
-                size="icon"
-                variant={current.status === 'running' ? 'outline' : 'default'}
-                disabled={busy}
-                aria-label={current.status === 'running' ? 'Pause graph' : 'Run graph'}
-                title={current.status === 'running' ? 'Pause graph' : 'Run graph'}
-                onClick={() => command(current.status === 'running' ? 'pause' : 'run')}
-              >
-                {current.status === 'running' ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              </Button>
             )}
           </section>
           {(() => {
@@ -1074,18 +1063,77 @@ export function Graphs({
               Pause and resolve existing assignments before creating a configuration revision.
             </DialogDescription>
           </DialogHeader>
-          <PolicyFields value={policy} onChange={setPolicy} agents={agents} />
-          <Button
-            disabled={busy}
-            onClick={async () => {
-              if (await command('configure', { policy })) setSettings(false)
-            }}
-          >
-            Save revision
-          </Button>
-          <Button variant="outline" disabled={busy} onClick={() => command('reindex')}>
-            Rebuild search index
-          </Button>
+          {current && (
+            <div className="flex flex-wrap items-center gap-2">
+              {current.status === 'stopped' ? (
+                <>
+                  <span className="rounded border px-2 py-1 text-sm text-muted-foreground">Closed</span>
+                  <Button
+                    disabled={busy}
+                    title="New graph with the same goal, start state, policy and success rule. Starts fresh."
+                    onClick={() => cloneGraph(false)}
+                  >
+                    Clone without nodes
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    title="Also copies nodes, actions, plans, resources and tags. No results or history."
+                    onClick={() => cloneGraph(true)}
+                  >
+                    Clone with nodes
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant={current.status === 'running' ? 'outline' : 'default'}
+                    disabled={busy}
+                    onClick={() => command(current.status === 'running' ? 'pause' : 'run')}
+                  >
+                    {current.status === 'running' ? (
+                      <Pause className="mr-1 h-4 w-4" />
+                    ) : (
+                      <Play className="mr-1 h-4 w-4" />
+                    )}
+                    {current.status === 'running' ? 'Pause' : 'Run'}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    disabled={busy}
+                    title="Close graph permanently: stops all work and cannot be reopened"
+                    onClick={async () => {
+                      if (
+                        window.confirm(
+                          'Close this graph? This is permanent: all work stops and it cannot be reopened.'
+                        ) &&
+                        (await command('stop'))
+                      )
+                        setSettings(false)
+                    }}
+                  >
+                    Close graph
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+          {current && current.status !== 'stopped' && (
+            <>
+              <PolicyFields value={policy} onChange={setPolicy} agents={agents} />
+              <Button
+                disabled={busy}
+                onClick={async () => {
+                  if (await command('configure', { policy })) setSettings(false)
+                }}
+              >
+                Save revision
+              </Button>
+              <Button variant="outline" disabled={busy} onClick={() => command('reindex')}>
+                Rebuild search index
+              </Button>
+            </>
+          )}
         </DialogContent>
       </Dialog>
       <Dialog open={resourceOpen} onOpenChange={setResourceOpen}>

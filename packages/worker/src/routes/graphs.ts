@@ -2,7 +2,7 @@ import type { Env, AuthContext } from '../types.js'
 import { json, err } from '../auth.js'
 import { requireMember, requireMaintainer } from './helpers.js'
 import { search } from '../graph/search.js'
-import { create, graph, snapshot, rows, type Data } from '../graph/store.js'
+import { clone, create, graph, snapshot, rows, type Data } from '../graph/store.js'
 
 export async function handle(
   req: Request,
@@ -43,6 +43,10 @@ export async function handle(
     }
     if (req.method !== 'POST') return err('method_not_allowed', 405)
     const body = await boundedJSON(req)
+    if (action === 'clone') {
+      const copy = await clone(env.DB, teamId, auth.userId, graphId, body.with_nodes === true)
+      return json(copy, 201)
+    }
     const coordinator = env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(teamId))
     if (action === 'resource') {
       // Resources are immutable versions. These owner mutations also use coordinator serialization.

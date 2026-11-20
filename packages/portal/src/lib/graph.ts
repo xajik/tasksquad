@@ -175,6 +175,11 @@ export const graphApi = {
   list: (team: string) => request<{ graphs: GraphSummary[] }>(base(team)),
   create: (team: string, data: NewGraph) =>
     request<GraphSummary>(base(team), { method: 'POST', body: JSON.stringify(data) }),
+  clone: (team: string, graph: string, withNodes: boolean) =>
+    request<GraphSummary>(`${base(team)}/${graph}/clone`, {
+      method: 'POST',
+      body: JSON.stringify({ with_nodes: withNodes })
+    }),
   get: (team: string, graph: string) => request<GraphSnapshot>(`${base(team)}/${graph}`),
   command: (team: string, graph: string, action: string, body: unknown = {}) =>
     request<{ ok: boolean }>(`${base(team)}/${graph}/${action}`, {

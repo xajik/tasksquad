@@ -21,6 +21,7 @@ import {
 } from './store.js'
 import { materialize, embeddingChunks } from './outbox.js'
 import { search } from './search.js'
+import { clone } from './store.js'
 import { maintenance } from './maintenance.js'
 import { run, tick, intake, bindStatement, processResults, advanceGrading } from './engine.js'
 import { handle as graphRoute } from '../routes/graphs.js'
@@ -344,6 +345,21 @@ describe('durable inbox graph workflow', () => {
     await expect(run(db, g.id, 'dismiss')).rejects.toThrow('closed')
     await run(db, g.id, 'stop')
     expect((await graph(db, g.id)).status).toBe('stopped')
+    const nodeCount = async (id: string) =>
+      (await rows<{ n: number }>(db, 'SELECT COUNT(*) n FROM graph_nodes WHERE graph_id=?', id))[0].n
+    const edgeCount = async (id: string) =>
+      (await rows<{ n: number }>(db, 'SELECT COUNT(*) n FROM graph_edges WHERE graph_id=?', id))[0].n
+    const src = await graph(db, g.id)
+    const fresh = await clone(db, src.team_id, src.owner_id, g.id, false)
+    expect(fresh.status).toBe('draft')
+    expect(fresh.body).toBe(src.body)
+    expect(await nodeCount(fresh.id)).toBe(2)
+    expect(await edgeCount(fresh.id)).toBe(0)
+    const full = await clone(db, src.team_id, src.owner_id, g.id, true)
+    expect(await nodeCount(full.id)).toBe(await nodeCount(g.id))
+    expect(await edgeCount(full.id)).toBe(await edgeCount(g.id))
+    await run(db, full.id, 'run')
+    await expect(clone(db, src.team_id, src.owner_id, full.id, false)).rejects.toThrow('closed')
   })
 
   it('enforces execution capacity independently of available agent count', async () => {
