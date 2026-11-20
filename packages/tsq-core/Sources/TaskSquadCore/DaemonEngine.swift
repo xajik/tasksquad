@@ -241,6 +241,39 @@ public actor DaemonEngine {
         for id in order { Log.info("[\(name(id))] Pulling \(paused ? "paused" : "resumed")") }
     }
     /// Re-syncs skills, sub-agents and commands now (Go: Syncer.ForceSync).
+    /// Starts Claude Code as the graph role's sub-agent (`claude --agent <name>`) so the identity and its
+    /// tool limits apply to the whole session. Empty (fall back to the worker's Skills instruction) when the
+    /// CLI is not Claude Code or the sub-agent is not installed in this work directory yet.
+    static func graphSubAgent(role: String) -> String? {
+        switch role {
+        case "grade", "project", "reconcile": "tsq-graph-grader"
+        case "execute", "undo", "continue": "tsq-graph-executor"
+        default: nil
+        }
+    }
+
+    static func graphAgentArguments(provider: ProviderKind, task: JSONValue, workDir: String) -> [String] {
+        guard provider == .claudeCode, let role = task["graph"]?["role"]?.string, let name = graphSubAgent(role: role) else { return [] }
+        let file = URL(fileURLWithPath: workDir).appendingPathComponent(".claude/agents/\(name).md").path
+        guard FileManager.default.fileExists(atPath: file) else { return [] }
+        return ["--agent", name]
+    }
+
+    /// Fallback identity text read from whichever harness directory the sub-agent sync wrote it to.
+    static func graphIdentityText(task: JSONValue, workDir: String) -> String? {
+        guard let role = task["graph"]?["role"]?.string, let name = graphSubAgent(role: role) else { return nil }
+        for base in [".claude", ".agents", ".agent", ".gemini", ".pi", ".forge"] {
+            let url = URL(fileURLWithPath: workDir).appendingPathComponent("\(base)/agents/\(name).md")
+            guard var text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            if text.hasPrefix("---"), let end = text.range(of: "\n---", range: text.index(text.startIndex, offsetBy: 3)..<text.endIndex) {
+                text = String(text[end.upperBound...])
+            }
+            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.count > 1600 ? String(text.prefix(1600)) + "…" : text
+        }
+        return nil
+    }
+
     public func forceResourceSync() async { await resourceSync?.forceSync() }
     public func snapshots() -> [AgentSnapshot] {
         order.compactMap { id in
@@ -408,7 +441,7 @@ public actor DaemonEngine {
             // A resumed CLI session already holds the thread, memory and KB note,
             // so it only gets what it hasn't seen.
             let resumeID = await resumeTarget(agent: agent, task: task)
-            let prompt: String
+            var prompt: String
             if let resumeID {
                 prompt = TaskPrompt.resume(messages: messages)
                 agents[agentID]?.state.markResumed()
@@ -419,12 +452,20 @@ public actor DaemonEngine {
                 let supplied = TaskPrompt.build(subject: subject, messages: messages, memoryRollup: task["graph"] == nil ? memoryRollup : "")
                 prompt = task["graph"] == nil ? Self.injectKBNote(supplied, workDir: agent.configuration.workDir) : supplied
             }
+            // Claude Code runs graph roles as their published sub-agent (--agent); every other CLI, or a work
+            // directory without the sub-agent, gets the same identity as plain text in the prompt.
+            let subAgent = Self.graphAgentArguments(provider: provider, task: task, workDir: agent.configuration.workDir)
+            if task["graph"] != nil, subAgent.isEmpty, resumeID == nil,
+               let identity = Self.graphIdentityText(task: task, workDir: agent.configuration.workDir) {
+                prompt = "Identity:\n" + identity + "\n\n" + prompt
+            }
             agents[agentID]?.lastPrompt = prompt
             recordTyped(agentID: agentID, prompt)
             let parts = agent.configuration.command.split(whereSeparator: \.isWhitespace).map(String.init)
             guard let executable = parts.first else { throw ConfigurationError("Agent command is empty") }
             var arguments = Array(parts.dropFirst()) + provider.extraArguments
                 + (try provider.setupArguments(hooksPort: configuration.hooks.port, agentID: agentID, taskID: taskID))
+                + subAgent
             if let resumeID { arguments = provider.resumeArguments(arguments, id: resumeID) }
             var environment = environment
             environment["TSQ_TASK_ID"] = taskID

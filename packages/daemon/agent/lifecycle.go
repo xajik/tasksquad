@@ -234,6 +234,14 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 			prompt = injectKBNote(prompt, a.Config.WorkDir)
 		}
 	}
+	// Claude Code runs graph roles as their published sub-agent (--agent); every other CLI, or a
+	// work directory without the sub-agent, gets the same identity as plain text in the prompt.
+	subAgent := graphAgentArgs(a.prov, task, a.Config.WorkDir)
+	if graphTask && subAgent == nil && resumeID == "" {
+		if identity := graphIdentityText(task, a.Config.WorkDir); identity != "" {
+			prompt = "Identity:\n" + identity + "\n\n" + prompt
+		}
+	}
 	a.st.mu.Lock()
 	a.st.lastPrompt = prompt
 	a.st.mu.Unlock()
@@ -247,6 +255,10 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	// so an unrelated process in the same directory can't fire this task's
 	// hooks. See provider.Provider.SetupArgs.
 	extraArgs = append(extraArgs, a.prov.SetupArgs(cfg.Hooks.Port, a.Config.ID, taskID)...)
+	if subAgent != nil {
+		extraArgs = append(extraArgs, subAgent...)
+		logger.Info(fmt.Sprintf("[%s] graph task %s runs as sub-agent %s", a.Config.Name, taskID, subAgent[1]))
+	}
 	stdinData := a.prov.Stdin(provider.FormatPrompt(a.prov, prompt))
 	var args []string
 	if stdinData != "" {
