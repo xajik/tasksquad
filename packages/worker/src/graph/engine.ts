@@ -581,6 +581,7 @@ export async function processResults(db: D1Database, g: Graph): Promise<void> {
       const parsed = parseResult(original.role as keyof typeof templates, r.raw)
       assertEvidenceResources(original, parsed as Data)
       await assertReconcileRestoration(db, original, parsed as Data)
+      await assertContinuationVerified(db, original, parsed as Data)
       r.parsed = json(parsed)
     } catch (e) {
       const ops = [
@@ -647,6 +648,27 @@ function assertEvidenceResources(original: Assignment, d: Data): void {
   if (((d.evidence as Data[]) ?? []).some((e) => !permitted.includes(String(e.resource_id))))
     throw new Error(
       `Evidence references an unsupplied resource version; use only these resource IDs: ${JSON.stringify(permitted)}`
+    )
+}
+
+/** A resume/restart of a side-effecting step must attest termination, baseline and checkpoint. Checked at parse
+ * time so the agent is asked to repair its answer, instead of the owner hitting a dead end when accepting. */
+async function assertContinuationVerified(db: D1Database, original: Assignment, d: Data): Promise<void> {
+  if (original.role !== 'continue' || d.decision === 'blocked') return
+  let parent = await sql(db, 'SELECT * FROM graph_assignments WHERE id=?', original.parent_id).first<Assignment>()
+  const seen = new Set<string>()
+  while (parent?.role === 'continue' && parent.parent_id && !seen.has(parent.id)) {
+    seen.add(parent.id)
+    parent = await sql(db, 'SELECT * FROM graph_assignments WHERE id=?', parent.parent_id).first<Assignment>()
+  }
+  if (!parent || !actionable(parent.role as Role)) return
+  if (
+    d.termination_verified !== true ||
+    d.baseline_unchanged !== true ||
+    (d.decision === 'resume' && d.checkpoint_verified !== true)
+  )
+    throw new Error(
+      'Continuation needs verified termination, baseline and checkpoint: set termination_verified and baseline_unchanged to true (and checkpoint_verified to true for resume) only if verified; otherwise answer decision "blocked" with the reason'
     )
 }
 
