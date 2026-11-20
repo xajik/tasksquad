@@ -558,6 +558,51 @@ async function resolve(
   return { a, original, t }
 }
 
+/** Mark a result invalid and ask the agent to repair it (unless this already is a repair). */
+async function invalidateResult(
+  db: D1Database,
+  g: Graph,
+  r: Result,
+  a: Assignment,
+  t: { id: string },
+  e: unknown
+): Promise<void> {
+  const ops = [
+    sql(db, "UPDATE graph_results SET status='invalid',validation_error=? WHERE id=?", String(e), r.id),
+    sql(db, 'DELETE FROM graph_reservations WHERE attempt_id=?', t.id),
+    sql(db, "UPDATE graph_assignments SET status='error' WHERE id=?", a.id)
+  ]
+  if (a.role !== 'repair') {
+    const fix = await assignment(
+      db,
+      g,
+      'repair',
+      { raw: r.raw, original_role: a.role, original_assignment: a.id, validation_error: String(e) },
+      { parent: a.id, node: a.node_id, edge: a.edge_id, originalRole: a.role as keyof typeof templates }
+    )
+    ops.push(...fix.statements)
+  }
+  await commit(db, g, 'parse_error', r.id, { error: String(e) }, ops)
+}
+
+/** A continuation waiting for review that can never be accepted (it predates parse-time validation) would hold
+ * every later review behind it forever; send it back to the agent for repair. */
+export async function revalidateReviews(db: D1Database, g: Graph): Promise<void> {
+  const waiting = await rows<Result>(
+    db,
+    `SELECT r.* FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=? AND a.role='continue' AND r.status='review' AND r.parsed IS NOT NULL`,
+    g.id
+  )
+  for (const r of waiting) {
+    const { a, original, t } = await resolve(db, r)
+    try {
+      await assertContinuationVerified(db, original, JSON.parse(r.parsed as string) as Data)
+    } catch (e) {
+      await invalidateResult(db, g, r, a, t, e)
+    }
+  }
+}
+
 export async function processResults(db: D1Database, g: Graph): Promise<void> {
   const pending = await rows<Result>(
     db,
@@ -584,22 +629,7 @@ export async function processResults(db: D1Database, g: Graph): Promise<void> {
       await assertContinuationVerified(db, original, parsed as Data)
       r.parsed = json(parsed)
     } catch (e) {
-      const ops = [
-        sql(db, "UPDATE graph_results SET status='invalid',validation_error=? WHERE id=?", String(e), r.id),
-        sql(db, 'DELETE FROM graph_reservations WHERE attempt_id=?', t.id),
-        sql(db, "UPDATE graph_assignments SET status='error' WHERE id=?", a.id)
-      ]
-      if (a.role !== 'repair') {
-        const fix = await assignment(
-          db,
-          g,
-          'repair',
-          { raw: r.raw, original_role: a.role, original_assignment: a.id, validation_error: String(e) },
-          { parent: a.id, node: a.node_id, edge: a.edge_id, originalRole: a.role as keyof typeof templates }
-        )
-        ops.push(...fix.statements)
-      }
-      await commit(db, g, 'parse_error', r.id, { error: String(e) }, ops)
+      await invalidateResult(db, g, r, a, t, e)
       continue
     }
     await commit(db, g, 'validated', r.id, {}, [
@@ -1753,6 +1783,7 @@ export async function syncInboxStatus(db: D1Database, g: Graph): Promise<void> {
 export async function tick(env: GraphEnv, graphId: string): Promise<void> {
   const g = await graph(env.DB, graphId)
   await processResults(env.DB, g)
+  await revalidateReviews(env.DB, g)
   await dismissStale(env.DB, g)
   await advanceGrading(env.DB, g)
   await syncInboxStatus(env.DB, g)
