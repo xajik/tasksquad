@@ -473,7 +473,7 @@ export function Graphs({
           {!current && isMaintainer && <Button onClick={() => setCreate(true)}>New graph</Button>}
           {current && (
             <>
-              {isMaintainer && (
+              {isMaintainer && current.status !== 'stopped' && (
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -537,12 +537,23 @@ export function Graphs({
                 {plural(current.edges.length, 'action')} · {plural(current.nodes.filter(isGuidance).length, 'guidance item')}
               </p>
             </div>
+            {current.status === 'stopped' && (
+              <span className="rounded border px-2 py-1 text-sm text-muted-foreground">Closed</span>
+            )}
             {isMaintainer && current.status !== 'stopped' && (
-              <Button variant="outline" disabled={busy} title="Close graph: stop all work (can be resumed with Run)" onClick={() => command('stop')}>
+              <Button
+                variant="outline"
+                disabled={busy}
+                title="Close graph permanently: stops all work and cannot be reopened"
+                onClick={() => {
+                  if (window.confirm('Close this graph? This is permanent: all work stops and it cannot be reopened.'))
+                    command('stop')
+                }}
+              >
                 Close
               </Button>
             )}
-            {isMaintainer && (
+            {isMaintainer && current.status !== 'stopped' && (
               <Button
                 size="icon"
                 variant={current.status === 'running' ? 'outline' : 'default'}

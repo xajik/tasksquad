@@ -30,6 +30,11 @@ const controlRank = (role: Role) =>
 const actionable = (role: Role) => role === 'execute' || role === 'undo'
 
 export async function run(db: D1Database, graphId: string, command: string, body: Data = {}): Promise<void> {
+  // 'stopped' is the terminal Closed state: immutable and irreversible, like a Done inbox task.
+  if (await sql(db, "SELECT 1 FROM graphs WHERE id=? AND status='stopped'", graphId).first()) {
+    if (command === 'stop') return
+    throw new Error('Graph is closed and cannot be changed')
+  }
   if (command === 'tag' || command === 'link') {
     const { annotate } = await import('./store.js')
     await annotate(db, graphId, command, body)
@@ -296,6 +301,7 @@ export async function run(db: D1Database, graphId: string, command: string, body
     }
   }
   if (command === 'stop') {
+    // Closing is permanent: nothing can be resumed, so mark cancellations as final.
     const ordinary = "('decompose','plan','merge','execute','report')"
     const unopened = `SELECT t.id FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=? AND a.role IN ${ordinary} AND t.status='pending' AND t.session_id IS NULL`
     ops.push(

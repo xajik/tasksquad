@@ -339,15 +339,11 @@ describe('durable inbox graph workflow', () => {
     ).toBe('cancelled')
     expect(await rows(db, 'SELECT * FROM graph_reservations WHERE attempt_id=?', old.id)).toHaveLength(0)
     await expect(bindStatement(db, old.task_id, agent, crypto.randomUUID())).rejects.toThrow('Unexpected')
-    await run(db, g.id, 'run')
-    await tick(env(), g.id)
-    const attempts = await rows<{ epoch: number; status: string }>(
-      db,
-      'SELECT * FROM graph_attempts WHERE assignment_id=? ORDER BY epoch',
-      assignmentId
-    )
-    expect(attempts).toHaveLength(2)
-    expect(attempts[1]).toMatchObject({ epoch: 2, status: 'pending' })
+    // Closing is permanent: nothing can resume or change the graph.
+    await expect(run(db, g.id, 'run')).rejects.toThrow('closed')
+    await expect(run(db, g.id, 'dismiss')).rejects.toThrow('closed')
+    await run(db, g.id, 'stop')
+    expect((await graph(db, g.id)).status).toBe('stopped')
   })
 
   it('enforces execution capacity independently of available agent count', async () => {
