@@ -46,6 +46,28 @@ export async function run(db: D1Database, graphId: string, command: string, body
     await commit(db, g, 'reindex_requested', null, {}, [])
     return
   }
+  if (command === 'dismiss') {
+    // Clears finished-session noise: planning/review steps whose result went stale, and repair errors.
+    // Execute/undo steps are never dismissed here: they may hold side effects or owner approvals.
+    const stale = await rows<{ id: string }>(
+      db,
+      `SELECT a.id FROM graph_assignments a WHERE a.graph_id=? AND a.status IN ('blocked','error')
+       AND a.role NOT IN ('execute','undo','reconcile')
+       AND (a.role='repair' OR EXISTS(SELECT 1 FROM graph_attempts t JOIN graph_results r ON r.attempt_id=t.id
+            WHERE t.assignment_id=a.id AND r.status='stale'))`,
+      g.id
+    )
+    if (!stale.length) return
+    await commit(db, g, 'dismissed', null, { count: stale.length }, [
+      sql(
+        db,
+        `UPDATE graph_assignments SET status='cancelled',cancel_reason='dismissed' WHERE graph_id=? AND id IN (${stale.map(() => '?').join(',')})`,
+        g.id,
+        ...stale.map((a) => a.id)
+      )
+    ])
+    return
+  }
   if (command === 'regrade') {
     const r = await sql(
       db,

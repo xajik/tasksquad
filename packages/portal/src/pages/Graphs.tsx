@@ -1017,6 +1017,19 @@ export function Graphs({
                         ))}
                     </div>
                   ))}
+                {isMaintainer && blocked.length > 0 && (
+                  <div className="pt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      title="Cancels blocked steps whose result went out of date, and repair errors. Steps that may hold approvals or side effects are kept."
+                      onClick={() => command('dismiss')}
+                    >
+                      Dismiss out-of-date steps
+                    </Button>
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground pt-3">
                   Grading follows durable completion intake. Review at the head holds later grades. Dispatch
                   also checks agent availability, role isolation and budgets.
