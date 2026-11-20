@@ -48,7 +48,7 @@ export async function run(db: D1Database, graphId: string, command: string, body
   }
   if (command === 'dismiss') {
     // Clears finished-session noise: planning/review steps whose result went stale, and repair errors.
-    // Execute/undo steps are never dismissed here: they may hold side effects or owner approvals.
+    // Execute/undo steps are never cancelled here: they may hold side effects or owner approvals.
     const stale = await rows<{ id: string }>(
       db,
       `SELECT a.id FROM graph_assignments a WHERE a.graph_id=? AND a.status IN ('blocked','error')
@@ -57,15 +57,29 @@ export async function run(db: D1Database, graphId: string, command: string, body
             WHERE t.assignment_id=a.id AND r.status='stale'))`,
       g.id
     )
-    if (!stale.length) return
-    await commit(db, g, 'dismissed', null, { count: stale.length }, [
+    // The serial queue is strictly ordered: an entry whose work was cancelled, or whose execution result
+    // is stale/invalid/rejected, would hold every later grade and projection forever. Skip those entries.
+    const ops: D1PreparedStatement[] = []
+    if (stale.length)
+      ops.push(
+        sql(
+          db,
+          `UPDATE graph_assignments SET status='cancelled',cancel_reason='dismissed' WHERE graph_id=? AND id IN (${stale.map(() => '?').join(',')})`,
+          g.id,
+          ...stale.map((a) => a.id)
+        )
+      )
+    ops.push(
       sql(
         db,
-        `UPDATE graph_assignments SET status='cancelled',cancel_reason='dismissed' WHERE graph_id=? AND id IN (${stale.map(() => '?').join(',')})`,
+        `UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND status='pending' AND (
+           (kind='assignment' AND work_id IN (SELECT id FROM graph_assignments WHERE graph_id=? AND status='cancelled'))
+           OR (kind='execution' AND work_id IN (SELECT id FROM graph_results WHERE status IN ('stale','invalid','rejected'))))`,
         g.id,
-        ...stale.map((a) => a.id)
+        g.id
       )
-    ])
+    )
+    await commit(db, g, 'dismissed', null, { count: stale.length }, ops)
     return
   }
   if (command === 'regrade') {
