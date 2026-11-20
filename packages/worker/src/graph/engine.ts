@@ -678,13 +678,15 @@ async function evidenceStatements(
       Number(e.expires_at) > Number(e.observed_at) + c.policy.freshness_ms
     )
       throw new Error('Evidence freshness invalid')
-    const previous = await sql(db, 'SELECT id FROM graph_evidence WHERE id=?', e.id).first()
-    if (previous) throw new Error('Evidence IDs cannot be reused')
+    // Agents pick evidence IDs, but the primary key is global: a later step reusing "ev1" must not
+    // block acceptance. Downstream readers take IDs from the stored rows, so mint a fresh one.
+    let evidenceId = e.id as string
+    if (await sql(db, 'SELECT id FROM graph_evidence WHERE id=?', evidenceId).first()) evidenceId = id()
     ops.push(
       sql(
         db,
         'INSERT INTO graph_evidence(id,graph_id,node_id,source_result_id,predicate,value,scope,observed_at,expires_at,resource_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
-        e.id,
+        evidenceId,
         g.id,
         node,
         r.id,
