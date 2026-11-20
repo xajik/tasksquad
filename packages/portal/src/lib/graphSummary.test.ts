@@ -16,4 +16,9 @@ describe('summarizeResult', () => {
     expect(summarizeResult('plan', 'nope')).toBeNull()
     expect(summarizeResult('mystery', '{}')).toBeNull()
   })
+  it('distinguishes plan alignment from verified goal achievement', () => {
+    const summary = summarizeResult('project', JSON.stringify({ goal_score: 0.6, evidence_ids: [], decomposition_feedback: ['Add analytics'], reason: 'No sales evidence' }), 'decomposition_review')!
+    expect(summary.headline).toContain('Decomposition alignment')
+    expect(summary.consequence).toContain('does not measure sales')
+  })
 })

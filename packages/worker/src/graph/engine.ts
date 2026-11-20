@@ -1,3 +1,4 @@
+import { dispatchContext, eligibility } from './eligibility.js'
 import { MaxHeap } from './heap.js'
 import { priority } from './priority.js'
 import type { Env } from '../types.js'
@@ -169,6 +170,20 @@ export async function run(db: D1Database, graphId: string, command: string, body
     if (!a || typeof body.message !== 'string' || body.message.length > 3999)
       throw new Error('A blocked assignment and bounded input are required')
     if (a.role === 'repair') throw new Error('Provide input to the original assignment')
+    let root = a
+    const visited = new Set<string>()
+    while (root.role === 'continue' && root.parent_id && !visited.has(root.id)) {
+      visited.add(root.id)
+      const parent = await sql(
+        db,
+        'SELECT * FROM graph_assignments WHERE id=? AND graph_id=?',
+        root.parent_id,
+        g.id
+      ).first<Assignment>()
+      if (!parent) throw new Error('Missing continuation ancestor')
+      root = parent
+    }
+    if (root.role === 'continue') throw new Error('Continuation has no original assignment')
     const unresolved = await sql(
       db,
       `SELECT q.work_id FROM graph_serial_queue q JOIN graph_results r ON r.id=q.work_id JOIN graph_attempts t ON t.id=r.attempt_id WHERE q.graph_id=? AND q.status='pending' AND q.kind='execution' AND t.assignment_id=? AND r.status IN ('invalid','rejected') ORDER BY q.sequence LIMIT 1`,
@@ -191,8 +206,15 @@ export async function run(db: D1Database, graphId: string, command: string, body
       'continue',
       {
         assignment: a.id,
-        original_role: a.role,
-        previous: JSON.parse(a.input),
+        original_role: root.role,
+        previous: JSON.parse(root.input),
+        prior_user_inputs:
+          a.role === 'continue'
+            ? [
+                ...((previousInput.prior_user_inputs as string[]) ?? []),
+                String(previousInput.user_input ?? '')
+              ]
+            : [],
         previous_results: previousResults,
         user_input: body.message,
         ...(serialWork ? { serial_work_id: serialWork } : {})
@@ -491,7 +513,12 @@ export async function intake(
 }
 
 /** The daemon's idle self-heal never runs behind a 304, so closing a graph session must free its agent itself. */
-export function releaseAgentStatements(db: D1Database, agentId: string, sessionId: string, now: number): D1PreparedStatement[] {
+export function releaseAgentStatements(
+  db: D1Database,
+  agentId: string,
+  sessionId: string,
+  now: number
+): D1PreparedStatement[] {
   return [
     sql(
       db,
@@ -591,9 +618,13 @@ export async function processResults(db: D1Database, g: Graph): Promise<void> {
 /** A 'restored' reconcile must verify every restoration predicate by exact text; checked at parse so repair can fix it. */
 async function assertReconcileRestoration(db: D1Database, original: Assignment, d: Data): Promise<void> {
   if (original.role !== 'reconcile' || d.decision !== 'terminated_restored') return
-  const prior = await sql(db, 'SELECT * FROM graph_assignments WHERE id=?', original.parent_id).first<Assignment>()
-  const predicates = (((JSON.parse(prior?.input ?? '{}') as Data).plan as Data | undefined)?.restoration_predicates ??
-    []) as string[]
+  const prior = await sql(
+    db,
+    'SELECT * FROM graph_assignments WHERE id=?',
+    original.parent_id
+  ).first<Assignment>()
+  const predicates = (((JSON.parse(prior?.input ?? '{}') as Data).plan as Data | undefined)
+    ?.restoration_predicates ?? []) as string[]
   const evidence = (d.evidence as Data[]) ?? []
   const missing = predicates.filter(
     (p) => !evidence.some((e) => e.predicate === p && e.value === 'true' && Number(e.expires_at) > Date.now())
@@ -1015,13 +1046,28 @@ export async function accept(
         const allowed = (input.evidence as Data[]).map((e) => e.id)
         if ((d.evidence_ids as string[]).some((e) => !allowed.includes(e)))
           throw new Error('Review references unsupplied evidence')
-        await enqueue('decompose', {
-          goal: g.body,
-          title: g.title,
-          success_rule: c.rule,
-          existing_milestones: input.hierarchy,
-          abstract_feedback: d.decomposition_feedback ?? []
-        })
+        const feedback = (d.decomposition_feedback as unknown[] | undefined) ?? []
+        const running = await sql(
+          db,
+          "SELECT 1 FROM graph_assignments WHERE graph_id=? AND role='decompose' AND status IN ('running','review') LIMIT 1",
+          g.id
+        ).first()
+        if (feedback.length && !running) {
+          ops.push(
+            sql(
+              db,
+              "UPDATE graph_assignments SET status='cancelled',cancel_reason='superseded' WHERE graph_id=? AND role='decompose' AND status='pending' AND attempt_count=0",
+              g.id
+            )
+          )
+          await enqueue('decompose', {
+            goal: g.body,
+            title: g.title,
+            success_rule: c.rule,
+            existing_milestones: input.hierarchy,
+            abstract_feedback: feedback
+          })
+        }
         ops.push(
           sql(
             db,
@@ -1173,7 +1219,9 @@ export async function accept(
       // A reply to a blocked continue must resume the step that started it, never spawn another
       // continue (that looped: continue -> restart -> continue ...).
       let parent: Assignment = found
-      for (let hops = 0; parent.role === 'continue' && parent.parent_id && hops < 10; hops++) {
+      const ancestors = new Set<string>()
+      while (parent.role === 'continue' && parent.parent_id && !ancestors.has(parent.id)) {
+        ancestors.add(parent.id)
         const up: Assignment | null = await sql(
           db,
           'SELECT * FROM graph_assignments WHERE id=?',
@@ -1184,7 +1232,16 @@ export async function accept(
       }
       if (parent.role === 'continue') throw new Error('Continuation has no original assignment')
       if (d.decision === 'blocked')
-        ops.push(sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", parent.id))
+        // The newest request belongs to this continuation, not its ancestor.
+        ops.push(
+          sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", original.id),
+          sql(
+            db,
+            "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND work_id=?",
+            g.id,
+            input.serial_work_id ?? original.id
+          )
+        )
       else {
         // A fresh attempt is explicit; context records checkpoint semantics for the executor.
         // Judge the newest attempt: an older confirmed attempt must not mask a live later one.
@@ -1227,7 +1284,9 @@ export async function accept(
             ? { observations: await executionNodes(db, g.id), resources: await executionResources(db, g.id) }
             : {}),
           continuation: d,
-          user_input: input.user_input,
+          user_input: [...((input.prior_user_inputs as string[]) ?? []), input.user_input]
+            .filter(Boolean)
+            .join('\n\nFollow-up:\n'),
           ...(input.serial_work_id ? { serial_work_id: input.serial_work_id } : {})
         }
         const next = await assignment(db, g, parent.role, context, {
@@ -1390,17 +1449,9 @@ export async function advanceGrading(db: D1Database, g: Graph): Promise<void> {
 }
 
 export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
-  const db = env.DB,
-    c = await configuration(db, g),
-    now = Date.now()
-  const budgets = (await sql(db, 'SELECT * FROM graph_budgets WHERE graph_id=?', g.id).first<{
-    attempts: number
-    execution_cost: number
-    recovery_reserved: number
-    allocations: number
-  }>())!
-  // Restoration must stay possible after the attempt budget is spent, or side effects could never be undone.
-  const exhausted = () => budgets.attempts >= c.policy.attempt_budget
+  const db = env.DB
+  const context = await dispatchContext(db, g, env.ACTION_GRAPH_ENABLED === 'true')
+  const { c, now, budgets, used } = context
   const pending = await rows<Assignment>(
     db,
     "SELECT * FROM graph_assignments WHERE graph_id=? AND status='pending' AND available_at<=? ORDER BY CASE role WHEN 'undo' THEN 0 WHEN 'reconcile' THEN 0 WHEN 'grade' THEN 1 WHEN 'project' THEN 1 WHEN 'continue' THEN 1 ELSE 2 END,priority DESC,created_at",
@@ -1445,124 +1496,16 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
   pending.sort(
     (a, b) => controlRank(a.role) - controlRank(b.role) || b.priority - a.priority || a.id.localeCompare(b.id)
   )
-  const used = await rows<{ agent_id: string; kind: string; graph_id: string }>(
-    db,
-    'SELECT * FROM graph_reservations'
-  )
-  let executions = used.filter(
-    (r) => r.kind === 'execution' && (r as { graph_id?: string }).graph_id === g.id
-  ).length
   const candidates = pending.filter((a) => a.role !== 'execute')
   const heap = new MaxHeap<Assignment>((a, b) => a.priority - b.priority || b.id.localeCompare(a.id))
   for (const a of pending.filter((a) => a.role === 'execute')) heap.push(a)
   while (candidates.length || heap.size) {
     const a = candidates.shift() ?? ((budgets.allocations + 1) % 5 === 0 ? heap.popLowest() : heap.pop())!
-    if (exhausted() && !['undo', 'reconcile'].includes(a.role)) continue
-    if (
-      g.status !== 'running' &&
-      !['undo', 'reconcile', 'grade', 'project', 'continue', 'repair'].includes(a.role)
-    )
-      continue
-    if (
-      env.ACTION_GRAPH_ENABLED !== 'true' &&
-      !['undo', 'reconcile', 'grade', 'project', 'continue', 'repair'].includes(a.role)
-    )
-      continue
-    let serialAssignment = a
-    if (a.role === 'repair' && a.parent_id)
-      serialAssignment = (await sql(
-        db,
-        'SELECT * FROM graph_assignments WHERE id=?',
-        a.parent_id
-      ).first<Assignment>())!
-    if (['grade', 'project', 'continue'].includes(serialAssignment.role)) {
-      const context = JSON.parse(serialAssignment.input) as Data
-      const work = String(context.serial_work_id ?? context.execution_result_id ?? serialAssignment.id)
-      const head = await sql(
-        db,
-        "SELECT work_id FROM graph_serial_queue WHERE graph_id=? AND status='pending' ORDER BY sequence LIMIT 1",
-        g.id
-      ).first<{ work_id: string }>()
-      if (head?.work_id !== work) continue
-      const running = await sql(
-        db,
-        `SELECT 1 FROM graph_attempts t JOIN graph_assignments active ON active.id=t.assignment_id LEFT JOIN graph_assignments parent ON parent.id=active.parent_id WHERE active.graph_id=? AND t.status IN ('pending','running') AND (active.role IN ('grade','project','continue') OR (active.role='repair' AND parent.role IN ('grade','project','continue'))) LIMIT 1`,
-        g.id
-      ).first()
-      if (running) continue
-    }
-    if (a.attempt_count >= a.max_attempts) continue
-    if (a.role === 'execute' && executions >= c.policy.capacity) continue
-    const selectionRole = serialAssignment.role
-    const primary =
-      selectionRole === 'decompose'
-        ? [c.policy.decomposer]
-        : ['grade', 'project', 'continue', 'reconcile'].includes(selectionRole)
-          ? [c.policy.grader]
-          : c.policy.agents
-    const agentIds = [...new Set([...primary, ...(c.policy.fallback ? [c.policy.fallback] : [])])]
-    let agent: string | undefined
-    for (const candidate of agentIds) {
-      if (
-        used.some((r) => r.agent_id === candidate) ||
-        (a.role === 'execute' && candidate === c.policy.grader)
-      )
-        continue
-      const ready = await sql(
-        db,
-        "SELECT a.id FROM agents a LEFT JOIN agent_state s ON s.agent_id=a.id WHERE a.id=? AND a.team_id=? AND a.paused=0 AND a.status='idle' AND (s.current_task_id IS NULL) AND NOT EXISTS(SELECT 1 FROM tasks WHERE agent_id=a.id AND status='pending')",
-        candidate,
-        g.team_id
-      ).first()
-      if (!ready) continue
-      if (actionable(a.role)) {
-        const capable = await sql(
-          db,
-          'SELECT 1 FROM graph_agent_capabilities WHERE agent_id=? AND version>=1 AND seen_at>?',
-          candidate,
-          now - 300_000
-        ).first()
-        if (!capable) continue
-      }
-      agent = candidate
-      break
-    }
-    if (!agent) continue
-    if (actionable(a.role)) {
-      const previousAssignment = a.attempt_count > 0 ? a.id : a.parent_id
-      if (previousAssignment) {
-        const previous = await sql(
-          db,
-          `SELECT t.session_id,t.termination_confirmed_at FROM graph_attempts t
-          JOIN graph_assignments previous ON previous.id=t.assignment_id
-          WHERE t.assignment_id=? AND previous.role IN ('execute','undo') ORDER BY t.epoch DESC LIMIT 1`,
-          previousAssignment
-        ).first<{ session_id: string | null; termination_confirmed_at: number | null }>()
-        if (previous?.session_id && !previous.termination_confirmed_at) continue
-      }
-    }
-    let cost = 0,
-      recovery = 0
-    if (a.role === 'execute') {
-      const plan = JSON.parse(a.input).plan
-      cost = Number(plan.cost)
-      recovery = Number(plan.recovery_cost)
-      if (
-        budgets.execution_cost + cost > c.policy.cost_budget ||
-        budgets.recovery_reserved + recovery > c.policy.recovery_budget
-      )
-        continue
-    }
-    const planningCount = await sql(
-      db,
-      "SELECT COUNT(*) AS n FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=? AND a.role IN ('decompose','plan','merge')",
-      g.id
-    ).first<{ n: number }>()
-    if (
-      ['decompose', 'plan', 'merge'].includes(a.role) &&
-      (planningCount?.n ?? 0) >= c.policy.planning_budget
-    )
-      continue
+    const decision = await eligibility(a, context)
+    if (!decision.agent) continue
+    const agent = decision.agent,
+      cost = decision.cost ?? 0,
+      recovery = decision.recovery ?? 0
     const task = id(),
       attempt = id(),
       epoch = a.attempt_count + 1
@@ -1625,37 +1568,34 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
     ])
     await bumpInboxVersion(env, agent)
     budgets.attempts++
+    if (['decompose', 'plan', 'merge'].includes(a.role)) context.planningCount++
     budgets.execution_cost += cost
     budgets.recovery_reserved += recovery
     used.push({ agent_id: agent, kind: a.role === 'execute' ? 'execution' : 'control', graph_id: g.id })
     if (a.role === 'execute') {
-      executions++
+      context.executions++
       budgets.allocations++ // keeps the every-fifth weak-candidate trial correct within one tick
     }
   }
 }
 
-/** Work (execution result ids) that an open continue step still needs at the head of the serial queue. */
+/** Queue ownership survives format repairs and checked continuations, including review. */
 const ACTIVE_CONTINUE_WORK = `SELECT json_extract(input,'$.serial_work_id') FROM graph_assignments
-  WHERE graph_id=? AND role='continue' AND status IN ('pending','running') AND json_extract(input,'$.serial_work_id') IS NOT NULL`
+  WHERE graph_id=? AND role='continue' AND status IN ('pending','running','review') AND json_extract(input,'$.serial_work_id') IS NOT NULL`
+const ACTIVE_REPAIR_WORK = `SELECT r.id FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id
+  JOIN graph_assignments repair ON repair.parent_id=t.assignment_id
+  WHERE repair.graph_id=? AND repair.role='repair' AND repair.status IN ('pending','running','review')
+  AND r.status='invalid' AND t.epoch=(SELECT MAX(epoch) FROM graph_attempts WHERE assignment_id=t.assignment_id)`
 
-/** Clears finished-session noise: planning/review steps whose result went stale, and repair errors.
- * Execute/undo steps are never cancelled here (they may hold side effects or owner approvals), and the queue
- * entry an open continue still needs is kept. The serial queue is strictly ordered, so an entry whose work was
- * cancelled, or whose execution result is stale/invalid/rejected, would hold every later grade forever. */
 async function dismissStale(db: D1Database, g: Graph): Promise<number> {
   const stale = await rows<{ id: string }>(
     db,
     `SELECT a.id FROM graph_assignments a WHERE a.graph_id=? AND a.status IN ('blocked','error')
-     AND a.role NOT IN ('execute','undo','reconcile')
+     AND a.role NOT IN ('execute','undo','reconcile','continue')
      AND (a.role='repair' OR EXISTS(SELECT 1 FROM graph_attempts t JOIN graph_results r ON r.attempt_id=t.id
           WHERE t.assignment_id=a.id AND r.status='stale'))`,
     g.id
   )
-  const queueSql = `UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND status='pending' AND (
-       (kind='assignment' AND work_id IN (SELECT id FROM graph_assignments WHERE graph_id=? AND status='cancelled'))
-       OR (kind='execution' AND work_id IN (SELECT id FROM graph_results WHERE status IN ('stale','invalid','rejected'))
-           AND work_id NOT IN (${ACTIVE_CONTINUE_WORK})))`
   const ops: D1PreparedStatement[] = []
   if (stale.length)
     ops.push(
@@ -1666,23 +1606,54 @@ async function dismissStale(db: D1Database, g: Graph): Promise<number> {
         ...stale.map((a) => a.id)
       )
     )
-  ops.push(sql(db, queueSql, g.id, g.id, g.id))
-  const pending = await rows<{ n: number }>(
+  // Inspect queue transitions even when there is no assignment noise to dismiss.
+  const release = await rows<{ sequence: number }>(
     db,
-    `SELECT COUNT(*) AS n FROM graph_serial_queue WHERE graph_id=? AND status='pending' AND kind='assignment'
-     AND work_id IN (SELECT id FROM graph_assignments WHERE graph_id=? AND status='cancelled')`,
+    `SELECT q.sequence FROM graph_serial_queue q WHERE q.graph_id=? AND q.status='pending'
+     AND q.work_id NOT IN (${ACTIVE_CONTINUE_WORK}) AND q.work_id NOT IN (${ACTIVE_REPAIR_WORK}) AND (
+       (q.kind='assignment' AND q.work_id IN (SELECT id FROM graph_assignments WHERE graph_id=? AND status IN ('cancelled','expired','accepted','continuation')))
+       OR (q.kind='execution' AND q.work_id IN (SELECT id FROM graph_results WHERE status IN ('stale','invalid','rejected')
+         OR (status='accepted' AND json_extract(parsed,'$.outcome')='blocked'))))`,
+    g.id,
+    g.id,
     g.id,
     g.id
   )
-  if (stale.length || pending[0]?.n) await commit(db, g, 'dismissed', null, { count: stale.length }, ops)
-  // An open continue needs its execution at the head of the queue even if that entry was skipped earlier.
-  await sql(
+  const reopen = await rows<{ sequence: number }>(
     db,
-    `UPDATE graph_serial_queue SET status='pending' WHERE graph_id=? AND kind='execution' AND status='done'
-     AND work_id IN (${ACTIVE_CONTINUE_WORK})`,
+    `SELECT sequence FROM graph_serial_queue WHERE graph_id=? AND status='done'
+     AND (work_id IN (${ACTIVE_CONTINUE_WORK}) OR work_id IN (${ACTIVE_REPAIR_WORK}))
+     AND sequence=(SELECT MAX(q.sequence) FROM graph_serial_queue q WHERE q.graph_id=graph_serial_queue.graph_id
+       AND q.kind=graph_serial_queue.kind AND q.work_id=graph_serial_queue.work_id)`,
+    g.id,
     g.id,
     g.id
-  ).run()
+  )
+  for (const [items, status] of [
+    [release, 'done'],
+    [reopen, 'pending']
+  ] as const)
+    for (const q of items)
+      ops.push(sql(db, 'UPDATE graph_serial_queue SET status=? WHERE sequence=?', status, q.sequence))
+  // Newly cancelled assignment entries are included in the same durable transition.
+  if (stale.length)
+    ops.push(
+      sql(
+        db,
+        "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='assignment' AND work_id IN (SELECT id FROM graph_assignments WHERE graph_id=? AND status='cancelled')",
+        g.id,
+        g.id
+      )
+    )
+  if (ops.length)
+    await commit(
+      db,
+      g,
+      'queue_reconciled',
+      null,
+      { dismissed: stale.length, released: release.length, reopened: reopen.length },
+      ops
+    )
   return stale.length
 }
 
@@ -1692,11 +1663,12 @@ async function dismissStale(db: D1Database, g: Graph): Promise<number> {
 export async function syncInboxStatus(db: D1Database, g: Graph): Promise<void> {
   const needsOwner = `SELECT t.task_id FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id
     WHERE a.graph_id=? AND a.status IN ('blocked','error') AND a.role!='repair'
+    AND NOT EXISTS(SELECT 1 FROM graph_assignments repair WHERE repair.parent_id=a.id AND repair.role='repair' AND repair.status IN ('pending','running','review'))
     AND t.epoch=(SELECT MAX(epoch) FROM graph_attempts WHERE assignment_id=a.id)
     AND (a.role IN ('execute','undo','continue') OR NOT EXISTS(
       SELECT 1 FROM graph_results r WHERE r.attempt_id=t.id AND r.status='stale'))`
   await db.batch([
-    sql(db, `UPDATE tasks SET status='waiting_input' WHERE status='done' AND id IN (${needsOwner})`, g.id),
+    sql(db, `UPDATE tasks SET status='waiting_input' WHERE status IN ('done','failed') AND id IN (${needsOwner})`, g.id),
     sql(
       db,
       `UPDATE tasks SET status='done' WHERE status='waiting_input'
@@ -1711,8 +1683,8 @@ export async function syncInboxStatus(db: D1Database, g: Graph): Promise<void> {
 export async function tick(env: GraphEnv, graphId: string): Promise<void> {
   const g = await graph(env.DB, graphId)
   await processResults(env.DB, g)
-  await advanceGrading(env.DB, g)
   await dismissStale(env.DB, g)
+  await advanceGrading(env.DB, g)
   await syncInboxStatus(env.DB, g)
   await dispatch(env, g)
 }

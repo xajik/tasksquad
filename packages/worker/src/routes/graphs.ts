@@ -39,7 +39,7 @@ export async function handle(
     if (g.team_id !== teamId) return err('not_found', 404)
     if (req.method === 'GET') {
       if (action === 'search') return json(await search(env, g, new URL(req.url).searchParams.get('q') ?? ''))
-      return json(await snapshot(env.DB, g))
+      return json(await snapshot(env.DB, g, env.ACTION_GRAPH_ENABLED === 'true'))
     }
     if (req.method !== 'POST') return err('method_not_allowed', 405)
     const body = await boundedJSON(req)

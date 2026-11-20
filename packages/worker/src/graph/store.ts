@@ -407,7 +407,11 @@ export async function clone(
     "SELECT * FROM graph_nodes WHERE graph_id=? AND kind NOT IN ('observed','goal') ORDER BY created_at,rowid",
     sourceId
   )
-  const edges = await rows<Data>(db, 'SELECT * FROM graph_edges WHERE graph_id=? ORDER BY created_at', sourceId)
+  const edges = await rows<Data>(
+    db,
+    'SELECT * FROM graph_edges WHERE graph_id=? ORDER BY created_at',
+    sourceId
+  )
   const plans = await rows<Data>(
     db,
     'SELECT p.* FROM graph_plans p JOIN graph_edges e ON e.id=p.edge_id WHERE e.graph_id=?',
@@ -524,7 +528,7 @@ export async function clone(
   return g
 }
 
-export async function snapshot(db: D1Database, g: Graph): Promise<Data> {
+export async function snapshot(db: D1Database, g: Graph, enabled = true): Promise<Data> {
   const c = await configuration(db, g)
   const [
     nodes,
@@ -550,7 +554,7 @@ export async function snapshot(db: D1Database, g: Graph): Promise<Data> {
       'SELECT e.*,p.baseline,p.predicates,p.steps,p.undo_steps,p.cost,p.recovery_cost,p.resource_versions,p.effects FROM graph_edges e LEFT JOIN graph_plans p ON p.edge_id=e.id WHERE e.graph_id=?',
       g.id
     ),
-    rows(db, 'SELECT * FROM graph_assignments WHERE graph_id=? ORDER BY created_at', g.id),
+    rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE graph_id=? ORDER BY created_at', g.id),
     rows(
       db,
       'SELECT t.*,task.status AS task_status,task.tui_blocked FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id JOIN tasks task ON task.id=t.task_id WHERE a.graph_id=?',
@@ -583,6 +587,59 @@ export async function snapshot(db: D1Database, g: Graph): Promise<Data> {
     'SELECT l.* FROM graph_resource_links l JOIN graph_resources r ON r.id=l.resource_id WHERE r.graph_id=?',
     g.id
   )
+  const { dispatchContext, eligibility } = await import('./eligibility.js')
+  const context = await dispatchContext(db, g, enabled)
+  const waiting: Record<string, unknown> = {}
+  const { extractApprovalRequest } = await import('../approval.js')
+  for (const a of assignments) {
+    const latest = attempts
+      .filter((t) => t.assignment_id === a.id)
+      .sort(
+        (x, y) =>
+          Number(y.epoch) - Number(x.epoch) ||
+          Number(y.created_at) - Number(x.created_at) ||
+          String(y.id).localeCompare(String(x.id))
+      )[0]
+    const result = results
+      .filter((r) => r.attempt_id === latest?.id)
+      .sort((x, y) => Number(y.created_at) - Number(x.created_at))[0]
+    const request = extractApprovalRequest(String(result?.parsed ?? result?.raw ?? ''))
+    const canReply =
+      ['blocked', 'error'].includes(a.status) &&
+      a.role !== 'repair' &&
+      latest &&
+      !['done', 'failed', 'cancelled'].includes(String(latest.task_status))
+    const detail =
+      a.status === 'pending'
+        ? await eligibility(a, context)
+        : a.status === 'review'
+          ? { code: 'review', message: 'An owner or maintainer must review this result.' }
+          : canReply
+            ? {
+                code: 'owner_input',
+                message:
+                  request?.reason ||
+                  request?.title ||
+                  String(result?.validation_error || 'Reply in the latest inbox task to continue.')
+              }
+            : a.status === 'continuation'
+              ? {
+                  code: 'continuation',
+                  message: 'Input received. Follow the continuation task for the next decision.'
+                }
+              : ['reconciling', 'restoring'].includes(a.status) ||
+                  (a.role === 'repair' && ['pending', 'running'].includes(a.status))
+                ? { code: 'recovery', message: 'Recovery in progress.' }
+                : null
+    if (detail)
+      waiting[a.id] = {
+        code: detail.code,
+        message: detail.message,
+        task_id: latest?.task_id ?? null,
+        action: a.status === 'review' ? 'review' : canReply ? 'reply' : latest ? 'view' : null,
+        request_title: canReply ? (request?.title ?? null) : null
+      }
+  }
   return {
     ...g,
     config: c,
@@ -602,6 +659,7 @@ export async function snapshot(db: D1Database, g: Graph): Promise<Data> {
     grading,
     evaluations,
     proposals,
+    waiting,
     goal_verification: verifyGoal(c.rule, evidence, Date.now())
   }
 }

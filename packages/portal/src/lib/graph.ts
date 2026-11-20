@@ -134,6 +134,16 @@ export interface GraphEvaluation {
   goal_score: number | null
 }
 export interface GraphSnapshot extends GraphSummary {
+  waiting?: Record<
+    string,
+    {
+      code: string
+      message: string
+      task_id: string | null
+      action: 'reply' | 'review' | 'view' | null
+      request_title: string | null
+    }
+  >
   proposals: { id: string; status: string; content: string; source_result_id: string }[]
   evidence: {
     node_id: string
@@ -161,6 +171,28 @@ export interface GraphSnapshot extends GraphSummary {
     assignment_id: string | null
     execution_result_id: string
   }[]
+}
+
+export function latestGraphAttempt(graph: Pick<GraphSnapshot, 'attempts'>, assignmentId: string) {
+  return graph.attempts
+    .filter((t) => t.assignment_id === assignmentId)
+    .sort(
+      (a, b) => (b.epoch ?? 0) - (a.epoch ?? 0) || b.created_at - a.created_at || b.id.localeCompare(a.id)
+    )[0]
+}
+
+export function graphRunExplanation(graph: GraphSnapshot): string {
+  if (graph.status === 'paused')
+    return 'Paused. New execution and planning wait for Run; reviews and recovery may still finish.'
+  if (graph.status === 'stopped') return 'Closed. This graph cannot be resumed.'
+  const active = graph.attempts.filter((a) => ['pending', 'running'].includes(a.status)).length
+  if (active) return `${active} active job${active === 1 ? '' : 's'}.`
+  const waits = Object.values(graph.waiting ?? {})
+  if (waits.some((w) => w.action === 'reply' || w.action === 'review'))
+    return 'Waiting for your input or review. Open the highlighted inbox task below.'
+  const pending = graph.assignments.find((a) => a.status === 'pending')
+  if (pending && graph.waiting?.[pending.id]) return graph.waiting[pending.id].message
+  return 'No active jobs. Check the work queue and verified goal evidence.'
 }
 export interface NewGraph {
   title: string
@@ -211,7 +243,10 @@ export const defaultGraphPolicy: GraphPolicy = {
 }
 
 /** A format-repair assignment stands in for its parent role: its accepted result IS the parent's result. */
-export function effectiveRole(graph: Pick<GraphSnapshot, 'assignments'>, assignmentId: string | undefined): string {
+export function effectiveRole(
+  graph: Pick<GraphSnapshot, 'assignments'>,
+  assignmentId: string | undefined
+): string {
   let a = graph.assignments.find((x) => x.id === assignmentId)
   for (let guard = 0; a && a.role === 'repair' && a.parent_id && guard < 4; guard++)
     a = graph.assignments.find((x) => x.id === a!.parent_id)

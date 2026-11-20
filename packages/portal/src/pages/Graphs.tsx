@@ -5,6 +5,8 @@ import { api, type Agent } from '../lib/api'
 import {
   defaultGraphPolicy,
   graphApi,
+  latestGraphAttempt,
+  graphRunExplanation,
   type GraphSnapshot,
   type GraphSummary,
   type NewGraph,
@@ -34,7 +36,7 @@ const workRank = (status: string) =>
     ? 0
     : ['reconciling', 'restoring'].includes(status)
       ? 1
-      : status === 'running'
+      : status === 'running' || status === 'continuation'
         ? 2
         : status === 'pending'
           ? 3
@@ -577,6 +579,7 @@ export function Graphs({
               </GraphSection>
             )
           })()}
+          <p role="status" className="rounded border bg-muted/30 px-3 py-2 text-sm">{graphRunExplanation(current)}</p>
           <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
             <span>
               {active.length} active jobs · {current.config.policy.capacity} execution slots
@@ -978,25 +981,25 @@ export function Graphs({
               <div className="divide-y">
                 {current.assignments
                   .filter((a) => workRank(a.status) < 4)
+                  .filter((a) => a.status !== 'continuation' || !current.assignments.some(child => child.parent_id === a.id))
                   .sort((a, b) => workRank(a.status) - workRank(b.status) || b.priority - a.priority)
                   .map((a) => (
                     <div key={a.id} className="py-3 text-sm flex justify-between gap-3">
                       <span>
-                        {workRank(a.status) === 0 && (
-                          <b className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs">Needs you</b>
+                        {['reply', 'review'].includes(current.waiting?.[a.id]?.action ?? '') && (
+                          <b className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs">{current.waiting?.[a.id]?.action === 'review' ? 'Review result' : 'Needs your approval or input'}</b>
                         )}
                         {a.role} · {a.status} · priority {a.priority.toFixed(2)} · {a.attempt_count} attempts
+                        {current.waiting?.[a.id]?.request_title && <strong className="block mt-1">{current.waiting[a.id].request_title}</strong>}
+                        {current.waiting?.[a.id] && <span className="block text-xs text-muted-foreground mt-1">{current.waiting[a.id].message}</span>}
                       </span>
-                      {current.attempts
-                        .filter((t) => t.assignment_id === a.id)
-                        .slice(-1)
-                        .map((t) => (
+                      {[latestGraphAttempt(current, a.id)].filter((t) => !!t).map((t) => (
                           <Link
                             key={t.id}
                             className="text-primary underline"
                             to={`/dashboard/tasks/${t.task_id}`}
                           >
-                            Open inbox task
+                            {current.waiting?.[a.id]?.action === 'reply' ? 'Answer in inbox' : current.waiting?.[a.id]?.action === 'review' ? 'Review in inbox' : 'Open inbox task'}
                           </Link>
                         ))}
                     </div>

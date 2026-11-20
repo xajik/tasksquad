@@ -34,6 +34,19 @@ describe('graph inbox attention', () => {
     g.assignments[0].status = 'continuation'
     expect(graphAttention(g).nodes.size).toBe(0)
   })
+  it('does not ask for a reply while a repair owns the recovery', () => {
+    const g = fixture()
+    g.waiting = {
+      a: {
+        code: 'recovery',
+        message: 'Format repair in progress.',
+        action: 'view',
+        task_id: 'inbox-task',
+        request_title: null
+      }
+    }
+    expect(graphAttention(g).nodes.size).toBe(0)
+  })
   it('handles live waiting-input tasks and reviews without treating old attempts as current', () => {
     const g = fixture()
     g.assignments[0].status = 'running'

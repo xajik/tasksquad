@@ -1648,6 +1648,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
       {approvalRequest && !freeText && taskId && !pendingScheduledReply && !editingMessage && (task?.graph ? task.graph.can_reply : task?.status === 'waiting_input') && (
         <ApprovalForm
           request={approvalRequest}
+          maxReplyLength={task?.graph ? 3999 : undefined}
           onFreeText={() => setFreeText(true)}
           onSubmit={async (text) => {
             await api.messages.create(taskId, text, undefined, [])

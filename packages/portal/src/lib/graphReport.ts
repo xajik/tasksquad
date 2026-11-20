@@ -24,7 +24,9 @@ export function dailyReport(g: GraphSnapshot, now = Date.now()): DailyReport {
   const results = g.results.filter((r) => r.created_at >= start)
   const accepted = results.filter((r) => r.status === 'accepted').length
   const bad = results.filter((r) => ['invalid', 'rejected', 'stale'].includes(r.status)).length
-  const attention = g.assignments.filter((a) => ['blocked', 'error', 'review'].includes(a.status) && a.role !== 'repair')
+  const attention = g.assignments.filter((a) => g.waiting
+    ? ['reply', 'review'].includes(g.waiting[a.id]?.action ?? '')
+    : ['blocked', 'error', 'review'].includes(a.status) && a.role !== 'repair')
   const changed = g.nodes.filter((n) => Math.max(n.created_at, n.state_changed_at ?? 0) >= start)
   const goal =
     g.goal_verification === 'true' ? 'The goal is verified.' : g.goal_verification === 'false' ? 'The goal is not met.' : 'The goal is not verified yet.'

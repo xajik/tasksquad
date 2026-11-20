@@ -10,12 +10,59 @@ import {
   type Attempt
 } from './store.js'
 import { retryDelay } from './engine.js'
+import { hash } from './contracts.js'
 
 export async function maintenance(env: Pick<Env, 'DB'>, graphId: string): Promise<void> {
   const db = env.DB,
     g = await graph(db, graphId),
     c = await configuration(db, g),
     now = Date.now()
+  // Coalesce legacy, unstarted decomposition revisions. Never cancel an attempt
+  // that may already be executing or awaiting review.
+  const redundant = await rows<{ id: string }>(
+    db,
+    `SELECT id FROM graph_assignments
+    WHERE graph_id=? AND role='decompose' AND status='pending' AND attempt_count=0
+    ORDER BY created_at DESC,id DESC`,
+    g.id
+  )
+  if (redundant.length > 1)
+    await commit(
+      db,
+      g,
+      'decomposition_superseded',
+      null,
+      {},
+      redundant
+        .slice(1)
+        .map((a) =>
+          sql(
+            db,
+            "UPDATE graph_assignments SET status='cancelled',cancel_reason='superseded' WHERE id=?",
+            a.id
+          )
+        )
+    )
+  const reviews = await rows<{ id: string; status: string; attempt_count: number }>(
+    db,
+    `SELECT id,status,attempt_count FROM graph_assignments
+    WHERE graph_id=? AND role='project' AND json_extract(input,'$.operation')='decomposition_review'
+    AND status IN ('pending','running','review','blocked','error','continuation')
+    ORDER BY CASE WHEN status='pending' AND attempt_count=0 THEN 1 ELSE 0 END,created_at DESC,id DESC`,
+    g.id
+  )
+  const superseded = reviews.slice(1).filter((a) => a.status === 'pending' && a.attempt_count === 0)
+  if (superseded.length)
+    await commit(
+      db,
+      g,
+      'decomposition_reviews_superseded',
+      null,
+      {},
+      superseded.map((a) =>
+        sql(db, "UPDATE graph_assignments SET status='cancelled',cancel_reason='superseded' WHERE id=?", a.id)
+      )
+    )
   const expired = await rows<
     Attempt & {
       role: Assignment['role']
@@ -150,18 +197,34 @@ export async function maintenance(env: Pick<Env, 'DB'>, graphId: string): Promis
     if (job.kind === 'decomposition' && g.status === 'running') {
       const busy = await sql(
         db,
-        "SELECT 1 FROM graph_assignments WHERE graph_id=? AND role='decompose' AND status IN ('pending','running','review') LIMIT 1",
+        `SELECT 1 FROM graph_assignments WHERE graph_id=?
+         AND (role='decompose' OR (role='project' AND json_extract(input,'$.operation')='decomposition_review'))
+         AND status IN ('pending','running','review','blocked','error','continuation') LIMIT 1`,
         g.id
       ).first()
       if (!busy) {
         const milestones = await rows(
           db,
-          "SELECT title,description,body FROM graph_nodes WHERE graph_id=? AND kind='milestone'",
+          `SELECT title,description,body FROM graph_nodes n WHERE graph_id=? AND kind='milestone'
+           AND NOT EXISTS(SELECT 1 FROM graph_node_states s WHERE s.id=(SELECT MAX(id) FROM graph_node_states WHERE node_id=n.id) AND s.state='deactivated') ORDER BY n.id`,
           g.id
         )
-        const evidence = await rows(db, 'SELECT * FROM graph_evidence WHERE graph_id=?', g.id)
+        const evidence = await rows(db, 'SELECT * FROM graph_evidence WHERE graph_id=? AND expires_at>? ORDER BY id', g.id, now)
+        const contextHash = await hash(JSON.stringify([c.version, milestones, evidence]))
+        const reviewed = await sql(
+          db,
+          `SELECT 1 FROM graph_assignments WHERE graph_id=? AND role='project'
+          AND json_extract(input,'$.review_context_hash')=? AND status NOT IN ('cancelled','expired') LIMIT 1`,
+          g.id,
+          contextHash
+        ).first()
+        if (reviewed) {
+          await ops[0].run()
+          continue
+        }
         const next = await assignment(db, g, 'project', {
           operation: 'decomposition_review',
+          review_context_hash: contextHash,
           private_goal: g.body,
           rule: c.rule,
           hierarchy: milestones,

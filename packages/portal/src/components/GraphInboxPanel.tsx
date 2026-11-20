@@ -105,7 +105,11 @@ export function GraphInboxPanel({
         <article key={result.id} className="space-y-2">
           <h3 className="text-sm font-medium">Review {context.role} result</h3>
           {(() => {
-            const summary = summarizeResult(context.role, result.parsed ?? result.raw)
+            const attempt = graph?.attempts.find(t => t.id === result.attempt_id)
+            const assignment = graph?.assignments.find(a => a.id === attempt?.assignment_id)
+            let operation: string | undefined
+            try { operation = JSON.parse(assignment?.input ?? '{}').operation } catch { /* Older snapshots may lack context. */ }
+            const summary = summarizeResult(context.role, result.parsed ?? result.raw, operation)
             return summary ? (
               <div className="space-y-1 text-sm" data-graph-summary>
                 <p>{summary.headline}</p>

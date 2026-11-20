@@ -7,11 +7,13 @@ import { Textarea } from './ui/textarea'
 export function ApprovalForm({
   request,
   onSubmit,
-  onFreeText
+  onFreeText,
+  maxReplyLength
 }: {
   request: ApprovalRequest
   onSubmit: (text: string) => Promise<void>
   onFreeText: () => void
+  maxReplyLength?: number
 }) {
   const [answers, setAnswers] = useState<Answers>({})
   const [error, setError] = useState('')
@@ -19,7 +21,7 @@ export function ApprovalForm({
   const set = (id: string, value: string | string[]) => setAnswers((a) => ({ ...a, [id]: value }))
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    const problem = validateAnswers(request, answers)
+    const problem = validateAnswers(request, answers, maxReplyLength)
     if (problem) return setError(problem)
     setBusy(true)
     setError('')

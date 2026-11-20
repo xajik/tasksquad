@@ -67,13 +67,15 @@ export function extractApprovalRequest(body: string | null | undefined): Approva
 }
 
 /** Why the answers cannot be sent yet, or null when complete. */
-export function validateAnswers(request: ApprovalRequest, answers: Answers): string | null {
+export function validateAnswers(request: ApprovalRequest, answers: Answers, maxReplyLength?: number): string | null {
   for (const f of request.fields) {
     const a = answers[f.id]
     const empty = a === undefined || a === '' || (Array.isArray(a) && a.length === 0)
     if (f.required && empty) return `Answer required: ${f.label}`
     if (f.type === 'text' && typeof a === 'string' && a.length > (f.max_length ?? 1000)) return `Too long: ${f.label}`
   }
+  if (maxReplyLength && buildApprovalResponse(request, answers).length > maxReplyLength)
+    return `These answers exceed the ${maxReplyLength}-character reply limit after formatting. Shorten the text answers and try again.`
   return null
 }
 

@@ -12,7 +12,7 @@ const text = (v: unknown, max = 220) => {
 const list = (v: unknown): Json[] => (Array.isArray(v) ? (v.filter((x) => x && typeof x === 'object') as Json[]) : [])
 const num = (v: unknown) => (typeof v === 'number' ? v.toFixed(2) : 'unknown')
 
-export function summarizeResult(role: string, raw: string | null | undefined): ResultSummary | null {
+export function summarizeResult(role: string, raw: string | null | undefined, operation?: string): ResultSummary | null {
   let d: Json
   try {
     d = JSON.parse(raw ?? '')
@@ -87,6 +87,14 @@ export function summarizeResult(role: string, raw: string | null | undefined): R
       rows.push({ label: 'Reason', value: text(d.reason, 320) })
       return { headline: `Local grade ${num(d.local_score)} for the executed action.`, rows, consequence: 'Accepting records the score and backs it up along the executed path.' }
     case 'project':
+      if (operation === 'decomposition_review') {
+        rows.push({ label: 'Decomposition alignment', value: num(d.goal_score) })
+        rows.push({ label: 'Reason', value: text(d.reason, 420) })
+        if (Array.isArray(d.decomposition_feedback))
+          d.decomposition_feedback.forEach((f, i) => rows.push({ label: `Feedback ${i + 1}`, value: text(f, 320) }))
+        return { headline: `Decomposition alignment ${num(d.goal_score)} — plan quality only.`, rows,
+          consequence: 'This reviews the plan structure. It does not measure sales or verified goal achievement.' }
+      }
       rows.push({ label: 'Goal alignment', value: num(d.goal_score) })
       rows.push({ label: 'Reason', value: text(d.reason, 420) })
       if (Array.isArray(d.decomposition_feedback))

@@ -20,12 +20,14 @@ export function graphAttention(graph: GraphSnapshot) {
         (x, y) => (y.epoch ?? 0) - (x.epoch ?? 0) || y.created_at - x.created_at || y.id.localeCompare(x.id)
       )
     const latest = attempts[0]
+    const diagnostic = graph.waiting?.[a.id]
     const waiting =
       a.status === 'running' &&
       latest?.status === 'running' &&
       (latest.task_status === 'waiting_input' || !!latest.tui_blocked)
     const kind =
-      ['blocked', 'error'].includes(a.status) || waiting
+      (['blocked', 'error'].includes(a.status) && (!graph.waiting || diagnostic?.action === 'reply')) ||
+      waiting
         ? 'reply'
         : a.status === 'review'
           ? 'review'

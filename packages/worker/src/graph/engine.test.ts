@@ -244,8 +244,8 @@ describe('durable inbox graph workflow', () => {
     const attempt = (
       await rows<{ task_id: string }>(db, 'SELECT * FROM graph_attempts WHERE assignment_id=?', assignmentId)
     )[0]
-    // The daemon closes the inbox task as done; a step waiting for the owner must go back to pending input.
-    await sql(db, "UPDATE tasks SET status='done' WHERE id=?", attempt.task_id).run()
+    // Even a failed terminal session must have an input path when the graph still needs the owner.
+    await sql(db, "UPDATE tasks SET status='failed' WHERE id=?", attempt.task_id).run()
     await tick(env(), g.id)
     expect(
       (await rows<{ status: string }>(db, 'SELECT status FROM tasks WHERE id=?', attempt.task_id))[0].status
@@ -323,6 +323,310 @@ describe('durable inbox graph workflow', () => {
     expect(
       await rows(db, "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'", assignmentId)
     ).toHaveLength(1)
+  })
+
+  it('releases a stale execution queue entry without assignment noise and does not churn versions', async () => {
+    const { g, agent, assignmentId } = await preparedExecution()
+    const { attempt } = await deliver(
+      g.id,
+      agent,
+      JSON.stringify({
+        outcome: 'complete',
+        title: 'Done',
+        description: '',
+        body: '',
+        evidence: [],
+        actual_cost: 0
+      })
+    )
+    await db.batch([
+      sql(db, "UPDATE graph_results SET status='stale' WHERE attempt_id=?", attempt.id),
+      sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", assignmentId)
+    ])
+    await tick(env(), g.id)
+    expect(
+      await rows(db, "SELECT * FROM graph_serial_queue WHERE graph_id=? AND status='pending'", g.id)
+    ).toHaveLength(0)
+    const version = (await graph(db, g.id)).version
+    await tick(env(), g.id)
+    expect((await graph(db, g.id)).version).toBe(version)
+  })
+
+  it('keeps an execution repair in the queue and grades its accepted result exactly once', async () => {
+    const { g, agent, assignmentId } = await preparedExecution()
+    await deliver(g.id, agent, 'not valid structured output')
+    await tick(env(), g.id)
+    const repair = (
+      await rows<Assignment>(
+        db,
+        "SELECT * FROM graph_assignments WHERE parent_id=? AND role='repair'",
+        assignmentId
+      )
+    )[0]
+    expect(repair.status).toBe('running')
+    // A legacy/manual dismissal must not strand this still-active repair.
+    await sql(db, "UPDATE graph_serial_queue SET status='done' WHERE graph_id=?", g.id).run()
+    await tick(env(), g.id)
+    expect(
+      await rows(db, "SELECT * FROM graph_serial_queue WHERE graph_id=? AND status='pending'", g.id)
+    ).toHaveLength(1)
+    await deliver(
+      g.id,
+      agent,
+      JSON.stringify({
+        outcome: 'complete',
+        title: 'Repaired',
+        description: '',
+        body: '',
+        evidence: [],
+        actual_cost: 0
+      })
+    )
+    await tick(env(), g.id)
+    await tick(env(), g.id)
+    const grades = await rows<Assignment>(
+      db,
+      "SELECT * FROM graph_assignments WHERE graph_id=? AND role='grade'",
+      g.id
+    )
+    expect(grades).toHaveLength(1)
+    expect(grades[0].status).toBe('running')
+    const repaired = (
+      await rows<Result>(
+        db,
+        'SELECT r.* FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id WHERE t.assignment_id=?',
+        repair.id
+      )
+    )[0]
+    expect(JSON.parse(grades[0].input).execution_result_id).toBe(repaired.id)
+  })
+
+  it('parks owner-blocked execution while unrelated reviews dispatch', async () => {
+    const { g, agent } = await preparedExecution()
+    await deliver(
+      g.id,
+      agent,
+      JSON.stringify({
+        outcome: 'blocked',
+        title: 'Approval',
+        description: '',
+        body: '',
+        evidence: [],
+        actual_cost: 0
+      })
+    )
+    await tick(env(), g.id)
+    const review = await assignment(db, await graph(db, g.id), 'project', {
+      operation: 'decomposition_review',
+      hierarchy: [],
+      evidence: []
+    })
+    await db.batch([
+      ...review.statements,
+      sql(
+        db,
+        "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'assignment',?,?)",
+        g.id,
+        review.id,
+        Date.now()
+      )
+    ])
+    await tick(env(), g.id)
+    expect(
+      (await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', review.id))[0].status
+    ).toBe('running')
+  })
+
+  it('keeps each repeated continuation approval answerable and restarts only the original role', async () => {
+    const { g, agent, grader, user, assignmentId } = await preparedExecution()
+    await deliver(
+      g.id,
+      agent,
+      JSON.stringify({
+        outcome: 'blocked',
+        title: 'Need approval',
+        description: '',
+        body: '',
+        evidence: [],
+        actual_cost: 0
+      })
+    )
+    await tick(env(), g.id)
+    await run(db, g.id, 'input', { assignment_id: assignmentId, message: 'First approval' })
+    let current = assignmentId
+    for (let i = 0; i < 2; i++) {
+      await tick(env(), g.id)
+      const next = (
+        await rows<Assignment>(
+          db,
+          "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'",
+          current
+        )
+      )[0]
+      expect(next.status).toBe('running')
+      const { attempt } = await deliver(
+        g.id,
+        grader,
+        JSON.stringify({
+          decision: 'blocked',
+          reason: 'Need one more answer',
+          checkpoint_verified: false,
+          baseline_unchanged: true,
+          termination_verified: true,
+          needs_input: {
+            title: `Approval ${i + 2}`,
+            fields: [{ id: 'value', type: 'text', label: 'Value', required: true }]
+          }
+        })
+      )
+      await tick(env(), g.id)
+      expect(await graphInboxTask(env(), attempt.task_id, user)).toMatchObject({ can_reply: true })
+      await run(db, g.id, 'input', { assignment_id: next.id, message: `Approval answer ${i + 2}` })
+      current = next.id
+    }
+    await tick(env(), g.id)
+    const last = (
+      await rows<Assignment>(
+        db,
+        "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'",
+        current
+      )
+    )[0]
+    expect(JSON.parse(last.input)).toMatchObject({
+      original_role: 'execute',
+      prior_user_inputs: ['First approval', 'Approval answer 2']
+    })
+    expect(JSON.parse(last.input).previous.assignment).toBeUndefined()
+    await sql(
+      db,
+      'UPDATE graph_attempts SET termination_confirmed_at=? WHERE assignment_id=?',
+      Date.now(),
+      assignmentId
+    ).run()
+    await deliver(
+      g.id,
+      grader,
+      JSON.stringify({
+        decision: 'restart',
+        reason: 'Approved',
+        checkpoint_verified: false,
+        baseline_unchanged: true,
+        termination_verified: true
+      })
+    )
+    await tick(env(), g.id)
+    const restarted = await rows<Assignment>(
+      db,
+      "SELECT * FROM graph_assignments WHERE parent_id=? AND role='execute'",
+      assignmentId
+    )
+    expect(restarted).toHaveLength(1)
+    expect(JSON.parse(restarted[0].input).user_input).toContain('First approval')
+    expect(JSON.parse(restarted[0].input).user_input).toContain('Approval answer 3')
+  })
+
+  it('coalesces decomposition maintenance and skips unchanged reviewed contexts', async () => {
+    const { g } = await fixture(false)
+    await sql(db, "UPDATE graphs SET status='running' WHERE id=?", g.id).run()
+    const wake = async () => {
+      await sql(
+        db,
+        "UPDATE graph_maintenance SET next_at=0 WHERE graph_id=? AND kind='decomposition'",
+        g.id
+      ).run()
+      await maintenance(env(), g.id)
+    }
+    await wake()
+    await wake()
+    const reviews = await rows<Assignment>(
+      db,
+      "SELECT * FROM graph_assignments WHERE graph_id=? AND role='project'",
+      g.id
+    )
+    expect(reviews).toHaveLength(1)
+    await sql(db, "UPDATE graph_assignments SET status='accepted' WHERE id=?", reviews[0].id).run()
+    await wake()
+    expect(
+      await rows(db, "SELECT * FROM graph_assignments WHERE graph_id=? AND role='project'", g.id)
+    ).toHaveLength(1)
+    for (let i = 0; i < 3; i++) {
+      const next = await assignment(db, await graph(db, g.id), 'decompose', { goal: 'Revision', revision: i })
+      await db.batch(next.statements)
+    }
+    await maintenance(env(), g.id)
+    expect(
+      await rows(
+        db,
+        "SELECT * FROM graph_assignments WHERE graph_id=? AND role='decompose' AND status='pending'",
+        g.id
+      )
+    ).toHaveLength(1)
+  })
+
+  it('reopens a dismissed queue entry needed by a checked continuation', async () => {
+    const { g } = await fixture(false)
+    const original = await assignment(db, g, 'project', { operation: 'decomposition_review', hierarchy: [], evidence: [] })
+    await db.batch([
+      ...original.statements,
+      sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,status,created_at) VALUES(?,'assignment',?,'done',?)", g.id, original.id, Date.now())
+    ])
+    await sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", original.id).run()
+    await run(db, g.id, 'input', { assignment_id: original.id, message: 'Retry the read-only review' })
+    await tick(env(), g.id)
+    const followup = (await rows<Assignment>(db, "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'", original.id))[0]
+    expect(followup.status).toBe('running')
+    expect(await rows(db, "SELECT * FROM graph_serial_queue WHERE graph_id=? AND status='pending'", g.id)).toHaveLength(1)
+  })
+
+  it('uses dispatch eligibility for paused, budget, agent, capability and termination explanations', async () => {
+    const { g, agent, assignmentId } = await preparedExecution()
+    // Put the unstarted dispatch back in the queue without allowing it to execute.
+    await db.batch([
+      sql(db, "UPDATE graph_attempts SET status='cancelled' WHERE assignment_id=?", assignmentId),
+      sql(
+        db,
+        "UPDATE tasks SET status='cancelled' WHERE id IN (SELECT task_id FROM graph_attempts WHERE assignment_id=?)",
+        assignmentId
+      ),
+      sql(db, 'DELETE FROM graph_reservations WHERE graph_id=?', g.id),
+      sql(db, "UPDATE graph_assignments SET status='pending' WHERE id=?", assignmentId)
+    ])
+    const reason = async () =>
+      ((await snapshot(db, await graph(db, g.id))).waiting as Record<string, { code: string }>)[assignmentId]
+        .code
+    await run(db, g.id, 'pause')
+    expect(await reason()).toBe('paused')
+    await sql(db, "UPDATE graphs SET status='running' WHERE id=?", g.id).run()
+    const c = await configuration(db, await graph(db, g.id))
+    await sql(
+      db,
+      'UPDATE graph_budgets SET execution_cost=? WHERE graph_id=?',
+      c.policy.cost_budget,
+      g.id
+    ).run()
+    expect(await reason()).toBe('cost_budget')
+    await sql(db, 'UPDATE graph_budgets SET execution_cost=0 WHERE graph_id=?', g.id).run()
+    await sql(db, 'DELETE FROM graph_agent_capabilities WHERE agent_id=?', agent).run()
+    expect(await reason()).toBe('capability')
+    await sql(db, "UPDATE agents SET status='offline' WHERE id=?", agent).run()
+    expect(await reason()).toBe('agent')
+    const attempt = (
+      await rows<{ task_id: string }>(
+        db,
+        'SELECT task_id FROM graph_attempts WHERE assignment_id=?',
+        assignmentId
+      )
+    )[0]
+    const session = crypto.randomUUID()
+    await sql(
+      db,
+      "INSERT INTO sessions(id,task_id,agent_id,status,started_at) VALUES(?,?,?,'running',0)",
+      session,
+      attempt.task_id,
+      agent
+    ).run()
+    await sql(db, 'UPDATE graph_attempts SET session_id=? WHERE assignment_id=?', session, assignmentId).run()
+    expect(await reason()).toBe('termination')
   })
 
   it('cancels a dispatched but unopened execution on Stop, and Run creates a fresh attempt', async () => {
@@ -490,7 +794,7 @@ describe('durable inbox graph workflow', () => {
       g.id,
       agent,
       JSON.stringify({
-        outcome: 'blocked',
+        outcome: 'complete',
         title: 'Needs access',
         description: '',
         body: 'Missing test access',
@@ -499,8 +803,13 @@ describe('durable inbox graph workflow', () => {
       })
     )
     await tick(env(), g.id)
+    const blocked = await assignment(db, await graph(db, g.id), 'plan', {
+      task: 'Separate blocked planning task'
+    })
+    await db.batch(blocked.statements)
+    await sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", blocked.id).run()
     await run(db, g.id, 'input', {
-      assignment_id: assignmentId,
+      assignment_id: blocked.id,
       message: 'Access provided; verify before another attempt'
     })
     await tick(env(), g.id)
@@ -532,7 +841,7 @@ describe('durable inbox graph workflow', () => {
     )
     await tick(env(), g.id)
     expect(
-      (await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', assignmentId))[0].status
+      (await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', continuation.id))[0].status
     ).toBe('blocked')
   })
 
@@ -1041,8 +1350,15 @@ describe('durable inbox graph workflow', () => {
     const source = (
       await rows<{ id: string }>(db, "SELECT id FROM graph_nodes WHERE graph_id=? AND kind='observed'", g.id)
     )[0].id
-    const ref = (await rows<{ id: string }>(db, 'SELECT id FROM graph_resources WHERE graph_id=?', g.id))[0].id
-    const target = nodeStatements(db, g, 'outcome', { title: 'Late target', description: '', body: 'x' }, null)
+    const ref = (await rows<{ id: string }>(db, 'SELECT id FROM graph_resources WHERE graph_id=?', g.id))[0]
+      .id
+    const target = nodeStatements(
+      db,
+      g,
+      'outcome',
+      { title: 'Late target', description: '', body: 'x' },
+      null
+    )
     const edge = crypto.randomUUID()
     await commit(db, g, 'seed_paused_edge', null, {}, [
       ...target.statements,

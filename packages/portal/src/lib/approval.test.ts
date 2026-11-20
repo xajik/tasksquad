@@ -35,4 +35,15 @@ describe('approval flow', () => {
     })
     expect(parse(buildApprovalResponse(request, { market: 'uk', channels: [] })).approval_response.answers).toEqual({ market: 'uk' })
   })
+  it('checks the formatted graph reply limit before submission without losing answers', () => {
+    const request = { title: 'Details', fields: [
+      { id: 'a', type: 'text' as const, label: 'A', max_length: 2000 },
+      { id: 'b', type: 'text' as const, label: 'B', max_length: 2000 }
+    ] }
+    const answers = { a: 'x'.repeat(1990), b: 'y'.repeat(1990) }
+    expect(validateAnswers(request, answers)).toBeNull()
+    expect(validateAnswers(request, answers, 3999)).toContain('3999-character')
+    expect(answers.b).toHaveLength(1990)
+    expect(validateAnswers(request, { a: 'short', b: 'short' }, 3999)).toBeNull()
+  })
 })
