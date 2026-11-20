@@ -1,4 +1,4 @@
-import { Play, Pause } from 'lucide-react'
+import { Copy, Play, Pause } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, type Agent } from '../lib/api'
@@ -20,6 +20,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+} from '@/components/ui/alert-dialog'
 import { GraphCanvas } from '@/components/GraphCanvas'
 import { GraphSection } from '@/components/GraphSection'
 import { dailyReport, latestMessage } from '@/lib/graphReport'
@@ -337,13 +341,17 @@ export function Graphs({
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [create, setCreate] = useState(false),
-    [settings, setSettings] = useState(false)
+    [settings, setSettings] = useState(false),
+    [closeConfirm, setCloseConfirm] = useState(false),
+    [closeError, setCloseError] = useState('')
   const [policy, setPolicy] = useState<GraphPolicy>(defaultGraphPolicy),
     [tab, setTab] = useState<'next' | 'activity' | 'report'>('next'),
     [search, setSearch] = useState(''),
     [selected, setSelected] = useState<string | null>(null)
   const [input, setInput] = useState<Record<string, string>>({}),
     [resourceOpen, setResourceOpen] = useState(false)
+  const [cloneSource, setCloneSource] = useState<GraphSummary | null>(null),
+    [cloneError, setCloneError] = useState('')
   const [matches, setMatches] = useState<{
     nodes: GraphSearchHit[]
     resources: GraphResource[]
@@ -373,6 +381,10 @@ export function Graphs({
   useEffect(() => {
     setCurrent(null)
     setSelected(null)
+    setCloseConfirm(false)
+    setCloseError('')
+    setCloneSource(null)
+    setCloneError('')
     setLoading(true)
     void refresh()
     const timer = setInterval(
@@ -436,15 +448,16 @@ export function Graphs({
     }
   }
   async function cloneGraph(withNodes: boolean) {
-    if (!graphId) return
+    if (!cloneSource || busy) return
     setBusy(true)
     setError('')
+    setCloneError('')
     try {
-      const g = await graphApi.clone(teamId, graphId, withNodes)
-      setSettings(false)
+      const g = await graphApi.clone(teamId, cloneSource.id, withNodes)
+      setCloneSource(null)
       nav(`/dashboard/graphs/${g.id}`)
     } catch (e) {
-      setError(errorText(e))
+      setCloneError(errorText(e))
     } finally {
       setBusy(false)
     }
@@ -489,17 +502,26 @@ export function Graphs({
           {!current && isMaintainer && <Button onClick={() => setCreate(true)}>New graph</Button>}
           {current && (
             <>
-              {isMaintainer && (
+              {isMaintainer && current.status !== 'stopped' && (
                 <Button
-                  variant="outline"
-                  onClick={() => {
-                    setPolicy(current.config.policy)
-                    setSettings(true)
-                  }}
+                  variant={current.status === 'running' ? 'outline' : 'default'}
+                  disabled={busy}
+                  onClick={() => command(current.status === 'running' ? 'pause' : 'run')}
                 >
-                  Settings
+                  {current.status === 'running' ? <Pause className="mr-1 h-4 w-4" /> : <Play className="mr-1 h-4 w-4" />}
+                  {current.status === 'running' ? 'Pause' : 'Run'}
                 </Button>
               )}
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  setPolicy(current.config.policy)
+                  setSettings(true)
+                }}
+              >
+                Settings
+              </Button>
             </>
           )}
         </div>
@@ -513,17 +535,25 @@ export function Graphs({
         <div className="divide-y rounded-lg border">
           {graphs.length
             ? graphs.map((g) => (
-                <Link
-                  key={g.id}
-                  className="flex items-center justify-between p-4 hover:bg-muted"
-                  to={`/dashboard/graphs/${g.id}`}
-                >
-                  <span>
+                <div key={g.id} className="flex items-center gap-3 px-4 hover:bg-muted">
+                  <Link className="min-w-0 flex-1 py-4" to={`/dashboard/graphs/${g.id}`}>
                     <b>{g.title}</b>
                     <span className="block text-sm text-muted-foreground">{g.description}</span>
-                  </span>
-                  <Badge variant="outline">{g.status}</Badge>
-                </Link>
+                  </Link>
+                  <Badge variant="outline">{g.status === 'stopped' ? 'Closed' : g.status}</Badge>
+                  {isMaintainer && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy || g.status !== 'stopped'}
+                      aria-label={`Clone ${g.title}`}
+                      title={g.status === 'stopped' ? 'Clone this graph' : 'Close this graph before cloning'}
+                      onClick={() => { setCloneError(''); setCloneSource(g) }}
+                    >
+                      <Copy className="mr-1 h-4 w-4" />Clone
+                    </Button>
+                  )}
+                </div>
               ))
             : !error && (
                 <p className="p-6 text-muted-foreground">
@@ -1058,12 +1088,41 @@ export function Graphs({
           />
         </DialogContent>
       </Dialog>
+      <Dialog open={!!cloneSource} onOpenChange={(open) => { if (!open && !busy) setCloneSource(null) }}>
+        <DialogContent
+          className="max-w-[calc(100%_-_2rem)] sm:max-w-lg"
+          onEscapeKeyDown={(event) => { if (busy) event.preventDefault() }}
+        >
+          <DialogHeader>
+            <DialogTitle>Clone “{cloneSource?.title}”</DialogTitle>
+            <DialogDescription>
+              Create a fresh graph with the same goal, start state, settings and success rule.
+              Results and run history are never copied.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Start from the goal with an empty action graph.</p>
+              <Button disabled={busy} onClick={() => cloneGraph(false)}>Clone without nodes</Button>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Also copy nodes, actions, plans, resources and tags.</p>
+              <Button variant="outline" disabled={busy} onClick={() => cloneGraph(true)}>Clone with nodes</Button>
+            </div>
+          </div>
+          {cloneError && <p role="alert" className="text-sm text-destructive">{cloneError}</p>}
+        </DialogContent>
+      </Dialog>
       <Dialog open={settings} onOpenChange={setSettings}>
         <DialogContent className="max-w-3xl sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>Graph settings</DialogTitle>
             <DialogDescription>
-              Pause and resolve existing assignments before creating a configuration revision.
+              {current?.status === 'stopped'
+                ? 'This graph is closed. Settings are read-only; clone it from the graphs list to start a new graph.'
+                : !isMaintainer
+                  ? 'Settings are read-only. An owner or maintainer can change this graph.'
+                  : 'Pause and resolve existing assignments before creating a configuration revision.'}
             </DialogDescription>
           </DialogHeader>
           {current && (
@@ -1071,59 +1130,35 @@ export function Graphs({
               {current.status === 'stopped' ? (
                 <>
                   <span className="rounded border px-2 py-1 text-sm text-muted-foreground">Closed</span>
-                  <Button
-                    disabled={busy}
-                    title="New graph with the same goal, start state, policy and success rule. Starts fresh."
-                    onClick={() => cloneGraph(false)}
-                  >
-                    Clone without nodes
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={busy}
-                    title="Also copies nodes, actions, plans, resources and tags. No results or history."
-                    onClick={() => cloneGraph(true)}
-                  >
-                    Clone with nodes
-                  </Button>
                 </>
-              ) : (
+              ) : isMaintainer ? (
                 <>
-                  <Button
-                    variant={current.status === 'running' ? 'outline' : 'default'}
-                    disabled={busy}
-                    onClick={() => command(current.status === 'running' ? 'pause' : 'run')}
-                  >
-                    {current.status === 'running' ? (
-                      <Pause className="mr-1 h-4 w-4" />
-                    ) : (
-                      <Play className="mr-1 h-4 w-4" />
-                    )}
-                    {current.status === 'running' ? 'Pause' : 'Run'}
-                  </Button>
                   <Button
                     variant="destructive"
                     disabled={busy}
                     title="Close graph permanently: stops all work and cannot be reopened"
-                    onClick={async () => {
-                      if (
-                        window.confirm(
-                          'Close this graph? This is permanent: all work stops and it cannot be reopened.'
-                        ) &&
-                        (await command('stop'))
-                      )
-                        setSettings(false)
+                    onClick={() => {
+                      setCloseError('')
+                      setCloseConfirm(true)
                     }}
                   >
                     Close graph
                   </Button>
                 </>
-              )}
+              ) : null}
             </div>
           )}
-          {current && current.status !== 'stopped' && (
+          {current && (
+            <fieldset disabled={current.status === 'stopped' || !isMaintainer} className="space-y-4">
+              <PolicyFields
+                value={current.status === 'stopped' || !isMaintainer ? current.config.policy : policy}
+                onChange={setPolicy}
+                agents={agents}
+              />
+            </fieldset>
+          )}
+          {current && isMaintainer && current.status !== 'stopped' && (
             <>
-              <PolicyFields value={policy} onChange={setPolicy} agents={agents} />
               <Button
                 disabled={busy}
                 onClick={async () => {
@@ -1137,6 +1172,37 @@ export function Graphs({
               </Button>
             </>
           )}
+          <AlertDialog open={closeConfirm} onOpenChange={(open) => { if (!busy) setCloseConfirm(open) }}>
+            <AlertDialogContent
+              className="w-[calc(100%_-_2rem)] max-w-md"
+              onEscapeKeyDown={(event) => { if (busy) event.preventDefault() }}
+            >
+              <AlertDialogHeader>
+                <AlertDialogTitle>Close this graph?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Closing “{current?.title}” is permanent. Work will stop and this graph cannot be reopened.
+                  You can clone it later to start a new graph.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {closeError && <p role="alert" className="text-sm text-destructive">{closeError}</p>}
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+                <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={busy} onClick={async (event) => {
+                  event.preventDefault()
+                  if (busy) return
+                  setCloseError('')
+                  if (await command('stop')) {
+                    setCloseConfirm(false)
+                    setSettings(false)
+                  } else {
+                    setCloseError('Could not close this graph. Please try again.')
+                  }
+                }}>
+                  {busy ? 'Closing…' : 'Close graph'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </DialogContent>
       </Dialog>
       <Dialog open={resourceOpen} onOpenChange={setResourceOpen}>
