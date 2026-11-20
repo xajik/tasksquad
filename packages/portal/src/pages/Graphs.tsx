@@ -339,7 +339,6 @@ export function Graphs({
   const [policy, setPolicy] = useState<GraphPolicy>(defaultGraphPolicy),
     [tab, setTab] = useState<'next' | 'activity' | 'report'>('next'),
     [search, setSearch] = useState(''),
-    [showSearch, setShowSearch] = useState(false),
     [selected, setSelected] = useState<string | null>(null)
   const [input, setInput] = useState<Record<string, string>>({}),
     [resourceOpen, setResourceOpen] = useState(false)
@@ -389,11 +388,9 @@ export function Graphs({
     function key(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
-        setShowSearch(true)
         setTimeout(() => searchRef.current?.focus(), 0)
       }
       if (e.key === 'Escape') {
-        setShowSearch(false)
         setSearch('')
       }
     }
@@ -451,17 +448,6 @@ export function Graphs({
         (a) => a.role !== 'repair' && ['blocked', 'error', 'reconciling'].includes(a.status)
       ) ?? []
   const active = current?.attempts.filter((a) => a.status === 'running' || a.status === 'pending') ?? []
-  function exportGraph() {
-    if (!current) return
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(current, null, 2)], { type: 'application/json' })
-    )
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `graph-${current.id}.json`
-    link.click()
-    URL.revokeObjectURL(url)
-  }
   if (loading) return <p role="status">Loading graphs…</p>
   return (
     <div className="space-y-5 pb-8">
@@ -484,14 +470,9 @@ export function Graphs({
           )}
         </div>
         <div className="flex gap-2">
+          {!current && isMaintainer && <Button onClick={() => setCreate(true)}>New graph</Button>}
           {current && (
             <>
-              <Button variant="outline" onClick={() => setShowSearch((v) => !v)}>
-                Search
-              </Button>
-              <Button variant="outline" onClick={exportGraph}>
-                Export
-              </Button>
               {isMaintainer && (
                 <Button
                   variant="outline"
@@ -505,7 +486,6 @@ export function Graphs({
               )}
             </>
           )}
-          {isMaintainer && <Button onClick={() => setCreate(true)}>New graph</Button>}
         </div>
       </header>
       {error && (
@@ -557,6 +537,11 @@ export function Graphs({
                 {plural(current.edges.length, 'action')} · {plural(current.nodes.filter(isGuidance).length, 'guidance item')}
               </p>
             </div>
+            {isMaintainer && current.status !== 'stopped' && (
+              <Button variant="outline" disabled={busy} title="Close graph: stop all work (can be resumed with Run)" onClick={() => command('stop')}>
+                Close
+              </Button>
+            )}
             {isMaintainer && (
               <Button
                 size="icon"
@@ -628,14 +613,13 @@ export function Graphs({
               . Select a highlighted node to open its task.
             </p>
           )}
-          {showSearch && (
+          {current && (
             <Input
               ref={searchRef}
               aria-label="Search graph"
               placeholder="Search nodes, edges and resources…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              autoFocus
             />
           )}
           {matches && (
