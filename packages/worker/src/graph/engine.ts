@@ -1661,10 +1661,33 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
   }
 }
 
+/** Inbox tasks of steps that wait for the owner stay in `waiting_input` (pending input) instead of `done`;
+ * they return to `done` once the step is answered, cancelled or otherwise no longer needs the owner.
+ * Planning/review steps whose result merely went out of date are noise, not owner input, and stay done. */
+export async function syncInboxStatus(db: D1Database, g: Graph): Promise<void> {
+  const needsOwner = `SELECT t.task_id FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id
+    WHERE a.graph_id=? AND a.status IN ('blocked','error') AND a.role!='repair'
+    AND t.epoch=(SELECT MAX(epoch) FROM graph_attempts WHERE assignment_id=a.id)
+    AND (a.role IN ('execute','undo','continue') OR NOT EXISTS(
+      SELECT 1 FROM graph_results r WHERE r.attempt_id=t.id AND r.status='stale'))`
+  await db.batch([
+    sql(db, `UPDATE tasks SET status='waiting_input' WHERE status='done' AND id IN (${needsOwner})`, g.id),
+    sql(
+      db,
+      `UPDATE tasks SET status='done' WHERE status='waiting_input'
+       AND id IN (SELECT t.task_id FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=?)
+       AND id NOT IN (${needsOwner})`,
+      g.id,
+      g.id
+    )
+  ])
+}
+
 export async function tick(env: GraphEnv, graphId: string): Promise<void> {
   const g = await graph(env.DB, graphId)
   await processResults(env.DB, g)
   await advanceGrading(env.DB, g)
+  await syncInboxStatus(env.DB, g)
   await dispatch(env, g)
 }
 

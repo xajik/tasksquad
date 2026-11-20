@@ -239,7 +239,12 @@ describe('durable inbox graph workflow', () => {
     const attempt = (
       await rows<{ task_id: string }>(db, 'SELECT * FROM graph_attempts WHERE assignment_id=?', assignmentId)
     )[0]
-    await sql(db, "UPDATE tasks SET status='waiting_input' WHERE id=?", attempt.task_id).run()
+    // The daemon closes the inbox task as done; a step waiting for the owner must go back to pending input.
+    await sql(db, "UPDATE tasks SET status='done' WHERE id=?", attempt.task_id).run()
+    await tick(env(), g.id)
+    expect(
+      (await rows<{ status: string }>(db, 'SELECT status FROM tasks WHERE id=?', attempt.task_id))[0].status
+    ).toBe('waiting_input')
     const bridged = {
       ...env(),
       GRAPH_COORDINATOR: {
