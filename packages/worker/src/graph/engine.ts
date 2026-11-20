@@ -901,9 +901,20 @@ export async function accept(
             candidate.body,
             candidate.parent_id
           ).first<{ id: string }>()
-          if (d.decision === 'equivalent' && existing?.id !== d.equivalent_node_id)
-            throw new Error('Backward equivalence not established')
-          if (!existing) {
+          // Like the forward case, the reviewer judges semantic equivalence; require only that it
+          // names a real milestone in this graph (exact text match would never hold for a rewording).
+          const equivalent =
+            d.decision === 'equivalent'
+              ? await sql(
+                  db,
+                  "SELECT id FROM graph_nodes WHERE id=? AND graph_id=? AND kind='milestone'",
+                  d.equivalent_node_id,
+                  g.id
+                ).first<{ id: string }>()
+              : null
+          if (d.decision === 'equivalent' && !equivalent && existing?.id !== d.equivalent_node_id)
+            throw new Error('Equivalent milestone outside graph')
+          if (!existing && !equivalent) {
             const n = nodeStatements(db, g, 'milestone', candidate, r.id, String(candidate.parent_id))
             ops.push(...n.statements)
             await enqueue(
