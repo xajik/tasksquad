@@ -470,7 +470,7 @@ describe('durable inbox graph workflow', () => {
     expect(first.startsWith('First, before anything else')).toBe(true)
     expect(first).toContain('/tsq-graph-prepare-repo')
     expect(first.indexOf('/tsq-end-session-learning')).toBeGreaterThan(0)
-    expect(first.indexOf('/tsq-end-session-memory')).toBeGreaterThan(first.indexOf('/tsq-end-session-learning'))
+    expect(first.indexOf('/tsq-memory')).toBeGreaterThan(first.indexOf('/tsq-end-session-learning'))
     // Planning steps get preparation but no end-of-session skills; the read-only grader gets neither.
     const plan = await sessionFraming(db, g, await row(pl.id), agent)
     expect(plan).toContain('/tsq-graph-prepare-repo')
@@ -483,7 +483,7 @@ describe('durable inbox graph workflow', () => {
     ])
     const later = await sessionFraming(db, g, await row(ex.id), agent)
     expect(later).not.toContain('/tsq-graph-prepare-repo')
-    expect(later).toContain('/tsq-end-session-memory')
+    expect(later).toContain('/tsq-memory')
   })
 
   it('abandons a blocked continuation chain and releases the queue, reservations and node', async () => {

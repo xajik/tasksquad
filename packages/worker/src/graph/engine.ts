@@ -1709,7 +1709,7 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
 /** Skills an agent runs before its first graph step, and the two that close every execution session. Read-only
  * roles (grade, project) cannot write the repository, so they skip preparation. */
 const PREPARE_SKILL = '/tsq-graph-prepare-repo'
-const SESSION_END_SKILLS = ['/tsq-end-session-learning', '/tsq-end-session-memory']
+const SESSION_END_SKILLS = ['/tsq-end-session-learning', '/tsq-memory']
 const EXECUTION_ROLES = ['execute', 'continue', 'undo']
 
 /** The task message for an attempt: the role prompt, framed by the repo preparation the first time this agent
