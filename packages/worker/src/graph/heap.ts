@@ -5,6 +5,10 @@ export class MaxHeap<T> {
   get size(): number {
     return this.values.length
   }
+  /** Array order encodes the actual parent/child heap layout; callers cannot mutate it. */
+  snapshot(): T[] {
+    return [...this.values]
+  }
   push(value: T): void {
     this.values.push(value)
     let index = this.values.length - 1

@@ -83,6 +83,8 @@ export interface GraphAssignment {
   max_attempts: number
   created_at: number
   input: string
+  available_at?: number
+  cancel_reason?: string | null
 }
 export interface GraphAttempt {
   epoch?: number
@@ -151,8 +153,26 @@ export interface GraphSnapshot extends GraphSummary {
     predicate: string
     value: string
     source_result_id: string
+    observed_at?: number
+    expires_at?: number
+    scope?: string
   }[]
   resource_links: { node_id: string; resource_id: string }[]
+  scheduler?: {
+    sampled_at: number
+    next_selection: 'highest' | 'lowest'
+    candidates: {
+      assignment_id: string
+      weight: number
+      local_score: number | null
+      goal_score: number | null
+      evidence_count: number
+      observed_at: number | null
+    }[]
+    heap: string[]
+    serial_queue: { sequence: number; kind: string; work_id: string; status: string; created_at: number }[]
+    reservations: { agent_id: string; attempt_id: string; kind: string; graph_id: string }[]
+  }
   config: { policy: GraphPolicy; rule: GraphRule; version: number }
   nodes: GraphNode[]
   edges: GraphEdge[]

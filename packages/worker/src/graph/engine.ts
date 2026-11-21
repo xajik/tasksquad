@@ -1,6 +1,6 @@
 import { dispatchContext, eligibility } from './eligibility.js'
 import { MaxHeap } from './heap.js'
-import { priority } from './priority.js'
+import { candidateWeights } from './weights.js'
 import type { Env } from '../types.js'
 import { bumpInboxVersion } from '../inbox_version.js'
 import { parseResult, hash, templates, verifyGoal, type Role, type Policy } from './contracts.js'
@@ -1553,41 +1553,8 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
     g.id,
     now
   )
-  for (const a of pending) {
-    const evaluations = a.edge_id
-      ? await rows<{
-          evidence_id: string
-          local_score: number | null
-          goal_score: number | null
-          created_at: number
-          role: string
-        }>(
-          db,
-          `SELECT e.*,r.role FROM graph_evaluations e JOIN graph_evaluation_revisions r ON r.source_result_id=e.source_result_id WHERE e.edge_id=? AND NOT EXISTS(SELECT 1 FROM graph_evaluation_revisions newer WHERE newer.execution_result_id=r.execution_result_id AND newer.role=r.role AND newer.id>r.id) ORDER BY e.id`,
-          a.edge_id
-        )
-      : []
-    const unique = new Map<string, { local: number | null; goal: number | null; at: number }>()
-    for (const e of evaluations) {
-      const previous = unique.get(e.evidence_id) ?? { local: null, goal: null, at: e.created_at }
-      unique.set(e.evidence_id, {
-        local: e.role === 'grade' ? e.local_score : previous.local,
-        goal: e.role === 'project' ? e.goal_score : previous.goal,
-        at: e.created_at
-      })
-    }
-    const values = [...unique.values()],
-      locals = values.flatMap((e) => (e.local === null ? [] : [e.local])),
-      goals = values.flatMap((e) => (e.goal === null ? [] : [e.goal]))
-    a.priority = priority({
-      local: locals.length ? locals.reduce((a, b) => a + b, 0) / locals.length : null,
-      goal: goals.length ? goals.reduce((a, b) => a + b, 0) / goals.length : null,
-      visits: values.length,
-      observedAt: values.length ? Math.max(...values.map((e) => e.at)) : null,
-      now,
-      recovery: a.role === 'undo' || a.role === 'reconcile'
-    })
-  }
+  const weights = await candidateWeights(db, g, pending, now)
+  for (const a of pending) a.priority = weights.get(a.id)!.weight
   pending.sort(
     (a, b) => controlRank(a.role) - controlRank(b.role) || b.priority - a.priority || a.id.localeCompare(b.id)
   )

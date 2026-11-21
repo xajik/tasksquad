@@ -589,6 +589,21 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true): Promis
   )
   const { dispatchContext, eligibility } = await import('./eligibility.js')
   const context = await dispatchContext(db, g, enabled)
+  const { candidateWeights } = await import('./weights.js')
+  const { MaxHeap } = await import('./heap.js')
+  const pending = assignments.filter((a) => a.status === 'pending')
+  const weights = await candidateWeights(db, g, pending, context.now)
+  const heap = new MaxHeap<Assignment>((a, b) =>
+    weights.get(a.id)!.weight - weights.get(b.id)!.weight || b.id.localeCompare(a.id)
+  )
+  // Dispatch sorts candidates before insertion; preserve that exact tree layout,
+  // not merely another valid heap with the same highest-priority root.
+  const executionCandidates = pending
+    .filter((a) => a.role === 'execute' && a.available_at <= context.now)
+    .sort((a, b) => weights.get(b.id)!.weight - weights.get(a.id)!.weight || a.id.localeCompare(b.id))
+  for (const a of executionCandidates) heap.push(a)
+  const serialQueue = await rows(db,
+    "SELECT * FROM graph_serial_queue WHERE graph_id=? AND status='pending' ORDER BY sequence", g.id)
   const waiting: Record<string, unknown> = {}
   const { extractApprovalRequest } = await import('../approval.js')
   for (const a of assignments) {
@@ -660,6 +675,14 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true): Promis
     evaluations,
     proposals,
     waiting,
+    scheduler: {
+      sampled_at: context.now,
+      next_selection: (Number(context.budgets.allocations) + 1) % 5 === 0 ? 'lowest' : 'highest',
+      candidates: pending.map((a) => ({ assignment_id: a.id, ...weights.get(a.id)! })),
+      heap: heap.snapshot().map((a) => a.id),
+      serial_queue: serialQueue,
+      reservations: context.used.filter((r) => r.graph_id === g.id)
+    },
     goal_verification: verifyGoal(c.rule, evidence, Date.now())
   }
 }

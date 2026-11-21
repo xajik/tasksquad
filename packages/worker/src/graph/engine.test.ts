@@ -642,6 +642,30 @@ describe('durable inbox graph workflow', () => {
     expect(await rows(db, "SELECT * FROM graph_serial_queue WHERE graph_id=? AND status='pending'", g.id)).toHaveLength(1)
   })
 
+  it('reports the live scheduler heap without persisting or dispatching preview weights', async () => {
+    const { g, assignmentId } = await preparedExecution()
+    const original = (await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', assignmentId))[0]
+    const candidates = []
+    for (let i = 0; i < 3; i++) {
+      const next = await assignment(db, await graph(db, g.id), 'execute', JSON.parse(original.input), { node: original.node_id, edge: original.edge_id })
+      await db.batch(next.statements)
+      candidates.push(next.id)
+    }
+    await sql(db, 'UPDATE graph_assignments SET priority=0.99 WHERE id=?', candidates[0]).run()
+    await sql(db, 'UPDATE graph_assignments SET available_at=? WHERE id=?', Date.now() + 60000, candidates[2]).run()
+    const before = (await graph(db, g.id)).version
+    const preview = (await snapshot(db, await graph(db, g.id))).scheduler as {
+      heap: string[]; candidates: { assignment_id: string; weight: number }[]; next_selection: string
+    }
+    expect(preview.heap).toEqual(candidates.slice(0, 2).sort())
+    expect(preview.candidates).toHaveLength(3)
+    expect(preview.candidates.every((c) => c.weight === 0.5)).toBe(true)
+    expect((await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', candidates[0]))[0].priority).toBe(0.99)
+    expect((await graph(db, g.id)).version).toBe(before)
+    await sql(db, 'UPDATE graph_budgets SET allocations=4 WHERE graph_id=?', g.id).run()
+    expect(((await snapshot(db, await graph(db, g.id))).scheduler as { next_selection: string }).next_selection).toBe('lowest')
+  })
+
   it('uses dispatch eligibility for paused, budget, agent, capability and termination explanations', async () => {
     const { g, agent, assignmentId } = await preparedExecution()
     // Put the unstarted dispatch back in the queue without allowing it to execute.

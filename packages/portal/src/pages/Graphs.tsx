@@ -1,6 +1,6 @@
-import { Copy, Play, Pause } from 'lucide-react'
+import { Copy, Play, Pause, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, type Agent } from '../lib/api'
 import {
   defaultGraphPolicy,
@@ -12,7 +12,8 @@ import {
   type NewGraph,
   type GraphPolicy,
   type GraphSearchHit,
-  type GraphResource
+  type GraphResource,
+  type GraphAssignment
 } from '../lib/graph'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,8 +22,14 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
 } from '@/components/ui/alert-dialog'
 import { GraphCanvas } from '@/components/GraphCanvas'
 import { GraphSection } from '@/components/GraphSection'
@@ -33,6 +40,13 @@ import { isGuidance } from '@/lib/graphLayout'
 import { goalProjection } from '@/lib/graphProjection'
 import { graphAttention } from '@/lib/graphAttention'
 import { errorText } from '@/lib/graphError'
+import {
+  GraphDashboardPanels,
+  GraphMetrics,
+  GoalState,
+  graphViewIcons
+} from '@/components/GraphDashboardPanels'
+import { graphViews, graphView, type GraphView } from '@/lib/graphDashboard'
 
 /** What the person must look at first: their decisions, then recovery, running work, then queued work by priority. */
 const workRank = (status: string) =>
@@ -334,6 +348,24 @@ export function Graphs({
 }) {
   const { graphId } = useParams<{ graphId?: string }>(),
     nav = useNavigate()
+  const [params, setParams] = useSearchParams()
+  const view = graphView(params.get('view'))
+  const setView = (next: GraphView) =>
+    setParams((previous) => {
+      const updated = new URLSearchParams(previous)
+      if (next === 'home') updated.delete('view')
+      else updated.set('view', next)
+      return updated
+    })
+  const tab = view === 'activity' ? 'activity' : 'next'
+  const [live, setLive] = useState(true)
+  const [updatedAt, setUpdatedAt] = useState(0)
+  const [range, setRange] = useState(86400_000)
+  const now = updatedAt || Date.now()
+  const inspect = (id: string) => {
+    setSelected(id)
+    setView('home')
+  }
   const [graphs, setGraphs] = useState<GraphSummary[]>([]),
     [agents, setAgents] = useState<Agent[]>([]),
     [current, setCurrent] = useState<GraphSnapshot | null>(null)
@@ -345,7 +377,6 @@ export function Graphs({
     [closeConfirm, setCloseConfirm] = useState(false),
     [closeError, setCloseError] = useState('')
   const [policy, setPolicy] = useState<GraphPolicy>(defaultGraphPolicy),
-    [tab, setTab] = useState<'next' | 'activity' | 'report'>('next'),
     [search, setSearch] = useState(''),
     [selected, setSelected] = useState<string | null>(null)
   const [input, setInput] = useState<Record<string, string>>({}),
@@ -371,6 +402,7 @@ export function Graphs({
       setGraphs(list.graphs)
       setAgents(ad.agents)
       setCurrent(detail)
+      setUpdatedAt(Date.now())
       setError('')
     } catch (e) {
       if (version === generation.current) setError(errorText(e))
@@ -380,28 +412,37 @@ export function Graphs({
   }, [teamId, graphId])
   useEffect(() => {
     setCurrent(null)
+    setLoading(true)
     setSelected(null)
     setCloseConfirm(false)
     setCloseError('')
     setCloneSource(null)
     setCloneError('')
-    setLoading(true)
+  }, [teamId, graphId])
+  useEffect(() => {
     void refresh()
-    const timer = setInterval(
-      () => {
-        void refresh()
-      },
-      plan === 'pro' ? 2000 : 5000
-    )
+    const timer = live
+      ? setInterval(
+          () => {
+            void refresh()
+          },
+          plan === 'pro' ? 2000 : 5000
+        )
+      : undefined
     return () => {
       clearInterval(timer)
       generation.current++
     }
-  }, [refresh, plan])
+  }, [refresh, plan, live])
   useEffect(() => {
     function key(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
+        setParams((previous) => {
+          const next = new URLSearchParams(previous)
+          next.delete('view')
+          return next
+        })
         setTimeout(() => searchRef.current?.focus(), 0)
       }
       if (e.key === 'Escape') {
@@ -410,7 +451,7 @@ export function Graphs({
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [])
+  }, [setParams])
   useEffect(() => {
     let active = true
     if (!graphId || !search.trim()) {
@@ -476,6 +517,7 @@ export function Graphs({
       current?.assignments.filter(
         (a) => a.role !== 'repair' && ['blocked', 'error', 'reconciling'].includes(a.status)
       ) ?? []
+  const liveWeight = (a: GraphAssignment) => current?.scheduler?.candidates.find((c) => c.assignment_id === a.id)?.weight ?? a.priority
   const active = current?.attempts.filter((a) => a.status === 'running' || a.status === 'pending') ?? []
   if (loading) return <p role="status">Loading graphs…</p>
   return (
@@ -508,7 +550,11 @@ export function Graphs({
                   disabled={busy}
                   onClick={() => command(current.status === 'running' ? 'pause' : 'run')}
                 >
-                  {current.status === 'running' ? <Pause className="mr-1 h-4 w-4" /> : <Play className="mr-1 h-4 w-4" />}
+                  {current.status === 'running' ? (
+                    <Pause className="mr-1 h-4 w-4" />
+                  ) : (
+                    <Play className="mr-1 h-4 w-4" />
+                  )}
                   {current.status === 'running' ? 'Pause' : 'Run'}
                 </Button>
               )}
@@ -548,9 +594,13 @@ export function Graphs({
                       disabled={busy || g.status !== 'stopped'}
                       aria-label={`Clone ${g.title}`}
                       title={g.status === 'stopped' ? 'Clone this graph' : 'Close this graph before cloning'}
-                      onClick={() => { setCloneError(''); setCloneSource(g) }}
+                      onClick={() => {
+                        setCloneError('')
+                        setCloneSource(g)
+                      }}
                     >
-                      <Copy className="mr-1 h-4 w-4" />Clone
+                      <Copy className="mr-1 h-4 w-4" />
+                      Clone
                     </Button>
                   )}
                 </div>
@@ -567,7 +617,13 @@ export function Graphs({
           <section className="flex justify-between gap-4 flex-wrap border-b pb-4">
             <div>
               <h3 className="font-semibold">{current.title}</h3>
-              <GraphSection id="goal" title="Goal description" help="section_goal" className="text-sm">
+              <GraphSection
+                id="goal"
+                title="Goal description"
+                help="section_goal"
+                defaultOpen={false}
+                className="text-sm"
+              >
                 <p className="text-muted-foreground whitespace-pre-wrap">{current.body}</p>
               </GraphSection>
               <p className="mt-2 text-sm">
@@ -579,508 +635,632 @@ export function Graphs({
                       ? 'Not met'
                       : 'Unverified'}
                 </b>{' '}
-                · {current.status} · {plural(current.nodes.filter((n) => !isGuidance(n)).length, 'execution state')} ·{' '}
-                {plural(current.edges.length, 'action')} · {plural(current.nodes.filter(isGuidance).length, 'guidance item')}
+                · {current.status} ·{' '}
+                {plural(current.nodes.filter((n) => !isGuidance(n)).length, 'execution state')} ·{' '}
+                {plural(current.edges.length, 'action')} ·{' '}
+                {plural(current.nodes.filter(isGuidance).length, 'guidance item')}
               </p>
             </div>
             {current.status === 'stopped' && (
               <span className="rounded border px-2 py-1 text-sm text-muted-foreground">Closed</span>
             )}
           </section>
-          {(() => {
-            const latest = latestMessage(current)
-            if (!latest) return null
-            return (
-              <GraphSection
-                id="latest"
-                title="Latest message"
-                help="section_latest"
-                className="rounded border bg-muted/30 px-3 py-2 text-sm"
-              >
-                <p>
-                  <b>{latest.role}</b> · {latest.status} · {stamp(latest.at)}
-                </p>
-                <p className="text-muted-foreground">{latest.text}</p>
-                {latest.taskId && (
-                  <Link className="text-primary underline" to={`/dashboard/tasks/${latest.taskId}`}>
-                    Open inbox task
-                  </Link>
-                )}
-              </GraphSection>
-            )
-          })()}
-          <p role="status" className="rounded border bg-muted/30 px-3 py-2 text-sm">{graphRunExplanation(current)}</p>
-          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-            <span>
-              {active.length} active jobs · {current.config.policy.capacity} execution slots
-            </span>
-            <span>
-              {reviews.length} awaiting review · {blocked.length} blocked/recovering
-            </span>
-            <span>
-              {current.budgets.attempts} / {current.config.policy.attempt_budget} attempts
-            </span>
-            <span>
-              Declared execution cost: {current.budgets.execution_cost} / {current.config.policy.cost_budget}
-            </span>
-            <span>
-              Recovery reserved: {current.budgets.recovery_reserved} / {current.config.policy.recovery_budget}
-            </span>
-          </div>
-          {active.length > 0 && (
-            <section aria-label="Running jobs" className="flex flex-wrap gap-3 text-sm">
-              {active.map((t) => (
-                <Link key={t.id} className="text-primary underline" to={`/dashboard/tasks/${t.task_id}`}>
-                  {agents.find((a) => a.id === t.agent_id)?.name ?? t.agent_id}:{' '}
-                  {current.assignments.find((a) => a.id === t.assignment_id)?.role} · {t.status}
-                </Link>
-              ))}
-            </section>
-          )}
-          {(reviews.length > 0 || blocked.length > 0) && (
-            <p className="text-sm rounded border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2">
-              Replies and result reviews are handled in{' '}
-              <Link className="underline font-medium" to="/dashboard">
-                Inbox
-              </Link>
-              . Select a highlighted node to open its task.
-            </p>
-          )}
-          {current && (
-            <Input
-              ref={searchRef}
-              aria-label="Search graph"
-              placeholder="Search nodes, edges and resources…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          )}
-          {matches && (
-            <section aria-label="Search results" className="flex flex-wrap gap-2">
-              {matches.nodes.map((n) => (
-                <Button size="sm" variant="outline" key={n.id} onClick={() => setSelected(n.id)}>
-                  {n.title}
-                </Button>
-              ))}
-              {(matches.edges ?? []).map((e) => (
-                <Button size="sm" variant="outline" key={e.id} onClick={() => setSelected(e.id)}>
-                  {e.title}
-                </Button>
-              ))}
-              {matches.resources.map((r) => (
-                <details key={r.id} className="rounded border px-3 py-1 text-sm">
-                  <summary className="cursor-pointer">{r.title}</summary>
-                  <p className="whitespace-pre-wrap">{r.body}</p>
-                </details>
-              ))}
-            </section>
-          )}
-          {(current.proposals ?? []).some((p) => p.status === 'pending' || p.status === 'uncertain') && (
-            <GraphSection
-              id="proposals"
-              title="Proposals awaiting independent review"
-              help="section_proposals"
-              className="rounded border p-4"
-            >
-              <ul className="divide-y">
-                {(current.proposals ?? [])
-                  .filter((p) => p.status === 'pending' || p.status === 'uncertain')
-                  .map((p) => {
-                    const proposal = JSON.parse(p.content) as {
-                      title?: string
-                      description?: string
-                      kind?: string
-                    }
-                    return (
-                      <li key={p.id} className="py-2 text-sm">
-                        <b>{proposal.title ?? proposal.kind ?? 'Proposal'}</b> · {proposalState(current, p.id, p.status)}
-                        <p className="text-muted-foreground">{proposal.description}</p>
-                      </li>
-                    )
-                  })}
-              </ul>
-            </GraphSection>
-          )}
-          <GraphSection id="canvas" title="Action graph and inspector" help="section_canvas">
-          <section className="grid xl:grid-cols-[minmax(0,1fr)_300px] rounded-lg border overflow-hidden">
-            <GraphCanvas
-              graph={current}
-              selected={selected}
-              onSelect={setSelected}
-              search={search}
-              matchedIds={matches?.nodes.map((n) => n.id)}
-            />
-            <aside className="border-t xl:border-t-0 xl:border-l p-4 space-y-3 text-sm min-w-0">
-              <h3 className="font-semibold">{node?.title ?? edge?.title ?? 'Inspector'}</h3>
-              {nodeAttention.length > 0 && (
-                <section
-                  aria-label="Inbox attention"
-                  className="rounded border border-amber-500/30 bg-amber-500/10 p-3 space-y-2"
-                >
-                  <p className="font-medium text-amber-700 dark:text-amber-400">
-                    {nodeAttention.some((a) => a.kind === 'reply')
-                      ? 'Waiting for your response'
-                      : nodeAttention.some((a) => a.kind === 'review')
-                        ? 'Result awaiting review'
-                        : 'Recovery in progress'}
-                  </p>
-                  {nodeAttention.map((item) => (
-                    <Button
-                      key={item.assignmentId}
-                      size="sm"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => nav(item.taskId ? `/dashboard/tasks/${item.taskId}` : '/dashboard')}
-                    >
-                      {item.label}
-                    </Button>
-                  ))}
-                </section>
-              )}
-              {node ? (
-                <>
-                  <Badge variant="outline">
-                    {isGuidance(node) ? `Guidance · ${node.kind}` : `${node.kind} · ${node.state}`}
-                    {node.reason ? ` / ${node.reason}` : ''}
-                  </Badge>
-                  {isGuidance(node) && (
-                    <p className="text-xs text-muted-foreground">
-                      Guidance for planning. This item is not an execution state.
-                    </p>
-                  )}
-                  {projection && (
-                    <section
-                      aria-label="Projection towards goal"
-                      className="rounded border border-blue-500/20 bg-blue-500/5 p-3 space-y-2"
-                    >
-                      <h4 className="font-medium">Projection towards goal</h4>
-                      <p>
-                        {projection.evaluated
-                          ? `Goal alignment: ${projection.score === null ? 'Unknown' : projection.score.toFixed(2)}`
-                          : 'Not evaluated'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{projection.reason}</p>
-                      <p className="text-xs">
-                        Goal verification:{' '}
-                        {current.goal_verification === 'true'
-                          ? 'Verified'
-                          : current.goal_verification === 'false'
-                            ? 'Not met'
-                            : 'Unverified'}
-                      </p>
-                      {projection.evidenceIds.length > 0 && (
-                        <details>
-                          <summary className="cursor-pointer text-xs">Projection evidence</summary>
-                          <ul className="text-xs break-all mt-2 list-disc pl-4">
-                            {projection.evidenceIds.map((id) => (
-                              <li key={id}>{id}</li>
-                            ))}
-                          </ul>
-                        </details>
-                      )}
-                    </section>
-                  )}
-                  <div className="flex flex-wrap gap-1">
-                    {node.tags?.map((tag) => (
-                      <Badge variant="secondary" key={tag}>
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                  {(current.evidence ?? [])
-                    .filter((e) => e.node_id === node.id)
-                    .map((e) => (
-                      <p className="text-xs" key={`${e.source_result_id}:${e.predicate}`}>
-                        {e.predicate}: {e.value} · source {e.resource_id}
-                      </p>
-                    ))}
-                  {isMaintainer && (
-                    <div className="flex gap-2">
-                      <Input
-                        aria-label="New node tag"
-                        placeholder="Add tag"
-                        maxLength={99}
-                        value={input['tag:' + node.id] ?? ''}
-                        onChange={(e) => setInput({ ...input, ['tag:' + node.id]: e.target.value })}
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busy || !input['tag:' + node.id]?.trim()}
-                        onClick={() => command('tag', { node_id: node.id, tag: input['tag:' + node.id] })}
-                      >
-                        Add
-                      </Button>
-                    </div>
-                  )}
-                  <p>{node.description}</p>
-                  <p className="whitespace-pre-wrap">{node.body}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {isGuidance(node) ? 'Created' : 'Observed'} {stamp(node.created_at)}
-                  </p>
-                </>
-              ) : edge ? (
-                <>
-                  <p>Expected quality: {edge.expected_score ?? 'unknown'}</p>
-                  <p>{edge.description}</p>
-                  <p className="whitespace-pre-wrap">{edge.body}</p>
-                  <b className="block">Baseline</b>
-                  <p>{edge.baseline}</p>
-                  {(['steps', 'undo_steps', 'predicates', 'resource_versions'] as const).map((key) => (
-                    <details key={key} open={key === 'undo_steps'}>
-                      <summary className="cursor-pointer font-medium">
-                        {
-                          {
-                            steps: 'Forward plan',
-                            undo_steps: 'Undo plan',
-                            predicates: 'Restoration predicates',
-                            resource_versions: 'Resource versions'
-                          }[key]
-                        }
-                      </summary>
-                      <pre className="whitespace-pre-wrap text-xs py-2 break-all">{pretty(edge[key])}</pre>
-                    </details>
-                  ))}
-                  <p>
-                    Declared cost {edge.cost} · recovery {edge.recovery_cost}
-                  </p>
-                  {current.evaluations
-                    .filter((v) => v.edge_id === edge.id)
-                    .slice(-4)
-                    .map((v) => (
-                      <p className="text-xs" key={v.id}>
-                        Local {v.local_score ?? 'unknown'} · goal alignment {v.goal_score ?? 'unknown'} ·
-                        evidence {v.evidence_id}
-                      </p>
-                    ))}
-                </>
-              ) : (
-                <p className="text-muted-foreground">
-                  Select a node or action to inspect its state, evidence and restoration contract.
-                </p>
-              )}
-              <details open>
-                <summary className="cursor-pointer font-medium">Resources</summary>
-                {node && isMaintainer && (
-                  <select
-                    aria-label="Attach resource to node"
-                    className="my-2 w-full rounded border bg-background p-2"
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value)
-                        void command('link', { node_id: node.id, resource_id: e.target.value })
-                    }}
-                  >
-                    <option value="">Attach resource…</option>
-                    {current.resources.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.title} · v{r.version}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {node &&
-                  (current.resource_links ?? [])
-                    .filter((l) => l.node_id === node.id)
-                    .map((l) => (
-                      <p className="text-xs my-2" key={l.resource_id}>
-                        Attached: {current.resources.find((r) => r.id === l.resource_id)?.title}
-                      </p>
-                    ))}
-
-                <ul className="divide-y">
-                  {current.resources
-                    .filter(
-                      (r) =>
-                        !search ||
-                        `${r.title} ${r.description} ${r.body}`.toLowerCase().includes(search.toLowerCase())
-                    )
-                    .map((r) => (
-                      <li key={r.id} className="py-2">
-                        <details>
-                          <summary className="cursor-pointer">
-                            {r.title} · v{r.version}
-                          </summary>
-                          <p className="text-xs text-muted-foreground">
-                            {r.visibility} · {r.id}
-                          </p>
-                          <p>{r.description}</p>
-                          <p className="whitespace-pre-wrap pt-2">{r.body}</p>
-                        </details>
-                      </li>
-                    ))}
-                </ul>
-                {isMaintainer && (
-                  <Button className="mt-3" size="sm" variant="outline" onClick={() => setResourceOpen(true)}>
-                    Add resource
-                  </Button>
-                )}
-              </details>
-            </aside>
-          </section>
-          </GraphSection>
-          {(() => {
-            const report = dailyReport(current)
-            return (
-              <GraphSection
-                id="report"
-                title="Daily report"
-                help="section_report"
-                className="rounded border p-4 text-sm"
-              >
-                <p className="font-medium">{report.headline}</p>
-                <ul className="mt-1 list-disc pl-5 space-y-0.5 text-muted-foreground">
-                  {report.lines.map((l) => (
-                    <li key={l}>{l}</li>
-                  ))}
-                </ul>
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-xs text-muted-foreground">Details</summary>
-                  <div className="space-y-4 pt-2">
-                <p className="text-sm">
-                  Today ({new Date().toISOString().slice(0, 10)}, UTC) · goal {current.goal_verification}
-                </p>
-                <h4 className="font-medium">Completed attempts</h4>
-                {current.attempts
-                  .filter(
-                    (t) =>
-                      t.completed_at &&
-                      new Date(t.completed_at).toISOString().slice(0, 10) ===
-                        new Date().toISOString().slice(0, 10)
-                  )
-                  .map((t) => {
-                    const a = current.assignments.find((a) => a.id === t.assignment_id),
-                      r = current.results.find((r) => r.attempt_id === t.id)
-                    return (
-                      <p className="text-sm" key={t.id}>
-                        <Link className="text-primary underline" to={`/dashboard/tasks/${t.task_id}`}>
-                          {a?.role} · {t.status}
-                        </Link>{' '}
-                        · completed {stamp(t.completed_at)} · {r?.status ?? 'grade pending'} · accepted{' '}
-                        {stamp(r?.accepted_at ?? null)}
-                        {isMaintainer && a?.role === 'execute' && r?.status === 'accepted' && (
-                          <Button
-                            className="ml-2"
-                            size="sm"
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => command('regrade', { execution_result_id: r.id })}
-                          >
-                            Request regrade
-                          </Button>
-                        )}
-                      </p>
-                    )
-                  })}
-                <h4 className="font-medium">Every node</h4>
-                {current.nodes.map((n) => (
-                  <p className="text-sm" key={n.id}>
-                    {n.title} · {n.state} ·{' '}
-                    {new Date(Math.max(n.created_at, n.state_changed_at ?? 0)).toISOString().slice(0, 10) ===
-                      new Date().toISOString().slice(0, 10) ||
-                    current.events.some(
-                      (e) =>
-                        e.entity_id === n.id &&
-                        new Date(e.created_at).toISOString().slice(0, 10) ===
-                          new Date().toISOString().slice(0, 10)
-                    )
-                      ? 'updated today'
-                      : 'unchanged today'}
-                  </p>
-                ))}
-              </div>
-                </details>
-              </GraphSection>
-            )
-          })()}
-          <GraphSection id="work" title="Work queue" help="section_work">
-            <div className="flex gap-2 border-b pb-2" role="tablist" aria-label="Graph work">
-              {(['next', 'activity'] as const).map((t) => (
-                <Button
-                  key={t}
-                  role="tab"
-                  aria-selected={tab === t}
-                  variant={tab === t ? 'secondary' : 'ghost'}
-                  onClick={() => setTab(t)}
-                >
-                  {{ next: 'Up next', activity: 'Activity' }[t]}
-                </Button>
-              ))}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span
+                className={`h-2 w-2 rounded-full ${live && !error ? 'bg-emerald-500' : 'bg-muted-foreground'}`}
+              />
+              {live ? `Live · refresh every ${plan === 'pro' ? 2 : 5}s` : 'Refresh paused'}
+              <span className="text-xs">
+                Updated {updatedAt ? new Date(updatedAt).toLocaleTimeString() : '—'}
+              </span>
             </div>
-            {tab === 'next' && (
-              <div className="divide-y">
-                {current.assignments
-                  .filter((a) => workRank(a.status) < 4)
-                  .filter((a) => a.status !== 'continuation' || !current.assignments.some(child => child.parent_id === a.id))
-                  .sort((a, b) => workRank(a.status) - workRank(b.status) || b.priority - a.priority)
-                  .map((a) => (
-                    <div key={a.id} className="py-3 text-sm flex justify-between gap-3">
-                      <span>
-                        {['reply', 'review'].includes(current.waiting?.[a.id]?.action ?? '') && (
-                          <b className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs">{current.waiting?.[a.id]?.action === 'review' ? 'Review result' : 'Needs your approval or input'}</b>
-                        )}
-                        {a.role} · {a.status} · priority {a.priority.toFixed(2)} · {a.attempt_count} attempts
-                        {current.waiting?.[a.id]?.request_title && <strong className="block mt-1">{current.waiting[a.id].request_title}</strong>}
-                        {current.waiting?.[a.id] && <span className="block text-xs text-muted-foreground mt-1">{current.waiting[a.id].message}</span>}
-                      </span>
-                      {[latestGraphAttempt(current, a.id)].filter((t) => !!t).map((t) => (
-                          <Link
-                            key={t.id}
-                            className="text-primary underline"
-                            to={`/dashboard/tasks/${t.task_id}`}
-                          >
-                            {current.waiting?.[a.id]?.action === 'reply' ? 'Answer in inbox' : current.waiting?.[a.id]?.action === 'review' ? 'Review in inbox' : 'Open inbox task'}
-                          </Link>
-                        ))}
-                      {isMaintainer &&
-                        ['decompose', 'plan', 'merge'].includes(a.role) &&
-                        ['blocked', 'error'].includes(a.status) && (
+            <div className="flex items-center gap-2">
+              <select
+                aria-label="Statistics and activity time range"
+                  title="Applies to Statistics and Activity. Other tabs show current state."
+                className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                value={range}
+                onChange={(e) => setRange(Number(e.target.value))}
+              >
+                <option value={3600000}>Last 1 hour</option>
+                <option value={21600000}>Last 6 hours</option>
+                <option value={86400000}>Last 24 hours</option>
+                <option value={0}>All time</option>
+              </select>
+              <Button variant="outline" size="sm" onClick={() => setLive(!live)}>
+                {live ? 'Pause refresh' : 'Resume refresh'}
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Refresh graph dashboard"
+                onClick={() => void refresh()}
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <nav role="tablist" aria-label="Graph dashboard" className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b bg-background">
+            {graphViews.map(([id, label], index) => {
+              const Icon = graphViewIcons[id]
+              const count =
+                id === 'inbox'
+                  ? Object.values(current.waiting ?? {}).filter((w) =>
+                      ['reply', 'review'].includes(w.action ?? '')
+                    ).length
+                  : id === 'deactivated'
+                    ? current.nodes.filter((n) => n.state === 'deactivated').length
+                    : null
+              return (
+                <button
+                  key={id}
+                  id={`graph-tab-${id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === id}
+                  aria-controls={`graph-panel-${id}`}
+                  tabIndex={view === id ? 0 : -1}
+                  className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${view === id ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => setView(id)}
+                  onKeyDown={(e) => {
+                    const target =
+                      e.key === 'ArrowRight'
+                        ? (index + 1) % graphViews.length
+                        : e.key === 'ArrowLeft'
+                          ? (index + graphViews.length - 1) % graphViews.length
+                          : e.key === 'Home'
+                            ? 0
+                            : e.key === 'End'
+                              ? graphViews.length - 1
+                              : null
+                    if (target !== null) {
+                      e.preventDefault()
+                      setView(graphViews[target][0])
+                      document.getElementById(`graph-tab-${graphViews[target][0]}`)?.focus()
+                    }
+                  }}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                  {count !== null && count > 0 && (
+                    <span className="rounded bg-muted px-1.5 text-xs tabular-nums">{count}</span>
+                  )}
+                </button>
+              )
+            })}
+          </nav>
+          <GraphMetrics graph={current} />
+          <div
+            id={`graph-panel-${view}`}
+            role="tabpanel"
+            aria-labelledby={`graph-tab-${view}`}
+            className="space-y-4 min-w-0"
+          >
+            <GraphDashboardPanels
+              key={`${current.id}-${view}`}
+              view={view}
+              graph={current}
+              inspect={inspect}
+              since={range ? now - range : 0}
+              now={now}
+            />
+            {view === 'goals' && <GoalState graph={current} inspect={inspect} now={now} />}
+            {view === 'home' &&
+              (() => {
+                const latest = latestMessage(current)
+                if (!latest) return null
+                return (
+                  <GraphSection
+                    id="latest"
+                    title="Latest message"
+                    help="section_latest"
+                    className="rounded border bg-muted/30 px-3 py-2 text-sm"
+                  >
+                    <p>
+                      <b>{latest.role}</b> · {latest.status} · {stamp(latest.at)}
+                    </p>
+                    <p className="text-muted-foreground">{latest.text}</p>
+                    {latest.taskId && (
+                      <Link className="text-primary underline" to={`/dashboard/tasks/${latest.taskId}`}>
+                        Open inbox task
+                      </Link>
+                    )}
+                  </GraphSection>
+                )
+              })()}
+            {(view === 'home' || view === 'inbox') && (
+              <p role="status" className="rounded border bg-muted/30 px-3 py-2 text-sm">
+                {graphRunExplanation(current)}
+              </p>
+            )}
+            {view === 'home' && active.length > 0 && (
+              <section aria-label="Running jobs" className="flex flex-wrap gap-3 text-sm">
+                {active.map((t) => (
+                  <Link key={t.id} className="text-primary underline" to={`/dashboard/tasks/${t.task_id}`}>
+                    {agents.find((a) => a.id === t.agent_id)?.name ?? t.agent_id}:{' '}
+                    {current.assignments.find((a) => a.id === t.assignment_id)?.role} · {t.status}
+                  </Link>
+                ))}
+              </section>
+            )}
+            {view === 'home' && (reviews.length > 0 || blocked.length > 0) && (
+              <p className="text-sm rounded border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2">
+                Replies and result reviews are handled in{' '}
+                <Link className="underline font-medium" to="/dashboard">
+                  Inbox
+                </Link>
+                . Select a highlighted node to open its task.
+              </p>
+            )}
+            {view === 'home' && (
+              <Input
+                ref={searchRef}
+                aria-label="Search graph"
+                placeholder="Search nodes, edges and resources…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            )}
+            {view === 'home' && matches && (
+              <section aria-label="Search results" className="flex flex-wrap gap-2">
+                {matches.nodes.map((n) => (
+                  <Button size="sm" variant="outline" key={n.id} onClick={() => setSelected(n.id)}>
+                    {n.title}
+                  </Button>
+                ))}
+                {(matches.edges ?? []).map((e) => (
+                  <Button size="sm" variant="outline" key={e.id} onClick={() => setSelected(e.id)}>
+                    {e.title}
+                  </Button>
+                ))}
+                {matches.resources.map((r) => (
+                  <details key={r.id} className="rounded border px-3 py-1 text-sm">
+                    <summary className="cursor-pointer">{r.title}</summary>
+                    <p className="whitespace-pre-wrap">{r.body}</p>
+                  </details>
+                ))}
+              </section>
+            )}
+            {view === 'inbox' &&
+              (current.proposals ?? []).some((p) => p.status === 'pending' || p.status === 'uncertain') && (
+                <GraphSection
+                  id="proposals"
+                  title="Proposals awaiting independent review"
+                  help="section_proposals"
+                  className="rounded border p-4"
+                >
+                  <ul className="divide-y">
+                    {(current.proposals ?? [])
+                      .filter((p) => p.status === 'pending' || p.status === 'uncertain')
+                      .map((p) => {
+                        const proposal = JSON.parse(p.content) as {
+                          title?: string
+                          description?: string
+                          kind?: string
+                        }
+                        return (
+                          <li key={p.id} className="py-2 text-sm">
+                            <b>{proposal.title ?? proposal.kind ?? 'Proposal'}</b> ·{' '}
+                            {proposalState(current, p.id, p.status)}
+                            <p className="text-muted-foreground">{proposal.description}</p>
+                          </li>
+                        )
+                      })}
+                  </ul>
+                </GraphSection>
+              )}
+            {view === 'home' && (
+              <GraphSection id="canvas" title="Action graph and inspector" help="section_canvas">
+                <section className="grid xl:grid-cols-[minmax(0,1fr)_300px] rounded-lg border overflow-hidden">
+                  <GraphCanvas
+                    graph={current}
+                    selected={selected}
+                    onSelect={setSelected}
+                    search={search}
+                    matchedIds={matches?.nodes.map((n) => n.id)}
+                  />
+                  <aside className="border-t xl:border-t-0 xl:border-l p-4 space-y-3 text-sm min-w-0">
+                    <h3 className="font-semibold">{node?.title ?? edge?.title ?? 'Inspector'}</h3>
+                    {nodeAttention.length > 0 && (
+                      <section
+                        aria-label="Inbox attention"
+                        className="rounded border border-amber-500/30 bg-amber-500/10 p-3 space-y-2"
+                      >
+                        <p className="font-medium text-amber-700 dark:text-amber-400">
+                          {nodeAttention.some((a) => a.kind === 'reply')
+                            ? 'Waiting for your response'
+                            : nodeAttention.some((a) => a.kind === 'review')
+                              ? 'Result awaiting review'
+                              : 'Recovery in progress'}
+                        </p>
+                        {nodeAttention.map((item) => (
                           <Button
+                            key={item.assignmentId}
                             size="sm"
                             variant="outline"
-                            disabled={busy}
-                            title="Marks this planning step as failed, cancels it and queues a fresh attempt. Safe: planning steps have no side effects."
-                            onClick={() => command('fail', { assignment_id: a.id })}
+                            className="w-full"
+                            onClick={() =>
+                              nav(item.taskId ? `/dashboard/tasks/${item.taskId}` : '/dashboard')
+                            }
                           >
-                            Fail &amp; retry
+                            {item.label}
                           </Button>
+                        ))}
+                      </section>
+                    )}
+                    {node ? (
+                      <>
+                        <Badge variant="outline">
+                          {isGuidance(node) ? `Guidance · ${node.kind}` : `${node.kind} · ${node.state}`}
+                          {node.reason ? ` / ${node.reason}` : ''}
+                        </Badge>
+                        {isGuidance(node) && (
+                          <p className="text-xs text-muted-foreground">
+                            Guidance for planning. This item is not an execution state.
+                          </p>
                         )}
-                    </div>
-                  ))}
-                {isMaintainer && blocked.length > 0 && (
-                  <div className="pt-3">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy}
-                      title="Cancels blocked steps whose result went out of date, and repair errors. Steps that may hold approvals or side effects are kept."
-                      onClick={() => command('dismiss')}
-                    >
-                      Dismiss out-of-date steps
-                    </Button>
+                        {projection && (
+                          <section
+                            aria-label="Projection towards goal"
+                            className="rounded border border-blue-500/20 bg-blue-500/5 p-3 space-y-2"
+                          >
+                            <h4 className="font-medium">Projection towards goal</h4>
+                            <p>
+                              {projection.evaluated
+                                ? `Goal alignment: ${projection.score === null ? 'Unknown' : projection.score.toFixed(2)}`
+                                : 'Not evaluated'}
+                            </p>
+                            <p className="text-xs text-muted-foreground">{projection.reason}</p>
+                            <p className="text-xs">
+                              Goal verification:{' '}
+                              {current.goal_verification === 'true'
+                                ? 'Verified'
+                                : current.goal_verification === 'false'
+                                  ? 'Not met'
+                                  : 'Unverified'}
+                            </p>
+                            {projection.evidenceIds.length > 0 && (
+                              <details>
+                                <summary className="cursor-pointer text-xs">Projection evidence</summary>
+                                <ul className="text-xs break-all mt-2 list-disc pl-4">
+                                  {projection.evidenceIds.map((id) => (
+                                    <li key={id}>{id}</li>
+                                  ))}
+                                </ul>
+                              </details>
+                            )}
+                          </section>
+                        )}
+                        <div className="flex flex-wrap gap-1">
+                          {node.tags?.map((tag) => (
+                            <Badge variant="secondary" key={tag}>
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                        {(current.evidence ?? [])
+                          .filter((e) => e.node_id === node.id)
+                          .map((e) => (
+                            <p className="text-xs" key={`${e.source_result_id}:${e.predicate}`}>
+                              {e.predicate}: {e.value} · source {e.resource_id}
+                            </p>
+                          ))}
+                        {isMaintainer && (
+                          <div className="flex gap-2">
+                            <Input
+                              aria-label="New node tag"
+                              placeholder="Add tag"
+                              maxLength={99}
+                              value={input['tag:' + node.id] ?? ''}
+                              onChange={(e) => setInput({ ...input, ['tag:' + node.id]: e.target.value })}
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={busy || !input['tag:' + node.id]?.trim()}
+                              onClick={() =>
+                                command('tag', { node_id: node.id, tag: input['tag:' + node.id] })
+                              }
+                            >
+                              Add
+                            </Button>
+                          </div>
+                        )}
+                        <p>{node.description}</p>
+                        <p className="whitespace-pre-wrap">{node.body}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {isGuidance(node) ? 'Created' : 'Observed'} {stamp(node.created_at)}
+                        </p>
+                      </>
+                    ) : edge ? (
+                      <>
+                        <p>Expected quality: {edge.expected_score ?? 'unknown'}</p>
+                        <p>{edge.description}</p>
+                        <p className="whitespace-pre-wrap">{edge.body}</p>
+                        <b className="block">Baseline</b>
+                        <p>{edge.baseline}</p>
+                        {(['steps', 'undo_steps', 'predicates', 'resource_versions'] as const).map((key) => (
+                          <details key={key} open={key === 'undo_steps'}>
+                            <summary className="cursor-pointer font-medium">
+                              {
+                                {
+                                  steps: 'Forward plan',
+                                  undo_steps: 'Undo plan',
+                                  predicates: 'Restoration predicates',
+                                  resource_versions: 'Resource versions'
+                                }[key]
+                              }
+                            </summary>
+                            <pre className="whitespace-pre-wrap text-xs py-2 break-all">
+                              {pretty(edge[key])}
+                            </pre>
+                          </details>
+                        ))}
+                        <p>
+                          Declared cost {edge.cost} · recovery {edge.recovery_cost}
+                        </p>
+                        {current.evaluations
+                          .filter((v) => v.edge_id === edge.id)
+                          .slice(-4)
+                          .map((v) => (
+                            <p className="text-xs" key={v.id}>
+                              Local {v.local_score ?? 'unknown'} · goal alignment {v.goal_score ?? 'unknown'}{' '}
+                              · evidence {v.evidence_id}
+                            </p>
+                          ))}
+                      </>
+                    ) : (
+                      <p className="text-muted-foreground">
+                        Select a node or action to inspect its state, evidence and restoration contract.
+                      </p>
+                    )}
+                    <details open>
+                      <summary className="cursor-pointer font-medium">Resources</summary>
+                      {node && isMaintainer && (
+                        <select
+                          aria-label="Attach resource to node"
+                          className="my-2 w-full rounded border bg-background p-2"
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value)
+                              void command('link', { node_id: node.id, resource_id: e.target.value })
+                          }}
+                        >
+                          <option value="">Attach resource…</option>
+                          {current.resources.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.title} · v{r.version}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {node &&
+                        (current.resource_links ?? [])
+                          .filter((l) => l.node_id === node.id)
+                          .map((l) => (
+                            <p className="text-xs my-2" key={l.resource_id}>
+                              Attached: {current.resources.find((r) => r.id === l.resource_id)?.title}
+                            </p>
+                          ))}
+
+                      <ul className="divide-y">
+                        {current.resources
+                          .filter(
+                            (r) =>
+                              !search ||
+                              `${r.title} ${r.description} ${r.body}`
+                                .toLowerCase()
+                                .includes(search.toLowerCase())
+                          )
+                          .map((r) => (
+                            <li key={r.id} className="py-2">
+                              <details>
+                                <summary className="cursor-pointer">
+                                  {r.title} · v{r.version}
+                                </summary>
+                                <p className="text-xs text-muted-foreground">
+                                  {r.visibility} · {r.id}
+                                </p>
+                                <p>{r.description}</p>
+                                <p className="whitespace-pre-wrap pt-2">{r.body}</p>
+                              </details>
+                            </li>
+                          ))}
+                      </ul>
+                      {isMaintainer && (
+                        <Button
+                          className="mt-3"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setResourceOpen(true)}
+                        >
+                          Add resource
+                        </Button>
+                      )}
+                    </details>
+                  </aside>
+                </section>
+              </GraphSection>
+            )}
+            {view === 'statistics' &&
+              (() => {
+                const report = dailyReport(current)
+                return (
+                  <GraphSection
+                    id="report"
+                    title="Daily report"
+                    help="section_report"
+                    className="rounded border p-4 text-sm"
+                  >
+                    <p className="font-medium">{report.headline}</p>
+                    <ul className="mt-1 list-disc pl-5 space-y-0.5 text-muted-foreground">
+                      {report.lines.map((l) => (
+                        <li key={l}>{l}</li>
+                      ))}
+                    </ul>
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-xs text-muted-foreground">Details</summary>
+                      <div className="space-y-4 pt-2">
+                        <p className="text-sm">
+                          Today ({new Date().toISOString().slice(0, 10)}, UTC) · goal{' '}
+                          {current.goal_verification}
+                        </p>
+                        <h4 className="font-medium">Completed attempts</h4>
+                        {current.attempts
+                          .filter(
+                            (t) =>
+                              t.completed_at &&
+                              new Date(t.completed_at).toISOString().slice(0, 10) ===
+                                new Date().toISOString().slice(0, 10)
+                          )
+                          .map((t) => {
+                            const a = current.assignments.find((a) => a.id === t.assignment_id),
+                              r = current.results.find((r) => r.attempt_id === t.id)
+                            return (
+                              <p className="text-sm" key={t.id}>
+                                <Link className="text-primary underline" to={`/dashboard/tasks/${t.task_id}`}>
+                                  {a?.role} · {t.status}
+                                </Link>{' '}
+                                · completed {stamp(t.completed_at)} · {r?.status ?? 'grade pending'} ·
+                                accepted {stamp(r?.accepted_at ?? null)}
+                                {isMaintainer && a?.role === 'execute' && r?.status === 'accepted' && (
+                                  <Button
+                                    className="ml-2"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={busy}
+                                    onClick={() => command('regrade', { execution_result_id: r.id })}
+                                  >
+                                    Request regrade
+                                  </Button>
+                                )}
+                              </p>
+                            )
+                          })}
+                        <h4 className="font-medium">Every node</h4>
+                        {current.nodes.map((n) => (
+                          <p className="text-sm" key={n.id}>
+                            {n.title} · {n.state} ·{' '}
+                            {new Date(Math.max(n.created_at, n.state_changed_at ?? 0))
+                              .toISOString()
+                              .slice(0, 10) === new Date().toISOString().slice(0, 10) ||
+                            current.events.some(
+                              (e) =>
+                                e.entity_id === n.id &&
+                                new Date(e.created_at).toISOString().slice(0, 10) ===
+                                  new Date().toISOString().slice(0, 10)
+                            )
+                              ? 'updated today'
+                              : 'unchanged today'}
+                          </p>
+                        ))}
+                      </div>
+                    </details>
+                  </GraphSection>
+                )
+              })()}
+            {(view === 'inbox' || view === 'activity') && (
+              <GraphSection id="work" title={view === 'activity' ? 'Activity log' : 'Work queue'} help="section_work">
+                {tab === 'next' && (
+                  <div className="divide-y">
+                    {current.assignments
+                      .filter((a) => workRank(a.status) < 4)
+                      .filter(
+                        (a) =>
+                          a.status !== 'continuation' ||
+                          !current.assignments.some((child) => child.parent_id === a.id)
+                      )
+                      .sort((a, b) => workRank(a.status) - workRank(b.status) || liveWeight(b) - liveWeight(a))
+                      .map((a) => (
+                        <div key={a.id} className="py-3 text-sm flex justify-between gap-3">
+                          <span>
+                            {['reply', 'review'].includes(current.waiting?.[a.id]?.action ?? '') && (
+                              <b className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs">
+                                {current.waiting?.[a.id]?.action === 'review'
+                                  ? 'Review result'
+                                  : 'Needs your approval or input'}
+                              </b>
+                            )}
+                            {a.role} · {a.status} · priority {liveWeight(a).toFixed(3)} · {a.attempt_count}{' '}
+                            attempts
+                            {current.waiting?.[a.id]?.request_title && (
+                              <strong className="block mt-1">{current.waiting[a.id].request_title}</strong>
+                            )}
+                            {current.waiting?.[a.id] && (
+                              <span className="block text-xs text-muted-foreground mt-1">
+                                {current.waiting[a.id].message}
+                              </span>
+                            )}
+                          </span>
+                          {[latestGraphAttempt(current, a.id)]
+                            .filter((t) => !!t)
+                            .map((t) => (
+                              <Link
+                                key={t.id}
+                                className="text-primary underline"
+                                to={`/dashboard/tasks/${t.task_id}`}
+                              >
+                                {current.waiting?.[a.id]?.action === 'reply'
+                                  ? 'Answer in inbox'
+                                  : current.waiting?.[a.id]?.action === 'review'
+                                    ? 'Review in inbox'
+                                    : 'Open inbox task'}
+                              </Link>
+                            ))}
+                          {isMaintainer &&
+                            ['decompose', 'plan', 'merge'].includes(a.role) &&
+                            ['blocked', 'error'].includes(a.status) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={busy}
+                                title="Marks this planning step as failed, cancels it and queues a fresh attempt. Safe: planning steps have no side effects."
+                                onClick={() => command('fail', { assignment_id: a.id })}
+                              >
+                                Fail &amp; retry
+                              </Button>
+                            )}
+                        </div>
+                      ))}
+                    {isMaintainer && blocked.length > 0 && (
+                      <div className="pt-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          title="Cancels blocked steps whose result went out of date, and repair errors. Steps that may hold approvals or side effects are kept."
+                          onClick={() => command('dismiss')}
+                        >
+                          Dismiss out-of-date steps
+                        </Button>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground pt-3">
+                      Grading follows durable completion intake. Review at the head holds later grades.
+                      Dispatch also checks agent availability, role isolation and budgets.
+                    </p>
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground pt-3">
-                  Grading follows durable completion intake. Review at the head holds later grades. Dispatch
-                  also checks agent availability, role isolation and budgets.
-                </p>
-              </div>
+                {tab === 'activity' && (
+                  <ol className="divide-y">
+                    {current.events
+                      .filter((e) => !range || e.created_at >= now - range)
+                      .map((e) => (
+                        <li key={e.sequence} className="py-3 text-sm">
+                          <span className="text-muted-foreground mr-4">{stamp(e.created_at)}</span>
+                          {e.kind.replace(/_/g, ' ')}
+                          <details className="text-xs">
+                            <summary className="cursor-pointer">Event #{e.sequence}</summary>
+                            <pre className="whitespace-pre-wrap">{pretty(e.data)}</pre>
+                          </details>
+                        </li>
+                      ))}
+                  </ol>
+                )}
+              </GraphSection>
             )}
-            {tab === 'activity' && (
-              <ol className="divide-y">
-                {current.events.map((e) => (
-                  <li key={e.sequence} className="py-3 text-sm">
-                    <span className="text-muted-foreground mr-4">{stamp(e.created_at)}</span>
-                    {e.kind.replace(/_/g, ' ')}
-                    <details className="text-xs">
-                      <summary className="cursor-pointer">Event #{e.sequence}</summary>
-                      <pre className="whitespace-pre-wrap">{pretty(e.data)}</pre>
-                    </details>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </GraphSection>
+          </div>
         </>
       )}
       <Dialog open={create} onOpenChange={setCreate}>
@@ -1101,29 +1281,46 @@ export function Graphs({
           />
         </DialogContent>
       </Dialog>
-      <Dialog open={!!cloneSource} onOpenChange={(open) => { if (!open && !busy) setCloneSource(null) }}>
+      <Dialog
+        open={!!cloneSource}
+        onOpenChange={(open) => {
+          if (!open && !busy) setCloneSource(null)
+        }}
+      >
         <DialogContent
           className="max-w-[calc(100%_-_2rem)] sm:max-w-lg"
-          onEscapeKeyDown={(event) => { if (busy) event.preventDefault() }}
+          onEscapeKeyDown={(event) => {
+            if (busy) event.preventDefault()
+          }}
         >
           <DialogHeader>
             <DialogTitle>Clone “{cloneSource?.title}”</DialogTitle>
             <DialogDescription>
-              Create a fresh graph with the same goal, start state, settings and success rule.
-              Results and run history are never copied.
+              Create a fresh graph with the same goal, start state, settings and success rule. Results and run
+              history are never copied.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">Start from the goal with an empty action graph.</p>
-              <Button disabled={busy} onClick={() => cloneGraph(false)}>Clone without nodes</Button>
+              <Button disabled={busy} onClick={() => cloneGraph(false)}>
+                Clone without nodes
+              </Button>
             </div>
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Also copy nodes, actions, plans, resources and tags.</p>
-              <Button variant="outline" disabled={busy} onClick={() => cloneGraph(true)}>Clone with nodes</Button>
+              <p className="text-sm text-muted-foreground">
+                Also copy nodes, actions, plans, resources and tags.
+              </p>
+              <Button variant="outline" disabled={busy} onClick={() => cloneGraph(true)}>
+                Clone with nodes
+              </Button>
             </div>
           </div>
-          {cloneError && <p role="alert" className="text-sm text-destructive">{cloneError}</p>}
+          {cloneError && (
+            <p role="alert" className="text-sm text-destructive">
+              {cloneError}
+            </p>
+          )}
         </DialogContent>
       </Dialog>
       <Dialog open={settings} onOpenChange={setSettings}>
@@ -1185,10 +1382,17 @@ export function Graphs({
               </Button>
             </>
           )}
-          <AlertDialog open={closeConfirm} onOpenChange={(open) => { if (!busy) setCloseConfirm(open) }}>
+          <AlertDialog
+            open={closeConfirm}
+            onOpenChange={(open) => {
+              if (!busy) setCloseConfirm(open)
+            }}
+          >
             <AlertDialogContent
               className="w-[calc(100%_-_2rem)] max-w-md"
-              onEscapeKeyDown={(event) => { if (busy) event.preventDefault() }}
+              onEscapeKeyDown={(event) => {
+                if (busy) event.preventDefault()
+              }}
             >
               <AlertDialogHeader>
                 <AlertDialogTitle>Close this graph?</AlertDialogTitle>
@@ -1197,20 +1401,28 @@ export function Graphs({
                   You can clone it later to start a new graph.
                 </AlertDialogDescription>
               </AlertDialogHeader>
-              {closeError && <p role="alert" className="text-sm text-destructive">{closeError}</p>}
+              {closeError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {closeError}
+                </p>
+              )}
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-                <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={busy} onClick={async (event) => {
-                  event.preventDefault()
-                  if (busy) return
-                  setCloseError('')
-                  if (await command('stop')) {
-                    setCloseConfirm(false)
-                    setSettings(false)
-                  } else {
-                    setCloseError('Could not close this graph. Please try again.')
-                  }
-                }}>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={busy}
+                  onClick={async (event) => {
+                    event.preventDefault()
+                    if (busy) return
+                    setCloseError('')
+                    if (await command('stop')) {
+                      setCloseConfirm(false)
+                      setSettings(false)
+                    } else {
+                      setCloseError('Could not close this graph. Please try again.')
+                    }
+                  }}
+                >
                   {busy ? 'Closing…' : 'Close graph'}
                 </AlertDialogAction>
               </AlertDialogFooter>
