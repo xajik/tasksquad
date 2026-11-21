@@ -581,6 +581,12 @@ describe('durable inbox graph workflow', () => {
     const recovered = (await rows<Assignment>(db, "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'", legacy.id))[0]
     expect(JSON.parse(recovered.input).prior_user_inputs.join('\n')).toContain('First approval')
     expect(JSON.parse(recovered.input).prior_user_inputs.join('\n')).toContain('Later legacy answer')
+    const shortAnswer = await assignment(db, await graph(db, g.id), 'execute', { user_input: 'No' })
+    const longerAnswer = await assignment(db, await graph(db, g.id), 'execute', { user_input: 'No additional changes' }, { parent: shortAnswer.id })
+    await db.batch([...shortAnswer.statements, ...longerAnswer.statements, sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", longerAnswer.id)])
+    await run(db, g.id, 'input', { assignment_id: longerAnswer.id, message: 'Check again' })
+    const distinct = (await rows<Assignment>(db, "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'", longerAnswer.id))[0]
+    expect(JSON.parse(distinct.input).prior_user_inputs).toEqual(['No', 'No additional changes'])
   })
 
   it('coalesces decomposition maintenance and skips unchanged reviewed contexts', async () => {

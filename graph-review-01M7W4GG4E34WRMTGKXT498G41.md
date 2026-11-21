@@ -112,4 +112,9 @@ Each entry records the published action and all execution attempts in this snaps
 
 ## Validation and deployment
 
-Pending final verification; append deployment result below.
+- Worker `make test`: all 306 tests pass (28 files). Regression cases cover blocked/error continuations, repair queue ownership and reopening, repeated owner answers, legacy restart recovery, and distinct short answers.
+- Worker `make check` and `make build`: pass.
+- Pushed `619e717` to main; GitHub Actions Deploy Worker run `44760086240` succeeded.
+- Production verification at 23:08 Singapore: queue 82 is done, assignment remains blocked (no unsafe retry); queue 83 dispatches continuation `01M7WMXD4HFPGWVSZ951XWPVK9` as inbox task `01M7WR02P16TK6YNSRWF5G66R7`. Graph budgets advance 152→153 attempts. Chrome Profile 2 visibly confirms one active job and 153/10000 attempts.
+- Follow-up hardening preserves short owner answers as distinct blocks: `No` must not be discarded merely because a later answer contains `No additional changes`.
+- Next chain cursor is now the running continuation at queue 83; after it resolves, inspect sequence 84 onward. Business progress is still unverified; dispatch resumption is not a sale.

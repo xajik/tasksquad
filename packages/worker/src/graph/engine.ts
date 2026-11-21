@@ -46,8 +46,11 @@ async function restartOwnerHistory(db: D1Database, graphId: string, root: Assign
 }
 
 function compactOwnerHistory(inputs: string[]): string[] {
+  const separator = '\n\nFollow-up:\n'
   return inputs.filter((text, index) =>
-    text && !inputs.slice(index + 1).some((later) => later.includes(text))
+    text && !inputs.slice(index + 1).some((later) =>
+      (separator + later + separator).includes(separator + text + separator)
+    )
   )
 }
 
