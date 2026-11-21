@@ -459,6 +459,34 @@ describe('durable inbox graph workflow', () => {
     expect(await rows(db, "SELECT * FROM graph_serial_queue WHERE work_id=? AND status='pending'", followup.id)).toHaveLength(1)
   })
 
+  it('abandons a blocked continuation chain and releases the queue, reservations and node', async () => {
+    const { g } = await fixture(false)
+    const node = nodeStatements(db, g, 'milestone', { title: 'Path', description: '', body: '' }, null)
+    await db.batch(node.statements)
+    const original = await assignment(db, g, 'execute', { plan: {} }, { node: node.id })
+    const continuation = await assignment(db, g, 'continue', { original_role: 'execute' }, { parent: original.id })
+    const review = await assignment(db, g, 'project', { operation: 'decomposition_review', hierarchy: [], evidence: [] })
+    await db.batch([
+      ...original.statements, ...continuation.statements, ...review.statements,
+      sql(db, "UPDATE graph_assignments SET status='continuation' WHERE id=?", original.id),
+      sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", continuation.id),
+      sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'assignment',?,0)", g.id, continuation.id)
+    ])
+    await run(db, g.id, 'abandon', { assignment_id: continuation.id })
+    const status = async (id: string) => (await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', id))[0]
+    expect((await status(continuation.id)).status).toBe('cancelled')
+    expect((await status(original.id)).status).toBe('cancelled')
+    expect(await rows(db, "SELECT * FROM graph_serial_queue WHERE work_id=? AND status='pending'", continuation.id)).toHaveLength(0)
+    const events = await rows<{ data: string }>(db, "SELECT data FROM graph_events WHERE graph_id=? AND kind='assignment_abandoned'", g.id)
+    expect(events).toHaveLength(1)
+    expect(JSON.parse(events[0].data).side_effects_verified).toBe(false)
+    expect(
+      await rows(db, "SELECT * FROM graph_node_states WHERE node_id=? AND state='deactivated' AND reason='abandoned'", node.id)
+    ).toHaveLength(1)
+    // Only blocked or errored steps can be abandoned.
+    await expect(run(db, g.id, 'abandon', { assignment_id: review.id })).rejects.toThrow('blocked assignment')
+  })
+
   it('keeps a continuation formatting repair at its original assignment queue position', async () => {
     const { g, agent } = await fixture(false)
     const original = await assignment(db, g, 'execute', { plan: {} })

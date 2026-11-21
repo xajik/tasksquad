@@ -17,7 +17,7 @@ export async function handle(
   if (
     env.ACTION_GRAPH_ENABLED !== 'true' &&
     req.method !== 'GET' &&
-    !['pause', 'stop', 'review', 'input', 'fail'].includes(action)
+    !['pause', 'stop', 'review', 'input', 'fail', 'abandon'].includes(action)
   )
     return err('graph_dispatch_disabled', 409)
   const write = req.method !== 'GET'

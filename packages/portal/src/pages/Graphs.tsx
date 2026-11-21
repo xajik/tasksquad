@@ -1221,6 +1221,27 @@ export function Graphs({
                                 Fail &amp; retry
                               </Button>
                             )}
+                          {isMaintainer &&
+                            a.role !== 'repair' &&
+                            !['decompose', 'plan', 'merge'].includes(a.role) &&
+                            ['blocked', 'error'].includes(a.status) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={busy}
+                                title="Gives up on this step: cancels it and its follow-ups, deactivates its path and lets the graph move on to other candidates. Nothing is retried, and anything the agent may have left behind stays unverified."
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      'Abandon this step? It is not retried, and anything the agent may have changed stays unverified.'
+                                    )
+                                  )
+                                    void command('abandon', { assignment_id: a.id })
+                                }}
+                              >
+                                Abandon
+                              </Button>
+                            )}
                         </div>
                       ))}
                     {isMaintainer && blocked.length > 0 && (

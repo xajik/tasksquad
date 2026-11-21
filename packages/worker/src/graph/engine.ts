@@ -84,6 +84,10 @@ export async function run(db: D1Database, graphId: string, command: string, body
     await failAssignment(db, g, String(body.assignment_id))
     return
   }
+  if (command === 'abandon') {
+    await abandonAssignment(db, g, String(body.assignment_id), body.user_id as string | undefined)
+    return
+  }
   if (command === 'regrade') {
     const r = await sql(
       db,
@@ -1742,6 +1746,114 @@ export async function failAssignment(db: D1Database, g: Graph, assignmentId: str
     ),
     ...next.statements
   ])
+}
+
+/** The owner's way out of a step that cannot be resolved (an agent that cannot produce the attestations a
+ * continuation needs, an `unknown` reconcile, an answer the step cannot use). Unlike `fail`, nothing is retried:
+ * repeating an execution, undo or reconcile could repeat a side effect. The step, its continuations and repairs are
+ * cancelled, its queue entries and reservations are released, and its node is deactivated so dispatch moves on to
+ * other candidates and the revival planner can propose alternatives. Whatever the agent may have left behind stays
+ * unverified; the event records that so the decision is auditable. */
+export async function abandonAssignment(
+  db: D1Database,
+  g: Graph,
+  assignmentId: string,
+  userId?: string
+): Promise<void> {
+  const a = await sql(
+    db,
+    "SELECT * FROM graph_assignments WHERE id=? AND graph_id=? AND status IN ('blocked','error')",
+    assignmentId,
+    g.id
+  ).first<Assignment>()
+  if (!a) throw new Error('A blocked assignment is required')
+  if (a.role === 'repair') throw new Error('Abandon the original assignment, not its repair')
+  // Walk to the original step and collect the whole continuation lineage.
+  const lineage: Assignment[] = [a]
+  const seen = new Set<string>([a.id])
+  for (let cur = a; cur.parent_id && ['continue', 'reconcile', 'undo'].includes(cur.role); ) {
+    const parent = await sql(
+      db,
+      'SELECT * FROM graph_assignments WHERE id=? AND graph_id=?',
+      cur.parent_id,
+      g.id
+    ).first<Assignment>()
+    if (!parent || seen.has(parent.id)) break
+    seen.add(parent.id)
+    lineage.push(parent)
+    cur = parent
+  }
+  const ids = lineage.map((x) => x.id),
+    marks = ids.map(() => '?').join(','),
+    root = lineage[lineage.length - 1]
+  const active = await sql(
+    db,
+    `SELECT 1 FROM graph_attempts t JOIN graph_assignments x ON x.id=t.assignment_id
+     WHERE t.status IN ('pending','running') AND (x.id IN (${marks}) OR x.parent_id IN (${marks})) LIMIT 1`,
+    ...ids,
+    ...ids
+  ).first()
+  if (active) throw new Error('A step in this chain is still running; wait for it to stop before abandoning')
+  const workIds = [
+    ...new Set(
+      lineage.flatMap((x) => {
+        const input = JSON.parse(x.input) as Data
+        return [input.serial_work_id, input.execution_result_id, x.id].filter((v): v is string => typeof v === 'string')
+      })
+    )
+  ]
+  const resultWork = `SELECT r.id FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id WHERE t.assignment_id IN (${marks})`
+  const workMarks = workIds.map(() => '?').join(',')
+  const now = Date.now()
+  const ops: D1PreparedStatement[] = [
+    sql(
+      db,
+      `UPDATE graph_assignments SET status='cancelled',cancel_reason='abandoned'
+       WHERE graph_id=? AND status IN ('pending','running','review','blocked','error','continuation','reconciling')
+       AND (id IN (${marks}) OR (role='repair' AND parent_id IN (${marks})))`,
+      g.id,
+      ...ids,
+      ...ids
+    ),
+    sql(
+      db,
+      `DELETE FROM graph_reservations WHERE attempt_id IN (SELECT id FROM graph_attempts WHERE assignment_id IN (${marks}))`,
+      ...ids
+    ),
+    sql(
+      db,
+      `UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND status='pending'
+       AND (work_id IN (${workMarks}) OR work_id IN (${resultWork}))`,
+      g.id,
+      ...workIds,
+      ...ids
+    ),
+    sql(
+      db,
+      `UPDATE graph_grading SET status='done' WHERE graph_id=? AND status!='done' AND execution_result_id IN (${workMarks})`,
+      g.id,
+      ...workIds
+    )
+  ]
+  if (root.node_id)
+    ops.push(
+      sql(
+        db,
+        "INSERT INTO graph_node_states(graph_id,node_id,state,reason,created_at) VALUES(?,?,'deactivated','abandoned',?)",
+        g.id,
+        root.node_id,
+        now
+      )
+    )
+  await commit(
+    db,
+    g,
+    'assignment_abandoned',
+    a.id,
+    { role: root.role, original: root.id, cancelled: ids, side_effects_verified: false, user_id: userId ?? null },
+    ops
+  )
+  await syncInboxStatus(db, g)
 }
 
 async function dismissStale(db: D1Database, g: Graph): Promise<number> {
