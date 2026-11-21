@@ -606,17 +606,29 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = 
     "SELECT * FROM graph_serial_queue WHERE graph_id=? AND status='pending' ORDER BY sequence", g.id)
   const waiting: Record<string, unknown> = {}
   const { extractApprovalRequest } = await import('../approval.js')
-  for (const a of assignments) {
-    const latest = attempts
-      .filter((t) => t.assignment_id === a.id)
+  // Index once instead of rescanning every attempt and result per assignment, and run the
+  // per-assignment eligibility queries concurrently: they dominated the response time.
+  const attemptsBy = new Map<string, typeof attempts>()
+  for (const t of attempts) {
+    const list = attemptsBy.get(String(t.assignment_id)) ?? []
+    list.push(t)
+    attemptsBy.set(String(t.assignment_id), list)
+  }
+  const resultsBy = new Map<string, typeof results>()
+  for (const r of results) {
+    const list = resultsBy.get(String(r.attempt_id)) ?? []
+    list.push(r)
+    resultsBy.set(String(r.attempt_id), list)
+  }
+  const entries = await Promise.all(assignments.map(async (a) => {
+    const latest = (attemptsBy.get(a.id) ?? [])
       .sort(
         (x, y) =>
           Number(y.epoch) - Number(x.epoch) ||
           Number(y.created_at) - Number(x.created_at) ||
           String(y.id).localeCompare(String(x.id))
       )[0]
-    const result = results
-      .filter((r) => r.attempt_id === latest?.id)
+    const result = (resultsBy.get(String(latest?.id)) ?? [])
       .sort((x, y) => Number(y.created_at) - Number(x.created_at))[0]
     const request = extractApprovalRequest(String(result?.parsed ?? result?.raw ?? ''))
     const canReply =
@@ -646,15 +658,17 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = 
                   (a.role === 'repair' && ['pending', 'running'].includes(a.status))
                 ? { code: 'recovery', message: 'Recovery in progress.' }
                 : null
-    if (detail)
-      waiting[a.id] = {
+    return detail
+      ? ([a.id, {
         code: detail.code,
         message: detail.message,
         task_id: latest?.task_id ?? null,
         action: a.status === 'review' ? 'review' : canReply ? 'reply' : latest ? 'view' : null,
         request_title: canReply ? (request?.title ?? null) : null
-      }
-  }
+      }] as const)
+      : null
+  }))
+  for (const entry of entries) if (entry) waiting[entry[0]] = entry[1]
   return {
     ...g,
     config: c,
