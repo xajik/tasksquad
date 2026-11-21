@@ -528,6 +528,24 @@ export async function clone(
   return g
 }
 
+/** The interactive view needs only a few input fields (titles and links between assignments); the rest, with the role template, is fetched never. */
+function slimAssignment(a: Assignment): Data {
+  const { template: _template, ...rest } = a as Assignment & { template?: string }
+  let input = rest.input
+  try {
+    const full = JSON.parse(String(rest.input)) as Data
+    const keep: Data = {}
+    for (const k of ['proposal_id', 'execution_result_id', 'title', 'operation'])
+      if (full[k] !== undefined) keep[k] = full[k]
+    const title = (full.plan as { title?: unknown } | undefined)?.title
+    if (title !== undefined) keep.plan = { title }
+    input = JSON.stringify(keep)
+  } catch {
+    /* keep the original text when it is not JSON */
+  }
+  return { ...rest, input }
+}
+
 export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = false): Promise<Data> {
   const c = await configuration(db, g)
   const [
@@ -680,7 +698,7 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = 
     edges,
     // The page never reads the role template (~10 KB per assignment), so the interactive
     // view omits it; archived snapshots keep the full row.
-    assignments: slim ? assignments.map(({ template: _template, ...rest }) => rest) : assignments,
+    assignments: slim ? assignments.map(slimAssignment) : assignments,
     attempts,
     results,
     events,
