@@ -204,6 +204,8 @@ struct SettingsView: View {
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system
     @State private var confirmSignOut = false
     @State private var confirmDaemonSignOut = false
+    @State private var cliStatus: CommandLineTool.Status?
+    @State private var cliError: String?
 
     var body: some View {
         TabView {
@@ -232,9 +234,38 @@ struct SettingsView: View {
             } header: { Text("Local Daemon") } footer: {
                 Text("Pausing keeps running tasks going and stops the daemon from picking up new ones.")
             }
+            commandLine
         }
         .formStyle(.grouped)
         .onChange(of: appearance) { _, value in value.apply() }
+    }
+
+    private var commandLine: some View {
+        let tool = CommandLineTool()
+        let status = cliStatus ?? tool.status
+        return Section {
+            LabeledContent("tsq on PATH") {
+                switch status {
+                case .installed: Label("Installed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                case .notInstalled: Button("Install…") { installCLI(tool) }
+                case .linkedElsewhere: Button("Relink to This App…") { installCLI(tool) }
+                case .blocked: Text("Existing tsq kept").foregroundStyle(.secondary)
+                case .unavailable: Text("Not bundled").foregroundStyle(.secondary)
+                }
+            }
+            LabeledContent("Or run in Terminal") {
+                Button("Copy Command") { tool.copyCommand() }
+            }
+            Text(tool.command).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+            if let cliError { Text(cliError).font(.caption).foregroundStyle(.red) }
+        } header: { Text("Command Line") } footer: {
+            Text("Links the tsq bundled in this app to ~/.local/bin/tsq. Make sure ~/.local/bin is on your PATH.")
+        }
+    }
+
+    private func installCLI(_ tool: CommandLineTool) {
+        do { try tool.install(); cliError = nil } catch { cliError = error.localizedDescription }
+        cliStatus = tool.status
     }
 
     private var notifications: some View {
