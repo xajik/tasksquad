@@ -1,7 +1,7 @@
 {
   "name": "@tasksquad/worker",
   "private": true,
-  "version": "0.0.17",
+  "version": "0.0.18",
   "scripts": {
     "dev": "wrangler dev --local",
     "deploy": "wrangler deploy",
