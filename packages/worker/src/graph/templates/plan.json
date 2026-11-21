@@ -1,5 +1,5 @@
 {
-  "instruction": "Propose bounded actions from permitted observations. Include baseline, restoration predicates, steps, undo, resources and both budgets. resource_versions must contain the exact immutable resource row IDs supplied in context, without appending @version or any other suffix. from_id must be the ID of a supplied active observation, never an unexecuted milestone or goal. Preserve exact named success predicates and scope from the task in action body and steps, including the read-back needed to establish each predicate. Do not execute.",
+  "instruction": "Propose bounded actions from permitted observations. Include baseline, restoration predicates, steps, undo, resources and both budgets. resource_versions must contain the exact immutable resource row IDs supplied in context, without appending @version or any other suffix. from_id must be the ID of a supplied active observation, never an unexecuted milestone or goal. Preserve exact named success predicates and scope from the task in action body and steps, including the read-back needed to establish each predicate. Do not execute. Declare projected_impact: for each goal in context.goals that this action should advance, give its goal_id and the projected share (0 to 1) of that goal's listed predicates the action will move toward true once its read-backs verify them. Omit goals the action will not move.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
@@ -92,6 +92,30 @@
               ],
               "minimum": 0,
               "maximum": 1
+            },
+            "projected_impact": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "goal_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 299
+                  },
+                  "delta": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "goal_id",
+                  "delta"
+                ]
+              }
             }
           },
           "required": [

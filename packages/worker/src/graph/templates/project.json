@@ -1,5 +1,5 @@
 {
-  "instruction": "Evaluate private goal alignment using supplied evidence. Scores do not prove goal achievement. Use only evidence IDs supplied in context. For decomposition_review, compare active evidence with the private goal, then provide abstract decomposition_feedback. Do not copy execution details or raw evidence into feedback for the decomposer.",
+  "instruction": "Evaluate private goal alignment using supplied evidence. Scores do not prove goal achievement. Use only evidence IDs supplied in context. For decomposition_review, compare active evidence with the private goal, then provide abstract decomposition_feedback. Do not copy execution details or raw evidence into feedback for the decomposer. For an execution review, context.goals lists the root goal and every active decomposed milestone with its exact predicates. For each goal this node verifiably moved, add a goal_impacts entry: goal_id, actual (0 to 1: the share of that goal's listed predicates the node's verified evidence moved toward true), the exact predicate strings advanced, and the supplied evidence IDs. actual above 0 requires at least one predicate and evidence ID. Compare with plan.projected_impact and explain any gap in reason. Set primary_goal_id to the goal moved the most. goal_score is the root goal's actual impact.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
@@ -32,6 +32,55 @@
           "type": "string",
           "maxLength": 299
         }
+      },
+      "goal_impacts": {
+        "type": "array",
+        "maxItems": 20,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "goal_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 299
+            },
+            "actual": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "predicates": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 299
+              }
+            },
+            "evidence_ids": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 299
+              }
+            }
+          },
+          "required": [
+            "goal_id",
+            "actual",
+            "predicates",
+            "evidence_ids"
+          ]
+        }
+      },
+      "primary_goal_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 299
       }
     },
     "required": [

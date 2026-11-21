@@ -651,6 +651,7 @@ export async function processResults(db: D1Database, g: Graph): Promise<void> {
       assertEvidenceResources(original, parsed as Data)
       await assertReconcileRestoration(db, original, parsed as Data)
       await assertContinuationVerified(db, original, parsed as Data)
+      assertGoalImpacts(original, parsed as Data)
       r.parsed = json(parsed)
     } catch (e) {
       await invalidateResult(db, g, r, a, t, e)
@@ -724,6 +725,55 @@ async function assertContinuationVerified(db: D1Database, original: Assignment, 
     throw new Error(
       'Continuation needs verified termination, baseline and checkpoint: set termination_verified and baseline_unchanged to true (and checkpoint_verified to true for resume) only if verified; otherwise answer decision "blocked" with the reason'
     )
+}
+
+/** The root goal and every active decomposed milestone, each with the exact success predicates it owns. A milestone
+ * owns the rule predicates its text names; the root goal owns them all. Grading scores impact per goal by predicate. */
+export interface GoalScope {
+  id: string
+  kind: string
+  title: string
+  body: string
+  predicates: string[]
+}
+export async function goalHierarchy(db: D1Database, g: Graph, rulePredicates: string[]): Promise<GoalScope[]> {
+  const nodes = await rows<{ id: string; kind: string; title: string; body: string }>(
+    db,
+    `SELECT n.id,n.kind,n.title,n.body FROM graph_nodes n
+     JOIN graph_node_states s ON s.id=(SELECT MAX(id) FROM graph_node_states WHERE node_id=n.id)
+     WHERE n.graph_id=? AND n.kind IN ('goal','milestone') AND s.state='active'
+     ORDER BY n.kind='goal' DESC, n.created_at`,
+    g.id
+  )
+  return nodes.map((n) => ({
+    ...n,
+    predicates: n.kind === 'goal' ? rulePredicates : rulePredicates.filter((p) => n.body.includes(p))
+  }))
+}
+
+/** Per-goal impact must name supplied goals, that goal's own predicates and supplied evidence; checked at parse so a
+ * repair can fix it. Only enforced when the grading context carried the goal hierarchy. */
+export function assertGoalImpacts(original: Assignment, d: Data): void {
+  if (original.role !== 'project') return
+  const input = JSON.parse(original.input) as Data
+  const goals = input.goals as GoalScope[] | undefined
+  if (!goals?.length) return
+  const impacts = (d.goal_impacts ?? []) as Data[]
+  const evidence = ((input.evidence as Data[]) ?? []).map((e) => e.id)
+  for (const i of impacts) {
+    const goal = goals.find((x) => x.id === i.goal_id)
+    if (!goal) throw new Error(`goal_impacts references an unsupplied goal; use only these goal IDs: ${JSON.stringify(goals.map((x) => x.id))}`)
+    const predicates = (i.predicates ?? []) as string[]
+    const bad = predicates.filter((p) => !goal.predicates.includes(p))
+    if (bad.length) throw new Error(`goal_impacts predicates must be exact predicates of goal ${goal.id}: ${JSON.stringify(goal.predicates)}`)
+    if (Number(i.actual) > 0 && (!predicates.length || !((i.evidence_ids as string[]) ?? []).length))
+      throw new Error('goal_impacts actual above 0 needs the predicates advanced and supporting evidence IDs')
+    if (((i.evidence_ids as string[]) ?? []).some((e) => !evidence.includes(e)))
+      throw new Error('goal_impacts references unsupplied evidence')
+  }
+  if (new Set(impacts.map((i) => i.goal_id)).size !== impacts.length) throw new Error('goal_impacts repeats a goal')
+  if (impacts.length && !impacts.some((i) => i.goal_id === d.primary_goal_id))
+    throw new Error('primary_goal_id must name a goal listed in goal_impacts')
 }
 
 async function evidenceStatements(
@@ -1186,6 +1236,11 @@ export async function accept(
           Date.now()
         )
       )
+      // The stored goal score is the root goal's actual impact; per-goal detail stays in the result itself.
+      const rootImpact = ((d.goal_impacts ?? []) as Data[]).find(
+        (i) => i.goal_id === ((input.goals as GoalScope[] | undefined) ?? []).find((x) => x.kind === 'goal')?.id
+      )
+      const rootScore = rootImpact ? rootImpact.actual : d.goal_score
       const lineage = await executedLineage(db, g.id, original.edge_id)
       for (const edge of lineage)
         for (const evidence of ids)
@@ -1199,7 +1254,7 @@ export async function accept(
               evidence,
               `${input.execution_result_id}:${original.role}:${edge}`,
               original.role === 'grade' ? d.local_score : null,
-              original.role === 'project' ? d.goal_score : null,
+              original.role === 'project' ? rootScore : null,
               Date.now()
             )
           )
@@ -1526,6 +1581,7 @@ export async function advanceGrading(db: D1Database, g: Graph): Promise<void> {
     const c = await configuration(db, g)
     context.private_goal = g.body
     context.rule = c.rule
+    context.goals = await goalHierarchy(db, g, c.rule.predicates)
   }
   const next = await assignment(db, g, head.stage, context, {
     edge: original.edge_id,
