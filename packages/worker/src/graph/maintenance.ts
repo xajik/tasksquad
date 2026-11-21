@@ -152,7 +152,14 @@ export async function maintenance(env: Pick<Env, 'DB'>, graphId: string): Promis
       )
     ]
     if (job.kind === 'cleanup') {
-      const stale = await rows<Assignment>(
+      // Work queued behind a blocked or reconciling step is starved, not stale:
+      // expiring it would deactivate healthy nodes until the owner unblocks the graph.
+      const stalled = await sql(
+        db,
+        "SELECT 1 FROM graph_assignments WHERE graph_id=? AND status IN ('blocked','error','reconciling') LIMIT 1",
+        g.id
+      ).first()
+      const stale = stalled ? [] : await rows<Assignment>(
         db,
         "SELECT * FROM graph_assignments WHERE graph_id=? AND status='pending' AND role IN ('plan','merge','execute') AND available_at<?",
         g.id,

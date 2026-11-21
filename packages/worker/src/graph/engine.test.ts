@@ -736,6 +736,27 @@ describe('durable inbox graph workflow', () => {
     ).toHaveLength(1)
   })
 
+  it('does not expire queued work while a blocked step starves the queue', async () => {
+    const { g } = await fixture(false)
+    await sql(db, "UPDATE graphs SET status='running' WHERE id=?", g.id).run()
+    const queued = await assignment(db, g, 'execute', { task: 'Queued' })
+    const blocked = await assignment(db, g, 'continue', { task: 'Blocked' })
+    await db.batch([...queued.statements, ...blocked.statements])
+    await sql(db, "UPDATE graph_assignments SET available_at=0 WHERE id=?", queued.id).run()
+    const cleanup = async () => {
+      await sql(db, "UPDATE graph_maintenance SET next_at=0 WHERE graph_id=? AND kind='cleanup'", g.id).run()
+      await maintenance(env(), g.id)
+    }
+    const status = async () =>
+      (await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', queued.id))[0].status
+    await sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", blocked.id).run()
+    await cleanup()
+    expect(await status()).toBe('pending')
+    await sql(db, "UPDATE graph_assignments SET status='accepted' WHERE id=?", blocked.id).run()
+    await cleanup()
+    expect(await status()).toBe('expired')
+  })
+
   it('reopens a dismissed queue entry needed by a checked continuation', async () => {
     const { g } = await fixture(false)
     const original = await assignment(db, g, 'project', { operation: 'decomposition_review', hierarchy: [], evidence: [] })
