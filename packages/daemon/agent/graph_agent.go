@@ -14,7 +14,9 @@ import (
 // run as the plain CLI.
 func graphSubAgent(role string) string {
 	switch role {
-	case "grade", "project", "reconcile":
+	// Reconciliation inspects processes and external baselines; the read-only
+	// grader identity cannot perform those checks. Use the configured CLI.
+	case "grade", "project":
 		return "tsq-graph-grader"
 	case "execute", "undo", "continue":
 		return "tsq-graph-executor"

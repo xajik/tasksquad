@@ -20,7 +20,7 @@ final class GraphAgentTests: XCTestCase {
         for (role, name) in expected {
             XCTAssertEqual(DaemonEngine.graphAgentArguments(provider: .claudeCode, task: try task(role), workDir: dir.path), ["--agent", name], role)
         }
-        for role in ["merge", "decompose", "repair"] {
+        for role in ["merge", "decompose", "repair", "reconcile"] {
             XCTAssertEqual(DaemonEngine.graphAgentArguments(provider: .claudeCode, task: try task(role), workDir: dir.path), [], role)
         }
         XCTAssertEqual(DaemonEngine.graphAgentArguments(provider: .codex, task: try task("grade"), workDir: dir.path), [])

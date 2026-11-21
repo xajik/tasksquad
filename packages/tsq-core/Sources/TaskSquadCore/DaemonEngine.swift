@@ -246,7 +246,8 @@ public actor DaemonEngine {
     /// CLI is not Claude Code or the sub-agent is not installed in this work directory yet.
     static func graphSubAgent(role: String) -> String? {
         switch role {
-        case "grade", "project", "reconcile": "tsq-graph-grader"
+        // Reconciliation needs process and baseline inspection unavailable to the grader.
+        case "grade", "project": "tsq-graph-grader"
         case "execute", "undo", "continue": "tsq-graph-executor"
         default: nil
         }

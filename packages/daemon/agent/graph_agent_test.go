@@ -27,7 +27,7 @@ func TestGraphAgentArgs(t *testing.T) {
 	cases := map[string][]string{
 		"grade": {"--agent", "tsq-graph-grader"}, "project": {"--agent", "tsq-graph-grader"},
 		"execute": {"--agent", "tsq-graph-executor"}, "continue": {"--agent", "tsq-graph-executor"},
-		"merge": nil, "decompose": nil, "repair": nil,
+		"merge": nil, "decompose": nil, "repair": nil, "reconcile": nil,
 	}
 	for role, want := range cases {
 		got := graphAgentArgs(claude, map[string]any{"graph": map[string]any{"role": role}}, dir)
