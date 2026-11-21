@@ -878,6 +878,9 @@ public actor DaemonEngine {
         do {
             response = try await post(agentID: agentID, path: "/daemon/session/notify", body: .object(withResume(agentID, [
                 "session_id": .string(sessionID), "agent_id": .string(agentID), "message": .string(text),
+                // This daemon can run close steps after a graph result: the server then keeps the session open
+                // and returns the steps instead of asking for an immediate close (Go: StopAndPause).
+                "close_steps": .bool(true),
             ])))
         } catch { fail("[\(current.configuration.name)] StopAndPause notify error: \(error.localizedDescription)") }
         // A close/reset may have won while the notify request was in flight.
@@ -900,6 +903,14 @@ public actor DaemonEngine {
         }
         if !transcriptPath.isEmpty { agents[agentID]?.transcriptPath = transcriptPath }
         if agents[agentID]?.state.mode == .running { try? agents[agentID]?.state.transition(.hookStop) }
+        // A graph result was recorded and the server kept the session open for its end-of-session steps: run them
+        // one at a time (each ends with the Stop hook, which injects the next), then close the session.
+        let steps = response?["graph_result"] == .bool(true) ? (response?["close_steps"]?.array?.compactMap(\.string).filter { !$0.isEmpty } ?? []) : []
+        if !steps.isEmpty {
+            Log.info("[\(latest.configuration.name)] Graph result posted — running \(steps.count) end-of-session step(s) before closing")
+            startCloseSequence(agentID: agentID, steps: steps)
+            return
+        }
         Log.info("[\(latest.configuration.name)] Paused after response — tmux session kept alive, waiting for reply or close")
     }
 

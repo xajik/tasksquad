@@ -132,6 +132,9 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 		"session_id": sessionID,
 		"agent_id":   agentID,
 		"message":    finalText,
+		// This daemon can run close steps after a graph result: the server then keeps the
+		// session open and returns the steps instead of asking for an immediate close.
+		"close_steps": true,
 	}))
 	// The native activity feed reads the local journal, including normal paused
 	// turns (previously only Notification hooks wrote these records).
@@ -146,10 +149,14 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	a.st.mu.Unlock()
 
 	autoClose := false
+	var graphCloseSteps []string
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] StopAndPause notify error: %v", a.Config.Name, err))
 	} else if notifyResp != nil {
 		autoClose, _ = notifyResp["close"].(bool)
+		if graphResult, _ := notifyResp["graph_result"].(bool); graphResult && !autoClose {
+			graphCloseSteps = parseCloseSteps(notifyResp["close_steps"])
+		}
 		msgID, _ := notifyResp["message_id"].(string)
 		if msgID != "" {
 			// Prioritize transcript.jsonl (rich JSONL data), fallback to transcript.txt (plain tmux capture)
@@ -186,6 +193,15 @@ func (a *Agent) StopAndPause(cfg *config.Config, hookMessage, transcriptPath str
 	a.st.mode = validTransitions[ModeRunning][EventHookStop]
 	a.st.tuiBlocked = false
 	a.st.mu.Unlock()
+
+	// A graph result was recorded and the server kept the session open for its end-of-session steps:
+	// run them one at a time (each ends with the Stop hook, which injects the next), and only then
+	// close the session — session → response; skill → response; close.
+	if len(graphCloseSteps) > 0 {
+		logger.Info(fmt.Sprintf("[%s] Graph result posted — running %d end-of-session step(s) before closing", a.Config.Name, len(graphCloseSteps)))
+		go a.startCloseSequence(cfg, graphCloseSteps)
+		return
+	}
 
 	logger.Info(fmt.Sprintf("[%s] Paused after response — tmux session kept alive, waiting for reply or close", a.Config.Name))
 }

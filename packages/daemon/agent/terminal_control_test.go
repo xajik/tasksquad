@@ -225,3 +225,59 @@ func TestLatePausedReplyCannotChangeReplacementSession(t *testing.T) {
 		})
 	}
 }
+
+// A graph result keeps the session open on the server and returns end-of-session steps: the daemon must
+// advertise support, enter the close sequence with exactly those steps, and not close the session itself.
+func TestGraphResultRunsCloseStepsBeforeClosing(t *testing.T) {
+	keyring.MockInit()
+	keyring.Set("tasksquad-daemon", "cli-token", "tsq_cli_test")
+	keyring.Set("tasksquad-daemon", "cli-token-expiry", time.Now().Add(30*24*time.Hour).Format(time.RFC3339))
+	var mu sync.Mutex
+	var notify map[string]any
+	closed := false
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/daemon/session/notify":
+			_ = json.NewDecoder(r.Body).Decode(&notify)
+			fmt.Fprint(w, `{"ok":true,"close":false,"graph_result":true,"message_id":"m","close_steps":["/tsq-end-session-learning","/tsq-memory"]}`)
+		case "/daemon/session/close":
+			closed = true
+			fmt.Fprint(w, `{"ok":true,"close":true}`)
+		default:
+			fmt.Fprint(w, `{}`)
+		}
+	}))
+	defer api.Close()
+	cfg := &config.Config{}
+	cfg.Server.URL = api.URL
+	oldBin := tmuxBin
+	tmuxBin = "/nonexistent/tmux"
+	defer func() { tmuxBin = oldBin }()
+	a := New(config.AgentConfig{ID: "agent", Provider: "codex", WorkDir: t.TempDir()})
+	a.st.taskID = "task"
+	a.st.sessionID = "session"
+	a.st.tmuxSession = "tsq-task"
+	a.st.mode = ModeRunning
+	a.StopAndPause(cfg, "result", "")
+	deadline := time.Now().Add(5 * time.Second)
+	for a.st.ModeValue() != ModeLearning && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if a.st.ModeValue() != ModeLearning {
+		t.Fatalf("expected close sequence, mode=%s", a.GetMode())
+	}
+	pending, _ := a.st.CloseSteps()
+	if len(pending) != 2 || pending[0] != "/tsq-end-session-learning" || pending[1] != "/tsq-memory" {
+		t.Fatalf("steps %v", pending)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if notify["close_steps"] != true {
+		t.Fatalf("daemon did not advertise close step support: %v", notify)
+	}
+	if closed {
+		t.Fatal("session closed before the steps ran")
+	}
+}
