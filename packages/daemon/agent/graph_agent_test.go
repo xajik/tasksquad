@@ -19,7 +19,7 @@ func TestGraphAgentArgs(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, ".claude", "agents"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"tsq-graph-grader", "tsq-graph-executor", "tsq-graph-planner"} {
+	for _, name := range []string{"tsq-graph-grader", "tsq-graph-executor", "tsq-graph-planner", "tsq-graph-agent"} {
 		if err := os.WriteFile(filepath.Join(dir, ".claude", "agents", name+".md"), []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -28,7 +28,7 @@ func TestGraphAgentArgs(t *testing.T) {
 		"grade": {"--agent", "tsq-graph-grader"}, "project": {"--agent", "tsq-graph-grader"},
 		"execute": {"--agent", "tsq-graph-executor"}, "continue": {"--agent", "tsq-graph-executor"},
 		"plan": {"--agent", "tsq-graph-planner"}, "merge": {"--agent", "tsq-graph-planner"}, "decompose": {"--agent", "tsq-graph-planner"},
-		"repair": nil, "reconcile": nil,
+		"repair": {"--agent", "tsq-graph-agent"}, "reconcile": {"--agent", "tsq-graph-agent"},
 	}
 	for role, want := range cases {
 		got := graphAgentArgs(claude, map[string]any{"graph": map[string]any{"role": role}}, dir)

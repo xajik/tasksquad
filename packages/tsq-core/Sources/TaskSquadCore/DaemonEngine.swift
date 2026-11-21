@@ -251,7 +251,8 @@ public actor DaemonEngine {
         case "execute", "undo", "continue": "tsq-graph-executor"
         // Planning steps propose bounded actions and never execute them.
         case "decompose", "plan", "merge": "tsq-graph-planner"
-        default: nil
+        // Every other graph step delivered through the inbox (repair, reconcile).
+        default: role.isEmpty ? nil : "tsq-graph-agent"
         }
     }
 

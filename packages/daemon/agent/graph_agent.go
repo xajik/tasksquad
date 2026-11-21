@@ -10,7 +10,8 @@ import (
 )
 
 // graphSubAgent maps an Action Graph role to the sub-agent identity published on the
-// Skills & Sub-agents page. Roles without an identity (repair, reconcile) run as the plain CLI.
+// Skills & Sub-agents page. Every other graph step delivered through the inbox (repair, reconcile)
+// runs as the general tsq-graph-agent; a task without a graph role has no identity.
 func graphSubAgent(role string) string {
 	switch role {
 	// Reconciliation inspects processes and external baselines; the read-only
@@ -22,6 +23,9 @@ func graphSubAgent(role string) string {
 	// Planning steps propose bounded actions and never execute them.
 	case "decompose", "plan", "merge":
 		return "tsq-graph-planner"
+	}
+	if role != "" {
+		return "tsq-graph-agent"
 	}
 	return ""
 }
