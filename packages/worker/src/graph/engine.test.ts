@@ -24,7 +24,7 @@ import { search } from './search.js'
 import { clone } from './store.js'
 import { maintenance } from './maintenance.js'
 import { dispatchContext } from './eligibility.js'
-import { run, tick, intake, bindStatement, processResults, advanceGrading, sessionFraming } from './engine.js'
+import { run, tick, dispatch, intake, bindStatement, processResults, advanceGrading, sessionFraming } from './engine.js'
 import { handle as graphRoute } from '../routes/graphs.js'
 import { sessionOpen, sessionNotify, sessionClose } from '../routes/daemon.js'
 import type { Env } from '../types.js'
@@ -808,6 +808,9 @@ describe('durable inbox graph workflow', () => {
     expect(await held()).toBe(0)
     await sql(db, "UPDATE graph_attempts SET status='running' WHERE id=?", attempt).run()
     expect(await held()).toBe(1)
+    await sql(db, "UPDATE graph_attempts SET status='timeout' WHERE id=?", attempt).run()
+    await dispatch(env(), await graph(db, g.id))
+    expect(await rows(db, 'SELECT * FROM graph_reservations WHERE attempt_id=?', attempt)).toHaveLength(0)
   })
 
   it('reopens a dismissed queue entry needed by a checked continuation', async () => {

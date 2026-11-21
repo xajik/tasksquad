@@ -1636,6 +1636,15 @@ export async function advanceGrading(db: D1Database, g: Graph): Promise<void> {
 
 export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
   const db = env.DB
+  // A closed graph's finished attempt keeps its reservation only for its own reconcile. It must
+  // not hold the agent (one row per agent) against other graphs, or their dispatch collides on it.
+  await sql(
+    db,
+    `DELETE FROM graph_reservations WHERE graph_id!=?
+     AND graph_id IN (SELECT id FROM graphs WHERE status='stopped')
+     AND attempt_id IN (SELECT id FROM graph_attempts WHERE status NOT IN ('pending','running'))`,
+    g.id
+  ).run()
   const context = await dispatchContext(db, g, env.ACTION_GRAPH_ENABLED === 'true')
   const { c, now, budgets, used } = context
   const pending = await rows<Assignment>(
