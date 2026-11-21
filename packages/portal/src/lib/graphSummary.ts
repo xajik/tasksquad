@@ -12,7 +12,18 @@ const text = (v: unknown, max = 220) => {
 const list = (v: unknown): Json[] => (Array.isArray(v) ? (v.filter((x) => x && typeof x === 'object') as Json[]) : [])
 const num = (v: unknown) => (typeof v === 'number' ? v.toFixed(2) : 'unknown')
 
-export function summarizeResult(role: string, raw: string | null | undefined, operation?: string): ResultSummary | null {
+/** Assignment context a reviewer's summary can use: goal titles and the plan's projected impact per goal. */
+export interface SummaryContext {
+  goals?: { id: string; title: string }[]
+  plan?: { projected_impact?: { goal_id: string; delta: number }[] }
+}
+
+export function summarizeResult(
+  role: string,
+  raw: string | null | undefined,
+  operation?: string,
+  context?: SummaryContext
+): ResultSummary | null {
   let d: Json
   try {
     d = JSON.parse(raw ?? '')
@@ -96,6 +107,15 @@ export function summarizeResult(role: string, raw: string | null | undefined, op
           consequence: 'This reviews the plan structure. It does not measure sales or verified goal achievement.' }
       }
       rows.push({ label: 'Goal alignment', value: num(d.goal_score) })
+      list(d.goal_impacts).forEach((i) => {
+        const title = context?.goals?.find((g) => g.id === i.goal_id)?.title ?? text(i.goal_id, 40)
+        const projected = context?.plan?.projected_impact?.find((p) => p.goal_id === i.goal_id)?.delta
+        const predicates = Array.isArray(i.predicates) ? i.predicates.length : 0
+        rows.push({
+          label: `${i.goal_id === d.primary_goal_id ? 'Most moved · ' : ''}${text(title, 60)}`,
+          value: `actual ${num(i.actual)}${projected === undefined ? '' : ` vs projected ${num(projected)}`} · ${predicates} predicate${predicates === 1 ? '' : 's'}`
+        })
+      })
       rows.push({ label: 'Reason', value: text(d.reason, 420) })
       if (Array.isArray(d.decomposition_feedback))
         d.decomposition_feedback.forEach((f, i) => rows.push({ label: `Feedback ${i + 1}`, value: text(f, 320) }))

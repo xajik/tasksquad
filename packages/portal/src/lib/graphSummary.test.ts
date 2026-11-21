@@ -21,4 +21,28 @@ describe('summarizeResult', () => {
     expect(summary.headline).toContain('Decomposition alignment')
     expect(summary.consequence).toContain('does not measure sales')
   })
+  it('shows actual versus projected impact per goal and marks the most moved goal', () => {
+    const summary = summarizeResult(
+      'project',
+      JSON.stringify({
+        goal_score: 0.05,
+        reason: 'r',
+        primary_goal_id: 'ms',
+        goal_impacts: [
+          { goal_id: 'root', actual: 0.05, predicates: ['A'], evidence_ids: ['e'] },
+          { goal_id: 'ms', actual: 0.5, predicates: ['B', 'C'], evidence_ids: ['e'] }
+        ]
+      }),
+      undefined,
+      {
+        goals: [{ id: 'root', title: 'Root' }, { id: 'ms', title: 'Supply chain' }],
+        plan: { projected_impact: [{ goal_id: 'ms', delta: 0.4 }] }
+      }
+    )!
+    expect(summary.rows).toContainEqual({
+      label: 'Most moved · Supply chain',
+      value: 'actual 0.50 vs projected 0.40 · 2 predicates'
+    })
+    expect(summary.rows).toContainEqual({ label: 'Root', value: 'actual 0.05 · 1 predicate' })
+  })
 })

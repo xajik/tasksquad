@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import type { GraphInboxContext } from '@/lib/api'
 import { graphApi, type GraphSnapshot, type GraphResult } from '@/lib/graph'
 import { errorText } from '@/lib/graphError'
-import { summarizeResult } from '@/lib/graphSummary'
+import { summarizeResult, type SummaryContext } from '@/lib/graphSummary'
 import { Button } from './ui/button'
 
 /** Inbox owns exact-output review; the thread's regular composer owns recovery replies. */
@@ -108,8 +108,13 @@ export function GraphInboxPanel({
             const attempt = graph?.attempts.find(t => t.id === result.attempt_id)
             const assignment = graph?.assignments.find(a => a.id === attempt?.assignment_id)
             let operation: string | undefined
-            try { operation = JSON.parse(assignment?.input ?? '{}').operation } catch { /* Older snapshots may lack context. */ }
-            const summary = summarizeResult(context.role, result.parsed ?? result.raw, operation)
+            let summaryContext: SummaryContext | undefined
+            try {
+              const input = JSON.parse(assignment?.input ?? '{}')
+              operation = input.operation
+              summaryContext = { goals: input.goals, plan: input.plan }
+            } catch { /* Older snapshots may lack context. */ }
+            const summary = summarizeResult(context.role, result.parsed ?? result.raw, operation, summaryContext)
             return summary ? (
               <div className="space-y-1 text-sm" data-graph-summary>
                 <p>{summary.headline}</p>
