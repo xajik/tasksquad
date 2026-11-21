@@ -1653,7 +1653,7 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
         id(),
         task,
         g.owner_id,
-        a.template,
+        await sessionFraming(db, g, a, agent),
         now
       ),
       sql(
@@ -1704,6 +1704,32 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
       budgets.allocations++ // keeps the every-fifth weak-candidate trial correct within one tick
     }
   }
+}
+
+/** Skills an agent runs before its first graph step, and the two that close every execution session. Read-only
+ * roles (grade, project) cannot write the repository, so they skip preparation. */
+const PREPARE_SKILL = '/tsq-graph-prepare-repo'
+const SESSION_END_SKILLS = ['/tsq-end-session-learning', '/tsq-end-session-memory']
+const EXECUTION_ROLES = ['execute', 'continue', 'undo']
+
+/** The task message for an attempt: the role prompt, framed by the repo preparation the first time this agent
+ * works on the graph and by the end-of-session skills for execution roles. A graph session closes as soon as its
+ * result is posted, so these are asked for inside the one turn, with the reply still the last thing written. */
+export async function sessionFraming(db: D1Database, g: Graph, a: Assignment, agentId: string): Promise<string> {
+  const first = !(await sql(
+    db,
+    `SELECT 1 FROM graph_attempts t JOIN graph_assignments x ON x.id=t.assignment_id WHERE x.graph_id=? AND t.agent_id=? LIMIT 1`,
+    g.id,
+    agentId
+  ).first())
+  const before =
+    first && !['grade', 'project'].includes(a.role)
+      ? `First, before anything else: this is your first step on this graph, so run ${PREPARE_SKILL} (it creates or amends AGENTS.md in the repository root), then continue below.\n\n`
+      : ''
+  const after = EXECUTION_ROLES.includes(a.role)
+    ? `\n\nWhen the work is done and verified, and before you write your reply, run ${SESSION_END_SKILLS.join(' and then ')}, in that order. Then write the reply the schema above asks for as the very last thing, with nothing after it.`
+    : ''
+  return before + a.template + after
 }
 
 /** Queue ownership survives format repairs and checked continuations, including review. */

@@ -23,7 +23,7 @@ import { materialize, embeddingChunks } from './outbox.js'
 import { search } from './search.js'
 import { clone } from './store.js'
 import { maintenance } from './maintenance.js'
-import { run, tick, intake, bindStatement, processResults, advanceGrading } from './engine.js'
+import { run, tick, intake, bindStatement, processResults, advanceGrading, sessionFraming } from './engine.js'
 import { handle as graphRoute } from '../routes/graphs.js'
 import { sessionOpen, sessionNotify, sessionClose } from '../routes/daemon.js'
 import type { Env } from '../types.js'
@@ -457,6 +457,33 @@ describe('durable inbox graph workflow', () => {
     await run(db, g.id, 'input', { assignment_id: continuation.id, message: 'Check the baseline again' })
     const followup = (await rows<Assignment>(db, "SELECT * FROM graph_assignments WHERE parent_id=? AND role='continue'", continuation.id))[0]
     expect(await rows(db, "SELECT * FROM graph_serial_queue WHERE work_id=? AND status='pending'", followup.id)).toHaveLength(1)
+  })
+
+  it('frames a first step with repo preparation and execution steps with the end-of-session skills', async () => {
+    const { g, agent } = await fixture(false)
+    const ex = await assignment(db, g, 'execute', { plan: {} })
+    const pl = await assignment(db, g, 'plan', {})
+    const gr = await assignment(db, g, 'grade', {})
+    await db.batch([...ex.statements, ...pl.statements, ...gr.statements])
+    const row = async (id: string) => (await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', id))[0]
+    const first = await sessionFraming(db, g, await row(ex.id), agent)
+    expect(first.startsWith('First, before anything else')).toBe(true)
+    expect(first).toContain('/tsq-graph-prepare-repo')
+    expect(first.indexOf('/tsq-end-session-learning')).toBeGreaterThan(0)
+    expect(first.indexOf('/tsq-end-session-memory')).toBeGreaterThan(first.indexOf('/tsq-end-session-learning'))
+    // Planning steps get preparation but no end-of-session skills; the read-only grader gets neither.
+    const plan = await sessionFraming(db, g, await row(pl.id), agent)
+    expect(plan).toContain('/tsq-graph-prepare-repo')
+    expect(plan).not.toContain('/tsq-end-session')
+    expect(await sessionFraming(db, g, await row(gr.id), agent)).not.toContain('/tsq-')
+    // Once the agent has worked on the graph, preparation is not asked for again.
+    await db.batch([
+      sql(db, "INSERT INTO tasks(id,team_id,agent_id,sender_id,subject,status,created_at) SELECT 't1',team_id,?,owner_id,'x','pending',0 FROM graphs WHERE id=?", agent, g.id),
+      sql(db, "INSERT INTO graph_attempts(id,assignment_id,task_id,agent_id,epoch,deadline,created_at) VALUES('at1',?,'t1',?,1,0,0)", pl.id, agent)
+    ])
+    const later = await sessionFraming(db, g, await row(ex.id), agent)
+    expect(later).not.toContain('/tsq-graph-prepare-repo')
+    expect(later).toContain('/tsq-end-session-memory')
   })
 
   it('abandons a blocked continuation chain and releases the queue, reservations and node', async () => {
