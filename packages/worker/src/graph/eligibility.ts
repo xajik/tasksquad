@@ -23,7 +23,13 @@ export async function dispatchContext(db: D1Database, g: Graph, enabled = true) 
   }>())!
   const used = await rows<{ agent_id: string; kind: string; graph_id: string }>(
     db,
-    'SELECT * FROM graph_reservations'
+    // A closed graph's finished attempt (kept for its own reconcile) must not hold an agent that
+    // other graphs need; only live attempts and the graph's own reservations count.
+    `SELECT r.* FROM graph_reservations r
+     JOIN graphs rg ON rg.id=r.graph_id
+     LEFT JOIN graph_attempts t ON t.id=r.attempt_id
+     WHERE r.graph_id=? OR rg.status!='stopped' OR t.status IN ('pending','running')`,
+    g.id
   )
   const planning = await sql(
     db,

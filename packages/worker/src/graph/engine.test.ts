@@ -23,6 +23,7 @@ import { materialize, embeddingChunks } from './outbox.js'
 import { search } from './search.js'
 import { clone } from './store.js'
 import { maintenance } from './maintenance.js'
+import { dispatchContext } from './eligibility.js'
 import { run, tick, intake, bindStatement, processResults, advanceGrading, sessionFraming } from './engine.js'
 import { handle as graphRoute } from '../routes/graphs.js'
 import { sessionOpen, sessionNotify, sessionClose } from '../routes/daemon.js'
@@ -786,6 +787,27 @@ describe('durable inbox graph workflow', () => {
     await sql(db, "UPDATE graph_assignments SET status='accepted' WHERE id=?", blocked.id).run()
     await cleanup()
     expect(await status()).toBe('expired')
+  })
+
+  it('does not let a closed graph\'s finished attempt hold an agent other graphs need', async () => {
+    const { g } = await fixture(false)
+    const other = await fixture(false)
+    const ex = await assignment(db, other.g, 'execute', { task: 'Held' })
+    await db.batch(ex.statements)
+    const task = crypto.randomUUID(),
+      attempt = crypto.randomUUID()
+    await db.batch([
+      sql(db, "INSERT INTO tasks(id,team_id,agent_id,sender_id,subject,status,created_at) VALUES(?,?,?,?,'x','failed',0)", task, other.g.team_id, other.agent, other.user),
+      sql(db, "INSERT INTO graph_attempts(id,assignment_id,task_id,agent_id,status,epoch,deadline,created_at) VALUES(?,?,?,?,'timeout',1,0,0)", attempt, ex.id, task, other.agent)
+    ])
+    await db.batch([
+      sql(db, "INSERT INTO graph_reservations(agent_id,attempt_id,graph_id,kind,created_at) VALUES(?,?,?,'execution',0)", other.agent, attempt, other.g.id),
+      sql(db, "UPDATE graphs SET status='stopped' WHERE id=?", other.g.id)
+    ])
+    const held = async () => (await dispatchContext(db, await graph(db, g.id))).used.filter((r) => r.agent_id === other.agent).length
+    expect(await held()).toBe(0)
+    await sql(db, "UPDATE graph_attempts SET status='running' WHERE id=?", attempt).run()
+    expect(await held()).toBe(1)
   })
 
   it('reopens a dismissed queue entry needed by a checked continuation', async () => {
