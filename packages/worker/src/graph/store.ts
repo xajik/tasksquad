@@ -528,7 +528,7 @@ export async function clone(
   return g
 }
 
-export async function snapshot(db: D1Database, g: Graph, enabled = true): Promise<Data> {
+export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = false): Promise<Data> {
   const c = await configuration(db, g)
   const [
     nodes,
@@ -664,7 +664,9 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true): Promis
     })),
     resource_links: links,
     edges,
-    assignments,
+    // The page never reads the role template (~10 KB per assignment), so the interactive
+    // view omits it; archived snapshots keep the full row.
+    assignments: slim ? assignments.map(({ template: _template, ...rest }) => rest) : assignments,
     attempts,
     results,
     events,
