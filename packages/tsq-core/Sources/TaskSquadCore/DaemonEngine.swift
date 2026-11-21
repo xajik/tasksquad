@@ -249,6 +249,8 @@ public actor DaemonEngine {
         // Reconciliation needs process and baseline inspection unavailable to the grader.
         case "grade", "project": "tsq-graph-grader"
         case "execute", "undo", "continue": "tsq-graph-executor"
+        // Planning steps propose bounded actions and never execute them.
+        case "decompose", "plan", "merge": "tsq-graph-planner"
         default: nil
         }
     }

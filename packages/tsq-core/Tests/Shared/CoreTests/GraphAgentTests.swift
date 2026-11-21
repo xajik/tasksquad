@@ -13,14 +13,14 @@ final class GraphAgentTests: XCTestCase {
         XCTAssertEqual(DaemonEngine.graphAgentArguments(provider: .claudeCode, task: try task("grade"), workDir: dir.path), [])
         let agents = dir.appendingPathComponent(".claude/agents")
         try FileManager.default.createDirectory(at: agents, withIntermediateDirectories: true)
-        for name in ["tsq-graph-grader", "tsq-graph-executor"] {
+        for name in ["tsq-graph-grader", "tsq-graph-executor", "tsq-graph-planner"] {
             try Data("x".utf8).write(to: agents.appendingPathComponent("\(name).md"))
         }
-        let expected = ["grade": "tsq-graph-grader", "project": "tsq-graph-grader", "execute": "tsq-graph-executor", "continue": "tsq-graph-executor"]
+        let expected = ["grade": "tsq-graph-grader", "project": "tsq-graph-grader", "execute": "tsq-graph-executor", "continue": "tsq-graph-executor", "plan": "tsq-graph-planner", "merge": "tsq-graph-planner", "decompose": "tsq-graph-planner"]
         for (role, name) in expected {
             XCTAssertEqual(DaemonEngine.graphAgentArguments(provider: .claudeCode, task: try task(role), workDir: dir.path), ["--agent", name], role)
         }
-        for role in ["merge", "decompose", "repair", "reconcile"] {
+        for role in ["repair", "reconcile"] {
             XCTAssertEqual(DaemonEngine.graphAgentArguments(provider: .claudeCode, task: try task(role), workDir: dir.path), [], role)
         }
         XCTAssertEqual(DaemonEngine.graphAgentArguments(provider: .codex, task: try task("grade"), workDir: dir.path), [])
