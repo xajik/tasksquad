@@ -1,5 +1,5 @@
 import { extractApprovalRequest } from '../approval.js'
-import { bindStatement, intake, releaseAgentStatements } from '../graph/engine.js'
+import { bindStatement, intake, releaseAgentStatements, closeSessionStatements, SESSION_END_STEPS, EXECUTION_ROLES } from '../graph/engine.js'
 import { bumpInboxVersion } from '../inbox_version.js'
 import { ulid } from 'ulidx'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
@@ -763,13 +763,13 @@ export async function complete(req: Request, env: Env, _ctx: unknown, daemon: Da
 }
 
 export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
-  const body = await req.json<{ session_id?: string; agent_id?: string; message?: string; provider?: string; provider_session_id?: string }>()
-    .catch(() => ({} as { session_id?: string; agent_id?: string; message?: string; provider?: string; provider_session_id?: string }))
+  const body = await req.json<{ session_id?: string; agent_id?: string; message?: string; provider?: string; provider_session_id?: string; close_steps?: boolean }>()
+    .catch(() => ({} as { session_id?: string; agent_id?: string; message?: string; provider?: string; provider_session_id?: string; close_steps?: boolean }))
   const { session_id, message } = body
   const resume = parseResume(body.provider, body.provider_session_id)
   const agentId = daemon.agentId
   if (!session_id || !message) return err('missing_fields', 400)
-  const graphResult = await captureGraphResult(env, session_id, agentId, message)
+  const graphResult = await captureGraphResult(env, session_id, agentId, message, true, body.close_steps === true)
   if (graphResult) return graphResult
 
   const session = await env.DB
@@ -1179,26 +1179,41 @@ export async function sessionState(req: Request, env: Env, _ctx: unknown): Promi
 
 
 /** Graph finals never flow through ordinary completion hooks or learning exports. */
-async function captureGraphResult(env: Env, sessionId: string, agentId: string, text: string, completed = true): Promise<Response | null> {
+async function captureGraphResult(env: Env, sessionId: string, agentId: string, text: string, completed = true, canRunCloseSteps = false): Promise<Response | null> {
   if (env.ACTION_GRAPH_ENABLED === undefined) return null
-  const attempt = await env.DB.prepare(`SELECT t.id,t.status,t.task_id,a.graph_id,g.team_id
+  const attempt = await env.DB.prepare(`SELECT t.id,t.status,t.task_id,a.graph_id,a.role,g.team_id,s.status AS session_status
     FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id JOIN graphs g ON g.id=a.graph_id
-    WHERE t.session_id=? AND t.agent_id=?`).bind(sessionId,agentId).first<{id:string;status:string;task_id:string;graph_id:string;team_id:string}>()
+    LEFT JOIN sessions s ON s.id=t.session_id
+    WHERE t.session_id=? AND t.agent_id=?`).bind(sessionId,agentId).first<{id:string;status:string;task_id:string;graph_id:string;role:string;team_id:string;session_status:string|null}>()
   if (!attempt) return null
+  const coordinator = () => env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(attempt.team_id))
+  // The result is already recorded and the session was kept open for its end-of-session steps: this is the daemon
+  // closing the session after the last of them. Free the agent now.
+  if (attempt.status === 'completed' && attempt.session_status === 'running') {
+    await env.DB.batch(closeSessionStatements(env.DB, agentId, sessionId, attempt.task_id, Date.now()))
+    await bumpInboxVersion(env, agentId)
+    try { await coordinator().command(attempt.graph_id,'tick',{team_id:attempt.team_id}) } catch(error) {console.error(JSON.stringify({event:'graph_close_wake_failed',graph_id:attempt.graph_id,error:String(error)}))}
+    return json({ok:true,close:true,session_id:sessionId,graph_result:true})
+  }
   if (!completed && attempt.status === 'running') {
     await env.DB.batch([
       env.DB.prepare('UPDATE graph_attempts SET deadline=? WHERE id=?').bind(Date.now(),attempt.id),
       ...releaseAgentStatements(env.DB, agentId, sessionId, Date.now())
     ])
     await bumpInboxVersion(env, agentId)
-    await env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(attempt.team_id)).command(attempt.graph_id,'tick',{team_id:attempt.team_id})
+    await coordinator().command(attempt.graph_id,'tick',{team_id:attempt.team_id})
     return json({ok:true,close:true,session_id:sessionId,graph_reconciliation:true})
   }
-  const graphId = await intake(env,sessionId,agentId,text)
+  const hold = canRunCloseSteps && EXECUTION_ROLES.includes(attempt.role)
+  const graphId = await intake(env,sessionId,agentId,text,hold)
 
   if (graphId) {
     try { await env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(attempt.team_id)).command(graphId,'tick',{team_id:attempt.team_id}) } catch(error) {console.error(JSON.stringify({event:'graph_result_wake_failed',graph_id:graphId,error:String(error)}))}
   }
   const result=await env.DB.prepare('SELECT id FROM graph_results WHERE attempt_id=?').bind(attempt.id).first<{id:string}>()
+  // Held open: the daemon runs the end-of-session steps one by one, then closes the session itself.
+  const held = hold && !!(await env.DB.prepare("SELECT 1 AS x FROM sessions WHERE id=? AND status='running'").bind(sessionId).first())
+    && !!(await env.DB.prepare("SELECT 1 AS x FROM graph_attempts WHERE id=? AND status='completed'").bind(attempt.id).first())
+  if (held) return json({ok:true,close:false,close_steps:SESSION_END_STEPS,session_id:sessionId,message_id:result?.id??null,graph_result:true})
   return json({ok:true,close:true,session_id:sessionId,message_id:result?.id??null,graph_result:true})
 }

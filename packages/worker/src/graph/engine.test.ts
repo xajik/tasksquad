@@ -469,9 +469,9 @@ describe('durable inbox graph workflow', () => {
     const first = await sessionFraming(db, g, await row(ex.id), agent)
     expect(first.startsWith('First, before anything else')).toBe(true)
     expect(first).toContain('/tsq-graph-prepare-repo')
-    expect(first.indexOf('/tsq-end-session-learning')).toBeGreaterThan(0)
-    expect(first.indexOf('/tsq-memory')).toBeGreaterThan(first.indexOf('/tsq-end-session-learning'))
-    // Planning steps get preparation but no end-of-session skills; the read-only grader gets neither.
+    // The end-of-session skills are run by the daemon after the result, not asked for in the prompt.
+    expect(first).not.toContain('/tsq-end-session')
+    // Planning steps get preparation; the read-only grader gets none.
     const plan = await sessionFraming(db, g, await row(pl.id), agent)
     expect(plan).toContain('/tsq-graph-prepare-repo')
     expect(plan).not.toContain('/tsq-end-session')
@@ -483,7 +483,61 @@ describe('durable inbox graph workflow', () => {
     ])
     const later = await sessionFraming(db, g, await row(ex.id), agent)
     expect(later).not.toContain('/tsq-graph-prepare-repo')
-    expect(later).toContain('/tsq-memory')
+  })
+
+  it('keeps an execution session open for its end-of-session steps and closes it only when the daemon does', async () => {
+    const { g, agent, team, user } = await fixture(false)
+    const handlerEnv = {
+      ...env(),
+      GRAPH_COORDINATOR: { idFromName: (s: string) => s, get: () => ({ command: async () => undefined }) }
+    } as unknown as Env
+    const daemon = { agentId: agent, teamId: team, userId: user, tokenId: 'fixture' }
+    const post = (path: string, body: unknown) =>
+      new Request('https://fixture.test' + path, { method: 'POST', body: JSON.stringify(body) })
+    await sql(db, "INSERT INTO agent_state(agent_id,mode,updated_at) VALUES(?,'idle',0)", agent).run()
+    const open = async (hold: boolean) => {
+      const ex = await assignment(db, g, 'execute', { plan: {} })
+      const task = crypto.randomUUID(),
+        attempt = crypto.randomUUID(),
+        session = crypto.randomUUID()
+      await db.batch([
+        ...ex.statements,
+        sql(db, "UPDATE graph_assignments SET status='running',attempt_count=1 WHERE id=?", ex.id),
+        sql(db, "INSERT INTO tasks(id,team_id,agent_id,sender_id,subject,status,created_at) VALUES(?,?,?,?,'x','running',0)", task, g.team_id, agent, user),
+        sql(db, "INSERT INTO graph_attempts(id,assignment_id,task_id,agent_id,epoch,deadline,created_at) VALUES(?,?,?,?,1,?,0)", attempt, ex.id, task, agent, Date.now() + 600_000)
+      ])
+      await db.batch([
+        sql(db, "INSERT INTO sessions(id,task_id,agent_id,status,started_at) VALUES(?,?,?,'running',0)", session, task, agent),
+        sql(db, "UPDATE agent_state SET current_task_id=?,current_session=?,mode='running' WHERE agent_id=?", task, session, agent),
+        ...(await bindStatement(db, task, agent, session))
+      ])
+      return { task, session, hold }
+    }
+    const state = async (t: { task: string; session: string }) => ({
+      session: (await rows<{ status: string }>(db, 'SELECT status FROM sessions WHERE id=?', t.session))[0].status,
+      task: (await rows<{ status: string }>(db, 'SELECT status FROM tasks WHERE id=?', t.task))[0].status,
+      busy: (await rows<{ current_session: string | null }>(db, 'SELECT current_session FROM agent_state WHERE agent_id=?', agent))[0].current_session === t.session
+    })
+
+    // A daemon that cannot run the steps gets the old behaviour: the session ends with the result.
+    const legacy = await open(false)
+    const old = await sessionNotify(post('/daemon/session/notify', { session_id: legacy.session, message: 'outcome: "complete"' }), handlerEnv, {}, daemon)
+    expect(await old.json()).toMatchObject({ close: true })
+    expect(await state(legacy)).toEqual({ session: 'closed', task: 'done', busy: false })
+
+    // A daemon that can: the result is recorded, the steps are returned, and the session stays open and busy.
+    const held = await open(true)
+    const res = await sessionNotify(post('/daemon/session/notify', { session_id: held.session, message: 'outcome: "complete"', close_steps: true }), handlerEnv, {}, daemon)
+    expect(await res.json()).toMatchObject({ close: false, close_steps: ['/tsq-end-session-learning', '/tsq-memory'], graph_result: true })
+    expect(await state(held)).toEqual({ session: 'running', task: 'running', busy: true })
+    expect(await rows(db, "SELECT 1 FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id WHERE t.task_id=? AND t.status='completed'", held.task)).toHaveLength(1)
+
+    // After the last step the daemon closes the session: now it ends and the agent is freed.
+    const closed = await sessionClose(post('/daemon/session/close', { session_id: held.session, status: 'closed', final_text: 'skill output' }), handlerEnv, {}, daemon)
+    expect(await closed.json()).toMatchObject({ close: true })
+    expect(await state(held)).toEqual({ session: 'closed', task: 'done', busy: false })
+    // The skills' output never replaces the recorded result.
+    expect(await rows(db, "SELECT raw FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id WHERE t.task_id=?", held.task)).toEqual([{ raw: 'outcome: "complete"' }])
   })
 
   it('abandons a blocked continuation chain and releases the queue, reservations and node', async () => {

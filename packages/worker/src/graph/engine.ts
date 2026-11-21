@@ -444,7 +444,8 @@ export async function intake(
   env: GraphEnv,
   sessionId: string,
   agentId: string,
-  raw: string
+  raw: string,
+  hold = false
 ): Promise<string | null> {
   if (env.ACTION_GRAPH_ENABLED === undefined) return null
   const t = await sql(
@@ -519,22 +520,9 @@ export async function intake(
             now,
             t.id
           ),
-          sql(env.DB, "UPDATE sessions SET status='closed',closed_at=? WHERE id=?", now, sessionId),
-          sql(env.DB, "UPDATE tasks SET status='done',completed_at=? WHERE id=?", now, t.task_id),
-          sql(
-            env.DB,
-            "UPDATE agents SET status='idle' WHERE id=? AND EXISTS(SELECT 1 FROM agent_state WHERE agent_id=? AND current_session=?)",
-            agentId,
-            agentId,
-            sessionId
-          ),
-          sql(
-            env.DB,
-            "UPDATE agent_state SET current_task_id=NULL,current_session=NULL,mode='idle',updated_at=? WHERE agent_id=? AND current_session=?",
-            now,
-            agentId,
-            sessionId
-          )
+          // A daemon that will run the end-of-session steps keeps the session open and the agent busy until it
+          // closes the session itself (closeHeldSession); otherwise the session ends with the result.
+          ...(hold && EXECUTION_ROLES.includes(a.role) ? [] : closeSessionStatements(env.DB, agentId, sessionId, t.task_id, now))
         ]
       : [
           // A stale result still means the process has ended: free the agent so retries can dispatch.
@@ -542,6 +530,34 @@ export async function intake(
         ])
   ])
   return a.graph_id
+}
+
+/** Ends a graph session: closes it and its inbox task and frees the agent. */
+export function closeSessionStatements(
+  db: D1Database,
+  agentId: string,
+  sessionId: string,
+  taskId: string,
+  now: number
+): D1PreparedStatement[] {
+  return [
+    sql(db, "UPDATE sessions SET status='closed',closed_at=? WHERE id=?", now, sessionId),
+    sql(db, "UPDATE tasks SET status='done',completed_at=? WHERE id=?", now, taskId),
+    sql(
+      db,
+      "UPDATE agents SET status='idle' WHERE id=? AND EXISTS(SELECT 1 FROM agent_state WHERE agent_id=? AND current_session=?)",
+      agentId,
+      agentId,
+      sessionId
+    ),
+    sql(
+      db,
+      "UPDATE agent_state SET current_task_id=NULL,current_session=NULL,mode='idle',updated_at=? WHERE agent_id=? AND current_session=?",
+      now,
+      agentId,
+      sessionId
+    )
+  ]
 }
 
 /** The daemon's idle self-heal never runs behind a 304, so closing a graph session must free its agent itself. */
@@ -1706,15 +1722,16 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
   }
 }
 
-/** Skills an agent runs before its first graph step, and the two that close every execution session. Read-only
- * roles (grade, project) cannot write the repository, so they skip preparation. */
+/** Skill an agent runs before its first graph step. Read-only roles (grade, project) cannot write the repository,
+ * so they skip it. */
 const PREPARE_SKILL = '/tsq-graph-prepare-repo'
-const SESSION_END_SKILLS = ['/tsq-end-session-learning', '/tsq-memory']
-const EXECUTION_ROLES = ['execute', 'continue', 'undo']
+/** Run by the daemon, one at a time and each to completion, after an execution result is posted and before the
+ * session is closed. */
+export const SESSION_END_STEPS = ['/tsq-end-session-learning', '/tsq-memory']
+export const EXECUTION_ROLES = ['execute', 'continue', 'undo']
 
-/** The task message for an attempt: the role prompt, framed by the repo preparation the first time this agent
- * works on the graph and by the end-of-session skills for execution roles. A graph session closes as soon as its
- * result is posted, so these are asked for inside the one turn, with the reply still the last thing written. */
+/** The task message for an attempt: the role prompt, preceded by the repo preparation the first time this agent
+ * works on the graph (skipped by the read-only grader). */
 export async function sessionFraming(db: D1Database, g: Graph, a: Assignment, agentId: string): Promise<string> {
   const first = !(await sql(
     db,
@@ -1726,10 +1743,7 @@ export async function sessionFraming(db: D1Database, g: Graph, a: Assignment, ag
     first && !['grade', 'project'].includes(a.role)
       ? `First, before anything else: this is your first step on this graph, so run ${PREPARE_SKILL} (it creates or amends AGENTS.md in the repository root), then continue below.\n\n`
       : ''
-  const after = EXECUTION_ROLES.includes(a.role)
-    ? `\n\nWhen the work is done and verified, and before you write your reply, run ${SESSION_END_SKILLS.join(' and then ')}, in that order. Then write the reply the schema above asks for as the very last thing, with nothing after it.`
-    : ''
-  return before + a.template + after
+  return before + a.template
 }
 
 /** Queue ownership survives format repairs and checked continuations, including review. */
