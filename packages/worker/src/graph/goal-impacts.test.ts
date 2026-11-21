@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assertGoalImpacts, type GoalScope } from './engine'
+import { assertGoalImpacts, goalHierarchy, type GoalScope } from './engine'
 
 const goals: GoalScope[] = [
   { id: 'root', kind: 'goal', title: 'Root', body: 'b', predicates: ['P1', 'P2', 'P3'] },
@@ -47,5 +47,25 @@ describe('assertGoalImpacts', () => {
     ]
   ])('rejects %s', (_, d) => {
     expect(() => assertGoalImpacts(original(), d)).toThrow()
+  })
+})
+
+describe('goalHierarchy', () => {
+  it('assigns a milestone the rule predicates its text names, ignoring case, spacing and stops', async () => {
+    const nodes = [
+      { id: 'root', kind: 'goal', title: 'Root', body: 'b' },
+      { id: 'ms', kind: 'milestone', title: 'M', body: 'Needs  AT LEAST three quotes obtained.\nAlso unrelated.' },
+      { id: 'other', kind: 'milestone', title: 'O', body: 'nothing relevant' }
+    ]
+    const db = {
+      prepare: () => ({ bind: () => ({ all: async () => ({ results: nodes }) }) })
+    } as never
+    const hierarchy = await goalHierarchy(db, { id: 'g' } as never, [
+      'At least three quotes obtained',
+      'Prototype passes tests'
+    ])
+    expect(hierarchy.find((n) => n.id === 'root')!.predicates).toHaveLength(2)
+    expect(hierarchy.find((n) => n.id === 'ms')!.predicates).toEqual(['At least three quotes obtained'])
+    expect(hierarchy.find((n) => n.id === 'other')!.predicates).toEqual([])
   })
 })

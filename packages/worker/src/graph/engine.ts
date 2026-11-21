@@ -729,6 +729,9 @@ async function assertContinuationVerified(db: D1Database, original: Assignment, 
 
 /** The root goal and every active decomposed milestone, each with the exact success predicates it owns. A milestone
  * owns the rule predicates its text names; the root goal owns them all. Grading scores impact per goal by predicate. */
+/** Milestone text is reworded and recased freely; compare predicates ignoring case, spacing and trailing stops. */
+const normalizePredicate = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').replace(/[.\s]+$/, '').trim()
+
 export interface GoalScope {
   id: string
   kind: string
@@ -747,7 +750,10 @@ export async function goalHierarchy(db: D1Database, g: Graph, rulePredicates: st
   )
   return nodes.map((n) => ({
     ...n,
-    predicates: n.kind === 'goal' ? rulePredicates : rulePredicates.filter((p) => n.body.includes(p))
+    predicates:
+      n.kind === 'goal'
+        ? rulePredicates
+        : rulePredicates.filter((p) => normalizePredicate(n.body).includes(normalizePredicate(p)))
   }))
 }
 
@@ -1236,11 +1242,10 @@ export async function accept(
           Date.now()
         )
       )
-      // The stored goal score is the root goal's actual impact; per-goal detail stays in the result itself.
-      const rootImpact = ((d.goal_impacts ?? []) as Data[]).find(
-        (i) => i.goal_id === ((input.goals as GoalScope[] | undefined) ?? []).find((x) => x.kind === 'goal')?.id
-      )
-      const rootScore = rootImpact ? rootImpact.actual : d.goal_score
+      // The stored goal score ranks the candidate; per-goal detail stays in the result itself.
+      // Rank by the goal this node moved the most (a milestone counts), not only the far-off root goal.
+      const impacts = (d.goal_impacts ?? []) as Data[]
+      const rootScore = impacts.length ? Math.max(...impacts.map((i) => Number(i.actual))) : d.goal_score
       const lineage = await executedLineage(db, g.id, original.edge_id)
       for (const edge of lineage)
         for (const evidence of ids)
