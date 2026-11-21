@@ -161,9 +161,17 @@ export async function eligibility(
         ? [c.policy.grader]
         : c.policy.agents
   let missingCapability = false
+  const why: string[] = []
   for (const candidate of new Set([...primary, ...(c.policy.fallback ? [c.policy.fallback] : [])])) {
-    if (used.some((r) => r.agent_id === candidate) || (a.role === 'execute' && candidate === c.policy.grader))
+    const taken = used.find((r) => r.agent_id === candidate)
+    if (taken) {
+      why.push(`${candidate}: reserved by a ${taken.kind} (graph ${taken.graph_id})`)
       continue
+    }
+    if (a.role === 'execute' && candidate === c.policy.grader) {
+      why.push(`${candidate}: is the grader, executor must be independent`)
+      continue
+    }
     const ready = await sql(
       db,
       `SELECT a.id FROM agents a LEFT JOIN agent_state s ON s.agent_id=a.id
@@ -172,7 +180,28 @@ export async function eligibility(
       candidate,
       g.team_id
     ).first()
-    if (!ready) continue
+    if (!ready) {
+      const state = await sql(
+        db,
+        `SELECT a.paused,a.status,s.current_task_id,
+         (SELECT COUNT(*) FROM tasks WHERE agent_id=a.id AND status='pending') AS pending
+         FROM agents a LEFT JOIN agent_state s ON s.agent_id=a.id WHERE a.id=? AND a.team_id=?`,
+        candidate,
+        g.team_id
+      ).first<{ paused: number; status: string; current_task_id: string | null; pending: number }>()
+      why.push(
+        !state
+          ? `${candidate}: not in this team`
+          : state.paused
+            ? `${candidate}: paused`
+            : state.status !== 'idle'
+              ? `${candidate}: status ${state.status}`
+              : state.current_task_id
+                ? `${candidate}: still holds task ${state.current_task_id}`
+                : `${candidate}: ${state.pending} pending task(s) queued`
+      )
+      continue
+    }
     if (['execute', 'undo'].includes(a.role)) {
       const capable = await sql(
         db,
@@ -182,6 +211,7 @@ export async function eligibility(
       ).first()
       if (!capable) {
         missingCapability = true
+        why.push(`${candidate}: no recent graph capability heartbeat`)
         continue
       }
     }
@@ -193,7 +223,8 @@ export async function eligibility(
       recovery: reservedRecovery
     }
   }
+  const detail = why.length ? ` (${why.join('; ')})` : ''
   return missingCapability
-    ? wait('capability', 'Waiting for an agent heartbeat with graph execution capabilities.')
-    : wait('agent', 'Waiting for an available eligible agent; the executor and grader must be independent.')
+    ? wait('capability', `Waiting for an agent heartbeat with graph execution capabilities${detail}.`)
+    : wait('agent', `Waiting for an available eligible agent; the executor and grader must be independent${detail}.`)
 }
