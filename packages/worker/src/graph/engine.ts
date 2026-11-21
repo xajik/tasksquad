@@ -385,6 +385,16 @@ export async function run(db: D1Database, graphId: string, command: string, body
         g.id
       )
     )
+    // Nobody can answer a closed graph: close every inbox task still waiting for the owner.
+    ops.push(
+      sql(
+        db,
+        `UPDATE tasks SET status='done',completed_at=? WHERE status='waiting_input'
+         AND id IN (SELECT t.task_id FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=?)`,
+        Date.now(),
+        g.id
+      )
+    )
     // Active processes retain reservations until reconciliation. Their normal result cannot authorize more work.
     ops.push(
       sql(
@@ -1973,6 +1983,16 @@ async function dismissStale(db: D1Database, g: Graph): Promise<number> {
  * they return to `done` once the step is answered, cancelled or otherwise no longer needs the owner.
  * Planning/review steps whose result merely went out of date are noise, not owner input, and stay done. */
 export async function syncInboxStatus(db: D1Database, g: Graph): Promise<void> {
+  // A closed graph can no longer be answered, so its inbox tasks never return to waiting for input.
+  if (g.status === 'stopped') {
+    await sql(
+      db,
+      `UPDATE tasks SET status='done' WHERE status='waiting_input'
+       AND id IN (SELECT t.task_id FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=?)`,
+      g.id
+    ).run()
+    return
+  }
   const needsOwner = `SELECT t.task_id FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id
     WHERE a.graph_id=? AND a.status IN ('blocked','error') AND a.role!='repair'
     AND NOT EXISTS(SELECT 1 FROM graph_assignments repair WHERE repair.parent_id=a.id AND repair.role='repair' AND repair.status IN ('pending','running','review'))

@@ -222,6 +222,37 @@ afterAll(async () => {
 })
 
 describe('durable inbox graph workflow', () => {
+  it('closes inbox tasks waiting for the owner when the graph is closed and never reopens them', async () => {
+    const { g, agent, assignmentId } = await preparedExecution()
+    await deliver(
+      g.id,
+      agent,
+      JSON.stringify({
+        outcome: 'blocked',
+        title: 'Need input',
+        description: '',
+        body: 'Please provide the fixture value',
+        evidence: [],
+        actual_cost: 0,
+        needs_input: {
+          title: 'Fixture value',
+          fields: [{ id: 'value', type: 'text', label: 'Which value?', required: true }]
+        }
+      })
+    )
+    await tick(env(), g.id)
+    const attempt = (
+      await rows<{ task_id: string }>(db, 'SELECT * FROM graph_attempts WHERE assignment_id=?', assignmentId)
+    )[0]
+    const status = async () =>
+      (await rows<{ status: string }>(db, 'SELECT status FROM tasks WHERE id=?', attempt.task_id))[0].status
+    expect(await status()).toBe('waiting_input')
+    await run(db, g.id, 'stop')
+    expect(await status()).toBe('done')
+    await tick(env(), g.id)
+    expect(await status()).toBe('done')
+  })
+
   it('routes an owner inbox reply through continuation atomically without reopening execution', async () => {
     const { g, agent, user, team, assignmentId } = await preparedExecution()
     await deliver(
