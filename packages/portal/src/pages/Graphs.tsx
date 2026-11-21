@@ -360,6 +360,7 @@ export function Graphs({
   const tab = view === 'activity' ? 'activity' : 'next'
   const [live, setLive] = useState(true)
   const [updatedAt, setUpdatedAt] = useState(0)
+  const [nodeLimit, setNodeLimit] = useState(20)
   const [range, setRange] = useState(86400_000)
   const now = updatedAt || Date.now()
   const inspect = (id: string) => {
@@ -414,6 +415,7 @@ export function Graphs({
     setCurrent(null)
     setLoading(true)
     setSelected(null)
+    setNodeLimit(20)
     setCloseConfirm(false)
     setCloseError('')
     setCloneSource(null)
@@ -1139,7 +1141,7 @@ export function Graphs({
                             )
                           })}
                         <h4 className="font-medium">Every node</h4>
-                        {current.nodes.map((n) => (
+                        {current.nodes.slice(0, nodeLimit).map((n) => (
                           <p className="text-sm" key={n.id}>
                             {n.title} · {n.state} ·{' '}
                             {new Date(Math.max(n.created_at, n.state_changed_at ?? 0))
@@ -1155,6 +1157,11 @@ export function Graphs({
                               : 'unchanged today'}
                           </p>
                         ))}
+                        {current.nodes.length > nodeLimit && (
+                          <Button size="sm" variant="outline" onClick={() => setNodeLimit(nodeLimit + 20)}>
+                            Show more ({current.nodes.length - nodeLimit} left)
+                          </Button>
+                        )}
                       </div>
                     </details>
                   </GraphSection>
