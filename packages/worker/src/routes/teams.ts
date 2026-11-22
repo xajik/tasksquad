@@ -169,9 +169,11 @@ export async function addMember(req: Request, env: Env, _ctx: unknown, auth: Aut
     }
   }
 
-  const body = await req.json<{ email?: string }>().catch(() => ({} as { email?: string }))
+  const body = await req.json<{ email?: string; role?: string }>().catch(() => ({} as { email?: string; role?: string }))
   const email = body.email?.trim().toLowerCase()
   if (!email) return err('email_required', 400)
+  const role = body.role ?? 'member'
+  if (role !== 'member' && role !== 'maintainer') return err('invalid_role', 400)
 
   const user = await env.DB
     .prepare('SELECT id FROM users WHERE email = ?')
@@ -181,7 +183,7 @@ export async function addMember(req: Request, env: Env, _ctx: unknown, auth: Aut
 
   await env.DB
     .prepare('INSERT OR IGNORE INTO team_members (team_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)')
-    .bind(teamId, user.id, 'member', Date.now())
+    .bind(teamId, user.id, role, Date.now())
     .run()
 
   return json({ ok: true })
@@ -233,6 +235,31 @@ export async function removeMember(req: Request, env: Env, _ctx: unknown, auth: 
   await env.DB
     .prepare('DELETE FROM team_members WHERE team_id = ? AND user_id = ?')
     .bind(teamId, userId)
+    .run()
+
+  return json({ ok: true })
+}
+
+export async function updateMemberRole(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const parts = new URL(req.url).pathname.split('/')
+  const teamId = parts[2]
+  const userId = parts[4]
+
+  if (!(await requireOwner(env.DB, teamId, auth.userId))) return err('forbidden', 403)
+
+  const body = await req.json<{ role?: string }>().catch(() => ({} as { role?: string }))
+  if (body.role !== 'member' && body.role !== 'maintainer') return err('invalid_role', 400)
+
+  const target = await env.DB
+    .prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?')
+    .bind(teamId, userId)
+    .first<{ role: string }>()
+  if (!target) return err('not_found', 404)
+  if (target.role === 'owner') return err('Cannot change the role of an owner', 400)
+
+  await env.DB
+    .prepare('UPDATE team_members SET role = ? WHERE team_id = ? AND user_id = ? AND role != ?')
+    .bind(body.role, teamId, userId, 'owner')
     .run()
 
   return json({ ok: true })

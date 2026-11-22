@@ -2232,6 +2232,7 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
   const [members, setMembers] = useState<Member[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [email, setEmail] = useState('')
+  const [newRole, setNewRole] = useState<'member' | 'maintainer'>('member')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
   const [showHowItWorks, setShowHowItWorks] = useState(false)
@@ -2262,13 +2263,25 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
     setAdding(true)
     setAddError('')
     try {
-      await api.members.add(teamId, email)
-      trackEvent('member_added', { team_id: teamId, member_email: email });
+      await api.members.add(teamId, email, newRole)
+      trackEvent('member_added', { team_id: teamId, member_email: email, role: newRole });
       setEmail('')
+      setNewRole('member')
       load()
     } catch (err: any) {
       setAddError(err?.error ?? 'Failed to add member')
     } finally { setAdding(false) }
+  }
+
+  async function changeRole(userId: string, role: 'member' | 'maintainer') {
+    setAddError('')
+    try {
+      await api.members.updateRole(teamId, userId, role)
+      trackEvent('member_role_changed', { team_id: teamId, member_id: userId, role })
+    } catch (err: any) {
+      setAddError(err?.error ?? 'Failed to change role')
+    }
+    load()
   }
 
   async function removeMember(userId: string) {
@@ -2341,7 +2354,19 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
                       {m.id === currentUserId && <Badge variant="secondary" className="text-[10px] h-4 px-1">You</Badge>}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                      <span className="capitalize">{m.role}</span>
+                      {(isOwner && m.role !== 'owner') ? (
+                        <select
+                          aria-label={`Role for ${m.email}`}
+                          className="h-6 rounded-md border bg-background px-1 text-xs capitalize"
+                          value={m.role}
+                          onChange={e => changeRole(m.id, e.target.value as 'member' | 'maintainer')}
+                        >
+                          <option value="member">Member</option>
+                          <option value="maintainer">Maintainer</option>
+                        </select>
+                      ) : (
+                        <span className="capitalize">{m.role}</span>
+                      )}
                       <span>•</span>
                       <span>Joined {new Date(m.joined_at).toLocaleDateString()}</span>
                     </div>
@@ -2413,7 +2438,7 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
           <p className="text-sm text-muted-foreground mb-4">
             The user must already have a TaskSquad account.
           </p>
-          <form onSubmit={addMember} className="flex flex-col sm:flex-row gap-2 max-w-md">
+          <form onSubmit={addMember} className="flex flex-col sm:flex-row gap-2 max-w-lg">
             <Input
               id="member-email"
               type="email"
@@ -2422,6 +2447,15 @@ function MembersView({ teamId, currentTeam, plan, internalUserId }: { teamId: st
               placeholder="user@example.com"
               required
             />
+            <select
+              aria-label="Role"
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+              value={newRole}
+              onChange={e => setNewRole(e.target.value as 'member' | 'maintainer')}
+            >
+              <option value="member">Member</option>
+              <option value="maintainer">Maintainer</option>
+            </select>
             <Button type="submit" disabled={adding || atMemberLimit} className="w-full sm:w-fit shrink-0">
               {adding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
               Add member

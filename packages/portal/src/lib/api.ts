@@ -112,10 +112,15 @@ export const api = {
   members: {
     list: (teamId: string) =>
       request<{ members: Member[] }>(`/teams/${teamId}/members`),
-    add: (teamId: string, email: string) =>
+    add: (teamId: string, email: string, role: 'member' | 'maintainer' = 'member') =>
       request<{ ok: boolean }>(`/teams/${teamId}/members`, {
         method: 'POST',
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, role }),
+      }),
+    updateRole: (teamId: string, userId: string, role: 'member' | 'maintainer') =>
+      request<{ ok: boolean }>(`/teams/${teamId}/members/${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
       }),
     remove: (teamId: string, userId: string) =>
       del(`/teams/${teamId}/members/${userId}`),
