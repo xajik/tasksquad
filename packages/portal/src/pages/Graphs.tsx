@@ -683,6 +683,7 @@ export function Graphs({
               </Button>
             </div>
           </div>
+          <GraphMetrics graph={current} />
           <nav role="tablist" aria-label="Graph dashboard" className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b bg-background">
             {graphViews.map(([id, label], index) => {
               const Icon = graphViewIcons[id]
@@ -732,7 +733,6 @@ export function Graphs({
               )
             })}
           </nav>
-          <GraphMetrics graph={current} />
           <div
             id={`graph-panel-${view}`}
             role="tabpanel"
@@ -1180,8 +1180,8 @@ export function Graphs({
                       )
                       .sort((a, b) => workRank(a.status) - workRank(b.status) || liveWeight(b) - liveWeight(a))
                       .map((a) => (
-                        <div key={a.id} className="py-3 text-sm flex justify-between gap-3">
-                          <span>
+                        <div key={a.id} className="flex flex-col gap-3 py-3 text-sm sm:flex-row sm:items-start">
+                          <span className="min-w-0 flex-1 break-words">
                             {['reply', 'review'].includes(current.waiting?.[a.id]?.action ?? '') && (
                               <b className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs">
                                 {current.waiting?.[a.id]?.action === 'review'
@@ -1200,55 +1200,57 @@ export function Graphs({
                               </span>
                             )}
                           </span>
-                          {[latestGraphAttempt(current, a.id)]
-                            .filter((t) => !!t)
-                            .map((t) => (
-                              <Link
-                                key={t.id}
-                                className="text-primary underline"
-                                to={`/dashboard/tasks/${t.task_id}`}
-                              >
-                                {current.waiting?.[a.id]?.action === 'reply'
-                                  ? 'Answer in inbox'
-                                  : current.waiting?.[a.id]?.action === 'review'
-                                    ? 'Review in inbox'
-                                    : 'Open inbox task'}
-                              </Link>
-                            ))}
-                          {isMaintainer &&
-                            ['decompose', 'plan', 'merge'].includes(a.role) &&
-                            ['blocked', 'error'].includes(a.status) && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={busy}
-                                title="Marks this planning step as failed, cancels it and queues a fresh attempt. Safe: planning steps have no side effects."
-                                onClick={() => command('fail', { assignment_id: a.id })}
-                              >
-                                Fail &amp; retry
-                              </Button>
-                            )}
-                          {isMaintainer &&
-                            a.role !== 'repair' &&
-                            !['decompose', 'plan', 'merge'].includes(a.role) &&
-                            ['blocked', 'error'].includes(a.status) && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={busy}
-                                title="Gives up on this step: cancels it and its follow-ups, deactivates its path and lets the graph move on to other candidates. Nothing is retried, and anything the agent may have left behind stays unverified."
-                                onClick={() => {
-                                  if (
-                                    window.confirm(
-                                      'Abandon this step? It is not retried, and anything the agent may have changed stays unverified.'
+                          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-3">
+                            {[latestGraphAttempt(current, a.id)]
+                              .filter((t) => !!t)
+                              .map((t) => (
+                                <Link
+                                  key={t.id}
+                                  className="whitespace-nowrap text-primary underline"
+                                  to={`/dashboard/tasks/${t.task_id}`}
+                                >
+                                  {current.waiting?.[a.id]?.action === 'reply'
+                                    ? 'Answer in inbox'
+                                    : current.waiting?.[a.id]?.action === 'review'
+                                      ? 'Review in inbox'
+                                      : 'Open inbox task'}
+                                </Link>
+                              ))}
+                            {isMaintainer &&
+                              ['decompose', 'plan', 'merge'].includes(a.role) &&
+                              ['blocked', 'error'].includes(a.status) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={busy}
+                                  title="Marks this planning step as failed, cancels it and queues a fresh attempt. Safe: planning steps have no side effects."
+                                  onClick={() => command('fail', { assignment_id: a.id })}
+                                >
+                                  Fail &amp; retry
+                                </Button>
+                              )}
+                            {isMaintainer &&
+                              a.role !== 'repair' &&
+                              !['decompose', 'plan', 'merge'].includes(a.role) &&
+                              ['blocked', 'error'].includes(a.status) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={busy}
+                                  title="Gives up on this step: cancels it and its follow-ups, deactivates its path and lets the graph move on to other candidates. Nothing is retried, and anything the agent may have left behind stays unverified."
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        'Abandon this step? It is not retried, and anything the agent may have changed stays unverified.'
+                                      )
                                     )
-                                  )
-                                    void command('abandon', { assignment_id: a.id })
-                                }}
-                              >
-                                Abandon
-                              </Button>
-                            )}
+                                      void command('abandon', { assignment_id: a.id })
+                                  }}
+                                >
+                                  Abandon
+                                </Button>
+                              )}
+                          </div>
                         </div>
                       ))}
                     {isMaintainer && blocked.length > 0 && (

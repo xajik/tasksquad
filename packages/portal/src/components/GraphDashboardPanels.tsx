@@ -68,27 +68,38 @@ export function GraphMetrics({ graph }: { graph: GraphSnapshot }) {
     ['reply', 'review'].includes(w.action ?? '')
   ).length
   const pending = graph.assignments.filter((a) => a.status === 'pending').length
+  const metrics = [
+    {
+      label: 'Goal evidence',
+      value:
+        graph.goal_verification === 'true'
+          ? 'Verified'
+          : graph.goal_verification === 'false'
+            ? 'Not met'
+            : 'Unverified',
+      detail: `${graph.config.rule.predicates.length} success predicates`
+    },
+    { label: 'Active jobs', value: active, detail: `${graph.config.policy.capacity} execution slots` },
+    {
+      label: 'Pending work',
+      value: pending,
+      detail: `${graph.scheduler?.heap.length ?? '—'} execution candidates in heap`
+    },
+    { label: 'Needs your attention', value: needsInput, detail: 'Input and result reviews' }
+  ]
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <Metric
-        label="Goal evidence"
-        value={
-          graph.goal_verification === 'true'
-            ? 'Verified'
-            : graph.goal_verification === 'false'
-              ? 'Not met'
-              : 'Unverified'
-        }
-        detail={`${graph.config.rule.predicates.length} success predicates`}
-      />
-      <Metric label="Active jobs" value={active} detail={`${graph.config.policy.capacity} execution slots`} />
-      <Metric
-        label="Pending work"
-        value={pending}
-        detail={`${graph.scheduler?.heap.length ?? '—'} execution candidates in heap`}
-      />
-      <Metric label="Needs your attention" value={needsInput} detail="Input and result reviews" />
-    </div>
+    <dl
+      aria-label="Graph summary"
+      className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border bg-card px-3 py-2 lg:grid-cols-4"
+    >
+      {metrics.map(({ label, value, detail }) => (
+        <div key={label} className="min-w-0" title={detail}>
+          <dt className="text-xs text-muted-foreground">{label}</dt>
+          <dd className="text-sm font-semibold tabular-nums">{value}</dd>
+          <dd className="sr-only">{detail}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 
