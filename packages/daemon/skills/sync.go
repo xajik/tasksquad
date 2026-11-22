@@ -2,7 +2,6 @@ package skills
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/tasksquad/daemon/api"
@@ -104,13 +103,13 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 		}
 		serverNames[skill.Name] = true
 
-		if lock[skill.Name] == skill.Etag && skill.Etag != "" {
-			if body, err := os.ReadFile(skillDir(workDir, skill.Name) + "/SKILL.md"); err == nil {
-				skill.Content = string(body)
-			}
+		// Same version as the server and every local copy is untouched: nothing to do.
+		// Anything else (new skill, new etag, locally edited or missing copy) is
+		// re-fetched so the server version overwrites the machine's.
+		if lock[skill.Name] == skill.Etag && inSync(workDir, skill.Name, skill.Etag) {
+			continue
 		}
 
-		// Fetch full content if not in list response.
 		if skill.Content == "" && skill.ID != "" {
 			var path string
 			if skill.TeamID != "" {
@@ -157,6 +156,14 @@ func syncAgentSkills(cfg *config.Config, token, agentID, workDir string) {
 	}
 
 	saveLock(workDir, lock)
+
+	// The server's skill list does not always include the default close-step skills.
+	// Top them up locally so they exist before a session is ever closed.
+	if topped, err := EnsureDefaults(workDir, closeStepDefaults); err != nil {
+		logger.Warn(fmt.Sprintf("[skills] Default close-step skills for %s: %v", workDir, err))
+	} else {
+		installed += len(topped)
+	}
 
 	if installed+removed > 0 {
 		logger.Info(fmt.Sprintf("[skills] Sync complete for agent %s: %d installed, %d removed", agentID, installed, removed))

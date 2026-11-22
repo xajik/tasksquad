@@ -13,6 +13,7 @@ import (
 	"github.com/tasksquad/daemon/logger"
 	"github.com/tasksquad/daemon/metrics"
 	"github.com/tasksquad/daemon/provider"
+	"github.com/tasksquad/daemon/skills"
 	"github.com/tasksquad/daemon/tasklog"
 	"github.com/tasksquad/daemon/tmux"
 )
@@ -450,6 +451,12 @@ func (a *Agent) startCloseSequence(cfg *config.Config, steps []string) {
 	if err := a.st.Transition(EventLearnStart); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] startCloseSequence: unexpected transition error: %v", a.Config.Name, err))
 		return
+	}
+
+	// A close step that names a built-in default skill must never hit "Unknown command"
+	// (the session would wait forever in wrapping_up), so install any that is missing.
+	if installed := skills.EnsureStepSkills(a.Config.WorkDir, steps); len(installed) > 0 {
+		logger.Info(fmt.Sprintf("[%s] Installed missing close-step skills: %s", a.Config.Name, strings.Join(installed, ", ")))
 	}
 
 	a.st.mu.Lock()

@@ -23,6 +23,16 @@ func TestParseRequiresExplicitProjectAndBoundsTimeout(t *testing.T) {
 	}
 }
 
+func TestParseAcceptsResourcesDefaultsOnlyWithProject(t *testing.T) {
+	o, err := Parse([]string{"resources", "defaults", "--project", "01ABC"})
+	if err != nil || o.Group != "resources" || o.Action != "defaults" {
+		t.Fatalf("parse: %+v, %v", o, err)
+	}
+	if _, err := Parse([]string{"resources", "defaults"}); err == nil {
+		t.Fatal("resources defaults must require --project")
+	}
+}
+
 func TestExecuteScopesMutationsAndUsesUserAuthWithoutAgentHeader(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -2,6 +2,7 @@ package skills
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -31,22 +32,26 @@ func installSkill(workDir string, skill remoteSkill, lock skillsLock) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	previous, _ := os.ReadFile(filepath.Join(dir, "SKILL.md"))
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(skill.Content), 0644); err != nil {
 		return err
 	}
 
+	// Server-managed skills always win: a locally edited or stale copy is overwritten.
 	for _, cd := range harness.SkillDirs(workDir) {
 		if cd == filepath.Join(workDir, ".agents", "skills") {
+			// InstallCodexSkill leaves an unmarked same-name file alone; the server copy takes over.
+			_ = os.Remove(filepath.Join(cd, skill.Name, "SKILL.md"))
 			if err := harness.InstallCodexSkill(workDir, skill.Name, skill.Content); err != nil {
 				return err
 			}
 			continue
 		}
-		os.MkdirAll(cd, 0755) //nolint:errcheck
-
 		dest := filepath.Join(cd, skill.Name)
-		if err := harness.ReconcileFile(filepath.Join(dest, "SKILL.md"), []byte(skill.Content), previous); err != nil {
+		if err := os.MkdirAll(dest, 0755); err != nil {
+			logger.Warn(fmt.Sprintf("[skills] Failed to create %s: %v", dest, err))
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dest, "SKILL.md"), []byte(skill.Content), 0644); err != nil {
 			logger.Warn(fmt.Sprintf("[skills] Failed to copy skill %q to %s: %v", skill.Name, dest, err))
 		}
 	}
@@ -55,25 +60,55 @@ func installSkill(workDir string, skill remoteSkill, lock skillsLock) error {
 	return nil
 }
 
-// removeSkill deletes the skill from .tsq/skills and its copies.
-// Only server-managed skills (tracked in the lock file) are ever passed here,
-// so user-created skills in provider directories are never touched.
+// removeSkill deletes a server-managed skill from .tsq/skills and every provider
+// copy, whether or not it was edited locally. Only skills tracked in the lock file
+// (installed by the sync) are ever passed here, so custom user skills that the
+// server never provided are never touched.
 func removeSkill(workDir, name string) {
 	if !util.ValidResourceName(name) {
 		return
 	}
-	previous, _ := os.ReadFile(filepath.Join(skillDir(workDir, name), "SKILL.md"))
 	_ = os.Remove(filepath.Join(skillDir(workDir, name), "SKILL.md"))
 	_ = os.Remove(skillDir(workDir, name))
 
 	for _, cd := range harness.SkillDirs(workDir) {
+		_ = os.Remove(filepath.Join(cd, name, "SKILL.md"))
+		_ = os.Remove(filepath.Join(cd, name)) // fails (kept) if the user added other files
+	}
+}
+
+// inSync reports whether every on-disk copy of a skill is byte-identical to the
+// server version. The server etag is the SHA-256 of the content, so a locally
+// edited, truncated or deleted copy shows up as a mismatch and is re-fetched.
+func inSync(workDir, name, etag string) bool {
+	if etag == "" {
+		return false
+	}
+	matches := func(path string) bool {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return false
+		}
+		sum := sha256.Sum256(b)
+		return hex.EncodeToString(sum[:]) == etag
+	}
+	if !matches(filepath.Join(skillDir(workDir, name), "SKILL.md")) {
+		return false
+	}
+	for _, cd := range harness.SkillDirs(workDir) {
+		p := filepath.Join(cd, name, "SKILL.md")
 		if cd == filepath.Join(workDir, ".agents", "skills") {
-			harness.RemoveCodexSkill(workDir, name)
+			// Codex copies carry a managed marker, so only check they exist.
+			if _, err := os.Stat(p); err != nil {
+				return false
+			}
 			continue
 		}
-		harness.RemoveMatchingFile(filepath.Join(cd, name, "SKILL.md"), previous)
-		_ = os.Remove(filepath.Join(cd, name))
+		if !matches(p) {
+			return false
+		}
 	}
+	return true
 }
 
 // copyDir copies all files from src directory into dst directory.

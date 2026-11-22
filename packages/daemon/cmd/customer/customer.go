@@ -76,7 +76,7 @@ func Parse(args []string) (Options, error) {
 	if fs.NArg() != 0 {
 		return o, fmt.Errorf("unexpected arguments; use --id for a task or Portal")
 	}
-	valid := map[string]string{"projects": "list", "agents": "list create", "tasks": "create get list reply close wait", "portals": "create get list close", "resources": "audit sync", "doctor": ""}
+	valid := map[string]string{"projects": "list", "agents": "list create", "tasks": "create get list reply close wait", "portals": "create get list close", "resources": "audit sync defaults", "doctor": ""}
 	actions, ok := valid[o.Group]
 	if !ok || (o.Group != "doctor" && !strings.Contains(" "+actions+" ", " "+o.Action+" ")) {
 		return o, fmt.Errorf("unsupported command")
@@ -281,6 +281,25 @@ func resources(ctx context.Context, c api.CustomerClient, cfg *config.Config, o 
 	}
 	if len(targets) == 0 {
 		return nil, fmt.Errorf("no configured daemon agents belong to --project")
+	}
+	if o.Action == "defaults" {
+		// Pull every built-in default skill that is missing from each agent's work directory.
+		installed := map[string]any{}
+		var failed []string
+		for _, target := range targets {
+			got, e := skills.EnsureDefaults(target.workDir, nil)
+			if len(got) > 0 {
+				installed[target.id] = got
+			}
+			if e != nil {
+				failed = append(failed, target.id+": "+e.Error())
+			}
+		}
+		result := map[string]any{"project_id": o.Project, "agents": len(targets), "defaults": skills.DefaultNames(), "installed": installed, "errors": failed}
+		if len(failed) > 0 {
+			return result, fmt.Errorf("some default skills could not be installed")
+		}
+		return result, nil
 	}
 	if o.Action == "sync" {
 		skillTargets := make([]skills.AgentRef, len(targets))
