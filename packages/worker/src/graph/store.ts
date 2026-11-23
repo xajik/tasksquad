@@ -36,6 +36,7 @@ export interface Assignment {
   template: string
   input: string
   status: string
+  cancel_reason?: string | null
   attempt_count: number
   max_attempts: number
   available_at: number
@@ -636,6 +637,7 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = 
   for (const a of executionCandidates) heap.push(a)
   const serialQueue = await rows(db,
     "SELECT * FROM graph_serial_queue WHERE graph_id=? AND status='pending' ORDER BY sequence", g.id)
+  const blockedReviews = new Set(grading.filter((r) => r.status === 'blocked').map((r) => String(r.assignment_id)))
   const waiting: Record<string, unknown> = {}
   const { extractApprovalRequest } = await import('../approval.js')
   // Index once instead of rescanning every attempt and result per assignment, and run the
@@ -669,7 +671,9 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = 
       latest &&
       !['done', 'failed', 'cancelled'].includes(String(latest.task_status))
     const detail =
-      a.status === 'pending'
+      blockedReviews.has(a.id)
+        ? { code: 'review_failed', message: `Review failed after ${a.attempt_count} / ${a.max_attempts} attempts${latest?.status ? ` (last attempt: ${latest.status})` : ''}. Grading is incomplete. Independent work can continue; retry or cancel this review in the graph work queue.` }
+        : a.status === 'pending'
         ? await eligibility(a, context)
         : a.status === 'review'
           ? { code: 'review', message: 'An owner or maintainer must review this result.' }
@@ -699,7 +703,7 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = 
         code: detail.code,
         message: detail.message,
         task_id: latest?.task_id ?? null,
-        action: a.status === 'review' ? 'review' : canReply ? 'reply' : latest ? 'view' : null,
+        action: blockedReviews.has(a.id) ? 'view' : a.status === 'review' ? 'review' : canReply ? 'reply' : latest ? 'view' : null,
         request_title: canReply ? (request?.title ?? null) : null,
         has_request: !!request
       }] as const)

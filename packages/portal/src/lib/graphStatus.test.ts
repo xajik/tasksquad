@@ -6,6 +6,12 @@ const fixture = () => ({ status: 'running', assignments: [{ id: 'work', status: 
 } }) as unknown as GraphSnapshot
 
 describe('graph status explanations', () => {
+  it('explains an exhausted review without pretending the graph is active or requesting an approval', () => {
+    const g = fixture()
+    g.grading = [{ sequence: 52, stage: 'project', status: 'blocked', assignment_id: 'work', execution_result_id: 'result' }]
+    expect(graphRunExplanation(g)).toContain('Blocked: review failed')
+    expect(graphRunExplanation(g)).toContain('grading remains incomplete')
+  })
   it('explains paused state and the actual reason for idle work', () => {
     const g = fixture()
     expect(graphRunExplanation(g)).toContain('Declared cost 500')

@@ -1506,6 +1506,78 @@ describe('durable inbox graph workflow', () => {
     ).rejects.toThrow()
     expect((await graph(db, g.id)).title).toBe('Goal')
   })
+  it.each(['grade', 'project'])('parks an exhausted %s, runs independent work and retries without losing history', async (role) => {
+    const { g, agent, grader, user } = await preparedExecution()
+    await deliver(g.id, agent, JSON.stringify({ outcome: 'complete', title: 'Measured', description: '', body: '', evidence: [], actual_cost: 0 }))
+    await tick(env(), g.id)
+    if (role === 'project') {
+      await deliver(g.id, grader, JSON.stringify({ local_score: 0, evidence_ids: [], reason: 'No measured change' }))
+      await tick(env(), g.id)
+    }
+    const failed = (await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE graph_id=? AND role=?', g.id, role))[0]
+    for (let i = 0; i < failed.max_attempts; i++) {
+      await sql(db, "UPDATE graph_attempts SET deadline=0 WHERE assignment_id=? AND status IN ('pending','running')", failed.id).run()
+      await maintenance(env(), g.id)
+      if (i + 1 < failed.max_attempts) {
+        await sql(db, 'UPDATE graph_assignments SET available_at=0 WHERE id=?', failed.id).run()
+        await tick(env(), g.id)
+      }
+    }
+    await tick(env(), g.id)
+    const [grading] = await rows<{ sequence: number; status: string; execution_result_id: string }>(db, 'SELECT * FROM graph_grading WHERE assignment_id=?', failed.id)
+    expect(grading.status).toBe('blocked')
+    expect(await rows(db, "SELECT * FROM graph_serial_queue WHERE work_id=? AND status='pending'", grading.execution_result_id)).toHaveLength(0)
+    expect(await rows(db, 'SELECT * FROM graph_attempts WHERE assignment_id=?', failed.id)).toHaveLength(3)
+    const snap = await snapshot(db, await graph(db, g.id))
+    expect((snap.waiting as Record<string, { code: string }>)[failed.id].code).toBe('review_failed')
+    const [last] = await rows<{ task_id: string }>(db, 'SELECT task_id FROM graph_attempts WHERE assignment_id=? ORDER BY epoch DESC LIMIT 1', failed.id)
+    expect((await graphInboxTask({ DB: db, ACTION_GRAPH_ENABLED: 'true' }, last.task_id, user))?.can_reply).toBe(false)
+    // A later serial assignment can dispatch even though the failed grade is still incomplete.
+    const current = await graph(db, g.id)
+    const later = await assignment(db, current, 'project', { operation: 'decomposition_review', evidence: [] })
+    await commit(db, current, 'later_review', later.id, {}, [...later.statements,
+      sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'assignment',?,?)", g.id, later.id, Date.now())])
+    await tick(env(), g.id)
+    expect((await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', later.id))[0].status).toBe('running')
+    // A retry is idempotent, appends fresh work, and never resets or deletes old attempts.
+    await run(db, g.id, 'retry_review', { assignment_id: failed.id, user_id: user })
+    await run(db, g.id, 'retry_review', { assignment_id: failed.id, user_id: user })
+    const retries = await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE parent_id=? AND role=?', failed.id, role)
+    expect(retries).toHaveLength(1)
+    expect(retries[0]).toMatchObject({ status: 'pending', attempt_count: 0, input: failed.input })
+    expect((await rows<{ assignment_id: string }>(db, 'SELECT assignment_id FROM graph_grading WHERE sequence=?', grading.sequence))[0].assignment_id).toBe(retries[0].id)
+    expect(await rows(db, "SELECT * FROM graph_serial_queue WHERE work_id=? AND status='pending'", grading.execution_result_id)).toHaveLength(1)
+    expect(await rows(db, 'SELECT * FROM graph_attempts WHERE assignment_id=?', failed.id)).toHaveLength(3)
+    expect(await rows(db, 'SELECT * FROM graph_evaluations WHERE source_result_id IN (SELECT r.id FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id WHERE t.assignment_id=?)', failed.id)).toHaveLength(0)
+    await deliver(g.id, grader, JSON.stringify({ goal_score: 0, evidence_ids: [], reason: 'No progress' }))
+    await tick(env(), g.id)
+    expect((await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', retries[0].id))[0].status).toBe('running')
+    await deliver(g.id, grader, JSON.stringify({ [role === 'grade' ? 'local_score' : 'goal_score']: 0, evidence_ids: [], reason: 'Verified review' }))
+    await tick(env(), g.id)
+    expect((await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', retries[0].id))[0].status).toBe('accepted')
+    const [finished] = await rows<{ stage: string; status: string }>(db, 'SELECT * FROM graph_grading WHERE sequence=?', grading.sequence)
+    expect(finished.stage).toBe(role === 'grade' ? 'project' : 'done')
+  })
+
+  it('cancels a failed review without deactivating its target or inventing a grade', async () => {
+    const { g, agent } = await preparedExecution()
+    await deliver(g.id, agent, JSON.stringify({ outcome: 'complete', title: 'Measured', description: '', body: '', evidence: [], actual_cost: 0 }))
+    await tick(env(), g.id)
+    const [review] = await rows<Assignment>(db, "SELECT * FROM graph_assignments WHERE graph_id=? AND role='grade'", g.id)
+    await expect(run(db, g.id, 'cancel_review', { assignment_id: review.id })).rejects.toThrow('blocked or failed')
+    await db.batch([
+      sql(db, "UPDATE graph_attempts SET status='timeout' WHERE assignment_id=?", review.id),
+      sql(db, "UPDATE graph_assignments SET status='error' WHERE id=?", review.id)
+    ])
+    await run(db, g.id, 'cancel_review', { assignment_id: review.id })
+    await run(db, g.id, 'cancel_review', { assignment_id: review.id })
+    expect((await rows<{ status: string }>(db, 'SELECT status FROM graph_grading WHERE assignment_id=?', review.id))[0].status).toBe('cancelled')
+    expect(await rows(db, "SELECT * FROM graph_node_states WHERE graph_id=? AND state='deactivated'", g.id)).toHaveLength(0)
+    expect(await rows(db, 'SELECT * FROM graph_evaluations WHERE graph_id=?', g.id)).toHaveLength(0)
+    const other = await fixture()
+    await expect(run(db, other.g.id, 'retry_review', { assignment_id: review.id })).rejects.toThrow('blocked or failed')
+  })
+
   it('holds the FIFO head until its execution result is accepted', async () => {
     const { g, agent } = await fixture()
     await run(db, g.id, 'run')

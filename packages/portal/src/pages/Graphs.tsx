@@ -1219,6 +1219,24 @@ export function Graphs({
                                 </Link>
                               ))}
                             {isMaintainer &&
+                              current.grading.some((r) => r.assignment_id === a.id && r.status === 'blocked') && (
+                                <>
+                                  <Button size="sm" variant="outline" disabled={busy}
+                                    title="Runs a fresh review with a new retry allowance. Previous attempts and evidence are preserved."
+                                    onClick={() => command('retry_review', { assignment_id: a.id })}>
+                                    Retry review
+                                  </Button>
+                                  <Button size="sm" variant="outline" disabled={busy}
+                                    title="Cancels this review without recording a passing grade or changing the execution evidence."
+                                    onClick={() => {
+                                      if (window.confirm('Cancel this review? Its grading remains unverified.'))
+                                        void command('cancel_review', { assignment_id: a.id })
+                                    }}>
+                                    Cancel review
+                                  </Button>
+                                </>
+                              )}
+                            {isMaintainer &&
                               ['decompose', 'plan', 'merge'].includes(a.role) &&
                               ['blocked', 'error'].includes(a.status) && (
                                 <Button
@@ -1234,6 +1252,7 @@ export function Graphs({
                             {isMaintainer &&
                               a.role !== 'repair' &&
                               !['decompose', 'plan', 'merge'].includes(a.role) &&
+                              !current.grading.some((r) => r.assignment_id === a.id && r.status === 'blocked') &&
                               ['blocked', 'error'].includes(a.status) && (
                                 <Button
                                   size="sm"
@@ -1269,7 +1288,7 @@ export function Graphs({
                       </div>
                     )}
                     <p className="text-xs text-muted-foreground pt-3">
-                      Grading follows durable completion intake. Review at the head holds later grades.
+                      Grading follows durable completion intake. Failed reviews wait for recovery while independent work continues.
                       Dispatch also checks agent availability, role isolation and budgets.
                     </p>
                   </div>
