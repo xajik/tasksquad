@@ -475,6 +475,12 @@ export function Graphs({
       clearTimeout(timer)
     }
   }, [teamId, graphId, search])
+  const [confirming, setConfirming] = useState<{
+    title: string
+    description: string
+    confirm: string
+    run: () => Promise<unknown> | void
+  } | null>(null)
   async function command(action: string, data: unknown = {}) {
     if (!graphId) return false
     setBusy(true)
@@ -1167,6 +1173,23 @@ export function Graphs({
                   </GraphSection>
                 )
               })()}
+            <AlertDialog open={!!confirming} onOpenChange={(open) => !open && setConfirming(null)}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{confirming?.title}</AlertDialogTitle>
+                  <AlertDialogDescription>{confirming?.description}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => void confirming?.run()}
+                  >
+                    {confirming?.confirm}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             {(view === 'inbox' || view === 'activity') && (
               <GraphSection id="work" title={view === 'activity' ? 'Activity log' : 'Work queue'} help="section_work">
                 {tab === 'next' && (
@@ -1228,10 +1251,15 @@ export function Graphs({
                                   </Button>
                                   <Button size="sm" variant="outline" disabled={busy}
                                     title="Cancels this review without recording a passing grade or changing the execution evidence."
-                                    onClick={() => {
-                                      if (window.confirm('Cancel this review? Its grading remains unverified.'))
-                                        void command('cancel_review', { assignment_id: a.id })
-                                    }}>
+                                    onClick={() =>
+                                      setConfirming({
+                                        title: 'Cancel this review?',
+                                        description:
+                                          'The review is cancelled without a passing grade. The execution result stays ungraded and its evidence unverified; independent work continues. You can regrade it later.',
+                                        confirm: 'Cancel review',
+                                        run: () => command('cancel_review', { assignment_id: a.id })
+                                      })
+                                    }>
                                     Cancel review
                                   </Button>
                                 </>
@@ -1259,14 +1287,15 @@ export function Graphs({
                                   variant="outline"
                                   disabled={busy}
                                   title="Gives up on this step: cancels it and its follow-ups, deactivates its path and lets the graph move on to other candidates. Nothing is retried, and anything the agent may have left behind stays unverified."
-                                  onClick={() => {
-                                    if (
-                                      window.confirm(
-                                        'Abandon this step? It is not retried, and anything the agent may have changed stays unverified.'
-                                      )
-                                    )
-                                      void command('abandon', { assignment_id: a.id })
-                                  }}
+                                  onClick={() =>
+                                    setConfirming({
+                                      title: 'Abandon this step?',
+                                      description:
+                                        'It is not retried, its follow-ups are cancelled and its path is deactivated. Anything the agent may have changed stays unverified.',
+                                      confirm: 'Abandon',
+                                      run: () => command('abandon', { assignment_id: a.id })
+                                    })
+                                  }
                                 >
                                   Abandon
                                 </Button>
