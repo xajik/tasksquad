@@ -144,6 +144,7 @@ export interface GraphSnapshot extends GraphSummary {
       task_id: string | null
       action: 'reply' | 'review' | 'view' | null
       request_title: string | null
+      has_request?: boolean
     }
   >
   proposals: { id: string; status: string; content: string; source_result_id: string }[]

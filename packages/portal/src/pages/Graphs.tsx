@@ -1186,7 +1186,9 @@ export function Graphs({
                               <b className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs">
                                 {current.waiting?.[a.id]?.action === 'review'
                                   ? 'Review result'
-                                  : 'Needs your approval or input'}
+                                  : current.waiting?.[a.id]?.has_request === false
+                                    ? 'Blocked — no approval requested'
+                                    : 'Needs your approval or input'}
                               </b>
                             )}
                             {a.role} · {a.status} · priority {liveWeight(a).toFixed(3)} · {a.attempt_count}{' '}

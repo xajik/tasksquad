@@ -546,6 +546,20 @@ function slimAssignment(a: Assignment): Data {
   return { ...rest, input }
 }
 
+/** Why a step is blocked when the agent asked for nothing: its own report, else the validation error. */
+function blockedReason(result: Data | undefined, status: string): string {
+  let reported = ''
+  try {
+    const p = JSON.parse(String(result?.parsed ?? '')) as { title?: string; description?: string }
+    reported = [p.title, p.description].filter(Boolean).join(' — ')
+  } catch {
+    /* unparsed result */
+  }
+  const why = reported || String(result?.validation_error || '')
+  const prefix = status === 'error' ? 'Failed' : 'Blocked'
+  return `${prefix}${why ? `: ${why}` : ''}. The agent asked for no approval — fix what it is missing and reply in the inbox task to retry, or abandon the step.`
+}
+
 export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = false): Promise<Data> {
   const c = await configuration(db, g)
   const [
@@ -660,13 +674,17 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = 
         : a.status === 'review'
           ? { code: 'review', message: 'An owner or maintainer must review this result.' }
           : canReply
-            ? {
-                code: 'owner_input',
-                message:
-                  request?.reason ||
-                  request?.title ||
-                  String(result?.validation_error || 'Reply in the latest inbox task to continue.')
-              }
+            ? request
+              ? {
+                  code: 'owner_input',
+                  message: request.reason || request.title || String(result?.validation_error || 'Reply in the latest inbox task to continue.')
+                }
+              : {
+                  // The agent stopped on its own ("blocked") without asking anything, so there is
+                  // nothing to approve: surface its reason instead of a generic reply prompt.
+                  code: 'blocked',
+                  message: blockedReason(result, a.status)
+                }
             : a.status === 'continuation'
               ? {
                   code: 'continuation',
@@ -682,7 +700,8 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = 
         message: detail.message,
         task_id: latest?.task_id ?? null,
         action: a.status === 'review' ? 'review' : canReply ? 'reply' : latest ? 'view' : null,
-        request_title: canReply ? (request?.title ?? null) : null
+        request_title: canReply ? (request?.title ?? null) : null,
+        has_request: !!request
       }] as const)
       : null
   }))
