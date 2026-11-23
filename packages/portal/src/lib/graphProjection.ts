@@ -59,7 +59,17 @@ export function goalProjection(graph: GraphSnapshot, nodeId: string) {
     data.goal_score <= 1
       ? data.goal_score
       : null
+  // Per-goal alignment when the projection scored each goal (root goal and milestones) separately.
+  const impacts = new Map<string, number | null>()
+  if (Array.isArray(data?.goal_impacts))
+    for (const i of data.goal_impacts as unknown[]) {
+      const row = i && typeof i === 'object' ? (i as Record<string, unknown>) : null
+      if (typeof row?.goal_id !== 'string') continue
+      const actual = row.actual
+      impacts.set(row.goal_id, typeof actual === 'number' && Number.isFinite(actual) ? actual : null)
+    }
   return {
+    impacts,
     score,
     evaluated: !!projection,
     executionResultId: execution?.id ?? null,

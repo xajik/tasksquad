@@ -98,7 +98,12 @@ export function GraphCanvas({
       ? 'Alignment unknown'
       : `Goal alignment ${projection.score.toFixed(2)}`
     : 'Not evaluated'
-  const goals = nodes.filter((n) => n.kind === 'goal' && n.state !== 'deactivated')
+  // Root goal plus the milestones decompose derived from it: execution projects towards every active one.
+  const goalLabel = (goalId: string) => {
+    const impact = projection?.impacts.get(goalId)
+    return impact === undefined ? projectionLabel : impact === null ? 'Alignment unknown' : `Goal alignment ${impact.toFixed(2)}`
+  }
+  const goals = nodes.filter((n) => isGuidance(n) && n.state !== 'deactivated')
   const projectionPaths = selectedExecution
     ? goals.map((goal) => ({ goal, points: projectionRoute(layout, selectedExecution.id, goal.id) }))
     : []
@@ -401,7 +406,7 @@ export function GraphCanvas({
               data-projection-source={selectedExecution!.id}
               data-projection-goal={goal.id}
               role="img"
-              aria-label={`Projection towards ${goal.title}: ${projectionLabel}`}
+              aria-label={`Projection towards ${goal.title}: ${goalLabel(goal.id)}`}
               className="pointer-events-none"
             >
               <path
