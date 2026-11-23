@@ -98,12 +98,27 @@ export function GraphCanvas({
       ? 'Alignment unknown'
       : `Goal alignment ${projection.score.toFixed(2)}`
     : 'Not evaluated'
-  // Root goal plus the milestones decompose derived from it: execution projects towards every active one.
+  // Project towards the top-most guidance only: the root goal first, then the highest milestones
+  // (fewest parents, then highest on the canvas), capped at three so the overlay stays readable.
+  const depth = (n: { id: string; parent_id?: string | null }) => {
+    let d = 0
+    for (let cur = n.parent_id; cur && d < 50; d++) cur = nodes.find((x) => x.id === cur)?.parent_id
+    return d
+  }
   const goalLabel = (goalId: string) => {
     const impact = projection?.impacts.get(goalId)
     return impact === undefined ? projectionLabel : impact === null ? 'Alignment unknown' : `Goal alignment ${impact.toFixed(2)}`
   }
-  const goals = nodes.filter((n) => isGuidance(n) && n.state !== 'deactivated')
+  const goals = nodes
+    .filter((n) => isGuidance(n) && n.state !== 'deactivated')
+    .sort(
+      (a, b) =>
+        Number(b.kind === 'goal') - Number(a.kind === 'goal') ||
+        depth(a) - depth(b) ||
+        (layout.positions.get(a.id)?.y ?? 0) - (layout.positions.get(b.id)?.y ?? 0) ||
+        a.created_at - b.created_at
+    )
+    .slice(0, 3)
   const projectionPaths = selectedExecution
     ? goals.map((goal) => ({ goal, points: projectionRoute(layout, selectedExecution.id, goal.id) }))
     : []
