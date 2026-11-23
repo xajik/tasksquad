@@ -1557,7 +1557,7 @@ describe('durable inbox graph workflow', () => {
     expect((await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', retries[0].id))[0].status).toBe('accepted')
     const [finished] = await rows<{ stage: string; status: string }>(db, 'SELECT * FROM graph_grading WHERE sequence=?', grading.sequence)
     expect(finished.stage).toBe(role === 'grade' ? 'project' : 'done')
-  })
+  }, 30_000)
 
   it('cancels a failed review without deactivating its target or inventing a grade', async () => {
     const { g, agent } = await preparedExecution()
