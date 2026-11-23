@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { daemonPush, list, get, search, rollups, daemonRollup } from './memory.js'
+import { daemonPush, list, get, remove, search, rollups, daemonRollup } from './memory.js'
 import { withDaemonAgentAuth, sha256 } from '../auth.js'
 import type { Env, AuthContext, DaemonContext } from '../types.js'
 
@@ -15,7 +15,7 @@ import type { Env, AuthContext, DaemonContext } from '../types.js'
 function norm(sql: string) { return sql.replace(/\s+/g, ' ').trim() }
 
 interface TagRow { id: string; team_id: string; name: string; created_at: number }
-interface MemoryRow { id: string; team_id: string; agent_id: string | null; category: string; title: string; content: string; created_at: number; updated_at: number }
+interface MemoryRow { id: string; team_id: string; agent_id: string | null; category: string; title: string; content: string; created_at: number; updated_at: number; created_by_user_id?: string | null }
 interface MemoryTagRow { memory_id: string; tag_id: string }
 interface MemoryRollupRow { id: string; team_id: string; period: string; period_key: string; content: string; created_at: number }
 interface TeamMemberRow { team_id: string; user_id: string; role: string }
@@ -70,6 +70,11 @@ class FakeDB {
       const hit = this.teamMembers.find(m => m.team_id === teamId && m.user_id === userId)
       return hit ? { role: hit.role } : null
     }
+    if (sql === 'SELECT created_by_user_id FROM memory WHERE id = ? AND team_id = ?') {
+      const [id, teamId] = args as [string, string]
+      const row = this.memory.find(m => m.id === id && m.team_id === teamId)
+      return row ? { created_by_user_id: row.created_by_user_id ?? null } : null
+    }
     if (sql.startsWith('SELECT m.*, json_group_array')) {
       const [memoryId, teamId] = args as [string, string]
       const row = this.memory.find(m => m.id === memoryId && m.team_id === teamId)
@@ -102,7 +107,7 @@ class FakeDB {
   }
 
   private dispatchAll(sql: string, args: unknown[]): unknown[] {
-    if (sql.startsWith('SELECT m.id, m.team_id, m.agent_id, m.category, m.title, m.content, m.created_at, m.updated_at,')) {
+    if (sql.startsWith('SELECT m.id, m.team_id, m.agent_id, m.category, m.title, m.content, m.created_at, m.updated_at, m.created_by_user_id,')) {
       const [teamId, category] = args as [string, string | null]
       return this.memory
         .filter(m => m.team_id === teamId && (category == null || m.category === category))
@@ -136,9 +141,19 @@ class FakeDB {
       this.tags.push({ id, team_id: teamId, name, created_at: createdAt })
       return { meta: { changes: 1 } }
     }
-    if (sql === 'INSERT INTO memory (id, team_id, agent_id, category, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)') {
-      const [id, teamId, agentId, category, title, content, createdAt, updatedAt] = args as [string, string, string | null, string, string, string, number, number]
-      this.memory.push({ id, team_id: teamId, agent_id: agentId, category, title, content, created_at: createdAt, updated_at: updatedAt })
+    if (sql === 'INSERT INTO memory (id, team_id, agent_id, category, title, content, created_at, updated_at, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)') {
+      const [id, teamId, agentId, category, title, content, createdAt, updatedAt, createdBy] = args as [string, string, string | null, string, string, string, number, number, string]
+      this.memory.push({ id, team_id: teamId, agent_id: agentId, category, title, content, created_at: createdAt, updated_at: updatedAt, created_by_user_id: createdBy })
+      return { meta: { changes: 1 } }
+    }
+    if (sql === 'DELETE FROM memory_tags WHERE memory_id = ?') {
+      const [memoryId] = args as [string]
+      this.memoryTags = this.memoryTags.filter(mt => mt.memory_id !== memoryId)
+      return { meta: { changes: 1 } }
+    }
+    if (sql === 'DELETE FROM memory WHERE id = ? AND team_id = ?') {
+      const [id, teamId] = args as [string, string]
+      this.memory = this.memory.filter(m => !(m.id === id && m.team_id === teamId))
       return { meta: { changes: 1 } }
     }
     if (sql === 'INSERT INTO memory_tags (memory_id, tag_id) VALUES (?, ?)') {
@@ -492,5 +507,60 @@ describe('withDaemonAgentAuth (gates /daemon/memory)', () => {
     })
     const result = await withDaemonAgentAuth(req, makeEnv(db))
     expect(result).toEqual({ teamId: 'team-1', agentId: 'agent-1', userId: 'user-1', tokenId: '' })
+  })
+})
+
+// ── delete ────────────────────────────────────────────────────────────────────
+
+describe('delete memory', () => {
+  const seed = (createdBy: string | null) =>
+    db.memory.push({ id: 'mem-1', team_id: 'team-1', agent_id: 'agent-1', category: 'events', title: 't', content: 'c', created_at: 1, updated_at: 1, created_by_user_id: createdBy })
+  const del = (auth: AuthContext = AUTH) =>
+    remove(new Request('https://api.example.com/teams/team-1/memory/mem-1', { method: 'DELETE' }), makeEnv(db), {}, auth)
+
+  it('records the pushing user as creator', async () => {
+    await daemonPush(new Request('https://x/daemon/memory', { method: 'POST', body: JSON.stringify({ category: 'events', title: 'a', content: 'b' }) }), makeEnv(db), {}, DAEMON)
+    expect(db.memory[0].created_by_user_id).toBe('user-1')
+  })
+
+  it('lets a member delete memory created through their own agent', async () => {
+    seed('user-1')
+    expect((await del()).status).toBe(200)
+    expect(db.memory).toHaveLength(0)
+  })
+
+  it('forbids a member deleting another user’s or legacy memory', async () => {
+    seed('user-2')
+    expect((await del()).status).toBe(403)
+    db.memory[0].created_by_user_id = null
+    expect((await del()).status).toBe(403)
+    expect(db.memory).toHaveLength(1)
+  })
+
+  it('lets owners and maintainers delete any memory, removing its tag links', async () => {
+    for (const role of ['owner', 'maintainer']) {
+      db.memory = []
+      db.memoryTags = [{ memory_id: 'mem-1', tag_id: 'tag-1' }]
+      db.teamMembers = [{ team_id: 'team-1', user_id: 'user-1', role }]
+      seed('user-2')
+      expect((await del()).status).toBe(200)
+      expect(db.memory).toHaveLength(0)
+      expect(db.memoryTags).toHaveLength(0)
+    }
+  })
+
+  it('hides non-members and unknown memory behind 404', async () => {
+    seed('user-1')
+    expect((await del({ ...AUTH, userId: 'stranger' })).status).toBe(404)
+    db.memory = []
+    expect((await del()).status).toBe(404)
+  })
+
+  it('reports can_delete in get without leaking the creator id', async () => {
+    seed('user-1')
+    const res = await get(new Request('https://x/teams/team-1/memory/mem-1'), makeEnv(db), {}, AUTH)
+    const body = await res.json() as Record<string, unknown>
+    expect(body.can_delete).toBe(true)
+    expect('created_by_user_id' in body).toBe(false)
   })
 })

@@ -3,7 +3,11 @@ import { api, type Memory, type MemoryCategory, type MemoryRollup } from '../lib
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Database, Bot, X, Copy, Check, Link2, CalendarDays } from 'lucide-react'
+import { Loader2, Database, Bot, X, Copy, Check, Link2, CalendarDays, Trash2 } from 'lucide-react'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { relativeTime } from '../lib/utils'
 import MarkdownRenderer from './MarkdownRenderer'
 
@@ -61,6 +65,7 @@ export function MemoryDetail({
   allMemory,
   onClose,
   onSelect,
+  onDeleted,
 }: {
   memory: Memory
   teamId: string
@@ -69,7 +74,9 @@ export function MemoryDetail({
   allMemory: Memory[]
   onClose: () => void
   onSelect: (memory: Memory) => void
+  onDeleted?: (id: string) => void
 }) {
+  const [deleteError, setDeleteError] = useState('')
   const [fullMemory, setFullMemory] = useState<Memory | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -113,10 +120,44 @@ export function MemoryDetail({
           >
             {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
           </Button>
+          {memory.can_delete && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" title="Delete memory">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this memory?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    "{memory.title}" will be removed for everyone on this project. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={async () => {
+                      try {
+                        await api.memory.delete(teamId, memory.id)
+                        onDeleted?.(memory.id)
+                      } catch (e: any) {
+                        setDeleteError(e?.error ?? 'Failed to delete memory')
+                      }
+                    }}
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
       </div>
       <div className="flex-1 overflow-auto p-6">
+        {deleteError && <p role="alert" className="text-sm text-destructive mb-3">{deleteError}</p>}
         {memory.tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-4">
             {memory.tags.map(tag => <Badge key={tag} variant="secondary" className="text-[10px]">{tag}</Badge>)}

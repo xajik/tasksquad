@@ -340,6 +340,7 @@ export const api = {
       return request<{ memory: Memory[] }>(`/teams/${teamId}/memory${qs}`)
     },
     get: (teamId: string, memoryId: string) => request<Memory>(`/teams/${teamId}/memory/${memoryId}`),
+    delete: (teamId: string, memoryId: string) => del(`/teams/${teamId}/memory/${memoryId}`),
     rollups: (teamId: string, period: MemoryRollupPeriod = 'daily') =>
       request<{ rollups: MemoryRollup[] }>(`/teams/${teamId}/rollups?period=${period}`),
   },
@@ -480,6 +481,8 @@ export interface Memory {
   /** Omitted in list responses (perf) — present when fetched via `api.memory.get`. */
   content?: string
   tags: string[]
+  /** Owner/maintainer, or the memory was pushed by one of the viewer's own agents. */
+  can_delete?: boolean
   created_at: number
   updated_at: number
 }

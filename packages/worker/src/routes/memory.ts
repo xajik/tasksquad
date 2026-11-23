@@ -49,20 +49,39 @@ async function upsertTag(db: D1Database, teamId: string, name: string, now: numb
   }
 }
 
+async function memberRole(db: D1Database, teamId: string, userId: string): Promise<string | null> {
+  const row = await db
+    .prepare('SELECT role FROM team_members WHERE team_id = ? AND user_id = ?')
+    .bind(teamId, userId)
+    .first<{ role: string }>()
+  return row?.role ?? null
+}
+
+function canDelete(role: string, createdBy: string | null, userId: string): boolean {
+  return role === 'owner' || role === 'maintainer' || (createdBy !== null && createdBy === userId)
+}
+
+/** Parses tags and adds can_delete; the creator's user id is not exposed to the browser. */
+function withDeleteRights(m: any, role: string, userId: string) {
+  const { created_by_user_id, ...rest } = m
+  return { ...rest, tags: JSON.parse(m.tags || '[]'), can_delete: canDelete(role, created_by_user_id ?? null, userId) }
+}
+
 // ─── Browser routes ────────────────────────────────────────────────────────────
 
 export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
   const url = new URL(req.url)
   const teamId = url.pathname.split('/')[2] // /teams/:teamId/memory
 
-  if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
+  const role = await memberRole(env.DB, teamId, auth.userId)
+  if (!role) return err('not_found', 404)
 
   const category = url.searchParams.get('category')
   if (category && !isValidCategory(category)) return err('invalid_category', 400)
 
   const rows = await env.DB
     .prepare(`
-      SELECT m.id, m.team_id, m.agent_id, m.category, m.title, m.content, m.created_at, m.updated_at,
+      SELECT m.id, m.team_id, m.agent_id, m.category, m.title, m.content, m.created_at, m.updated_at, m.created_by_user_id,
              json_group_array(t.name) FILTER (WHERE t.name IS NOT NULL) as tags
       FROM memory m
       LEFT JOIN memory_tags mt ON m.id = mt.memory_id
@@ -75,7 +94,7 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
     .bind(teamId, category, category)
     .all()
 
-  const results = rows.results.map((m: any) => ({ ...m, tags: JSON.parse(m.tags || '[]') }))
+  const results = rows.results.map((m: any) => withDeleteRights(m, role, auth.userId))
   return json({ memory: results })
 }
 
@@ -85,7 +104,8 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
   const teamId = parts[2]
   const memoryId = parts[4]
 
-  if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
+  const role = await memberRole(env.DB, teamId, auth.userId)
+  if (!role) return err('not_found', 404)
 
   const row = await env.DB
     .prepare(`
@@ -101,8 +121,31 @@ export async function get(req: Request, env: Env, _ctx: unknown, auth: AuthConte
 
   if (!row) return err('not_found', 404)
 
-  row.tags = JSON.parse(row.tags || '[]')
-  return json(row)
+  return json(withDeleteRights(row, role, auth.userId))
+}
+
+// DELETE /teams/:teamId/memory/:memoryId — owners and maintainers can delete any memory;
+// other members only memory pushed by one of their own agents (created_by_user_id).
+export async function remove(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {
+  const parts = new URL(req.url).pathname.split('/')
+  const teamId = parts[2]
+  const memoryId = parts[4]
+
+  const role = await memberRole(env.DB, teamId, auth.userId)
+  if (!role) return err('not_found', 404)
+
+  const row = await env.DB
+    .prepare('SELECT created_by_user_id FROM memory WHERE id = ? AND team_id = ?')
+    .bind(memoryId, teamId)
+    .first<{ created_by_user_id: string | null }>()
+  if (!row) return err('not_found', 404)
+  if (!canDelete(role, row.created_by_user_id, auth.userId)) return err('forbidden', 403)
+
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM memory_tags WHERE memory_id = ?').bind(memoryId),
+    env.DB.prepare('DELETE FROM memory WHERE id = ? AND team_id = ?').bind(memoryId, teamId),
+  ])
+  return json({ ok: true })
 }
 
 // GET /teams/:teamId/rollups?period=daily|weekly — daily/weekly memory_rollup
@@ -174,8 +217,8 @@ export async function daemonPush(req: Request, env: Env, _ctx: unknown, d: Daemo
 
   const id = ulid()
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO memory (id, team_id, agent_id, category, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, teamId, agentId, category, title.trim(), content, now, now),
+    env.DB.prepare('INSERT INTO memory (id, team_id, agent_id, category, title, content, created_at, updated_at, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, teamId, agentId, category, title.trim(), content, now, now, d.userId),
     ...tagIds.map(tagId =>
       env.DB.prepare('INSERT INTO memory_tags (memory_id, tag_id) VALUES (?, ?)').bind(id, tagId)
     ),

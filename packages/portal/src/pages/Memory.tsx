@@ -193,6 +193,10 @@ export function Memory({ teamId, currentTeam }: { teamId: string; currentTeam: T
             allMemory={entries}
             onClose={() => setSelected(null)}
             onSelect={setSelected}
+            onDeleted={id => {
+              setEntries(prev => prev.filter(m => m.id !== id))
+              setSelected(null)
+            }}
           />
         </div>
       )}
