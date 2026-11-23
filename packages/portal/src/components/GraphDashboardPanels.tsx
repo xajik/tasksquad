@@ -116,16 +116,24 @@ function Candidates({ graph, inspect }: { graph: GraphSnapshot; inspect: (id: st
   const byId = new Map(graph.assignments.map((a) => [a.id, a]))
   const weights = new Map(data.candidates.map((c) => [c.assignment_id, c]))
   const heap = data.heap.map((id) => byId.get(id)!).filter(Boolean)
-  const candidate = byId.get(selected && weights.has(selected) ? selected : (heap[0]?.id ?? ''))
+  const candidate = byId.get(selected && byId.has(selected) ? selected : (heap[0]?.id ?? ''))
   const details = candidate && weights.get(candidate.id)
-  // Binary heap array positions, not a sorted ranking. Every parent is >= its children.
-  const visibleHeap = heap.slice(0, 15)
-  const maxDepth = Math.max(0, Math.floor(Math.log2(Math.max(1, visibleHeap.length))))
-  const position = (i: number) => {
-    const depth = Math.floor(Math.log2(i + 1)),
-      offset = i - (2 ** depth - 1)
-    return { x: ((offset + 0.5) / 2 ** depth) * 960, y: depth * 88 + 42 }
-  }
+  // Heatmap cells: every available candidate plus whatever is running right now,
+  // hottest (highest weight) first. Running work keeps its weight when it still has
+  // one, otherwise its priority, so it stays visible beside what runs next.
+  const runningIds = new Set(
+    graph.attempts.filter((t) => ['pending', 'running'].includes(t.status)).map((t) => t.assignment_id)
+  )
+  const cellWeight = (a: GraphAssignment) => weights.get(a.id)?.weight ?? a.priority
+  const cellIds = new Set([...heap.map((a) => a.id), ...runningIds])
+  const cells = [...cellIds]
+    .map((id) => byId.get(id))
+    .filter((a): a is GraphAssignment => !!a)
+    .sort((a, b) => cellWeight(b) - cellWeight(a) || a.id.localeCompare(b.id))
+  const visibleCells = cells.slice(0, 60)
+  const maxWeight = Math.max(0.0001, ...cells.map(cellWeight))
+  const minWeight = Math.min(maxWeight, ...cells.map(cellWeight))
+  const heat = (w: number) => (maxWeight === minWeight ? 1 : (w - minWeight) / (maxWeight - minWeight))
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -148,95 +156,63 @@ function Candidates({ graph, inspect }: { graph: GraphSnapshot; inspect: (id: st
       </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <DashboardPanel
-          title="Execution max heap"
-          description="Live scheduler weights. Select a candidate to inspect its evidence and dispatch gate."
+          title="Candidate heatmap"
+          description="Work valued most to run next, hottest first, including what is running now. Select a cell to inspect its evidence and dispatch gate."
         >
-          {heap.length ? (
-            <div className="max-h-[480px] overflow-auto rounded-md bg-muted/20">
-              <svg
+          {cells.length ? (
+            <>
+              <div
                 role="group"
-                aria-label="Candidate max heap"
-                viewBox={`0 0 960 ${(maxDepth + 1) * 88}`}
-                className="w-full"
-                style={{ minWidth: 640 }}
+                aria-label="Candidate heatmap"
+                className="grid max-h-[480px] grid-cols-2 gap-2 overflow-auto sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5"
               >
-                {visibleHeap.slice(1).map((a, index) => {
-                  const p = position(Math.floor(index / 2)),
-                    c = position(index + 1)
+                {visibleCells.map((a, i) => {
+                  const w = cellWeight(a),
+                    running = runningIds.has(a.id),
+                    isSelected = candidate?.id === a.id,
+                    t = heat(w)
                   return (
-                    <line
+                    <button
                       key={a.id}
-                      x1={p.x}
-                      y1={p.y + 20}
-                      x2={c.x}
-                      y2={c.y - 20}
-                      className="stroke-border"
-                      strokeWidth="2"
-                    />
-                  )
-                })}
-                {visibleHeap.map((a, i) => {
-                  const p = position(i),
-                    w = weights.get(a.id)!,
-                    isSelected = candidate?.id === a.id
-                  return (
-                    <g
-                      key={a.id}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`${assignmentTitle(graph, a)}, weight ${w.weight}`}
+                      type="button"
                       aria-pressed={isSelected}
+                      aria-label={`${assignmentTitle(graph, a)}, weight ${score(w)}${running ? ', running now' : ''}`}
+                      title={`${assignmentTitle(graph, a)} · ${running ? 'Running now' : (graph.waiting?.[a.id]?.message ?? 'Eligibility pending')}`}
                       onClick={() => setSelected(a.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          setSelected(a.id)
-                        }
-                      }}
-                      className="cursor-pointer focus:outline focus:outline-2 focus:outline-primary"
-                      transform={`translate(${p.x},${p.y})`}
+                      style={{ backgroundColor: `hsl(24 95% 53% / ${(0.12 + 0.6 * t).toFixed(2)})` }}
+                      className={`min-w-0 rounded-md border p-2 text-left transition focus:outline focus:outline-2 focus:outline-primary ${
+                        isSelected ? 'ring-2 ring-primary' : ''
+                      } ${running ? 'border-green-600 ring-1 ring-green-600' : 'border-border'}`}
                     >
-                      <title>
-                        {assignmentTitle(graph, a)} ·{' '}
-                        {graph.waiting?.[a.id]?.message ?? 'Eligibility pending'}
-                      </title>
-                      <rect
-                        x="-43"
-                        y="-23"
-                        width="86"
-                        height="46"
-                        rx="8"
-                        className={isSelected ? 'fill-primary stroke-primary' : 'fill-card stroke-border'}
-                      />
-                      <text
-                        textAnchor="middle"
-                        y="-1"
-                        className={isSelected ? 'fill-primary-foreground' : 'fill-foreground'}
-                        fontSize="15"
-                        fontWeight="600"
-                      >
-                        {score(w.weight)}
-                      </text>
-                      <text
-                        textAnchor="middle"
-                        y="15"
-                        className={isSelected ? 'fill-primary-foreground' : 'fill-muted-foreground'}
-                        fontSize="11"
-                      >
-                        Candidate {i + 1}
-                      </text>
-                    </g>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-base font-semibold tabular-nums">{score(w)}</span>
+                        <span className="text-[10px] text-muted-foreground">#{i + 1}</span>
+                      </div>
+                      <p className="truncate text-xs font-medium">{assignmentTitle(graph, a)}</p>
+                      <p className="truncate text-[10px] text-muted-foreground">
+                        {running ? '● Running now' : a.role}
+                      </p>
+                    </button>
                   )
                 })}
-              </svg>
-            </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span>Cooler</span>
+                <span
+                  className="h-2 w-24 rounded"
+                  style={{ background: 'linear-gradient(90deg, hsl(24 95% 53% / .12), hsl(24 95% 53% / .72))' }}
+                />
+                <span>Hotter (higher weight)</span>
+                <span className="ml-3 inline-block h-2 w-2 rounded-full bg-green-600" /> Running now
+              </div>
+            </>
           ) : (
-            <Empty>No execution candidates are currently in the heap.</Empty>
+            <Empty>No candidates are waiting or running right now.</Empty>
           )}
-          {heap.length > visibleHeap.length && (
+          {cells.length > visibleCells.length && (
             <p className="mt-3 text-xs text-muted-foreground">
-              Showing the first {visibleHeap.length} of {heap.length} heap entries. All candidates appear in
-              the weight list below.
+              Showing the hottest {visibleCells.length} of {cells.length}. All candidates appear in the weight
+              list below.
             </p>
           )}
         </DashboardPanel>
@@ -244,7 +220,21 @@ function Candidates({ graph, inspect }: { graph: GraphSnapshot; inspect: (id: st
           title="Weight inspector"
           description="Heuristic priority, not a probability of success."
         >
-          {candidate && details ? (
+          {candidate && !details ? (
+            <div className="space-y-3 text-sm">
+              <h4 className="font-medium">{assignmentTitle(graph, candidate)}</h4>
+              <p className="break-all text-xs text-muted-foreground">{candidate.id}</p>
+              <p className="rounded-md bg-muted p-3">
+                Running now — no longer competing for dispatch, so it has no live weight.
+              </p>
+              {candidate.node_id && (
+                <Button variant="outline" size="sm" onClick={() => inspect(candidate.node_id!)}>
+                  Inspect on graph
+                </Button>
+              )}
+              <TaskLink graph={graph} assignment={candidate} />
+            </div>
+          ) : candidate && details ? (
             <div className="space-y-4 text-sm">
               <h4 className="font-medium">{assignmentTitle(graph, candidate)}</h4>
               <p className="break-all text-xs text-muted-foreground">{candidate.id}</p>
