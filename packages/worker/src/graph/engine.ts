@@ -1652,6 +1652,20 @@ export async function parkFailedReviews(db: D1Database, g: Graph): Promise<void>
      AND NOT EXISTS(SELECT 1 FROM graph_attempts t WHERE t.assignment_id=a.id AND t.status IN ('pending','running'))`,
     g.id
   )
+  // Standalone reviews (e.g. decomposition reviews) own a serial-queue entry keyed by their own assignment id
+  // and have no grading row. Once exhausted they must release the queue head as well.
+  await sql(
+    db,
+    `UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='assignment' AND status='pending'
+     AND work_id IN (SELECT a.id FROM graph_assignments a WHERE a.graph_id=? AND a.role IN ('grade','project')
+       AND a.status IN ('blocked','error') AND a.attempt_count>=a.max_attempts
+       AND NOT EXISTS(SELECT 1 FROM graph_grading gr WHERE gr.assignment_id=a.id)
+       AND NOT EXISTS(SELECT 1 FROM graph_assignments child WHERE child.parent_id=a.id
+         AND child.role IN ('repair','continue') AND child.status IN ('pending','running','review'))
+       AND NOT EXISTS(SELECT 1 FROM graph_attempts t WHERE t.assignment_id=a.id AND t.status IN ('pending','running')))`,
+    g.id,
+    g.id
+  ).run()
   for (const review of failed)
     await commit(db, g, 'review_blocked', review.assignment_id, { grading_sequence: review.sequence }, [
       sql(db, "UPDATE graph_grading SET status='blocked' WHERE sequence=?", review.sequence),
@@ -1669,7 +1683,12 @@ async function recoverReview(db: D1Database, g: Graph, assignmentId: string, ret
     "SELECT sequence,execution_result_id FROM graph_grading WHERE graph_id=? AND assignment_id=? AND status IN ('pending','running','blocked')",
     g.id, a.id
   ).first<{ sequence: number; execution_result_id: string }>()
-  if (!review) throw new Error('This step no longer owns an unfinished execution review')
+  const standalone = review
+    ? null
+    : await sql(db,
+        "SELECT 1 AS x FROM graph_serial_queue WHERE graph_id=? AND kind='assignment' AND work_id=?", g.id, a.id
+      ).first()
+  if (!review && !standalone) throw new Error('This step no longer owns an unfinished execution review')
   const active = await sql(db,
     `SELECT 1 FROM graph_attempts t JOIN graph_assignments x ON x.id=t.assignment_id
      WHERE t.status IN ('pending','running') AND (x.id=? OR x.parent_id=?)
@@ -1683,13 +1702,18 @@ async function recoverReview(db: D1Database, g: Graph, assignmentId: string, ret
   const ops = [
     ...(next?.statements ?? []),
     sql(db, "UPDATE graph_assignments SET status='cancelled',cancel_reason=? WHERE id=?", retry ? 'review_retried' : 'review_cancelled', a.id),
-    sql(db, 'UPDATE graph_grading SET assignment_id=?,status=? WHERE sequence=?', next?.id ?? a.id, retry ? 'running' : 'cancelled', review.sequence),
-    sql(db, "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='execution' AND work_id=?", g.id, review.execution_result_id)
+    ...(review ? [
+      sql(db, 'UPDATE graph_grading SET assignment_id=?,status=? WHERE sequence=?', next?.id ?? a.id, retry ? 'running' : 'cancelled', review.sequence),
+      sql(db, "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='execution' AND work_id=?", g.id, review.execution_result_id)
+    ] : [
+      sql(db, "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='assignment' AND work_id=?", g.id, a.id)
+    ])
   ]
-  if (next) ops.push(
-    sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'execution',?,?)", g.id, review.execution_result_id, Date.now()))
+  if (next) ops.push(review
+    ? sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'execution',?,?)", g.id, review.execution_result_id, Date.now())
+    : sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'assignment',?,?)", g.id, next.id, Date.now()))
   await commit(db, g, retry ? 'review_retried' : 'review_cancelled', a.id,
-    { retry: next?.id ?? null, grading_sequence: review.sequence, user_id: userId ?? null, grading_verified: false }, ops)
+    { retry: next?.id ?? null, grading_sequence: review?.sequence ?? null, user_id: userId ?? null, grading_verified: false }, ops)
   await syncInboxStatus(db, g)
 }
 
