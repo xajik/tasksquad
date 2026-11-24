@@ -3,9 +3,9 @@ name: Deploy Portal
 on:
   push:
     branches: [main]
-    paths: ['packages/portal/**']
+    paths: ['packages/portal/**', 'packages/worker/src/graph/default-policy.json']
   pull_request:
-    paths: ['packages/portal/**']
+    paths: ['packages/portal/**', 'packages/worker/src/graph/default-policy.json']
 
 jobs:
   deploy:
