@@ -61,15 +61,6 @@ export interface Result {
   status: string
   created_at: number
 }
-export interface Node {
-  id: string
-  graph_id: string
-  kind: string
-  title: string
-  description: string
-  body: string
-  created_at: number
-}
 export type Data = Record<string, unknown>
 export const id = () => ulid()
 export const json = (value: unknown) => JSON.stringify(value)

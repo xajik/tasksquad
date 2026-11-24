@@ -304,14 +304,6 @@ export async function run(db: D1Database, graphId: string, command: string, body
   const status = command === 'run' ? 'running' : command === 'pause' ? 'paused' : 'stopped'
   const ops: D1PreparedStatement[] = [sql(db, 'UPDATE graphs SET status=? WHERE id=?', status, g.id)]
   if (command === 'run') {
-    ops.push(
-      sql(
-        db,
-        "UPDATE graph_assignments SET status='pending',cancel_reason=NULL,available_at=? WHERE graph_id=? AND status='cancelled' AND cancel_reason='stop'",
-        Date.now(),
-        g.id
-      )
-    )
     // Edges published while paused never received an execute assignment; create them on resume.
     const orphaned = await rows<Data>(
       db,
@@ -410,26 +402,6 @@ export async function run(db: D1Database, graphId: string, command: string, body
     )
   }
   await commit(db, g, command, null, {}, ops)
-}
-
-export async function bindAttempt(
-  db: D1Database,
-  taskId: string,
-  agentId: string,
-  sessionId: string
-): Promise<boolean> {
-  const attempt = await sql(db, 'SELECT * FROM graph_attempts WHERE task_id=?', taskId).first<Attempt>()
-  if (!attempt) return false
-  if (attempt.agent_id !== agentId || attempt.status !== 'pending' || attempt.session_id)
-    throw new Error('Unexpected graph run')
-  const res = await sql(
-    db,
-    "UPDATE graph_attempts SET session_id=?,status='running' WHERE id=? AND status='pending' AND session_id IS NULL",
-    sessionId,
-    attempt.id
-  ).run()
-  if (!res.meta.changes) throw new Error('Graph run already bound')
-  return true
 }
 
 /** Must be included in session-open's DB batch, so session FK and attempt bind are atomic. */
