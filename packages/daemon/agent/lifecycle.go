@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"al.essio.dev/pkg/shellescape"
 	"github.com/tasksquad/daemon/agentmode"
 	"github.com/tasksquad/daemon/analytics"
 	"github.com/tasksquad/daemon/auth"
@@ -20,6 +20,42 @@ import (
 	"github.com/tasksquad/daemon/tasklog"
 	"github.com/tasksquad/daemon/tmux"
 )
+
+// tmux's command messages are size-limited. Expand the CLI's initial arguments
+// inside the pane so the full prompt is queued by the CLI even on a trust screen.
+func startTaskSession(session, directory string, environment, command, initialArgs []string) error {
+	args := []string{"new-session", "-d", "-s", session, "-c", directory}
+	for _, entry := range environment {
+		args = append(args, "-e", entry)
+	}
+	args = append(args, "--")
+	var launcher string
+	if len(initialArgs) > 0 {
+		f, err := os.CreateTemp("", "tsq-launch-*.sh")
+		if err != nil {
+			return err
+		}
+		launcher = f.Name()
+		_, err = f.WriteString("rm -f -- \"$0\" || exit 1\nexec \"$@\" " + shellescape.QuoteCommand(initialArgs) + "\n")
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			os.Remove(launcher)
+			return err
+		}
+		args = append(args, "/bin/sh", launcher)
+	}
+	cmd := exec.Command(tmuxBin, append(args, command...)...)
+	cmd.Env = append(os.Environ(), environment...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		if launcher != "" {
+			os.Remove(launcher)
+		}
+		return fmt.Errorf("tmux new-session: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
 
 // buildConversationPrompt constructs the prompt to send to the CLI provider.
 // For a fresh task (single message), it uses that message directly.
@@ -269,10 +305,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	if resumeID != "" {
 		args = a.prov.(provider.Resumer).ResumeArgs(args, resumeID)
 	}
-	promptInArgs := false
+	var initialArgs []string
 	if initial, ok := a.prov.(interface{ InitialPromptArgs(string) []string }); ok {
-		args = append(args, initial.InitialPromptArgs(provider.FormatPrompt(a.prov, prompt))...)
-		promptInArgs = true
+		initialArgs = initial.InitialPromptArgs(provider.FormatPrompt(a.prov, prompt))
 	}
 	cmd := exec.Command(parts[0], args...)
 	cmd.Dir = a.Config.WorkDir
@@ -317,24 +352,9 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 			return
 		}
 
-		cmdParts := append([]string{parts[0]}, args...)
-		newSessionArgs := []string{"new-session", "-d", "-s", sessionName, "-c", a.Config.WorkDir}
-		for _, entry := range provEnv {
-			newSessionArgs = append(newSessionArgs, "-e", entry)
-		}
-		newSessionArgs = append(newSessionArgs, "--")
-		newSessionArgs = append(newSessionArgs, cmdParts...)
-		tmuxCmd := exec.Command(tmuxBin, newSessionArgs...)
-		if len(provEnv) > 0 {
-			tmuxCmd.Env = append(os.Environ(), provEnv...)
-		} else {
-			tmuxCmd.Env = os.Environ()
-		}
-		var tmuxStderr bytes.Buffer
-		tmuxCmd.Stderr = &tmuxStderr
-
-		if err := tmuxCmd.Run(); err != nil {
-			logger.Error(fmt.Sprintf("[%s] tmux new-session failed: %v stderr=%q — cannot start task", a.Config.Name, err, tmuxStderr.String()))
+		if err := startTaskSession(sessionName, a.Config.WorkDir, provEnv, cmd.Args, initialArgs); err != nil {
+			logger.Error(fmt.Sprintf("[%s] tmux launch failed: %v", a.Config.Name, err))
+			a.SetHookMessage(fmt.Sprintf("Task could not start: %v", err))
 			os.Remove(fifoPath)
 			close(outputDone)
 			a.complete(cfg, string(agentmode.StatusCrashed))
@@ -357,12 +377,10 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 
 		exec.Command(tmuxBin, "pipe-pane", "-t", sessionName, "cat > "+fifoPath).Run() //nolint:errcheck
 
-		if !promptInArgs {
+		if len(initialArgs) == 0 {
 			tmux.WaitForReady()
+			tmux.SendPrompt(sessionName, stdinData) //nolint:errcheck
 		}
-		if !promptInArgs {
-			tmux.SendPrompt(sessionName, stdinData)
-		} //nolint:errcheck
 
 		logger.Info(fmt.Sprintf("[%s] tmux session started — attach: tmux attach-session -t %s", a.Config.Name, sessionName))
 

@@ -43,9 +43,27 @@ struct TmuxTaskSession: Sendable {
         fifoPath = "/tmp/tsq-portal-\(suffix).fifo"
     }
 
-    func start(command: [String], directory: String, environment: [String: String]) async throws {
+    func start(command: [String], initialArguments: [String] = [], directory: String, environment: [String: String]) async throws {
         let variables = environment.sorted { $0.key < $1.key }.flatMap { ["-e", "\($0.key)=\($0.value)"] }
-        _ = try await tmux.run(["new-session", "-d", "-s", name, "-c", directory] + variables + ["--"] + command)
+        let args = ["new-session", "-d", "-s", name, "-c", directory] + variables + ["--"]
+        guard !initialArguments.isEmpty else {
+            _ = try await tmux.run(args + command)
+            return
+        }
+        // Keep initial prompt arguments out of tmux's size-limited command message.
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("tsq-launch-\(UUID().uuidString).sh")
+        let fd = open(file.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        do {
+            let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+            let script = "rm -f -- \"$0\" || exit 1\nexec \"$@\" " + initialArguments.map(Supervisor.shellQuote).joined(separator: " ") + "\n"
+            try handle.write(contentsOf: Data(script.utf8))
+            try handle.close()
+            _ = try await tmux.run(args + ["/bin/sh", file.path] + command)
+        } catch {
+            try? FileManager.default.removeItem(at: file)
+            throw error
+        }
     }
 
     /// Creates the FIFO, attaches pipe-pane, and returns a stream of pane output

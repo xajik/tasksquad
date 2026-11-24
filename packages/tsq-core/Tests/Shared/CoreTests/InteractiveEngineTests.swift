@@ -81,6 +81,21 @@ private actor InteractiveWorker {
         return TmuxConnection(executable: executable, socketPath: "/tmp/tsq-engine-test-" + UUID().uuidString.prefix(8) + ".sock")
     }
 
+    func testLargeInitialPromptReachesInteractiveCLIIntact() async throws {
+        let tmux = try tmuxConnection()
+        let session = try TmuxTaskSession(tmux: tmux, sessionID: "large-prompt")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let prompt = String(repeating: "goal: '猫' $(exit 9) `literal`\n", count: 1100) + "\n"
+        let command = ["/bin/sh", "-c", #"test -t 0 && test "$1" = resume && test "$2" = -- && printf %s "$3" > received && mv received done"#, "fake-codex", "resume"]
+        try await session.start(command: command, initialArguments: ProviderKind.codex.initialPromptArguments(prompt),
+                                directory: dir.path, environment: [:])
+        let done = dir.appendingPathComponent("done")
+        try await wait { FileManager.default.fileExists(atPath: done.path) }
+        XCTAssertEqual(try Data(contentsOf: done), Data(prompt.utf8))
+    }
+
     private func freePort() async throws -> Int {
         let probe = try LocalHTTPServer { _ in .init() }
         let port = try await probe.start()

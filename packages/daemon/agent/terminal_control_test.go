@@ -22,6 +22,50 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+func TestTmuxLaunchWithLargeInitialPrompt(t *testing.T) {
+	realTmux, err := exec.LookPath("tmux")
+	if err != nil {
+		t.Skip("tmux unavailable")
+	}
+	dir := t.TempDir()
+	socket := "tsq-launch-" + uuid.NewString()
+	wrapper := filepath.Join(dir, "tmux")
+	if err := os.WriteFile(wrapper, []byte("#!/bin/sh\nexec "+shellescape.Quote(realTmux)+" -f /dev/null -L "+socket+" \"$@\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	oldTmux := tmuxBin
+	tmuxBin = wrapper
+	t.Cleanup(func() { tmuxBin = oldTmux; exec.Command(wrapper, "kill-server").Run() })
+	t.Setenv("TMPDIR", dir)
+	prompt := strings.Repeat("goal: '猫' $(exit 9) `literal`\n", 1100) + "\n"
+	command := []string{"/bin/sh", "-c", `test -t 0 && test "$1" = resume && test "$2" = -- && printf %s "$3" > received && mv received done`, "fake-codex", "resume"}
+	if err := startTaskSession("tsq-launch", dir, nil, command, []string{"--", prompt}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		data, err := os.ReadFile(filepath.Join(dir, "done"))
+		if err == nil {
+			if string(data) != prompt {
+				t.Fatal("initial prompt changed")
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// A failed tmux start must also discard its private launcher.
+	tmuxBin = "/usr/bin/false"
+	if err := startTaskSession("tsq-fail", dir, nil, command, []string{"--", prompt}); err == nil {
+		t.Fatal("expected launch failure")
+	}
+	if files, _ := filepath.Glob(filepath.Join(dir, "tsq-launch-*.sh")); len(files) != 0 {
+		t.Fatalf("launcher left behind: %v", files)
+	}
+}
+
 func TestManagedTerminalTwoTurnsAndScopedClose(t *testing.T) {
 	realTmux, err := exec.LookPath("tmux")
 	if err != nil {
