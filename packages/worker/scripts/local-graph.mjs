@@ -634,7 +634,7 @@ try {
         ]
           .map(
             ([id, name]) =>
-              `[[agents]]\nid = "${id}"\nname = "${name}"\ncommand = "node ${adapter}${id === ids.grader ? ' --read-only' : ''}"\nprovider = "stdout"\nwork_dir = "${sandbox}"\n`
+              `[[agents]]\nid = ${JSON.stringify(id)}\nname = ${JSON.stringify(name)}\ncommand = ${JSON.stringify(`node ${adapter}${id === ids.grader ? ' --read-only' : ''}`)}\nprovider = "stdout"\nwork_dir = ${JSON.stringify(sandbox)}\n`
           )
           .join(''),
       { mode: 0o600 }

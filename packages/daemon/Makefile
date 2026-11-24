@@ -27,7 +27,7 @@ build-local-graph:
 	go build -o ../../.runtime/action-graph-local/local-daemon ./scripts/local-graph-daemon
 
 format-local-graph:
-	gofmt -w config/config.go logger/logger.go tasklog/tasklog.go hookauth/auth.go scripts/local-graph-daemon/main.go config/config_test.go provider/claw_test.go
+	gofmt -w agent/graph_agent.go agent/graph_agent_test.go config/config.go logger/logger.go tasklog/tasklog.go hookauth/auth.go scripts/local-graph-daemon/main.go config/config_test.go provider/claw_test.go
 
 build-all:
 	mkdir -p dist
