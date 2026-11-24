@@ -236,8 +236,8 @@ export function nodeStatements(
 }
 
 export async function create(db: D1Database, teamId: string, ownerId: string, data: Data): Promise<Graph> {
-  const p = policy(data.policy as Partial<Policy>),
-    rule = data.rule as Rule
+  const p = policy(data.policy as Partial<Policy>)
+  let rule = data.rule as Rule
   if (
     !rule ||
     !['AND', 'OR'].includes(rule.op) ||
@@ -249,6 +249,8 @@ export async function create(db: D1Database, teamId: string, ownerId: string, da
     !rule.scope.trim()
   )
     throw new Error('A nonempty scoped sufficient success rule is required')
+  // Evidence text is NFC-normalized when parsed, so the stored rule must be too or it can never match.
+  rule = { ...rule, predicates: rule.predicates.map((x) => x.normalize('NFC')), scope: rule.scope.normalize('NFC') }
   for (const [key, max] of [
     ['title', 299],
     ['description', 299],

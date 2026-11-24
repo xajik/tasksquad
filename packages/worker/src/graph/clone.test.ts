@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, describe, it, expect } from 'vitest'
 import { db, fixture, setupGraphHarness, teardownGraphHarness } from './test-harness.js'
-import { rows } from './store.js'
+import { rows, create, configuration } from './store.js'
 import { run } from './engine.js'
 import { resource } from './mutations.js'
 import { clone } from './clone.js'
@@ -30,5 +30,22 @@ describe('graph clone', () => {
     expect(copied.map((r) => r.body)).toEqual(['v1', 'v2'])
     expect(copied[0].supersedes_id).toBeNull()
     expect(copied[1].supersedes_id).toBe(copied[0].id)
+  })
+})
+
+describe('graph create', () => {
+  it('stores the success rule NFC-normalized so evidence can match it', async () => {
+    const f = await fixture()
+    const made = await create(db, f.team, f.user, {
+      title: 'Goal',
+      description: '',
+      body: 'Target',
+      start_state: 'Baseline',
+      rule: { op: 'AND', predicates: ['café'], scope: 'café' },
+      policy: { agents: [f.agent], grader: f.agent, decomposer: f.agent, review: false }
+    })
+    const { rule } = await configuration(db, made)
+    expect(rule.predicates).toEqual(['café'])
+    expect(rule.scope).toBe('café')
   })
 })
