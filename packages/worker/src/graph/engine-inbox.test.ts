@@ -244,6 +244,27 @@ describe('graph inbox, review and access', () => {
     ).toBe('running')
   })
 
+  it('retires an ungraded blocked result and dispatches an explicitly requested regrade', async () => {
+    const { g, agent } = await preparedExecution()
+    const { attempt } = await deliver(g.id, agent, JSON.stringify({
+      outcome: 'blocked', title: 'Needs input', description: '', body: '', evidence: [], actual_cost: 0
+    }))
+    await tick(env(), g.id)
+    const result = await sql(db, 'SELECT id FROM graph_results WHERE attempt_id=?', attempt.id).first<{ id: string }>()
+    const revisions = () => rows(db, 'SELECT revision,status FROM graph_grading WHERE execution_result_id=? ORDER BY revision', result!.id)
+    expect(await revisions()).toEqual([{ revision: 1, status: 'cancelled' }])
+
+    // Existing graphs can already have a closed queue entry with a pending first revision.
+    await sql(db, "UPDATE graph_grading SET status='pending' WHERE execution_result_id=?", result!.id).run()
+    await tick(env(), g.id)
+    expect(await revisions()).toEqual([{ revision: 1, status: 'cancelled' }])
+    await run(db, g.id, 'regrade', { execution_result_id: result!.id })
+    await tick(env(), g.id)
+    expect(await revisions()).toEqual([{ revision: 1, status: 'cancelled' }, { revision: 2, status: 'running' }])
+    expect(await rows(db, "SELECT role FROM graph_assignments WHERE graph_id=? AND status='running'", g.id))
+      .toEqual([{ role: 'grade' }])
+  })
+
   it.each(['blocked', 'error'])('parks a %s continuation without retrying it or blocking later reviews', async (status) => {
     const { g } = await fixture(false)
     const original = await assignment(db, g, 'execute', { plan: {} })
