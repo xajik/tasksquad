@@ -137,7 +137,7 @@ export async function clone(
     ops.push(
       sql(
         db,
-        'INSERT INTO graph_resources(id,graph_id,version,title,description,body,visibility,r2_key,created_at) VALUES(?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO graph_resources(id,graph_id,version,title,description,body,visibility,r2_key,created_at,supersedes_id) VALUES(?,?,?,?,?,?,?,?,?,?)',
         resMap.get(r.id as string),
         g.id,
         r.version,
@@ -146,7 +146,8 @@ export async function clone(
         r.body,
         r.visibility,
         r.r2_key,
-        now
+        now,
+        r.supersedes_id ? (resMap.get(r.supersedes_id as string) ?? null) : null
       )
     )
   for (const l of links) {
