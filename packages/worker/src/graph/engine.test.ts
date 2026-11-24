@@ -12,22 +12,12 @@ import {
   teardownGraphHarness,
   restartGraphHarness
 } from './test-harness.js'
-import {
-  graph,
-  configuration,
-  sql,
-  rows,
-  snapshot,
-  resource,
-  commit,
-  assignment,
-  nodeStatements,
-  type Assignment,
-  type Result
-} from './store.js'
+import { graph, configuration, sql, rows, commit, assignment, nodeStatements, type Assignment, type Result } from './store.js'
+import { snapshot } from './snapshot.js'
+import { resource } from './mutations.js'
 import { materialize, embeddingChunks } from './outbox.js'
 import { search } from './search.js'
-import { clone } from './store.js'
+import { clone } from './clone.js'
 import { maintenance } from './maintenance.js'
 import { dispatchContext } from './eligibility.js'
 import { run, tick, dispatch, intake, bindStatement, processResults, advanceGrading, sessionFraming } from './engine.js'

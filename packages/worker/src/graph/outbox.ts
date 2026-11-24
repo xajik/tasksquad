@@ -1,6 +1,7 @@
 import { hash } from './contracts.js'
 import type { Env } from '../types.js'
-import { graph, rows, snapshot, sql, type Data } from './store.js'
+import { graph, rows, sql, type Data } from './store.js'
+import { snapshot } from './snapshot.js'
 
 export async function materialize(env: Env, graphId: string): Promise<void> {
   const g = await graph(env.DB, graphId),

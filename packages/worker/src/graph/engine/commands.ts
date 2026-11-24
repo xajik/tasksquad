@@ -1,6 +1,7 @@
 import { policy as normalize, type Policy } from '../contracts.js'
 import { isReview } from '../roles.js'
-import { annotate, assignment, commit, configuration, graph, json, resource, rows, sql, type Assignment, type Data, type Result } from '../store.js'
+import { assignment, commit, configuration, graph, json, rows, sql, type Assignment, type Data, type Result } from '../store.js'
+import { annotate, resource } from '../mutations.js'
 import { accept } from './accept.js'
 import { recoverReview } from './grading.js'
 import { abandonAssignment, dismissStale, failAssignment } from './owner.js'

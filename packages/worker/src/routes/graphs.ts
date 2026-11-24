@@ -3,7 +3,9 @@ import type { Env, AuthContext } from '../types.js'
 import { json, err } from '../auth.js'
 import { requireMember, requireMaintainer } from './helpers.js'
 import { search } from '../graph/search.js'
-import { clone, create, graph, snapshot, rows, type Data } from '../graph/store.js'
+import { create, graph, rows, type Data } from '../graph/store.js'
+import { clone } from '../graph/clone.js'
+import { snapshot } from '../graph/snapshot.js'
 
 export async function handle(
   req: Request,
