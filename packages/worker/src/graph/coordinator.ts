@@ -8,6 +8,7 @@ import { graph, type Data } from './store.js'
 
 export class GraphCoordinator extends DurableObject<Env> {
   private tail: Promise<unknown> = Promise.resolve()
+  private team: unknown
   private serial<T>(work: () => Promise<T>): Promise<T> {
     const next = this.tail.then(work)
     this.tail = next.catch(() => undefined)
@@ -20,7 +21,10 @@ export class GraphCoordinator extends DurableObject<Env> {
         !COMMANDS_WHEN_DISABLED.includes(command)
       )
         throw new Error('Action Graph dispatch is disabled')
-      await this.ctx.storage.put('team_id', body.team_id)
+      if (this.team !== body.team_id) {
+        await this.ctx.storage.put('team_id', body.team_id)
+        this.team = body.team_id
+      }
       await this.ctx.storage.setAlarm(Date.now() + 30_000)
       if (command !== 'tick') await run(this.env.DB, graphId, command, body)
       await maintenance(this.env, graphId)
@@ -52,8 +56,11 @@ export class GraphCoordinator extends DurableObject<Env> {
                 continue
               }
             }
-            await maintenance(this.env, g.id)
-            await tick(this.env, g.id)
+            // A draft has never run: no work to schedule, only its snapshot to materialize.
+            if (g.status !== 'draft') {
+              await maintenance(this.env, g.id)
+              await tick(this.env, g.id)
+            }
             await materialize(this.env, g.id)
           } catch (error) {
             console.error(
