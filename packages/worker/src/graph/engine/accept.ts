@@ -43,13 +43,14 @@ export async function evidenceStatements(
       throw new Error('Evidence freshness invalid')
     // Agents pick evidence IDs, but the primary key is global: a later step reusing "ev1" must not
     // block acceptance. Downstream readers take IDs from the stored rows, so mint a fresh one.
-    let evidenceId = e.id as string
-    if (await sql(db, 'SELECT id FROM graph_evidence WHERE id=?', evidenceId).first()) evidenceId = id()
     ops.push(
       sql(
         db,
-        'INSERT INTO graph_evidence(id,graph_id,node_id,source_result_id,predicate,value,scope,observed_at,expires_at,resource_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
-        evidenceId,
+        `INSERT INTO graph_evidence(id,graph_id,node_id,source_result_id,predicate,value,scope,observed_at,expires_at,resource_id,created_at)
+         VALUES(CASE WHEN EXISTS(SELECT 1 FROM graph_evidence WHERE id=?) THEN ? ELSE ? END,?,?,?,?,?,?,?,?,?,?)`,
+        e.id,
+        id(),
+        e.id,
         g.id,
         node,
         r.id,

@@ -353,11 +353,17 @@ describe('graph execution workflow', () => {
         title: 'Observed',
         description: '',
         body: 'Observation',
-        evidence: [evidence],
+        evidence: [evidence, { ...evidence, predicate: 'second observation' }],
         actual_cost: 1
       })
     )
     await tick(env(), g.id)
+    const observations = await rows<{ id: string; predicate: string }>(db,
+      'SELECT id,predicate FROM graph_evidence WHERE graph_id=?', g.id)
+    expect(observations).toContainEqual({ id: evidence.id, predicate: 'verified' })
+    expect(observations.find((e) => e.predicate === 'second observation')?.id).toEqual(expect.any(String))
+    expect(new Set(observations.map((e) => e.id)).size).toBe(2)
+
     await deliver(
       g.id,
       grader,
