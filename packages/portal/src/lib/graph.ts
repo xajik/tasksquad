@@ -1,3 +1,4 @@
+import defaultPolicy from '../../../worker/src/graph/default-policy.json'
 import { isActiveAttempt } from './graphStatus'
 import { request } from './api'
 
@@ -247,24 +248,8 @@ export const graphApi = {
       `${base(team)}/${graph}/search?q=${encodeURIComponent(q)}`
     )
 }
-export const defaultGraphPolicy: GraphPolicy = {
-  agents: [],
-  grader: '',
-  decomposer: '',
-  fallback: null,
-  capacity: 1,
-  threshold: 0.5,
-  review: true,
-  deadline_ms: 1800_000,
-  max_attempts: 3,
-  attempt_budget: 100,
-  cost_budget: 100,
-  recovery_budget: 25,
-  planning_budget: 20,
-  ttl_ms: 86400_000,
-  maintenance_ms: 3600_000,
-  freshness_ms: 86400_000
-}
+/** Shared with the worker (`policy()` defaults), so the create form and the server cannot drift. */
+export const defaultGraphPolicy: GraphPolicy = { ...(defaultPolicy as GraphPolicy), agents: [] }
 
 /** A format-repair assignment stands in for its parent role: its accepted result IS the parent's result. */
 export function effectiveRole(

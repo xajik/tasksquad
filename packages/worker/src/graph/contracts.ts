@@ -1,3 +1,4 @@
+import defaultPolicy from './default-policy.json'
 import { parse as parseYaml } from 'yaml'
 import decompose from './templates/decompose.json'
 import plan from './templates/plan.json'
@@ -284,22 +285,8 @@ export function verifyGoal(
 
 export function policy(input: Partial<Policy>): Policy {
   const p: Policy = {
+    ...(defaultPolicy as Policy),
     agents: [],
-    grader: '',
-    decomposer: '',
-    fallback: null,
-    capacity: 1,
-    threshold: 0.5,
-    review: true,
-    deadline_ms: 30 * 60_000,
-    max_attempts: 3,
-    attempt_budget: 100,
-    cost_budget: 100,
-    recovery_budget: 25,
-    planning_budget: 20,
-    ttl_ms: 86400_000,
-    maintenance_ms: 3600_000,
-    freshness_ms: 86400_000,
     ...input
   }
   if (

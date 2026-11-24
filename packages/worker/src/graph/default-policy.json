@@ -1,0 +1,18 @@
+{
+  "agents": [],
+  "grader": "",
+  "decomposer": "",
+  "fallback": null,
+  "capacity": 1,
+  "threshold": 0.5,
+  "review": true,
+  "deadline_ms": 1800000,
+  "max_attempts": 3,
+  "attempt_budget": 100,
+  "cost_budget": 100,
+  "recovery_budget": 25,
+  "planning_budget": 20,
+  "ttl_ms": 86400000,
+  "maintenance_ms": 3600000,
+  "freshness_ms": 86400000
+}
