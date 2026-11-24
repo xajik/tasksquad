@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 # Homebrew rejects standalone cask files: validate in a disposable local tap.
 TAP_PARENT="$(brew --repository)/Library/Taps/tasksquad-validation"
 mkdir -p "$TAP_PARENT"
+TAP_NAME="tasksquad-validation/check-$$"
 TAP="$TAP_PARENT/homebrew-check-$$"
 mkdir "$TAP"
 cleanup() {
@@ -19,9 +20,9 @@ git -C "$TAP" init -q
 # trust record inside the disposable directory, separate from user settings.
 export XDG_CONFIG_HOME="$TAP/test-config"
 if brew command trust >/dev/null 2>&1; then
-  brew trust "tasksquad-validation/check-$$"
+  brew trust "$TAP_NAME"
 fi
-HOMEBREW_NO_AUTO_UPDATE=1 brew info --cask --json=v2 "$TAP/Casks/tasksquad.rb" > dist/homebrew/cask-info.json
+HOMEBREW_NO_AUTO_UPDATE=1 brew info --cask --json=v2 "$TAP_NAME/tasksquad" > dist/homebrew/cask-info.json
 python3 - <<'PY'
 import hashlib, json
 from pathlib import Path
