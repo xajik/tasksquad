@@ -529,20 +529,7 @@ export function closeSessionStatements(
   return [
     sql(db, "UPDATE sessions SET status='closed',closed_at=? WHERE id=?", now, sessionId),
     sql(db, "UPDATE tasks SET status='done',completed_at=? WHERE id=?", now, taskId),
-    sql(
-      db,
-      "UPDATE agents SET status='idle' WHERE id=? AND EXISTS(SELECT 1 FROM agent_state WHERE agent_id=? AND current_session=?)",
-      agentId,
-      agentId,
-      sessionId
-    ),
-    sql(
-      db,
-      "UPDATE agent_state SET current_task_id=NULL,current_session=NULL,mode='idle',updated_at=? WHERE agent_id=? AND current_session=?",
-      now,
-      agentId,
-      sessionId
-    )
+    ...releaseAgentStatements(db, agentId, sessionId, now)
   ]
 }
 
