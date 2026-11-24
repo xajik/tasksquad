@@ -1,4 +1,5 @@
 import { type Role, verifyGoal } from '../contracts.js'
+import { queueDone } from './queue.js'
 import { assignment, commit, configuration, id, json, nodeStatements, releaseRecovery, rows, sql, type Assignment, type Data, type Graph, type Result } from '../store.js'
 import { assertEvidenceResources, predicateVerified } from './assertions.js'
 import { resolve } from './results.js'
@@ -435,12 +436,7 @@ export async function accept(
           })
         }
         ops.push(
-          sql(
-            db,
-            "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='assignment' AND work_id=?",
-            g.id,
-            input.serial_work_id ?? original.id
-          )
+          queueDone(db, g.id, 'assignment', input.serial_work_id ?? original.id)
         )
         break
       }
@@ -566,12 +562,7 @@ export async function accept(
     case 'continue': {
       if (!input.serial_work_id)
         ops.push(
-          sql(
-            db,
-            "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='assignment' AND work_id=?",
-            g.id,
-            original.id
-          )
+          queueDone(db, g.id, 'assignment', original.id)
         )
       const found = await sql(
         db,

@@ -1,4 +1,5 @@
 import { isReview } from '../roles.js'
+import { queueDone, queuePush } from './queue.js'
 import { assignment, commit, configuration, rows, sql, type Assignment, type Data, type Graph, type Result } from '../store.js'
 import { goalHierarchy } from './assertions.js'
 import { syncInboxStatus } from './owner.js'
@@ -91,7 +92,7 @@ export async function parkFailedReviews(db: D1Database, g: Graph): Promise<void>
   for (const review of failed)
     await commit(db, g, 'review_blocked', review.assignment_id, { grading_sequence: review.sequence }, [
       sql(db, "UPDATE graph_grading SET status='blocked' WHERE sequence=?", review.sequence),
-      sql(db, "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='execution' AND work_id=?", g.id, review.execution_result_id)
+      queueDone(db, g.id, 'execution', review.execution_result_id)
     ])
 }
 
@@ -126,14 +127,14 @@ export async function recoverReview(db: D1Database, g: Graph, assignmentId: stri
     sql(db, "UPDATE graph_assignments SET status='cancelled',cancel_reason=? WHERE id=?", retry ? 'review_retried' : 'review_cancelled', a.id),
     ...(review ? [
       sql(db, 'UPDATE graph_grading SET assignment_id=?,status=? WHERE sequence=?', next?.id ?? a.id, retry ? 'running' : 'cancelled', review.sequence),
-      sql(db, "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='execution' AND work_id=?", g.id, review.execution_result_id)
+      queueDone(db, g.id, 'execution', review.execution_result_id)
     ] : [
-      sql(db, "UPDATE graph_serial_queue SET status='done' WHERE graph_id=? AND kind='assignment' AND work_id=?", g.id, a.id)
+      queueDone(db, g.id, 'assignment', a.id)
     ])
   ]
   if (next) ops.push(review
-    ? sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'execution',?,?)", g.id, review.execution_result_id, Date.now())
-    : sql(db, "INSERT INTO graph_serial_queue(graph_id,kind,work_id,created_at) VALUES(?,'assignment',?,?)", g.id, next.id, Date.now()))
+    ? queuePush(db, g.id, 'execution', review.execution_result_id)
+    : queuePush(db, g.id, 'assignment', next.id))
   await commit(db, g, retry ? 'review_retried' : 'review_cancelled', a.id,
     { retry: next?.id ?? null, grading_sequence: review?.sequence ?? null, user_id: userId ?? null, grading_verified: false }, ops)
   await syncInboxStatus(db, g)
