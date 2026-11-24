@@ -55,42 +55,42 @@ export function GraphCanvas({
       /* storage unavailable: placement lasts for this view only */
     }
   }
-  const attention = graphAttention(graph)
+  const attention = useMemo(() => graphAttention(graph), [graph])
   const nodes = graph.nodes
-  const ids = new Set(nodes.map((n) => n.id))
-  const links = [
-    ...graph.edges.filter(
-      (e) =>
-        ids.has(e.from_id) &&
-        ids.has(e.to_id) &&
-        !isGuidance(nodes.find((n) => n.id === e.from_id)!) &&
-        !isGuidance(nodes.find((n) => n.id === e.to_id)!)
-    ),
-    ...nodes
-      .filter(
-        (n) =>
-          n.parent_id &&
-          ids.has(n.parent_id) &&
-          isGuidance(n) === isGuidance(nodes.find((parent) => parent.id === n.parent_id)!) &&
-          !graph.edges.some((e) => e.from_id === n.parent_id && e.to_id === n.id)
-      )
-      .map((n) => ({
-        id: `lineage-${n.id}`,
-        from_id: n.parent_id!,
-        to_id: n.id,
-        lineage: true,
-        guidance: isGuidance(n)
-      }))
-  ]
-  // Polling updates titles, reviews and scores without moving the viewport.
-  const topology = JSON.stringify({
-    nodes: nodes
-      .map(({ id, kind, created_at }) => ({ id, kind, created_at }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
-    edges: links
-      .map((e) => ({ id: e.id, from_id: e.from_id, to_id: e.to_id, lineage: 'lineage' in e }))
-      .sort((a, b) => a.id.localeCompare(b.id))
-  })
+  // Links and the topology key depend only on nodes/edges, so pan, zoom and drag never recompute them.
+  const { links, topology } = useMemo(() => {
+    const byId = new Map(graph.nodes.map((n) => [n.id, n]))
+    const connected = new Set(graph.edges.map((e) => `${e.from_id}>${e.to_id}`))
+    const links = [
+      ...graph.edges.filter((e) => {
+        const from = byId.get(e.from_id),
+          to = byId.get(e.to_id)
+        return from && to && !isGuidance(from) && !isGuidance(to)
+      }),
+      ...graph.nodes
+        .filter((n) => {
+          const parent = n.parent_id ? byId.get(n.parent_id) : undefined
+          return parent && isGuidance(n) === isGuidance(parent) && !connected.has(`${n.parent_id}>${n.id}`)
+        })
+        .map((n) => ({
+          id: `lineage-${n.id}`,
+          from_id: n.parent_id!,
+          to_id: n.id,
+          lineage: true,
+          guidance: isGuidance(n)
+        }))
+    ]
+    // Polling updates titles, reviews and scores without moving the viewport.
+    const topology = JSON.stringify({
+      nodes: graph.nodes
+        .map(({ id, kind, created_at }) => ({ id, kind, created_at }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+      edges: links
+        .map((e) => ({ id: e.id, from_id: e.from_id, to_id: e.to_id, lineage: 'lineage' in e }))
+        .sort((a, b) => a.id.localeCompare(b.id))
+    })
+    return { links, topology }
+  }, [graph.nodes, graph.edges])
   const layout = useMemo(() => {
     const data = JSON.parse(topology)
     return layoutGraph(data.nodes, data.edges, true, new Map(Object.entries(manual)))
