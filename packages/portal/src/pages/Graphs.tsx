@@ -18,10 +18,7 @@ import {
 } from '../lib/graph'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +30,7 @@ import {
   AlertDialogTitle
 } from '@/components/ui/alert-dialog'
 import { GraphCanvas } from '@/components/GraphCanvas'
+import { CreateGraphDialog, CloneDialog, SettingsDialog, ResourceDialog } from '@/components/GraphDialogs'
 import { GraphSection } from '@/components/GraphSection'
 import { dailyReport, latestMessage } from '@/lib/graphReport'
 import { isGuidance } from '@/lib/graphLayout'
@@ -48,7 +46,6 @@ import {
 import { graphViews, graphView, type GraphView } from '@/lib/graphDashboard'
 
 import { workRank, plural, proposalState, pretty, stamp } from '@/lib/graphWork'
-import { PolicyFields, CreateGraph } from '@/components/GraphCreate'
 
 
 export function Graphs({
@@ -88,9 +85,7 @@ export function Graphs({
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [create, setCreate] = useState(false),
-    [settings, setSettings] = useState(false),
-    [closeConfirm, setCloseConfirm] = useState(false),
-    [closeError, setCloseError] = useState('')
+    [settings, setSettings] = useState(false)
   const [policy, setPolicy] = useState<GraphPolicy>(defaultGraphPolicy),
     [search, setSearch] = useState(''),
     [selected, setSelected] = useState<string | null>(null)
@@ -130,8 +125,6 @@ export function Graphs({
     setLoading(true)
     setSelected(null)
     setNodeLimit(20)
-    setCloseConfirm(false)
-    setCloseError('')
     setCloneSource(null)
     setCloneError('')
   }, [teamId, graphId])
@@ -1048,212 +1041,33 @@ export function Graphs({
           </div>
         </>
       )}
-      <Dialog open={create} onOpenChange={setCreate}>
-        <DialogContent className="max-w-3xl sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
-          <DialogHeader>
-            <DialogTitle>New action graph</DialogTitle>
-            <DialogDescription>
-              Define an observed baseline and measurable success, then assign existing agents.
-            </DialogDescription>
-          </DialogHeader>
-          <CreateGraph
-            teamId={teamId}
-            agents={agents}
-            onCreated={(g) => {
-              setCreate(false)
-              nav(`/dashboard/graphs/${g.id}`)
-            }}
-          />
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={!!cloneSource}
-        onOpenChange={(open) => {
-          if (!open && !busy) setCloneSource(null)
-        }}
-      >
-        <DialogContent
-          className="max-w-[calc(100%_-_2rem)] sm:max-w-lg"
-          onEscapeKeyDown={(event) => {
-            if (busy) event.preventDefault()
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>Clone “{cloneSource?.title}”</DialogTitle>
-            <DialogDescription>
-              Create a fresh graph with the same goal, start state, settings and success rule. Results and run
-              history are never copied.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Start from the goal with an empty action graph.</p>
-              <Button disabled={busy} onClick={() => cloneGraph(false)}>
-                Clone without nodes
-              </Button>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Also copy nodes, actions, plans, resources and tags.
-              </p>
-              <Button variant="outline" disabled={busy} onClick={() => cloneGraph(true)}>
-                Clone with nodes
-              </Button>
-            </div>
-          </div>
-          {cloneError && (
-            <p role="alert" className="text-sm text-destructive">
-              {cloneError}
-            </p>
-          )}
-        </DialogContent>
-      </Dialog>
-      <Dialog open={settings} onOpenChange={setSettings}>
-        <DialogContent className="max-w-3xl sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
-          <DialogHeader>
-            <DialogTitle>Graph settings</DialogTitle>
-            <DialogDescription>
-              {current?.status === 'stopped'
-                ? 'This graph is closed. Settings are read-only; clone it from the graphs list to start a new graph.'
-                : !isMaintainer
-                  ? 'Settings are read-only. An owner or maintainer can change this graph.'
-                  : 'Pause and resolve existing assignments before creating a configuration revision.'}
-            </DialogDescription>
-          </DialogHeader>
-          {current && (
-            <div className="flex flex-wrap items-center gap-2">
-              {current.status === 'stopped' ? (
-                <>
-                  <span className="rounded border px-2 py-1 text-sm text-muted-foreground">Closed</span>
-                </>
-              ) : isMaintainer ? (
-                <>
-                  <Button
-                    variant="destructive"
-                    disabled={busy}
-                    title="Close graph permanently: stops all work and cannot be reopened"
-                    onClick={() => {
-                      setCloseError('')
-                      setCloseConfirm(true)
-                    }}
-                  >
-                    Close graph
-                  </Button>
-                </>
-              ) : null}
-            </div>
-          )}
-          {current && (
-            <fieldset disabled={current.status === 'stopped' || !isMaintainer} className="space-y-4">
-              <PolicyFields
-                value={current.status === 'stopped' || !isMaintainer ? current.config.policy : policy}
-                onChange={setPolicy}
-                agents={agents}
-              />
-            </fieldset>
-          )}
-          {current && isMaintainer && current.status !== 'stopped' && (
-            <>
-              <Button
-                disabled={busy}
-                onClick={async () => {
-                  if (await command('configure', { policy })) setSettings(false)
-                }}
-              >
-                Save revision
-              </Button>
-              <Button variant="outline" disabled={busy} onClick={() => command('reindex')}>
-                Rebuild search index
-              </Button>
-            </>
-          )}
-          <AlertDialog
-            open={closeConfirm}
-            onOpenChange={(open) => {
-              if (!busy) setCloseConfirm(open)
-            }}
-          >
-            <AlertDialogContent
-              className="w-[calc(100%_-_2rem)] max-w-md"
-              onEscapeKeyDown={(event) => {
-                if (busy) event.preventDefault()
-              }}
-            >
-              <AlertDialogHeader>
-                <AlertDialogTitle>Close this graph?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Closing “{current?.title}” is permanent. Work will stop and this graph cannot be reopened.
-                  You can clone it later to start a new graph.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              {closeError && (
-                <p role="alert" className="text-sm text-destructive">
-                  {closeError}
-                </p>
-              )}
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  disabled={busy}
-                  onClick={async (event) => {
-                    event.preventDefault()
-                    if (busy) return
-                    setCloseError('')
-                    if (await command('stop')) {
-                      setCloseConfirm(false)
-                      setSettings(false)
-                    } else {
-                      setCloseError('Could not close this graph. Please try again.')
-                    }
-                  }}
-                >
-                  {busy ? 'Closing…' : 'Close graph'}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={resourceOpen} onOpenChange={setResourceOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add versioned resource</DialogTitle>
-            <DialogDescription>
-              Resources are immutable. Add a new version to preserve existing evidence.
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            className="space-y-4"
-            onSubmit={async (e) => {
-              e.preventDefault()
-              const f = new FormData(e.currentTarget)
-              if (await command('resource', Object.fromEntries(f))) setResourceOpen(false)
-            }}
-          >
-            <Label className="grid gap-2">
-              Title
-              <Input name="title" required maxLength={299} />
-            </Label>
-            <Label className="grid gap-2">
-              Description
-              <Input name="description" maxLength={299} />
-            </Label>
-            <Label className="grid gap-2">
-              Content
-              <Textarea name="body" maxLength={3999} />
-            </Label>
-            <Label className="grid gap-2">
-              Visibility
-              <select name="visibility" className="h-9 border rounded bg-background px-2">
-                <option value="execution">Execution context</option>
-                <option value="private">Private planning</option>
-              </select>
-            </Label>
-            <Button disabled={busy}>Add resource</Button>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <CreateGraphDialog
+        open={create}
+        onOpenChange={setCreate}
+        teamId={teamId}
+        agents={agents}
+        onCreated={(g) => nav(`/dashboard/graphs/${g.id}`)}
+      />
+      <CloneDialog
+        source={cloneSource}
+        busy={busy}
+        error={cloneError}
+        onClose={() => setCloneSource(null)}
+        onClone={cloneGraph}
+      />
+      <SettingsDialog
+        key={graphId}
+        open={settings}
+        onOpenChange={setSettings}
+        current={current}
+        isMaintainer={isMaintainer}
+        busy={busy}
+        policy={policy}
+        setPolicy={setPolicy}
+        agents={agents}
+        command={command}
+      />
+      <ResourceDialog open={resourceOpen} onOpenChange={setResourceOpen} busy={busy} command={command} />
     </div>
   )
 }
