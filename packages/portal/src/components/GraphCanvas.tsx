@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { goalVerificationLabel } from '@/lib/graphStatus'
+import { useNavigate } from 'react-router-dom'
 import { Network } from 'lucide-react'
 import { effectiveRole, type GraphSnapshot } from '@/lib/graph'
 import {
@@ -28,8 +29,12 @@ export function GraphCanvas({
   search: string
   matchedIds?: string[]
 }) {
+  const navigate = useNavigate()
   const [zoom, setZoom] = useState(1),
     [offset, setOffset] = useState({ x: 0, y: 0 })
+  // Mirrors of the viewport so the wheel handler computes from current values without impure updaters.
+  const view = useRef({ zoom: 1, offset: { x: 0, y: 0 } })
+  view.current = { zoom, offset }
   const drag = useRef<{ x: number; y: number; origin: { x: number; y: number } } | null>(null)
   const nodeDrag = useRef<{ id: string; x: number; y: number; origin: Point; moved: boolean } | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -131,10 +136,11 @@ export function GraphCanvas({
     saveManual({})
     fit()
   }
+  // Only switching graphs resets the viewport; live topology changes keep the owner's pan and zoom.
   useEffect(() => {
     setZoom(1)
     setOffset({ x: 0, y: 0 })
-  }, [graph.id, topology])
+  }, [graph.id])
   // Excalidraw-style: wheel pans, Ctrl/⌘+wheel (or pinch) zooms towards the pointer.
   useEffect(() => {
     const svg = svgRef.current
@@ -145,16 +151,12 @@ export function GraphCanvas({
       const scale = Math.max(layout.bounds.width / rect.width, layout.bounds.height / rect.height)
       if (e.ctrlKey || e.metaKey) {
         const factor = Math.exp(-e.deltaY * 0.01)
-        setZoom((z) => {
-          const next = Math.min(6, Math.max(0.3, z * factor))
-          const px = (e.clientX - rect.left) * scale + layout.bounds.x,
-            py = (e.clientY - rect.top) * scale + layout.bounds.y
-          setOffset((o) => ({
-            x: px - ((px - o.x) / z) * next,
-            y: py - ((py - o.y) / z) * next
-          }))
-          return next
-        })
+        const { zoom: z, offset: o } = view.current
+        const next = Math.min(6, Math.max(0.3, z * factor))
+        const px = (e.clientX - rect.left) * scale + layout.bounds.x,
+          py = (e.clientY - rect.top) * scale + layout.bounds.y
+        setZoom(next)
+        setOffset({ x: px - ((px - o.x) / z) * next, y: py - ((py - o.y) / z) * next })
       } else setOffset((o) => ({ x: o.x - e.deltaX * scale, y: o.y - e.deltaY * scale }))
     }
     svg.addEventListener('wheel', onWheel, { passive: false })
@@ -501,7 +503,13 @@ export function GraphCanvas({
                   <a
                     href={needsAttention.taskId ? `/dashboard/tasks/${needsAttention.taskId}` : '/dashboard'}
                     aria-label={`${needsAttention.label}: ${n.title}`}
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      // Client-side navigation: a plain href would reload the whole app.
+                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+                      e.preventDefault()
+                      navigate(needsAttention.taskId ? `/dashboard/tasks/${needsAttention.taskId}` : '/dashboard')
+                    }}
                     onKeyDown={(e) => e.stopPropagation()}
                   >
                     <rect x={8} y={52} width={204} height={20} fill="transparent" />

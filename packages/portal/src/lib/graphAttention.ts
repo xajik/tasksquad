@@ -1,4 +1,4 @@
-import type { GraphSnapshot, GraphAssignment } from './graph'
+import { latestGraphAttempt, type GraphSnapshot, type GraphAssignment } from './graph'
 export interface GraphAttention {
   assignmentId: string
   taskId: string | null
@@ -14,12 +14,8 @@ export function graphAttention(graph: GraphSnapshot) {
       map.set(id, [...(map.get(id) ?? []), item])
   }
   for (const a of graph.assignments) {
-    const attempts = graph.attempts
-      .filter((t) => t.assignment_id === a.id)
-      .sort(
-        (x, y) => (y.epoch ?? 0) - (x.epoch ?? 0) || y.created_at - x.created_at || y.id.localeCompare(x.id)
-      )
-    const latest = attempts[0]
+    const attempts = graph.attempts.filter((t) => t.assignment_id === a.id)
+    const latest = latestGraphAttempt(graph, a.id)
     const diagnostic = graph.waiting?.[a.id]
     const waiting =
       a.status === 'running' &&
@@ -38,9 +34,7 @@ export function graphAttention(graph: GraphSnapshot) {
     const parent = a.role === 'repair' ? graph.assignments.find((p) => p.id === a.parent_id) : null
     const replyTask =
       parent && kind === 'reply'
-        ? graph.attempts
-            .filter((t) => t.assignment_id === parent.id)
-            .sort((x, y) => (y.epoch ?? 0) - (x.epoch ?? 0) || y.created_at - x.created_at)[0]
+        ? latestGraphAttempt(graph, parent.id)
         : null
     const item: GraphAttention = {
       assignmentId: a.id,
