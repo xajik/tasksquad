@@ -47,6 +47,30 @@ describe('graph scheduling and maintenance', () => {
     expect((await graph(db, g.id)).version).toBe(version)
   })
 
+  it('passes active milestone IDs from periodic goal review to the decomposer for retirement', async () => {
+    const { g, agent } = await fixture(false)
+    const milestone = nodeStatements(db, g, 'milestone', { title: 'Obsolete', description: '', body: '' }, null)
+    await db.batch([
+      ...milestone.statements,
+      sql(db, "UPDATE graphs SET status='running' WHERE id=?", g.id),
+      sql(db, "UPDATE graph_maintenance SET next_at=0 WHERE graph_id=? AND kind='decomposition'", g.id)
+    ])
+    await maintenance(env(), g.id)
+    await tick(env(), g.id)
+    await deliver(g.id, agent, JSON.stringify({
+      goal_score: null, evidence_ids: [], reason: 'Scope changed', decomposition_feedback: ['Retire obsolete work']
+    }))
+    await tick(env(), g.id)
+    const step = await sql(db, "SELECT input FROM graph_assignments WHERE graph_id=? AND role='decompose'", g.id)
+      .first<{ input: string }>()
+    const hierarchy = JSON.parse(step!.input).existing_milestones
+    expect(hierarchy).toMatchObject([{ id: milestone.id, title: 'Obsolete' }])
+    await deliver(g.id, agent, JSON.stringify({ subgoals: [], retire_ids: [hierarchy[0].id] }))
+    await tick(env(), g.id)
+    const proposal = await sql(db, 'SELECT content FROM graph_proposals WHERE graph_id=?', g.id).first<{ content: string }>()
+    expect(JSON.parse(proposal!.content)).toMatchObject({ kind: 'retire', node_id: milestone.id })
+  })
+
   it('coalesces decomposition maintenance and skips unchanged reviewed contexts', async () => {
     const { g } = await fixture(false)
     await sql(db, "UPDATE graphs SET status='running' WHERE id=?", g.id).run()

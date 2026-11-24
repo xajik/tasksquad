@@ -208,7 +208,7 @@ export async function maintenance(env: Pick<Env, 'DB'>, graphId: string): Promis
       if (!busy) {
         const milestones = await rows(
           db,
-          `SELECT title,description,body FROM graph_nodes n WHERE graph_id=? AND kind='milestone'
+          `SELECT id,title,description,body FROM graph_nodes n WHERE graph_id=? AND kind='milestone'
            AND NOT EXISTS(SELECT 1 FROM graph_node_states s WHERE s.id=(SELECT MAX(id) FROM graph_node_states WHERE node_id=n.id) AND s.state='deactivated') ORDER BY n.id`,
           g.id
         )
