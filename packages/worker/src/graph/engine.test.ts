@@ -869,7 +869,7 @@ describe('durable inbox graph workflow', () => {
   })
 
   it('keeps continuation behind earlier grades even when a fallback agent is free', async () => {
-    const { g, agent, grader, team, assignmentId } = await preparedExecution()
+    const { g, agent, grader, team } = await preparedExecution()
     const fallback = crypto.randomUUID()
     await sql(
       db,

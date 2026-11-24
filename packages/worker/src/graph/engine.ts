@@ -1,3 +1,4 @@
+import { EXECUTION_ROLES, isReview, isPlanning } from './roles.js'
 import { dispatchContext, eligibility } from './eligibility.js'
 import { MaxHeap } from './heap.js'
 import { candidateWeights } from './weights.js'
@@ -237,7 +238,7 @@ export async function run(db: D1Database, graphId: string, command: string, body
     const serialWork =
       previousInput.serial_work_id ??
       unresolved?.work_id ??
-      (['grade', 'project'].includes(a.role) ? (previousInput.execution_result_id ?? a.id) : undefined)
+      (isReview(a.role) ? (previousInput.execution_result_id ?? a.id) : undefined)
     const previousResults = await rows(
       db,
       `SELECT r.id,r.raw,r.parsed,r.status FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id WHERE t.assignment_id=?`,
@@ -509,7 +510,7 @@ export async function intake(
           ),
           // A daemon that will run the end-of-session steps keeps the session open and the agent busy until it
           // closes the session itself (closeHeldSession); otherwise the session ends with the result.
-          ...(hold && EXECUTION_ROLES.includes(a.role) ? [] : closeSessionStatements(env.DB, agentId, sessionId, t.task_id, now))
+          ...(hold && (EXECUTION_ROLES as readonly string[]).includes(a.role) ? [] : closeSessionStatements(env.DB, agentId, sessionId, t.task_id, now))
         ]
       : [
           // A stale result still means the process has ended: free the agent so retries can dispatch.
@@ -1643,7 +1644,7 @@ export async function parkFailedReviews(db: D1Database, g: Graph): Promise<void>
 async function recoverReview(db: D1Database, g: Graph, assignmentId: string, retry: boolean, userId?: string): Promise<void> {
   const a = await sql(db, 'SELECT * FROM graph_assignments WHERE id=? AND graph_id=?', assignmentId, g.id).first<Assignment>()
   if (a?.status === 'cancelled' && ['review_retried', 'review_cancelled'].includes(a.cancel_reason ?? '')) return
-  if (!a || !['grade','project'].includes(a.role) || !['blocked','error'].includes(a.status))
+  if (!a || !isReview(a.role) || !['blocked','error'].includes(a.status))
     throw new Error('A blocked or failed execution review is required')
   const review = await sql(db,
     "SELECT sequence,execution_result_id FROM graph_grading WHERE graph_id=? AND assignment_id=? AND status IN ('pending','running','blocked')",
@@ -1779,7 +1780,7 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
     ])
     await bumpInboxVersion(env, agent)
     budgets.attempts++
-    if (['decompose', 'plan', 'merge'].includes(a.role)) context.planningCount++
+    if (isPlanning(a.role)) context.planningCount++
     budgets.execution_cost += cost
     budgets.recovery_reserved += recovery
     used.push({ agent_id: agent, kind: a.role === 'execute' ? 'execution' : 'control', graph_id: g.id })
@@ -1796,7 +1797,6 @@ const PREPARE_SKILL = '/tsq-graph-prepare-repo'
 /** Run by the daemon, one at a time and each to completion, after an execution result is posted and before the
  * session is closed. */
 export const SESSION_END_STEPS = ['/tsq-end-session-learning', '/tsq-memory']
-export const EXECUTION_ROLES = ['execute', 'continue', 'undo']
 
 /** The task message for an attempt: the role prompt, preceded by the repo preparation the first time this agent
  * works on the graph (skipped by the read-only grader). */
@@ -1808,7 +1808,7 @@ export async function sessionFraming(db: D1Database, g: Graph, a: Assignment, ag
     agentId
   ).first())
   const before =
-    first && !['grade', 'project'].includes(a.role)
+    first && !isReview(a.role)
       ? `First, before anything else: this is your first step on this graph, so run ${PREPARE_SKILL} (it creates or amends AGENTS.md in the repository root), then continue below.\n\n`
       : ''
   return before + a.template
@@ -1828,7 +1828,6 @@ const ACTIVE_REPAIR_WORK = `SELECT CASE WHEN original.role IN ('grade','project'
 /** Planning steps are side-effect free, so a blocked/errored one the owner closes by hand is treated as
  * failed: cancel it (and any open repair) and queue a fresh copy. Execution, review and recovery steps
  * are never retried this way — repeating them could repeat a side effect. */
-const RETRY_ON_CLOSE: Role[] = ['decompose', 'plan', 'merge']
 export async function failAssignment(db: D1Database, g: Graph, assignmentId: string): Promise<void> {
   const a = await sql(
     db,
@@ -1836,7 +1835,7 @@ export async function failAssignment(db: D1Database, g: Graph, assignmentId: str
     assignmentId,
     g.id
   ).first<Assignment>()
-  if (!a || !RETRY_ON_CLOSE.includes(a.role)) return
+  if (!a || !isPlanning(a.role)) return
   const next = await assignment(db, g, a.role, JSON.parse(a.input), {
     node: a.node_id,
     edge: a.edge_id,
@@ -2104,3 +2103,5 @@ async function executedLineage(db: D1Database, graphId: string, first: string | 
   }
   return [...lineage]
 }
+
+export { EXECUTION_ROLES }

@@ -1,9 +1,10 @@
+import { RECOVERY_ROLES, CONTROL_ROLES, isPlanning } from './roles.js'
 import { configuration, rows, sql, type Assignment, type Graph } from './store.js'
 
 const BLOCKED_STREAK = 3
 const BLOCKED_COOLDOWN_MS = 30 * 60_000
-const recovery = ['undo', 'reconcile']
-const control = [...recovery, 'grade', 'project', 'continue', 'repair']
+const recovery: readonly string[] = RECOVERY_ROLES
+const control: readonly string[] = CONTROL_ROLES
 export interface Eligibility {
   code: string
   message: string
@@ -155,7 +156,7 @@ export async function eligibility(
         `Recovery cost ${reservedRecovery} exceeds remaining recovery limit ${Math.max(0, c.policy.recovery_budget - budgets.recovery_reserved)}.`
       )
   }
-  if (['decompose', 'plan', 'merge'].includes(a.role) && ctx.planningCount >= c.policy.planning_budget)
+  if (isPlanning(a.role) && ctx.planningCount >= c.policy.planning_budget)
     return wait(
       'planning_budget',
       `Planning attempt limit reached (${ctx.planningCount} / ${c.policy.planning_budget}).`
