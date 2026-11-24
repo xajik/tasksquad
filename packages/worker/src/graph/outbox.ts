@@ -12,19 +12,23 @@ export async function materialize(env: Env, graphId: string): Promise<void> {
     g.id,
     now
   )
+  // One snapshot per version, and only when an item actually needs it.
+  let cached: Awaited<ReturnType<typeof snapshot>> | undefined
+  const current = async () => (cached ??= await snapshot(env.DB, g))
   for (const item of pending) {
     if (item.graph_version !== g.version) {
       await sql(env.DB, "UPDATE graph_outbox SET status='superseded' WHERE id=?", item.id).run()
       continue
     }
     try {
-      const data = await snapshot(env.DB, g)
+      if (item.kind !== 'snapshot' && (!env.GRAPH_AI || !env.GRAPH_VECTORS)) continue
+      const data = await current()
       if (item.kind === 'snapshot')
         await env.LOGS.put(`graphs/${g.team_id}/${g.id}/snapshots/${g.version}.json`, JSON.stringify(data), {
           httpMetadata: { contentType: 'application/json' }
         })
       else {
-        if (!env.GRAPH_AI || !env.GRAPH_VECTORS) continue
+        if (!env.GRAPH_AI || !env.GRAPH_VECTORS) continue // narrowed for the type checker
         const entities: Data[] = [
           ...(data.nodes as Data[]).map((n) => ({
             ...n,

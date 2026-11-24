@@ -26,9 +26,15 @@ export async function candidateWeights(db: D1Database, g: Graph, pending: Assign
       WHERE newer.execution_result_id=r.execution_result_id AND newer.role=r.role AND newer.id>r.id)
     ORDER BY e.id`, g.id)
     : []
+  const byEdge = new Map<string, typeof evaluations>()
+  for (const e of evaluations) {
+    const list = byEdge.get(e.edge_id)
+    if (list) list.push(e)
+    else byEdge.set(e.edge_id, [e])
+  }
   for (const a of pending) {
     const unique = new Map<string, { local: number | null; goal: number | null; at: number }>()
-    for (const e of evaluations.filter((e) => e.edge_id === a.edge_id)) {
+    for (const e of byEdge.get(a.edge_id ?? '') ?? []) {
       const previous = unique.get(e.evidence_id) ?? { local: null, goal: null, at: e.created_at }
       unique.set(e.evidence_id, {
         local: e.role === 'grade' ? e.local_score : previous.local,
