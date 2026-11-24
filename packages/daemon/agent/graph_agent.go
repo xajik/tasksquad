@@ -14,8 +14,7 @@ import (
 // runs as the general tsq-graph-agent; a task without a graph role has no identity.
 func graphSubAgent(role string) string {
 	switch role {
-	// Reconciliation inspects processes and external baselines; the read-only
-	// grader identity cannot perform those checks. Use the configured CLI.
+	// Read-only reviewers: grading and goal projection never touch the repository.
 	case "grade", "project":
 		return "tsq-graph-grader"
 	case "execute", "undo", "continue":
@@ -24,6 +23,8 @@ func graphSubAgent(role string) string {
 	case "decompose", "plan", "merge":
 		return "tsq-graph-planner"
 	}
+	// Reconcile inspects processes and external baselines, which the read-only grader identity
+	// cannot do, so it (like repair) runs as the general graph agent on the configured CLI.
 	if role != "" {
 		return "tsq-graph-agent"
 	}
@@ -71,7 +72,8 @@ func graphIdentityText(task map[string]any, workDir string) string {
 		}
 		text := strings.TrimSpace(frontmatter.ReplaceAllString(string(data), ""))
 		if len(text) > maxIdentity {
-			text = text[:maxIdentity] + "…"
+			// Cut on a rune boundary so multi-byte text is never split mid-character.
+			text = strings.ToValidUTF8(text[:maxIdentity], "") + "…"
 		}
 		return text
 	}

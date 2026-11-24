@@ -4,7 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/tasksquad/daemon/provider"
 )
@@ -26,7 +28,7 @@ func TestGraphAgentArgs(t *testing.T) {
 	}
 	cases := map[string][]string{
 		"grade": {"--agent", "tsq-graph-grader"}, "project": {"--agent", "tsq-graph-grader"},
-		"execute": {"--agent", "tsq-graph-executor"}, "continue": {"--agent", "tsq-graph-executor"},
+		"execute": {"--agent", "tsq-graph-executor"}, "undo": {"--agent", "tsq-graph-executor"}, "continue": {"--agent", "tsq-graph-executor"},
 		"plan": {"--agent", "tsq-graph-planner"}, "merge": {"--agent", "tsq-graph-planner"}, "decompose": {"--agent", "tsq-graph-planner"},
 		"repair": {"--agent", "tsq-graph-agent"}, "reconcile": {"--agent", "tsq-graph-agent"},
 	}
@@ -62,5 +64,38 @@ func TestGraphIdentityText(t *testing.T) {
 	}
 	if got := graphIdentityText(map[string]any{"graph": map[string]any{"role": "merge"}}, dir); got != "" {
 		t.Fatalf("merge has no identity, got %q", got)
+	}
+}
+
+func TestGraphIdentityTextTruncatesOnRuneBoundary(t *testing.T) {
+	dir := t.TempDir()
+	task := map[string]any{"graph": map[string]any{"role": "execute"}}
+	if err := os.MkdirAll(filepath.Join(dir, ".agents", "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 3-byte runes: the 1600-byte cut lands inside a character unless handled.
+	body := strings.Repeat("é€", 900)
+	if err := os.WriteFile(filepath.Join(dir, ".agents", "agents", "tsq-graph-executor.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := graphIdentityText(task, dir)
+	if !utf8.ValidString(got) || !strings.HasSuffix(got, "…") {
+		t.Fatalf("expected valid truncated text ending in an ellipsis, got %q", got)
+	}
+}
+
+func TestGraphIdentityTextPrefersClaudeDirectory(t *testing.T) {
+	dir := t.TempDir()
+	task := map[string]any{"graph": map[string]any{"role": "execute"}}
+	for base, text := range map[string]string{".claude": "from claude", ".agents": "from agents"} {
+		if err := os.MkdirAll(filepath.Join(dir, base, "agents"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, base, "agents", "tsq-graph-executor.md"), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := graphIdentityText(task, dir); got != "from claude" {
+		t.Fatalf("got %q", got)
 	}
 }

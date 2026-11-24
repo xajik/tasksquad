@@ -81,16 +81,12 @@ func run() error {
 	logger.Info("Local Go daemon: real heartbeat, assignment, provider execution and session callbacks")
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
-	for {
-		select {
-		case <-done:
-			for _, a := range agents {
-				a.Pause()
-				if a.SessionID() != "" {
-					a.Complete(cfg, "cancelled", "")
-				}
-			}
-			return nil
+	<-done
+	for _, a := range agents {
+		a.Pause()
+		if a.SessionID() != "" {
+			a.Complete(cfg, "cancelled", "")
 		}
 	}
+	return nil
 }
