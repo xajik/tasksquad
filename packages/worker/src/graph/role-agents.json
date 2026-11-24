@@ -1,0 +1,12 @@
+{
+  "decompose": "tsq-graph-planner",
+  "plan": "tsq-graph-planner",
+  "merge": "tsq-graph-planner",
+  "execute": "tsq-graph-executor",
+  "undo": "tsq-graph-executor",
+  "continue": "tsq-graph-executor",
+  "grade": "tsq-graph-grader",
+  "project": "tsq-graph-grader",
+  "repair": "tsq-graph-agent",
+  "reconcile": "tsq-graph-agent"
+}

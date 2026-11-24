@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -97,5 +98,25 @@ func TestGraphIdentityTextPrefersClaudeDirectory(t *testing.T) {
 	}
 	if got := graphIdentityText(task, dir); got != "from claude" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// role-agents.json is shared with the worker test and defines the role to sub-agent table.
+func TestGraphSubAgentMatchesSharedTable(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "worker", "src", "graph", "role-agents.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var table map[string]string
+	if err := json.Unmarshal(data, &table); err != nil {
+		t.Fatal(err)
+	}
+	for role, want := range table {
+		if got := graphSubAgent(role); got != want {
+			t.Errorf("%s: got %q want %q", role, got, want)
+		}
+	}
+	if got := graphSubAgent(""); got != "" {
+		t.Errorf("no role has no identity, got %q", got)
 	}
 }

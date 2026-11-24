@@ -16,7 +16,7 @@ final class GraphAgentTests: XCTestCase {
         for name in ["tsq-graph-grader", "tsq-graph-executor", "tsq-graph-planner", "tsq-graph-agent"] {
             try Data("x".utf8).write(to: agents.appendingPathComponent("\(name).md"))
         }
-        let expected = ["grade": "tsq-graph-grader", "project": "tsq-graph-grader", "execute": "tsq-graph-executor", "continue": "tsq-graph-executor", "plan": "tsq-graph-planner", "merge": "tsq-graph-planner", "decompose": "tsq-graph-planner", "repair": "tsq-graph-agent", "reconcile": "tsq-graph-agent"]
+        let expected = ["grade": "tsq-graph-grader", "project": "tsq-graph-grader", "execute": "tsq-graph-executor", "continue": "tsq-graph-executor", "undo": "tsq-graph-executor", "plan": "tsq-graph-planner", "merge": "tsq-graph-planner", "decompose": "tsq-graph-planner", "repair": "tsq-graph-agent", "reconcile": "tsq-graph-agent"]
         for (role, name) in expected {
             XCTAssertEqual(DaemonEngine.graphAgentArguments(provider: .claudeCode, task: try task(role), workDir: dir.path), ["--agent", name], role)
         }
