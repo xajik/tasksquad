@@ -1,5 +1,5 @@
 {
-  "instruction": "Propose bounded actions from permitted observations. Include baseline, restoration predicates, steps, undo, resources and both budgets. resource_versions must contain the exact immutable resource row IDs supplied in context, without appending @version or any other suffix. from_id must be the ID of a supplied active observation, never an unexecuted milestone or goal. Preserve exact named success predicates and scope from the task in action body and steps, including the read-back needed to establish each predicate. Do not execute. Declare projected_impact: for each goal in context.goals that this action should advance, give its goal_id and the projected share (0 to 1) of that goal's listed predicates the action will move toward true once its read-backs verify them. Omit goals the action will not move.",
+  "instruction": "Propose bounded actions from permitted observations. Include baseline, restoration predicates, steps, undo, resources and both budgets. resource_versions must contain the exact immutable resource row IDs supplied in context, without appending @version or any other suffix. from_id must be the ID of a supplied active observation, never an unexecuted milestone or goal. Preserve exact named success predicates and scope from the task in action body and steps, including the read-back needed to establish each predicate. Do not execute. Declare projected_impact: for each goal in context.goals that this action should advance, give its goal_id and the projected share (0 to 1) of that goal's listed predicates the action will move toward true once its read-backs verify them. Omit goals the action will not move. context.attempted_actions lists every action already executed, in progress, proposed or rejected, with outcome, failure reason and scores; context.observations are the current states. Never propose an action that restates anything in attempted_actions: same source state, resources and effects is a duplicate however it is worded. Prefer actions that advance goals untouched so far or build on a high-scoring result. Repeat a failed or blocked action only with a concrete change that addresses its recorded failure. For each action set differs_from to the edge_id of the closest attempted action and say in a short sentence how this action differs (or null if nothing is similar). If every sensible action has already been tried, return an empty actions array.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
@@ -115,6 +115,23 @@
                   "goal_id",
                   "delta"
                 ]
+              }
+            },
+            "differs_from": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "edge_id": {
+                  "type": "string",
+                  "maxLength": 299
+                },
+                "difference": {
+                  "type": "string",
+                  "maxLength": 299
+                }
               }
             }
           },

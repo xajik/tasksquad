@@ -1,3 +1,4 @@
+import { actionLedger } from '../dedup.js'
 import { isReview } from '../roles.js'
 import { queueDone, queuePush } from './queue.js'
 import { assignment, commit, configuration, rows, sql, type Assignment, type Data, type Graph, type Result } from '../store.js'
@@ -37,7 +38,8 @@ export async function advanceGrading(db: D1Database, g: Graph): Promise<void> {
     grading_sequence: head.sequence,
     result: JSON.parse(r.parsed!),
     plan: JSON.parse(original.input),
-    evidence
+    evidence,
+    attempted_actions: await actionLedger(db, g.id)
   }
   if (head.stage === 'project') {
     const c = await configuration(db, g)

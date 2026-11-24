@@ -1,6 +1,6 @@
 import { queueDone } from '../queue.js'
 import { assignment, sql, type Assignment, type Data } from '../../store.js'
-import { actionable, compactOwnerHistory, continuationRoot, executionNodes, executionResources, restartOwnerHistory } from '../shared.js'
+import { actionable, compactOwnerHistory, continuationRoot, executionNodes, planContext, restartOwnerHistory } from '../shared.js'
 
 import type { AcceptCtx } from './context.js'
 
@@ -75,8 +75,7 @@ export async function acceptContinue(x: AcceptCtx): Promise<void> {
           description: String(old.description ?? ''),
           body: `Revise the plan to cover the owner-approved work. Previous plan: ${String(old.body ?? '')}`.slice(0, 3999)
         },
-        observations: await executionNodes(db, g.id),
-        resources: await executionResources(db, g.id),
+        ...(await planContext(db, g.id)),
         feedback: {
           owner_approval: compactOwnerHistory([...((input.prior_user_inputs as string[]) ?? []), String(input.user_input ?? '')]).join('\n\nFollow-up:\n'),
           reason: String(d.reason ?? '')
@@ -91,7 +90,7 @@ export async function acceptContinue(x: AcceptCtx): Promise<void> {
         ? { existing_states: await executionNodes(db, g.id) }
         : {}),
       ...(parent.role === 'plan'
-        ? { observations: await executionNodes(db, g.id), resources: await executionResources(db, g.id) }
+        ? await planContext(db, g.id)
         : {}),
       continuation: d,
       user_input: compactOwnerHistory([

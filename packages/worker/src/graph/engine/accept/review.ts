@@ -1,7 +1,7 @@
 import { verifyGoal } from '../../contracts.js'
 import { queueDone } from '../queue.js'
 import { rows, sql, type Data } from '../../store.js'
-import { executedLineage, executionNodes, executionResources } from '../shared.js'
+import { executedLineage, planContext } from '../shared.js'
 
 import type { AcceptCtx } from './context.js'
 
@@ -110,8 +110,7 @@ export async function acceptReview(x: AcceptCtx): Promise<void> {
           description: '',
           body: 'Explore alternatives from observed results'
         },
-        observations: await executionNodes(db, g.id),
-        resources: await executionResources(db, g.id),
+        ...(await planContext(db, g.id)),
         feedback: { goal_alignment: d.goal_score }
       })
   }

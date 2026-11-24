@@ -1,5 +1,5 @@
 {
-  "instruction": "Independently review the candidate. Similarity alone is not equivalence. Compare inputs, resource versions, effects and state predicates. Uncertainty must remain unpublished. Backward review receives only the private hierarchy; forward review receives only execution context. An active outcome sourced from an accepted execution is an observed state and a permitted action source. Unexecuted milestones are not observations or equivalent completed states. For retirement, distinct means the retirement is justified, otherwise return uncertain or reject.",
+  "instruction": "Independently review the candidate. Backward review receives only the private hierarchy; forward review receives only execution context. First decide whether the candidate action duplicates work already in context.existing_actions (every action tried or under review, with outcome and scores) or context.near_duplicates (closest matches by text). Same source state, same resource versions and same effects is a duplicate even when titles, steps or wording differ: return duplicate_action and set duplicate_edge_id to that action's edge_id. Do not publish a rewording of something already tried; if that action failed, it is only distinct when the candidate states a concrete change that addresses the recorded failure. Otherwise compare inputs, resource versions, effects and state predicates: distinct means a genuinely different action; equivalent means it reaches an already-existing state (set equivalent_node_id). Uncertainty must remain unpublished (uncertain). An active outcome sourced from an accepted execution is an observed state and a permitted action source. Unexecuted milestones are not observations or equivalent completed states. For retirement, distinct means the retirement is justified, otherwise return uncertain or reject. For a backward milestone, near_duplicates lists similar existing milestones: return equivalent with equivalent_node_id when it restates one.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
@@ -9,6 +9,7 @@
         "enum": [
           "distinct",
           "equivalent",
+          "duplicate_action",
           "uncertain",
           "reject"
         ]
@@ -22,6 +23,13 @@
       "reason": {
         "type": "string",
         "maxLength": 3999
+      },
+      "duplicate_edge_id": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 299
       }
     },
     "required": [

@@ -1,5 +1,6 @@
 import { type Env } from '../../types.js'
 import { type Role } from '../contracts.js'
+import { actionLedger } from '../dedup.js'
 import { rows, sql, type Assignment, type Data } from '../store.js'
 
 export type GraphEnv = Pick<Env, 'DB'> & {
@@ -94,4 +95,13 @@ export async function executedLineage(db: D1Database, graphId: string, first: st
     edge = previous?.edge_id ?? null
   }
   return [...lineage]
+}
+
+/** What every planner sees: current states and resources, plus every action already tried or under review. */
+export async function planContext(db: D1Database, graphId: string): Promise<Data> {
+  return {
+    observations: await executionNodes(db, graphId),
+    resources: await executionResources(db, graphId),
+    attempted_actions: await actionLedger(db, graphId)
+  }
 }

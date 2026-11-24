@@ -1,5 +1,6 @@
 import { id, json, nodeStatements, sql, type Data } from '../../store.js'
-import { executionNodes, executionResources } from '../shared.js'
+import { fingerprint, findDuplicate, similarMilestone, AUTO_DUPLICATE } from '../../dedup.js'
+import { executionResources, planContext } from '../shared.js'
 
 import type { AcceptCtx } from './context.js'
 
@@ -42,14 +43,9 @@ export async function acceptMerge(x: AcceptCtx): Promise<void> {
         )
       )
     } else {
-      const existing = await sql(
-        db,
-        "SELECT id FROM graph_nodes WHERE graph_id=? AND kind='milestone' AND title=? AND body=? AND parent_id=?",
-        g.id,
-        candidate.title,
-        candidate.body,
-        candidate.parent_id
-      ).first<{ id: string }>()
+      // Wording changes between decompositions; a near-identical sibling under the same parent is the same milestone.
+      const similar = await similarMilestone(db, g.id, candidate)
+      const existing = similar[0]?.similarity >= AUTO_DUPLICATE ? { id: similar[0].id } : null
       // Like the forward case, the reviewer judges semantic equivalence; require only that it
       // names a real milestone in this graph (exact text match would never hold for a rewording).
       const equivalent =
@@ -71,8 +67,7 @@ export async function acceptMerge(x: AcceptCtx): Promise<void> {
           {
             task: candidate,
             observed_start: g.start_state,
-            observations: await executionNodes(db, g.id),
-            resources: await executionResources(db, g.id)
+            ...(await planContext(db, g.id))
           },
           { node: n.id }
         )
@@ -82,21 +77,23 @@ export async function acceptMerge(x: AcceptCtx): Promise<void> {
     return
   }
   const action = JSON.parse(p.content) as Data
-  const duplicate = await sql(
-    db,
-    `SELECT e.id FROM graph_edges e JOIN graph_plans p ON p.edge_id=e.id WHERE e.graph_id=? AND e.from_id=? AND p.baseline=? AND p.resource_versions=? AND p.effects=? AND p.steps=? AND p.undo_steps=? LIMIT 1`,
-    g.id,
-    action.from_id,
-    action.baseline,
-    json(action.resource_versions),
-    json(action.effects),
-    json(action.steps),
-    json(action.undo_steps)
-  ).first<{ id: string }>()
-  if (duplicate) {
+  if (d.decision === 'duplicate_action') {
+    const named = await sql(
+      db,
+      'SELECT id FROM graph_edges WHERE id=? AND graph_id=?',
+      d.duplicate_edge_id,
+      g.id
+    ).first()
+    if (!named) throw new Error('Duplicate action outside graph')
     ops.push(sql(db, "UPDATE graph_proposals SET status='published' WHERE id=?", p.id))
     return
   }
+  // Identity, not wording: normalized fingerprint or near-identical same-source, same-resource text.
+  if (await findDuplicate(db, g.id, action)) {
+    ops.push(sql(db, "UPDATE graph_proposals SET status='published' WHERE id=?", p.id))
+    return
+  }
+  const fp = await fingerprint(action)
   let target: string
   if (d.decision === 'equivalent') {
     const match = await sql(
@@ -105,20 +102,9 @@ export async function acceptMerge(x: AcceptCtx): Promise<void> {
       d.equivalent_node_id,
       g.id
     ).first<{ id: string; body: string }>()
-    // Reviewer must name an existing state; action identity is still retained separately.
+    // Reviewer must name an existing state; action identity (fingerprint) is retained separately, so a new
+    // way to reach a known state is still a distinct action.
     if (!match) throw new Error('Equivalent state outside graph')
-    const equivalent = await sql(
-      db,
-      `SELECT p.* FROM graph_plans p JOIN graph_edges e ON e.id=p.edge_id WHERE e.to_id=? AND e.from_id=? AND e.graph_id=? AND p.baseline=? AND p.resource_versions=? AND p.effects=? AND p.steps=? LIMIT 1`,
-      match.id,
-      action.from_id,
-      g.id,
-      action.baseline,
-      json(action.resource_versions),
-      json(action.effects),
-      json(action.steps)
-    ).first()
-    if (!equivalent) throw new Error('Structured equivalence not established')
     target = match.id
   } else {
     const n = nodeStatements(db, g, 'outcome', action, r.id)
@@ -143,7 +129,7 @@ export async function acceptMerge(x: AcceptCtx): Promise<void> {
     ),
     sql(
       db,
-      'INSERT INTO graph_plans(edge_id,baseline,predicates,steps,undo_steps,cost,recovery_cost,resource_versions,effects) VALUES(?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO graph_plans(edge_id,baseline,predicates,steps,undo_steps,cost,recovery_cost,resource_versions,effects,fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?)',
       edge,
       action.baseline,
       json(action.restoration_predicates),
@@ -152,7 +138,8 @@ export async function acceptMerge(x: AcceptCtx): Promise<void> {
       action.cost,
       action.recovery_cost,
       json(action.resource_versions),
-      json(action.effects)
+      json(action.effects),
+      fp
     ),
     sql(db, "UPDATE graph_proposals SET status='published' WHERE id=?", p.id)
   )

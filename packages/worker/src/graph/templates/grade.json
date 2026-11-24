@@ -1,5 +1,5 @@
 {
-  "instruction": "Evaluate local execution quality against the assigned plan and observed evidence. Use only evidence IDs supplied in context. Unknown scores are null.",
+  "instruction": "Evaluate local execution quality against the assigned plan and observed evidence. Use only evidence IDs supplied in context. Unknown scores are null. context.attempted_actions lists the other actions already tried with their scores; score this execution on its own evidence, and say in reason when it merely repeats an earlier action.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
