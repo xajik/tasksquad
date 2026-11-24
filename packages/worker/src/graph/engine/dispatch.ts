@@ -1,5 +1,5 @@
 import { bumpInboxVersion } from '../../inbox_version.js'
-import { hash, type Role } from '../contracts.js'
+import type { Role } from '../contracts.js'
 import { dispatchContext, eligibility } from '../eligibility.js'
 import { MaxHeap } from '../heap.js'
 import { isPlanning, isReview } from '../roles.js'
@@ -71,14 +71,13 @@ export async function dispatch(env: GraphEnv, g: Graph): Promise<void> {
       ),
       sql(
         db,
-        'INSERT INTO graph_attempts(id,assignment_id,task_id,agent_id,epoch,deadline,context_hash,created_at) VALUES(?,?,?,?,?,?,?,?)',
+        'INSERT INTO graph_attempts(id,assignment_id,task_id,agent_id,epoch,deadline,created_at) VALUES(?,?,?,?,?,?,?)',
         attempt,
         a.id,
         task,
         agent,
         epoch,
         now + c.policy.deadline_ms,
-        await hash(a.input),
         now
       ),
       sql(

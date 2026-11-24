@@ -292,7 +292,7 @@ export async function run(db: D1Database, graphId: string, command: string, body
   }
   if (command === 'stop') {
     // Closing is permanent: nothing can be resumed, so mark cancellations as final.
-    const ordinary = "('decompose','plan','merge','execute','report')"
+    const ordinary = "('decompose','plan','merge','execute')"
     const unopened = `SELECT t.id FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=? AND a.role IN ${ordinary} AND t.status='pending' AND t.session_id IS NULL`
     ops.push(
       sql(

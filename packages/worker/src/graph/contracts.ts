@@ -7,7 +7,6 @@ import grade from './templates/grade.json'
 import project from './templates/project.json'
 import continuation from './templates/continue.json'
 import undo from './templates/undo.json'
-import report from './templates/report.json'
 import reconcile from './templates/reconcile.json'
 import repair from './templates/repair.json'
 
@@ -66,7 +65,6 @@ export const templates = {
   project,
   continue: withApproval(continuation),
   undo,
-  report,
   reconcile
 }
 export type Role = keyof typeof templates | 'repair'
