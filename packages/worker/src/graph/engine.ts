@@ -18,7 +18,8 @@ import {
   type Attempt,
   type Data,
   type Graph,
-  type Result
+  type Result,
+  releaseRecovery
 } from './store.js'
 
 export type GraphEnv = Pick<Env, 'DB'> & {
@@ -1163,12 +1164,7 @@ export async function accept(
         )
       if (d.outcome === 'complete' || d.outcome === 'blocked')
         ops.push(
-          sql(
-            db,
-            'UPDATE graph_budgets SET recovery_reserved=MAX(0,recovery_reserved-?) WHERE graph_id=?',
-            Number((input.plan as Data).recovery_cost),
-            g.id
-          )
+          releaseRecovery(db, g.id, Number((input.plan as Data).recovery_cost))
         )
       if (d.outcome === 'blocked')
         ops.push(sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", original.id))
@@ -1322,12 +1318,7 @@ export async function accept(
         ops.push(sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", original.id))
       if (verified) {
         ops.push(
-          sql(
-            db,
-            'UPDATE graph_budgets SET recovery_reserved=MAX(0,recovery_reserved-?) WHERE graph_id=?',
-            Number((input.plan as Data).recovery_cost),
-            g.id
-          )
+          releaseRecovery(db, g.id, Number((input.plan as Data).recovery_cost))
         )
         const parent = await sql(
           db,
@@ -1510,12 +1501,7 @@ export async function accept(
       )
       if (d.decision === 'terminated_restored' && prior.role === 'execute')
         ops.push(
-          sql(
-            db,
-            'UPDATE graph_budgets SET recovery_reserved=MAX(0,recovery_reserved-?) WHERE graph_id=?',
-            Number(JSON.parse(prior.input).plan.recovery_cost),
-            g.id
-          )
+          releaseRecovery(db, g.id, Number(JSON.parse(prior.input).plan.recovery_cost))
         )
       if (d.decision === 'terminated_needs_undo')
         await enqueue(

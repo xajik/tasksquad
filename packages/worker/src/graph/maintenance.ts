@@ -7,7 +7,8 @@ import {
   rows,
   sql,
   type Assignment,
-  type Attempt
+  type Attempt,
+  releaseRecovery
 } from './store.js'
 import { retryDelay } from './engine.js'
 import { hash } from './contracts.js'
@@ -126,12 +127,7 @@ export async function maintenance(env: Pick<Env, 'DB'>, graphId: string): Promis
       )
     if (t.role === 'execute' && !t.session_id)
       ops.push(
-        sql(
-          db,
-          'UPDATE graph_budgets SET recovery_reserved=MAX(0,recovery_reserved-?) WHERE graph_id=?',
-          Number(JSON.parse(t.input).plan.recovery_cost),
-          g.id
-        )
+        releaseRecovery(db, g.id, Number(JSON.parse(t.input).plan.recovery_cost))
       )
     await commit(db, g, 'timeout', t.id, {}, ops)
   }

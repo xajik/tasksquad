@@ -63,6 +63,11 @@ export interface Result {
 }
 export type Data = Record<string, unknown>
 export const id = () => ulid()
+/** Frees an execution plan's reserved recovery budget (never below zero). */
+export const releaseRecovery = (db: D1Database, graphId: string, recoveryCost: number) =>
+  db
+    .prepare('UPDATE graph_budgets SET recovery_reserved=MAX(0,recovery_reserved-?) WHERE graph_id=?')
+    .bind(recoveryCost, graphId)
 export const json = (value: unknown) => JSON.stringify(value)
 export const sql = (db: D1Database, query: string, ...args: unknown[]) => db.prepare(query).bind(...args)
 export async function rows<T = Data>(db: D1Database, query: string, ...args: unknown[]): Promise<T[]> {
