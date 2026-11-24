@@ -103,7 +103,22 @@ export async function acceptReview(x: AcceptCtx): Promise<void> {
       scope: string
       expires_at: number
     }>(db, 'SELECT * FROM graph_evidence WHERE graph_id=?', g.id)
-    if (verifyGoal(c.rule, evidence, Date.now()) !== 'true')
+    if (verifyGoal(c.rule, evidence, Date.now()) !== 'true') {
+      // Every graded execution used to start its own "next experiment", so concurrent planners re-proposed the same
+      // ideas. One planner at a time: skip while one is in flight, and replace an unstarted one (its context is stale).
+      const inFlight = await sql(
+        db,
+        "SELECT 1 FROM graph_assignments WHERE graph_id=? AND role='plan' AND status IN ('running','review','blocked','continuation') LIMIT 1",
+        g.id
+      ).first()
+      if (inFlight) return
+      ops.push(
+        sql(
+          db,
+          "UPDATE graph_assignments SET status='cancelled',cancel_reason='superseded' WHERE graph_id=? AND role='plan' AND status='pending' AND attempt_count=0",
+          g.id
+        )
+      )
       await enqueue('plan', {
         task: {
           title: 'Next bounded experiment',
@@ -113,5 +128,6 @@ export async function acceptReview(x: AcceptCtx): Promise<void> {
         ...(await planContext(db, g.id)),
         feedback: { goal_alignment: d.goal_score }
       })
+    }
   }
 }

@@ -2,6 +2,7 @@ import { policy as normalize, type Policy } from '../contracts.js'
 import { isReview } from '../roles.js'
 import { assignment, commit, configuration, graph, json, rows, sql, type Assignment, type Data, type Result } from '../store.js'
 import { annotate, resource } from '../mutations.js'
+import { consolidateDuplicates } from '../consolidate.js'
 import { accept } from './accept.js'
 import { recoverReview } from './grading.js'
 import { abandonAssignment, dismissStale, failAssignment } from './owner.js'
@@ -22,8 +23,14 @@ export async function run(db: D1Database, graphId: string, command: string, body
     await resource(db, graphId, body)
     return
   }
+  // Resuming is the natural moment to fold duplicates created before fingerprinting existed.
+  if (command === 'run') await consolidateDuplicates(db, await graph(db, graphId))
   const g = await graph(db, graphId),
     c = await configuration(db, g)
+  if (command === 'dedup') {
+    await consolidateDuplicates(db, g)
+    return
+  }
   if (command === 'reindex') {
     await commit(db, g, 'reindex_requested', null, {}, [])
     return
