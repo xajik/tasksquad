@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseResult, verifyGoal, policy } from './contracts.js'
+import { checkApprovalRequest, parseResult, verifyGoal, policy } from './contracts.js'
 
 describe('graph response contracts', () => {
   const valid = {
@@ -52,5 +52,11 @@ describe('goal verification', () => {
       max_attempts: 3
     })
     expect(() => policy({ agents: ['a'], grader: 'g', decomposer: 'd', cost_budget: Infinity })).toThrow()
+  })
+  it('never lets an agent ask the owner for an internal ID or to write a plan', () => {
+    const ask = (id: string, label: string) => ({ fields: [{ id, type: 'text', label }] })
+    expect(() => checkApprovalRequest(ask('revised_plan', 'Provide the revised plan ID covering Google verification.'))).toThrow(/internal IDs/)
+    expect(() => checkApprovalRequest(ask('x', 'Which result_id should be used?'))).toThrow(/internal IDs/)
+    expect(() => checkApprovalRequest(ask('bundle', 'Which two bundles should the price test use?'))).not.toThrow()
   })
 })

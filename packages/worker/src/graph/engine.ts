@@ -1461,6 +1461,27 @@ export async function accept(
               input.serial_work_id
             )
           )
+        if (d.decision === 'replan') {
+          // The owner approved work that the current plan does not cover. Send it back to planning with the
+          // approval as input; never make the owner author a plan or look up internal IDs.
+          if (parent.role !== 'execute') throw new Error('replan applies only to a reviewed execution plan')
+          const old = (JSON.parse(parent.input).plan ?? {}) as Data
+          ops.push(sql(db, "UPDATE graph_assignments SET status='cancelled',cancel_reason='replanned' WHERE id=?", parent.id))
+          await enqueue('plan', {
+            task: {
+              title: String(old.title ?? 'Revised plan'),
+              description: String(old.description ?? ''),
+              body: `Revise the plan to cover the owner-approved work. Previous plan: ${String(old.body ?? '')}`.slice(0, 3999)
+            },
+            observations: await executionNodes(db, g.id),
+            resources: await executionResources(db, g.id),
+            feedback: {
+              owner_approval: compactOwnerHistory([...((input.prior_user_inputs as string[]) ?? []), String(input.user_input ?? '')]).join('\n\nFollow-up:\n'),
+              reason: String(d.reason ?? '')
+            }
+          })
+          break
+        }
         const previousContext = JSON.parse(parent.input)
         const context = {
           ...previousContext,

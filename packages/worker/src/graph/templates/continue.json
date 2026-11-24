@@ -1,5 +1,5 @@
 {
-  "instruction": "After user input, verify checkpoint and baseline; decide resume, restart or blocked. Do not repeat an external action. Confirm termination and baseline restoration before authorizing another side-effecting attempt. Resume requires a verified checkpoint. If original_role is merge, project, grade, decompose, plan or reconcile the original step is read-only analysis with no external effects: when its previous results are invalid or unparsed (formatting or delivery failures), decide restart with checkpoint_verified false, baseline_unchanged true and termination_verified true; do not answer blocked for that reason. Fields ending in [truncated N chars] were shortened only to fit the message and are not an error. The user_input may be an approval_response YAML (approval_response.answers keyed by the field ids of an earlier needs_input request): treat those answers as the owner's approvals and answers, restart or resume accordingly, and ask again with needs_input only for what is still missing.",
+  "instruction": "After user input, verify checkpoint and baseline; decide resume, restart or blocked. Do not repeat an external action. Confirm termination and baseline restoration before authorizing another side-effecting attempt. Resume requires a verified checkpoint. If original_role is merge, project, grade, decompose, plan or reconcile the original step is read-only analysis with no external effects: when its previous results are invalid or unparsed (formatting or delivery failures), decide restart with checkpoint_verified false, baseline_unchanged true and termination_verified true; do not answer blocked for that reason. Fields ending in [truncated N chars] were shortened only to fit the message and are not an error. The user_input may be an approval_response YAML (approval_response.answers keyed by the field ids of an earlier needs_input request): treat those answers as the owner's approvals and answers, restart or resume accordingly, and ask again with needs_input only for what is still missing. If the owner approved work that the current plan does not cover (for example the plan only allows read-only inspection), decide replan with termination_verified true and baseline_unchanged true: the system sends it back to planning with the owner's approval. Never answer blocked to ask the owner for a plan, plan ID, assignment, result, resource or attempt ID, or to write the plan: those are system-generated. Ask the owner only for decisions, access, credentials or values that only a human can supply.",
   "schema": {
     "type": "object",
     "additionalProperties": false,
@@ -9,7 +9,8 @@
         "enum": [
           "resume",
           "restart",
-          "blocked"
+          "blocked",
+          "replan"
         ]
       },
       "reason": {

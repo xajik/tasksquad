@@ -174,6 +174,8 @@ export function checkApprovalRequest(value: unknown): void {
   const request = value as { fields: { id: string; type: string; options?: { id: string }[] }[] }
   const seen = new Set<string>()
   for (const field of request.fields) {
+    if (/\b(plan|assignment|result|resource|attempt|task|step)[ _-]?(id|identifier)s?\b/i.test(`${field.id} ${(field as { label?: string }).label ?? ''}`))
+      throw new Error(`needs_input.${field.id}: do not ask the owner for internal IDs or to write a plan; those are system-generated. Decide replan (continuation) or restart instead, and ask only for human decisions, access or values`)
     if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(field.id) || seen.has(field.id)) throw new Error('needs_input: invalid field id')
     seen.add(field.id)
     const options = field.options ?? []
