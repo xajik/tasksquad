@@ -24,6 +24,32 @@ beforeAll(setupGraphHarness, 30000)
 afterAll(teardownGraphHarness)
 
 describe('graph execution workflow', () => {
+  it('closes a crashed launch once and retries the assignment without accepting its diagnostic as output', async () => {
+    const { g, agent, team, user } = await fixture()
+    const handlerEnv = {
+      ...env(),
+      GRAPH_COORDINATOR: { idFromName: (s: string) => s, get: () => ({ command: async () => maintenance(env(), g.id) }) }
+    } as unknown as Env
+    const daemon = { agentId: agent, teamId: team, userId: user, tokenId: 'fixture' }
+    const post = (path: string, body: unknown) =>
+      new Request('https://fixture.test' + path, { method: 'POST', body: JSON.stringify(body) })
+    await run(db, g.id, 'run')
+    await tick(env(), g.id)
+    const attempt = (await rows<{ id: string; task_id: string; assignment_id: string }>(db,
+      'SELECT * FROM graph_attempts WHERE agent_id=?', agent))[0]
+    const opened = await sessionOpen(post('/daemon/session/open', { task_id: attempt.task_id }), handlerEnv, {}, daemon)
+    const { session_id } = await opened.json() as { session_id: string }
+    const reason = 'Task could not start: tmux new-session failed'
+    for (let i = 0; i < 2; i++) {
+      const res = await sessionClose(post('/daemon/session/close', { session_id, status: 'crashed', final_text: reason }), handlerEnv, {}, daemon)
+      expect(await res.json()).toMatchObject({ graph_reconciliation: true })
+    }
+    expect(await rows(db, 'SELECT status FROM sessions WHERE id=? AND closed_at IS NOT NULL', session_id)).toEqual([{ status: 'crashed' }])
+    expect(await rows(db, 'SELECT role FROM messages WHERE task_id=? AND body=?', attempt.task_id, reason)).toEqual([{ role: 'system' }])
+    expect(await rows(db, 'SELECT id FROM graph_results WHERE attempt_id=?', attempt.id)).toHaveLength(0)
+    expect(await rows(db, 'SELECT status FROM graph_assignments WHERE id=?', attempt.assignment_id)).toEqual([{ status: 'pending' }])
+  })
+
   it('intakes notify and close once without letting a duplicate clear a newer session', async () => {
     const { g, agent, team, user } = await fixture()
     const handlerEnv = {
