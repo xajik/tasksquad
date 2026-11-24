@@ -6,16 +6,21 @@ import { MaxHeap } from './heap.js'
 import { extractApprovalRequest } from '../approval.js'
 
 /** The interactive view needs only a few input fields (titles and links between assignments); the rest, with the role template, is fetched never. */
-function slimAssignment(a: Assignment): Data {
+export function slimAssignment(a: Assignment): Data {
   const { template: _template, ...rest } = a as Assignment & { template?: string }
   let input = rest.input
   try {
     const full = JSON.parse(String(rest.input)) as Data
     const keep: Data = {}
-    for (const k of ['proposal_id', 'execution_result_id', 'title', 'operation'])
+    // `goals` and the plan's projected impact label the review summaries shown in the inbox.
+    for (const k of ['proposal_id', 'execution_result_id', 'title', 'operation', 'goals'])
       if (full[k] !== undefined) keep[k] = full[k]
-    const title = (full.plan as { title?: unknown } | undefined)?.title
-    if (title !== undefined) keep.plan = { title }
+    const plan = full.plan as { title?: unknown; projected_impact?: unknown } | undefined
+    if (plan?.title !== undefined || plan?.projected_impact !== undefined)
+      keep.plan = {
+        ...(plan.title !== undefined && { title: plan.title }),
+        ...(plan.projected_impact !== undefined && { projected_impact: plan.projected_impact })
+      }
     input = JSON.stringify(keep)
   } catch {
     /* keep the original text when it is not JSON */
