@@ -72,9 +72,9 @@ export async function accept(
   r: Result,
   extra: D1PreparedStatement[] = []
 ): Promise<void> {
+  if (r.status === 'accepted') return
   const { a, original } = await resolve(db, r),
     c = await configuration(db, g)
-  if (r.status === 'accepted') return
   if (r.status !== 'review' || original.config_version !== c.version || !r.parsed)
     throw new Error('Result no longer eligible')
   const d = JSON.parse(r.parsed) as Data,
