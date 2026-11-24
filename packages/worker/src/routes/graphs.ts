@@ -1,3 +1,4 @@
+import { COMMANDS_WHEN_DISABLED } from '../graph/commands.js'
 import type { Env, AuthContext } from '../types.js'
 import { json, err } from '../auth.js'
 import { requireMember, requireMaintainer } from './helpers.js'
@@ -17,7 +18,7 @@ export async function handle(
   if (
     env.ACTION_GRAPH_ENABLED !== 'true' &&
     req.method !== 'GET' &&
-    !['pause', 'stop', 'review', 'input', 'fail', 'abandon', 'retry_review', 'cancel_review'].includes(action)
+    !COMMANDS_WHEN_DISABLED.includes(action ?? '')
   )
     return err('graph_dispatch_disabled', 409)
   const write = req.method !== 'GET'
@@ -48,11 +49,8 @@ export async function handle(
       return json(copy, 201)
     }
     const coordinator = env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(teamId))
-    if (action === 'resource') {
-      // Resources are immutable versions. These owner mutations also use coordinator serialization.
-      await coordinator.command(graphId, 'resource', { ...body, user_id: auth.userId, team_id: teamId })
-    } else
-      await coordinator.command(graphId, action ?? '', { ...body, user_id: auth.userId, team_id: teamId })
+    // All mutations (including immutable resource versions) are serialized through the team coordinator.
+    await coordinator.command(graphId, action ?? '', { ...body, user_id: auth.userId, team_id: teamId })
     return json({ ok: true })
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 400)

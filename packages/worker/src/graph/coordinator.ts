@@ -1,3 +1,4 @@
+import { COMMANDS_WHEN_DISABLED } from './commands.js'
 import { DurableObject } from 'cloudflare:workers'
 import type { Env } from '../types.js'
 import { run, syncInboxStatus, tick } from './engine.js'
@@ -16,7 +17,7 @@ export class GraphCoordinator extends DurableObject<Env> {
     return this.serial(async () => {
       if (
         this.env.ACTION_GRAPH_ENABLED !== 'true' &&
-        !['tick', 'pause', 'stop', 'review', 'input', 'fail', 'abandon'].includes(command)
+        !COMMANDS_WHEN_DISABLED.includes(command)
       )
         throw new Error('Action Graph dispatch is disabled')
       await this.ctx.storage.put('team_id', body.team_id)
