@@ -32,6 +32,25 @@ const controlRank = (role: Role) =>
   role === 'undo' || role === 'reconcile' ? 0 : ['grade', 'project', 'continue'].includes(role) ? 1 : 2
 const actionable = (role: Role) => role === 'execute' || role === 'undo'
 
+/** Follows `continue` parents to the step the owner is really answering. `missing` flags a dangling parent. */
+async function continuationRoot(
+  db: D1Database,
+  start: Assignment,
+  graphId?: string
+): Promise<{ root: Assignment; missing: boolean }> {
+  let root = start
+  const seen = new Set<string>()
+  while (root.role === 'continue' && root.parent_id && !seen.has(root.id)) {
+    seen.add(root.id)
+    const parent = graphId
+      ? await sql(db, 'SELECT * FROM graph_assignments WHERE id=? AND graph_id=?', root.parent_id, graphId).first<Assignment>()
+      : await sql(db, 'SELECT * FROM graph_assignments WHERE id=?', root.parent_id).first<Assignment>()
+    if (!parent) return { root, missing: true }
+    root = parent
+  }
+  return { root, missing: false }
+}
+
 /** Restarted steps retain the answers on every earlier execution of that step. */
 async function restartOwnerHistory(db: D1Database, graphId: string, root: Assignment): Promise<string[]> {
   const inputs: string[] = [], seen = new Set<string>()
@@ -208,19 +227,8 @@ export async function run(db: D1Database, graphId: string, command: string, body
     if (!a || typeof body.message !== 'string' || body.message.length > 3999)
       throw new Error('A blocked assignment and bounded input are required')
     if (a.role === 'repair') throw new Error('Provide input to the original assignment')
-    let root = a
-    const visited = new Set<string>()
-    while (root.role === 'continue' && root.parent_id && !visited.has(root.id)) {
-      visited.add(root.id)
-      const parent = await sql(
-        db,
-        'SELECT * FROM graph_assignments WHERE id=? AND graph_id=?',
-        root.parent_id,
-        g.id
-      ).first<Assignment>()
-      if (!parent) throw new Error('Missing continuation ancestor')
-      root = parent
-    }
+    const { root, missing } = await continuationRoot(db, a, g.id)
+    if (missing) throw new Error('Missing continuation ancestor')
     if (root.role === 'continue') throw new Error('Continuation has no original assignment')
     const unresolved = await sql(
       db,
@@ -705,12 +713,8 @@ function assertEvidenceResources(original: Assignment, d: Data): void {
  * time so the agent is asked to repair its answer, instead of the owner hitting a dead end when accepting. */
 async function assertContinuationVerified(db: D1Database, original: Assignment, d: Data): Promise<void> {
   if (original.role !== 'continue' || d.decision === 'blocked') return
-  let parent = await sql(db, 'SELECT * FROM graph_assignments WHERE id=?', original.parent_id).first<Assignment>()
-  const seen = new Set<string>()
-  while (parent?.role === 'continue' && parent.parent_id && !seen.has(parent.id)) {
-    seen.add(parent.id)
-    parent = await sql(db, 'SELECT * FROM graph_assignments WHERE id=?', parent.parent_id).first<Assignment>()
-  }
+  const first = await sql(db, 'SELECT * FROM graph_assignments WHERE id=?', original.parent_id).first<Assignment>()
+  const parent = first && (await continuationRoot(db, first)).root
   if (!parent || !actionable(parent.role as Role)) return
   if (
     d.termination_verified !== true ||
@@ -1356,18 +1360,7 @@ export async function accept(
       if (!found) throw new Error('Missing blocked assignment')
       // A reply to a blocked continue must resume the step that started it, never spawn another
       // continue (that looped: continue -> restart -> continue ...).
-      let parent: Assignment = found
-      const ancestors = new Set<string>()
-      while (parent.role === 'continue' && parent.parent_id && !ancestors.has(parent.id)) {
-        ancestors.add(parent.id)
-        const up: Assignment | null = await sql(
-          db,
-          'SELECT * FROM graph_assignments WHERE id=?',
-          parent.parent_id
-        ).first<Assignment>()
-        if (!up) break
-        parent = up
-      }
+      const { root: parent } = await continuationRoot(db, found)
       if (parent.role === 'continue') throw new Error('Continuation has no original assignment')
       if (d.decision === 'blocked')
         // The newest request belongs to this continuation, not its ancestor.
