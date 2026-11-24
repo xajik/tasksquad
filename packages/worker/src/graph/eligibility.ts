@@ -51,6 +51,21 @@ export async function dispatchContext(db: D1Database, g: Graph, enabled = true) 
   }
 }
 
+/** The serial queue's head is the same for every candidate in a pass, so fetch it once per context. */
+const heads = new WeakMap<object, Promise<{ work_id: string } | null>>()
+function queueHead(ctx: Awaited<ReturnType<typeof dispatchContext>>) {
+  let head = heads.get(ctx)
+  if (!head) {
+    head = sql(
+      ctx.db,
+      "SELECT work_id FROM graph_serial_queue WHERE graph_id=? AND status='pending' ORDER BY sequence LIMIT 1",
+      ctx.g.id
+    ).first<{ work_id: string }>()
+    heads.set(ctx, head)
+  }
+  return head
+}
+
 export async function eligibility(
   a: Assignment,
   ctx: Awaited<ReturnType<typeof dispatchContext>>
@@ -80,11 +95,7 @@ export async function eligibility(
   if (['grade', 'project', 'continue'].includes(effective.role)) {
     const input = JSON.parse(effective.input)
     const work = String(input.serial_work_id ?? input.execution_result_id ?? effective.id)
-    const head = await sql(
-      db,
-      "SELECT work_id FROM graph_serial_queue WHERE graph_id=? AND status='pending' ORDER BY sequence LIMIT 1",
-      g.id
-    ).first<{ work_id: string }>()
+    const head = await queueHead(ctx)
     if (head?.work_id !== work)
       return wait(
         'queue_predecessor',
