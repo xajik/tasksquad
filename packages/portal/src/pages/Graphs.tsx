@@ -1,7 +1,7 @@
 import { Copy, Play, Pause, RefreshCw } from 'lucide-react'
 import { parseJson } from '@/lib/parseJson'
 import { goalVerificationLabel, needsOwner } from '@/lib/graphStatus'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, type Agent } from '../lib/api'
 import {
@@ -100,18 +100,25 @@ export function Graphs({
   } | null>(null)
   const generation = useRef(0),
     searchRef = useRef<HTMLInputElement>(null)
-  const refresh = useCallback(async () => {
+  const lastDetail = useRef('')
+  // `full` also reloads the graph list and agents; routine polls only need the snapshot.
+  const refresh = useCallback(async (full = true) => {
     const version = ++generation.current
     try {
       const [list, ad, detail] = await Promise.all([
-        graphApi.list(teamId),
-        api.agents.list(teamId),
+        full ? graphApi.list(teamId) : null,
+        full ? api.agents.list(teamId) : null,
         graphId ? graphApi.get(teamId, graphId) : Promise.resolve(null)
       ])
       if (version !== generation.current) return
-      setGraphs(list.graphs)
-      setAgents(ad.agents)
-      setCurrent(detail)
+      if (list) setGraphs(list.graphs)
+      if (ad) setAgents(ad.agents)
+      // Keep the same object when nothing changed so memoized derivations and children skip work.
+      const serialized = JSON.stringify(detail)
+      if (serialized !== lastDetail.current) {
+        lastDetail.current = serialized
+        setCurrent(detail)
+      }
       setUpdatedAt(Date.now())
       setError('')
     } catch (e) {
@@ -121,6 +128,7 @@ export function Graphs({
     }
   }, [teamId, graphId])
   useEffect(() => {
+    lastDetail.current = ''
     setCurrent(null)
     setLoading(true)
     setSelected(null)
@@ -130,10 +138,13 @@ export function Graphs({
   }, [teamId, graphId])
   useEffect(() => {
     void refresh()
+    let ticks = 0
     const timer = live
       ? setInterval(
           () => {
-            void refresh()
+            // Skip background tabs; reload the list and agents only occasionally.
+            if (document.hidden) return
+            void refresh(++ticks % 10 === 0)
           },
           plan === 'pro' ? 2000 : 5000
         )
@@ -220,13 +231,16 @@ export function Graphs({
   }
   const node = current?.nodes.find((n) => n.id === selected),
     edge = current?.edges.find((e) => e.id === selected)
-  const attention = current ? graphAttention(current) : null
+  const attention = useMemo(() => (current ? graphAttention(current) : null), [current])
   const nodeAttention = node
     ? (attention?.nodes.get(node.id) ?? [])
     : edge
       ? (attention?.edges.get(edge.id) ?? [])
       : []
-  const projection = current && node && !isGuidance(node) ? goalProjection(current, node.id) : null
+  const projection = useMemo(
+    () => (current && node && !isGuidance(node) ? goalProjection(current, node.id) : null),
+    [current, node]
+  )
   const reviews = current?.results.filter((r) => r.status === 'review') ?? [],
     blocked =
       current?.assignments.filter(
