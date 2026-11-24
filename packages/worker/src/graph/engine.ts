@@ -678,6 +678,10 @@ export async function processResults(db: D1Database, g: Graph): Promise<void> {
   }
 }
 
+/** A restoration predicate is verified by unexpired evidence that reports it exactly as 'true'. */
+const predicateVerified = (evidence: Data[], predicate: string) =>
+  evidence.some((e) => e.predicate === predicate && e.value === 'true' && Number(e.expires_at) > Date.now())
+
 /** A 'restored' reconcile must verify every restoration predicate by exact text; checked at parse so repair can fix it. */
 async function assertReconcileRestoration(db: D1Database, original: Assignment, d: Data): Promise<void> {
   if (original.role !== 'reconcile' || d.decision !== 'terminated_restored') return
@@ -689,9 +693,7 @@ async function assertReconcileRestoration(db: D1Database, original: Assignment, 
   const predicates = (((JSON.parse(prior?.input ?? '{}') as Data).plan as Data | undefined)
     ?.restoration_predicates ?? []) as string[]
   const evidence = (d.evidence as Data[]) ?? []
-  const missing = predicates.filter(
-    (p) => !evidence.some((e) => e.predicate === p && e.value === 'true' && Number(e.expires_at) > Date.now())
-  )
+  const missing = predicates.filter((p) => !predicateVerified(evidence, p))
   if (!predicates.length || missing.length)
     throw new Error(
       `Restoration predicates are not verified; report evidence with these exact predicate strings: ${JSON.stringify(predicates)}`
@@ -1308,9 +1310,7 @@ export async function accept(
       const verified =
         d.restored === true &&
         predicates.length > 0 &&
-        predicates.every((p) =>
-          observed.some((e) => e.predicate === p && e.value === 'true' && Number(e.expires_at) > Date.now())
-        )
+        predicates.every((p) => predicateVerified(observed, p))
       ops.push(
         sql(
           db,
@@ -1479,9 +1479,7 @@ export async function accept(
         const predicates = plan.restoration_predicates as string[]
         if (
           !predicates.length ||
-          !predicates.every((p) =>
-            evidence.some((e) => e.predicate === p && e.value === 'true' && Number(e.expires_at) > Date.now())
-          )
+          !predicates.every((p) => predicateVerified(evidence, p))
         )
           throw new Error('Restoration predicates are not verified')
       }
