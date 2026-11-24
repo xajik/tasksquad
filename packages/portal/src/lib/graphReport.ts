@@ -1,3 +1,4 @@
+import { needsOwner } from './graphStatus'
 import type { GraphSnapshot } from './graph'
 
 const dayStart = (now: number) => {
@@ -25,7 +26,7 @@ export function dailyReport(g: GraphSnapshot, now = Date.now()): DailyReport {
   const accepted = results.filter((r) => r.status === 'accepted').length
   const bad = results.filter((r) => ['invalid', 'rejected', 'stale'].includes(r.status)).length
   const attention = g.assignments.filter((a) => g.waiting
-    ? ['reply', 'review'].includes(g.waiting[a.id]?.action ?? '')
+    ? needsOwner(g.waiting[a.id]?.action)
     : ['blocked', 'error', 'review'].includes(a.status) && a.role !== 'repair')
   const changed = g.nodes.filter((n) => Math.max(n.created_at, n.state_changed_at ?? 0) >= start)
   const goal =

@@ -1,4 +1,5 @@
 import { Copy, Play, Pause, RefreshCw } from 'lucide-react'
+import { goalVerificationLabel, needsOwner } from '@/lib/graphStatus'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, type Agent } from '../lib/api'
@@ -637,11 +638,7 @@ export function Graphs({
               <p className="mt-2 text-sm">
                 Goal:{' '}
                 <b>
-                  {current.goal_verification === 'true'
-                    ? 'Verified'
-                    : current.goal_verification === 'false'
-                      ? 'Not met'
-                      : 'Unverified'}
+                  {goalVerificationLabel(current.goal_verification)}
                 </b>{' '}
                 · {current.status} ·{' '}
                 {plural(current.nodes.filter((n) => !isGuidance(n)).length, 'execution state')} ·{' '}
@@ -696,7 +693,7 @@ export function Graphs({
               const count =
                 id === 'inbox'
                   ? Object.values(current.waiting ?? {}).filter((w) =>
-                      ['reply', 'review'].includes(w.action ?? '')
+                      needsOwner(w.action)
                     ).length
                   : id === 'deactivated'
                     ? current.nodes.filter((n) => n.state === 'deactivated').length
@@ -922,11 +919,7 @@ export function Graphs({
                             <p className="text-xs text-muted-foreground">{projection.reason}</p>
                             <p className="text-xs">
                               Goal verification:{' '}
-                              {current.goal_verification === 'true'
-                                ? 'Verified'
-                                : current.goal_verification === 'false'
-                                  ? 'Not met'
-                                  : 'Unverified'}
+                              {goalVerificationLabel(current.goal_verification)}
                             </p>
                             {projection.evidenceIds.length > 0 && (
                               <details>
@@ -1205,7 +1198,7 @@ export function Graphs({
                       .map((a) => (
                         <div key={a.id} className="flex flex-col gap-3 py-3 text-sm sm:flex-row sm:items-start">
                           <span className="min-w-0 flex-1 break-words">
-                            {['reply', 'review'].includes(current.waiting?.[a.id]?.action ?? '') && (
+                            {needsOwner(current.waiting?.[a.id]?.action) && (
                               <b className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs">
                                 {current.waiting?.[a.id]?.action === 'review'
                                   ? 'Review result'

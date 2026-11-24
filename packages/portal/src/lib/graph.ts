@@ -1,3 +1,4 @@
+import { isActiveAttempt } from './graphStatus'
 import { request } from './api'
 
 export interface GraphPolicy {
@@ -206,7 +207,7 @@ export function graphRunExplanation(graph: GraphSnapshot): string {
   if (graph.status === 'paused')
     return 'Paused. New execution and planning wait for Run; reviews and recovery may still finish.'
   if (graph.status === 'stopped') return 'Closed. This graph cannot be resumed.'
-  const active = graph.attempts.filter((a) => ['pending', 'running'].includes(a.status)).length
+  const active = graph.attempts.filter((a) => isActiveAttempt(a.status)).length
   if (active) return `${active} active job${active === 1 ? '' : 's'}.`
   if (graph.grading?.some((r) => r.status === 'blocked'))
     return 'Blocked: review failed. Open the work queue to retry or cancel it; grading remains incomplete.'

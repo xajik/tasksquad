@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { goalVerificationLabel } from '@/lib/graphStatus'
 import { Network } from 'lucide-react'
 import { effectiveRole, type GraphSnapshot } from '@/lib/graph'
 import {
@@ -446,7 +447,7 @@ export function GraphCanvas({
             const projectedGoal = !!selectedExecution && goals.some((goal) => goal.id === n.id)
             const label = guidance
               ? n.kind === 'goal'
-                ? `Goal · guidance · ${graph.goal_verification === 'true' ? 'Verified' : graph.goal_verification === 'false' ? 'Not met' : 'Unverified'}`
+                ? `Goal · guidance · ${goalVerificationLabel(graph.goal_verification)}`
                 : 'Milestone · guidance'
               : observed
                 ? 'Observed state'

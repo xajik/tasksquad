@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { goalVerificationLabel, needsOwner, isActiveAttempt } from '@/lib/graphStatus'
 import { Link } from 'react-router-dom'
 import { Activity, Archive, CircleCheck, Clock3, Layers3, ListFilter, Network, Target } from 'lucide-react'
 import { Button } from './ui/button'
@@ -63,20 +64,16 @@ function TaskLink({ graph, assignment }: { graph: GraphSnapshot; assignment: Gra
 }
 
 export function GraphMetrics({ graph }: { graph: GraphSnapshot }) {
-  const active = graph.attempts.filter((a) => ['pending', 'running'].includes(a.status)).length
+  const active = graph.attempts.filter((a) => isActiveAttempt(a.status)).length
   const needsInput = Object.values(graph.waiting ?? {}).filter((w) =>
-    ['reply', 'review'].includes(w.action ?? '')
+    needsOwner(w.action)
   ).length
   const pending = graph.assignments.filter((a) => a.status === 'pending').length
   const metrics = [
     {
       label: 'Goal evidence',
       value:
-        graph.goal_verification === 'true'
-          ? 'Verified'
-          : graph.goal_verification === 'false'
-            ? 'Not met'
-            : 'Unverified',
+        goalVerificationLabel(graph.goal_verification),
       detail: `${graph.config.rule.predicates.length} success predicates`
     },
     { label: 'Active jobs', value: active, detail: `${graph.config.policy.capacity} execution slots` },
@@ -122,7 +119,7 @@ function Candidates({ graph, inspect }: { graph: GraphSnapshot; inspect: (id: st
   // hottest (highest weight) first. Running work keeps its weight when it still has
   // one, otherwise its priority, so it stays visible beside what runs next.
   const runningIds = new Set(
-    graph.attempts.filter((t) => ['pending', 'running'].includes(t.status)).map((t) => t.assignment_id)
+    graph.attempts.filter((t) => isActiveAttempt(t.status)).map((t) => t.assignment_id)
   )
   const cellWeight = (a: GraphAssignment) => weights.get(a.id)?.weight ?? a.priority
   const cellIds = new Set([...heap.map((a) => a.id), ...runningIds])

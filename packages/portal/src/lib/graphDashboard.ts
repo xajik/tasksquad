@@ -1,3 +1,4 @@
+import { isActiveAttempt } from './graphStatus'
 import { latestGraphAttempt, type GraphAssignment, type GraphSnapshot } from './graph'
 
 export const graphViews = [
@@ -58,7 +59,7 @@ export function staleJobs(graph: GraphSnapshot, now: number, waitingAge: number)
     .flatMap((a) => {
       const attempt = latestGraphAttempt(graph, a.id)
       const result = attempt && graph.results.find((r) => r.attempt_id === attempt.id)
-      const live = attempt && ['pending', 'running'].includes(attempt.status)
+      const live = attempt && isActiveAttempt(attempt.status)
       const age = now - (attempt?.created_at ?? a.created_at)
       const diagnosis =
         live && attempt.deadline <= now
