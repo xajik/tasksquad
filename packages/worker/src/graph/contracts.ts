@@ -226,23 +226,36 @@ export function toYaml(value: unknown, indent = 0): string {
 export const MAX_PROMPT_CHARS = 16000
 export const MAX_REPLY_CHARS = 4000
 
-/** Shrink the longest strings in the context until the rendered YAML fits the budget. */
+/** Long lists of earlier work can exhaust the budget even when every string is short.
+ * Compact those lists before shortening the assigned task, plan, or owner input. */
 export function capContext(input: unknown, budget: number): string {
-  let limit = 6000
+  const history = new Set(['observations', 'existing_states', 'existing_hierarchy',
+    'near_duplicates', 'previous_results'])
+  let historyLimit = Infinity
+  let textLimit = 6000
   for (;;) {
-    const shrink = (v: unknown): unknown =>
-      typeof v === 'string'
-        ? v.length > limit
-          ? `${v.slice(0, limit)}… [truncated ${v.length - limit} chars]`
-          : v
-        : Array.isArray(v)
-          ? v.map(shrink)
-          : v && typeof v === 'object'
-            ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shrink(x)]))
-            : v
+    let largestList = 0
+    const shrink = (v: unknown, key = '', parent = ''): unknown => {
+      if (typeof v === 'string' && v.length > textLimit)
+        return `${v.slice(0, textLimit)}… [truncated ${v.length - textLimit} chars]`
+      if (Array.isArray(v)) {
+        const ledger = ['attempted_actions', 'existing_actions'].includes(parent) && ['actions', 'proposals'].includes(key)
+        if (!ledger && !history.has(key)) return v.map(item => shrink(item))
+        const keep = Math.min(v.length, historyLimit)
+        largestList = Math.max(largestList, keep)
+        const items = v.slice(0, keep).map(item => shrink(item))
+        if (keep < v.length) items.push(`[omitted ${v.length - keep} entries]`)
+        return items
+      }
+      if (v && typeof v === 'object')
+        return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shrink(x, k, key)]))
+      return v
+    }
     const out = toYaml(shrink(input), 1)
-    if (out.length <= budget || limit <= 120) return out
-    limit = Math.floor(limit / 2)
+    if (out.length <= budget) return out
+    if (largestList > 1) historyLimit = Math.floor(largestList / 2)
+    else if (textLimit > 120) textLimit = Math.floor(textLimit / 2)
+    else return out
   }
 }
 

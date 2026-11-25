@@ -266,6 +266,47 @@ describe('graph inbox, review and access', () => {
     expect(await rows(db, "SELECT * FROM graph_serial_queue WHERE work_id=? AND status='pending'", followup.id)).toHaveLength(1)
   })
 
+  it('delivers later owner decisions to queued work and summarizes only graphs in the project', async () => {
+    const { g, agent } = await fixture(false)
+    const other = await fixture(false)
+    const siblingId = crypto.randomUUID()
+    await sql(db, `INSERT INTO graphs(id,team_id,owner_id,title,description,body,start_state,status,created_at,updated_at)
+      SELECT ?,team_id,owner_id,'Private sibling goal','','','','paused',0,0 FROM graphs WHERE id=?`, siblingId, g.id).run()
+    const planner = await assignment(db, g, 'plan', { task: 'Plan buyer interviews',
+      attempted_actions: { actions: Array.from({ length: 1200 }, (_, i) => ({ title: 'Previous action ' + i })) } })
+    const executor = await assignment(db, g, 'execute', { plan: { title: 'Run interviews using owner approvals' } })
+    const backward = await assignment(db, g, 'merge', { direction: 'backward' })
+    await db.batch([...planner.statements, ...executor.statements, ...backward.statements])
+    async function answer(graphId: string, role: 'execute' | 'project', message: string) {
+      const a = await assignment(db, await graph(db, graphId), role, {})
+      await db.batch([...a.statements, sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id=?", a.id)])
+      await run(db, graphId, 'input', { assignment_id: a.id, message })
+    }
+    await answer(g.id, 'execute', 'approval_response:\n  title: Launch pricing\n  answers:\n    interviews: "$49, $79, $99"\n    production: "$79 final"')
+    await answer(g.id, 'project', 'Private grading rationale')
+    await answer(other.g.id, 'execute', 'Unrelated project decision')
+    async function frame(id: string) {
+      const a = (await rows<Assignment>(db, 'SELECT * FROM graph_assignments WHERE id=?', id))[0]
+      return sessionFraming(db, g, a, agent)
+    }
+    for (const id of [planner.id, executor.id]) {
+      const message = await frame(id)
+      expect(message.split('$49, $79, $99')).toHaveLength(2)
+      expect(message).toContain('$79 final')
+      expect(message).not.toContain('Private grading rationale')
+      expect(message).not.toContain('Unrelated project decision')
+      expect(message.length).toBeLessThanOrEqual(16000)
+    }
+    const planMessage = await frame(planner.id)
+    expect(planMessage).toContain(siblingId)
+    expect(planMessage).toContain('"paused":1')
+    expect(planMessage).not.toContain(other.g.id)
+    expect(planMessage).not.toContain('Private sibling goal')
+    const backwardMessage = await frame(backward.id)
+    expect(backwardMessage).toContain(siblingId)
+    expect(backwardMessage).not.toContain('$79 final')
+  })
+
   it('frames a first step with repo preparation and execution steps with the end-of-session skills', async () => {
     const { g, agent } = await fixture(false)
     const ex = await assignment(db, g, 'execute', { plan: {} })
