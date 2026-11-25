@@ -2,6 +2,7 @@ import { policy as normalize, type Policy } from '../contracts.js'
 import { isReview } from '../roles.js'
 import { assignment, commit, configuration, graph, json, rows, sql, type Assignment, type Data, type Result } from '../store.js'
 import { annotate, resource } from '../mutations.js'
+import type { SemanticIndex } from '../dedup.js'
 import { consolidateDuplicates } from '../consolidate.js'
 import { accept } from './accept.js'
 import { recoverReview } from './grading.js'
@@ -9,7 +10,13 @@ import { abandonAssignment, dismissStale, failAssignment } from './owner.js'
 import { resolve } from './results.js'
 import { compactOwnerHistory, continuationRoot, executionResources, restartOwnerHistory } from './shared.js'
 
-export async function run(db: D1Database, graphId: string, command: string, body: Data = {}): Promise<void> {
+export async function run(
+  db: D1Database,
+  graphId: string,
+  command: string,
+  body: Data = {},
+  semantic?: SemanticIndex
+): Promise<void> {
   // 'stopped' is the terminal Closed state: immutable and irreversible, like a Done inbox task.
   if (await sql(db, "SELECT 1 FROM graphs WHERE id=? AND status='stopped'", graphId).first()) {
     if (command === 'stop') return
@@ -120,7 +127,7 @@ export async function run(db: D1Database, graphId: string, command: string, body
           r.attempt_id
         )
       ])
-    else await accept(db, g, r, [approval])
+    else await accept(db, g, r, [approval], semantic)
     return
   }
   if (command === 'configure') {

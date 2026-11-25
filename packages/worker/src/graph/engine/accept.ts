@@ -1,3 +1,4 @@
+import type { SemanticIndex } from '../dedup.js'
 import { type Role } from '../contracts.js'
 import { assignment, commit, configuration, id, sql, type Data, type Graph, type Result } from '../store.js'
 import { assertEvidenceResources } from './assertions.js'
@@ -70,7 +71,8 @@ export async function accept(
   db: D1Database,
   g: Graph,
   r: Result,
-  extra: D1PreparedStatement[] = []
+  extra: D1PreparedStatement[] = [],
+  semantic?: SemanticIndex
 ): Promise<void> {
   if (r.status === 'accepted') return
   const { a, original } = await resolve(db, r),
@@ -105,7 +107,7 @@ export async function accept(
     ops.push(...next.statements)
     return next.id
   }
-  const x: AcceptCtx = { db, g, r, a, original, c, d, input, ops, enqueue }
+  const x: AcceptCtx = { db, g, r, a, original, c, d, input, ops, enqueue, semantic }
   switch (original.role) {
     case 'decompose':
       await acceptDecompose(x)

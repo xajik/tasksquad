@@ -1,7 +1,8 @@
 // Deterministic duplicate detection and shared "what was already tried" knowledge for planning,
 // merge review and grading. Agents reword the same idea every time, so identity is never exact text.
 import { hash } from './contracts.js'
-import { rows, type Data } from './store.js'
+import { embeddingChunks } from './outbox.js'
+import { rows, type Data, type Graph } from './store.js'
 
 /** Same action at or above this token similarity (and the same resources) is a duplicate without asking a reviewer. */
 export const AUTO_DUPLICATE = 0.65
@@ -9,7 +10,54 @@ export const AUTO_DUPLICATE = 0.65
 export const NEAR_DUPLICATE = 0.4
 /** Open (pending/uncertain) proposals tolerated from a single state before further ones are dropped. */
 export const MAX_OPEN_PROPOSALS_PER_STATE = 3
+/** Embedding cosine at or above this (same source, same resources) is a duplicate without asking a reviewer. */
+export const SEMANTIC_AUTO = 0.93
+/** Embedding cosine at or above this is handed to the merge reviewer as a near-duplicate. */
+export const SEMANTIC_NEAR = 0.8
 const LEDGER_LIMIT = 30
+
+/** Workers AI + Vectorize, when bound. Absent in tests and local dev: every caller degrades to token similarity. */
+export interface SemanticIndex {
+  ai: Ai
+  vectors: VectorizeIndex
+  teamId: string
+}
+export function semanticIndex(
+  env: { GRAPH_AI?: Ai; GRAPH_VECTORS?: VectorizeIndex },
+  teamId: string
+): SemanticIndex | undefined {
+  return env.GRAPH_AI && env.GRAPH_VECTORS ? { ai: env.GRAPH_AI, vectors: env.GRAPH_VECTORS, teamId } : undefined
+}
+
+/** Best embedding score per entity (node, edge) of this graph for `text`. Vector hits are untrusted hints:
+ * callers rehydrate from D1, and any failure just means no semantic evidence. */
+export async function similarEntities(
+  sem: SemanticIndex | undefined,
+  g: Graph,
+  text: string
+): Promise<Map<string, number>> {
+  const best = new Map<string, number>()
+  if (!sem || !text.trim()) return best
+  try {
+    const embedded = (await sem.ai.run('@cf/baai/bge-base-en-v1.5', {
+      text: [embeddingChunks(text)[0]]
+    })) as { data: number[][] }
+    const found = await sem.vectors.query(embedded.data[0], {
+      namespace: sem.teamId,
+      topK: 20,
+      returnMetadata: 'all',
+      filter: { graph_id: g.id }
+    })
+    for (const m of found.matches) {
+      if (m.metadata?.graph_id !== g.id || typeof m.metadata?.entity_id !== 'string') continue
+      const id = m.metadata.entity_id
+      if (m.score > (best.get(id) ?? -1)) best.set(id, m.score)
+    }
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'graph_dedup_semantic_fallback', graph_id: g.id, error: String(error) }))
+  }
+  return best
+}
 
 export const normalizeText = (value: unknown): string =>
   String(value ?? '')
@@ -138,51 +186,71 @@ export interface Candidate {
   from_id: string
   title: string
   effects: string[]
+  /** Token similarity of what the action does (0-1). */
   similarity: number
+  /** Embedding similarity when a vector index is available. */
+  semantic?: number
+  /** Same source state and resources, and similar enough to be the same action without asking a reviewer. */
+  duplicate: boolean
 }
 
-/** Existing actions that read like `action`, best first. Only same-source actions can be automatic duplicates. */
-export async function nearDuplicates(db: D1Database, graphId: string, action: Data): Promise<Candidate[]> {
+/** What the vector index embeds for an action edge (see outbox.ts): title, description, body. */
+export const embeddedText = (a: Data): string => [a.title, a.description, a.body].join('\n')
+
+/** Existing actions that read like `action`, best first. Only same-source, same-resource actions can be automatic duplicates. */
+export async function nearDuplicates(
+  db: D1Database,
+  g: Graph,
+  action: Data,
+  sem?: SemanticIndex
+): Promise<Candidate[]> {
   const mine = tokens(actionText(action))
   const resources = JSON.stringify([...list(action.resource_versions)].sort())
-  const found = await rows<Data>(
-    db,
-    `SELECT e.id AS edge_id,e.from_id,e.title,p.effects,p.steps,p.resource_versions
-     FROM graph_edges e JOIN graph_plans p ON p.edge_id=e.id WHERE e.graph_id=?`,
-    graphId
-  )
+  const [found, semantic] = await Promise.all([
+    rows<Data>(
+      db,
+      `SELECT e.id AS edge_id,e.from_id,e.title,p.effects,p.steps,p.resource_versions
+       FROM graph_edges e JOIN graph_plans p ON p.edge_id=e.id WHERE e.graph_id=?`,
+      g.id
+    ),
+    similarEntities(sem, g, embeddedText(action))
+  ])
   return found
-    .map((e) => {
+    .map((e): Candidate => {
       const sameSource = e.from_id === action.from_id
       const sameResources = JSON.stringify([...parseList(e.resource_versions)].sort()) === resources
-      const sim = jaccard(mine, tokens(actionText({ title: e.title, effects: parseList(e.effects), steps: parseList(e.steps) })))
+      const lexical = jaccard(mine, tokens(actionText({ title: e.title, effects: parseList(e.effects), steps: parseList(e.steps) })))
+      const vector = semantic.get(String(e.edge_id))
       return {
         edge_id: String(e.edge_id),
         from_id: String(e.from_id),
         title: String(e.title),
         effects: parseList(e.effects),
-        similarity: Math.round(sim * 100) / 100,
-        automatic: sameSource && sameResources
+        similarity: Math.round(lexical * 100) / 100,
+        ...(vector === undefined ? {} : { semantic: Math.round(vector * 100) / 100 }),
+        duplicate: sameSource && sameResources && (lexical >= AUTO_DUPLICATE || (vector ?? 0) >= SEMANTIC_AUTO)
       }
     })
-    .filter((c) => c.similarity >= NEAR_DUPLICATE)
-    .sort((a, b) => b.similarity - a.similarity)
+    .filter((c) => c.similarity >= NEAR_DUPLICATE || (c.semantic ?? 0) >= SEMANTIC_NEAR)
+    .sort((a, b) => Number(b.duplicate) - Number(a.duplicate) || Math.max(b.similarity, b.semantic ?? 0) - Math.max(a.similarity, a.semantic ?? 0))
     .slice(0, 5)
-    .map(({ automatic, ...c }) => ({ ...c, ...(automatic ? {} : { similarity: Math.min(c.similarity, AUTO_DUPLICATE - 0.01) }) }))
 }
 
-/** Duplicate by identity: exact fingerprint hit, or near-identical same-source same-resource text. */
-export async function findDuplicate(db: D1Database, graphId: string, action: Data): Promise<string | null> {
-  const fp = await fingerprint(action)
+/** Duplicate by identity: exact fingerprint hit, or near-identical same-source same-resource action (token or embedding). */
+export async function findDuplicate(
+  db: D1Database,
+  g: Graph,
+  action: Data,
+  sem?: SemanticIndex
+): Promise<string | null> {
   const hit = await rows<{ edge_id: string }>(
     db,
     'SELECT p.edge_id FROM graph_plans p JOIN graph_edges e ON e.id=p.edge_id WHERE p.fingerprint=? AND e.graph_id=? LIMIT 1',
-    fp,
-    graphId
+    await fingerprint(action),
+    g.id
   )
   if (hit.length) return hit[0].edge_id
-  const near = (await nearDuplicates(db, graphId, action))[0]
-  return near && near.similarity >= AUTO_DUPLICATE ? near.edge_id : null
+  return (await nearDuplicates(db, g, action, sem)).find((c) => c.duplicate)?.edge_id ?? null
 }
 
 /** Open proposals already waiting on one source state. */
@@ -201,23 +269,43 @@ export async function openProposals(db: D1Database, graphId: string, fromId: str
   }).length
 }
 
-/** Milestone duplicates: same parent and near-identical title/body. */
+export interface MilestoneMatch {
+  id: string
+  similarity: number
+  semantic?: number
+  duplicate: boolean
+}
+
+/** Milestone duplicates: same parent and near-identical title/body, by tokens or embeddings. */
 export async function similarMilestone(
   db: D1Database,
-  graphId: string,
-  candidate: Data
-): Promise<{ id: string; similarity: number }[]> {
+  g: Graph,
+  candidate: Data,
+  sem?: SemanticIndex
+): Promise<MilestoneMatch[]> {
   const mine = tokens(`${candidate.title} ${candidate.body}`)
-  const found = await rows<Data>(
-    db,
-    `SELECT n.id,n.title,n.body FROM graph_nodes n WHERE n.graph_id=? AND n.kind='milestone' AND n.parent_id IS ?
-     AND (SELECT state FROM graph_node_states WHERE node_id=n.id ORDER BY id DESC LIMIT 1)='active'`,
-    graphId,
-    candidate.parent_id ?? null
-  )
+  const [found, semantic] = await Promise.all([
+    rows<Data>(
+      db,
+      `SELECT n.id,n.title,n.body FROM graph_nodes n WHERE n.graph_id=? AND n.kind='milestone' AND n.parent_id IS ?
+       AND (SELECT state FROM graph_node_states WHERE node_id=n.id ORDER BY id DESC LIMIT 1)='active'`,
+      g.id,
+      candidate.parent_id ?? null
+    ),
+    similarEntities(sem, g, embeddedText(candidate))
+  ])
   return found
-    .map((n) => ({ id: String(n.id), similarity: Math.round(jaccard(mine, tokens(`${n.title} ${n.body}`)) * 100) / 100 }))
-    .filter((n) => n.similarity >= NEAR_DUPLICATE)
-    .sort((a, b) => b.similarity - a.similarity)
+    .map((n): MilestoneMatch => {
+      const lexical = jaccard(mine, tokens(`${n.title} ${n.body}`))
+      const vector = semantic.get(String(n.id))
+      return {
+        id: String(n.id),
+        similarity: Math.round(lexical * 100) / 100,
+        ...(vector === undefined ? {} : { semantic: Math.round(vector * 100) / 100 }),
+        duplicate: lexical >= AUTO_DUPLICATE || (vector ?? 0) >= SEMANTIC_AUTO
+      }
+    })
+    .filter((n) => n.similarity >= NEAR_DUPLICATE || (n.semantic ?? 0) >= SEMANTIC_NEAR)
+    .sort((a, b) => Number(b.duplicate) - Number(a.duplicate) || Math.max(b.similarity, b.semantic ?? 0) - Math.max(a.similarity, a.semantic ?? 0))
     .slice(0, 5)
 }

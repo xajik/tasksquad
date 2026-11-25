@@ -1,9 +1,10 @@
+import { similarMilestone } from '../../dedup.js'
 import { id, json, rows, sql, type Data } from '../../store.js'
 
 import type { AcceptCtx } from './context.js'
 
 export async function acceptDecompose(x: AcceptCtx): Promise<void> {
-  const { db, g, r, c, d, ops, enqueue } = x
+  const { db, g, r, c, d, ops, enqueue, semantic } = x
   const parent = await sql(
     db,
     "SELECT id FROM graph_nodes WHERE graph_id=? AND kind='goal' LIMIT 1",
@@ -33,7 +34,8 @@ export async function acceptDecompose(x: AcceptCtx): Promise<void> {
         direction: 'backward',
         proposal_id: proposal,
         candidate,
-        existing_hierarchy: hierarchy
+        existing_hierarchy: hierarchy,
+        near_duplicates: await similarMilestone(db, g, candidate, semantic)
       })
     }
   for (const node of (d.retire_ids ?? []) as string[]) {

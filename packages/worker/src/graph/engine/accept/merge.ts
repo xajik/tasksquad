@@ -1,11 +1,11 @@
 import { id, json, nodeStatements, sql, type Data } from '../../store.js'
-import { fingerprint, findDuplicate, similarMilestone, AUTO_DUPLICATE } from '../../dedup.js'
+import { fingerprint, findDuplicate, similarMilestone } from '../../dedup.js'
 import { executionResources, planContext } from '../shared.js'
 
 import type { AcceptCtx } from './context.js'
 
 export async function acceptMerge(x: AcceptCtx): Promise<void> {
-  const { db, g, r, d, input, ops, enqueue } = x
+  const { db, g, r, d, input, ops, enqueue, semantic } = x
   const p = await sql(
     db,
     'SELECT * FROM graph_proposals WHERE id=? AND graph_id=?',
@@ -44,8 +44,7 @@ export async function acceptMerge(x: AcceptCtx): Promise<void> {
       )
     } else {
       // Wording changes between decompositions; a near-identical sibling under the same parent is the same milestone.
-      const similar = await similarMilestone(db, g.id, candidate)
-      const existing = similar[0]?.similarity >= AUTO_DUPLICATE ? { id: similar[0].id } : null
+      const existing = (await similarMilestone(db, g, candidate, semantic)).find((m) => m.duplicate) ?? null
       // Like the forward case, the reviewer judges semantic equivalence; require only that it
       // names a real milestone in this graph (exact text match would never hold for a rewording).
       const equivalent =
@@ -89,7 +88,7 @@ export async function acceptMerge(x: AcceptCtx): Promise<void> {
     return
   }
   // Identity, not wording: normalized fingerprint or near-identical same-source, same-resource text.
-  if (await findDuplicate(db, g.id, action)) {
+  if (await findDuplicate(db, g, action, semantic)) {
     ops.push(sql(db, "UPDATE graph_proposals SET status='published' WHERE id=?", p.id))
     return
   }

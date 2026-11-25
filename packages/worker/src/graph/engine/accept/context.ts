@@ -1,3 +1,4 @@
+import type { SemanticIndex } from '../../dedup.js'
 import type { Role } from '../../contracts.js'
 import type { Assignment, Data, Graph, Result } from '../../store.js'
 
@@ -10,6 +11,8 @@ export interface AcceptCtx {
   original: Assignment
   c: { policy: import('../../contracts.js').Policy; rule: import('../../contracts.js').Rule; version: number }
   d: Data
+  /** Vector index for dedup recall; undefined when unbound (tests, local dev). */
+  semantic?: SemanticIndex
   input: Data
   ops: D1PreparedStatement[]
   enqueue: (

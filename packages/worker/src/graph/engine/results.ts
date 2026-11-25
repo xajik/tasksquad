@@ -1,3 +1,4 @@
+import type { SemanticIndex } from '../dedup.js'
 import { parseResult, templates } from '../contracts.js'
 import { assignment, commit, configuration, json, rows, sql, type Assignment, type Attempt, type Data, type Graph, type Result } from '../store.js'
 import { accept } from './accept.js'
@@ -65,7 +66,7 @@ export async function revalidateReviews(db: D1Database, g: Graph): Promise<void>
   }
 }
 
-export async function processResults(db: D1Database, g: Graph): Promise<void> {
+export async function processResults(db: D1Database, g: Graph, semantic?: SemanticIndex): Promise<void> {
   const pending = await rows<Result>(
     db,
     `SELECT r.* FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=? AND r.status='received' ORDER BY r.created_at,r.id`,
@@ -103,7 +104,7 @@ export async function processResults(db: D1Database, g: Graph): Promise<void> {
     r.status = 'review'
     if (!c.policy.review) {
       try {
-        await accept(db, g, r)
+        await accept(db, g, r, [], semantic)
       } catch (e) {
         await commit(db, g, 'acceptance_blocked', r.id, { error: String(e) }, [
           sql(db, 'UPDATE graph_results SET validation_error=? WHERE id=?', String(e), r.id)

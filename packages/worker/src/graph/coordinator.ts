@@ -1,6 +1,7 @@
 import { COMMANDS_WHEN_DISABLED } from './commands.js'
 import { DurableObject } from 'cloudflare:workers'
 import type { Env } from '../types.js'
+import { semanticIndex } from './dedup.js'
 import { run, syncInboxStatus, tick } from './engine.js'
 import { maintenance } from './maintenance.js'
 import { materialize } from './outbox.js'
@@ -26,7 +27,7 @@ export class GraphCoordinator extends DurableObject<Env> {
         this.team = body.team_id
       }
       await this.ctx.storage.setAlarm(Date.now() + 30_000)
-      if (command !== 'tick') await run(this.env.DB, graphId, command, body)
+      if (command !== 'tick') await run(this.env.DB, graphId, command, body, semanticIndex(this.env, String(body.team_id)))
       await maintenance(this.env, graphId)
       await tick(this.env, graphId)
       await this.ctx.storage.setAlarm(Date.now() + 30_000)

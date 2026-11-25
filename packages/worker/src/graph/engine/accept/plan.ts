@@ -5,7 +5,7 @@ import { executionNodes } from '../shared.js'
 import type { AcceptCtx } from './context.js'
 
 export async function acceptPlan(x: AcceptCtx): Promise<void> {
-  const { db, g, r, original, d, ops, enqueue } = x
+  const { db, g, r, original, d, ops, enqueue, semantic } = x
   for (const action of d.actions as Data[]) {
     if (
       !(await sql(
@@ -36,7 +36,7 @@ export async function acceptPlan(x: AcceptCtx): Promise<void> {
     // Dedup before spending a reviewer: an action that restates one already tried is dropped (recorded as
     // rejected), and a state with enough open proposals takes no more until they resolve.
     const proposalId = id()
-    const duplicateOf = await findDuplicate(db, g.id, action)
+    const duplicateOf = await findDuplicate(db, g, action, semantic)
     if (duplicateOf || (await openProposals(db, g.id, String(action.from_id))) >= MAX_OPEN_PROPOSALS_PER_STATE) {
       ops.push(
         sql(
@@ -69,7 +69,7 @@ export async function acceptPlan(x: AcceptCtx): Promise<void> {
         action,
         existing_states: await executionNodes(db, g.id),
         existing_actions: await actionLedger(db, g.id),
-        near_duplicates: await nearDuplicates(db, g.id, action)
+        near_duplicates: await nearDuplicates(db, g, action, semantic)
       },
       { node: original.node_id }
     )

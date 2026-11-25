@@ -6,6 +6,8 @@ import { rows, sql, type Assignment, type Data } from '../store.js'
 export type GraphEnv = Pick<Env, 'DB'> & {
   POLL_CACHE: Pick<KVNamespace, 'put'>
   ACTION_GRAPH_ENABLED?: string
+  GRAPH_AI?: Env['GRAPH_AI']
+  GRAPH_VECTORS?: Env['GRAPH_VECTORS']
 }
 
 export const actionable = (role: Role) => role === 'execute' || role === 'undo'
