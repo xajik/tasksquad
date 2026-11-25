@@ -99,7 +99,7 @@ func run() error {
         var port int
         fmt.Sscanf(os.Args[5], "%d", &port)
         p := provider.Detect(os.Args[2], os.Args[3])
-        if err := p.Setup(os.Args[4], port, os.Args[6], os.Args[7]); err != nil { return err }
+        if err := provider.SetupForTask(p, os.Args[4], port, os.Args[6], os.Args[7]); err != nil { return err }
         prompt := provider.FormatPrompt(p, os.Args[8])
         out := map[string]any{
             "name": p.Name(), "cli_name": p.CLIName(), "uses_hooks": p.UsesHooks(),
