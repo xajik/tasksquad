@@ -131,7 +131,8 @@ const parseList = (value: unknown): string[] => {
 }
 
 /** Every action the graph has tried or is considering, with how it went. Shared by plan, merge and review inputs. */
-export async function actionLedger(db: D1Database, graphId: string, limit = LEDGER_LIMIT): Promise<Data> {
+/** `exceptEdge` leaves out the action under review, so a grader is never shown the work it is scoring as a prior attempt. */
+export async function actionLedger(db: D1Database, graphId: string, limit = LEDGER_LIMIT, exceptEdge?: string | null): Promise<Data> {
   const edges = await rows<Data>(
     db,
     `SELECT e.id AS edge_id,e.from_id,e.title,p.effects,
@@ -143,8 +144,9 @@ export async function actionLedger(db: D1Database, graphId: string, limit = LEDG
       (SELECT AVG(local_score) FROM graph_evaluations v WHERE v.edge_id=e.id) AS local_score,
       (SELECT MAX(goal_score) FROM graph_evaluations v WHERE v.edge_id=e.id) AS goal_score
      FROM graph_edges e JOIN graph_plans p ON p.edge_id=e.id
-     WHERE e.graph_id=? ORDER BY e.created_at DESC,e.id DESC LIMIT ?`,
+     WHERE e.graph_id=? AND e.id IS NOT ? ORDER BY e.created_at DESC,e.id DESC LIMIT ?`,
     graphId,
+    exceptEdge ?? null,
     limit + 1
   )
   const proposals = await rows<{ content: string; status: string }>(

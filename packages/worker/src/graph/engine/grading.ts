@@ -39,7 +39,7 @@ export async function advanceGrading(db: D1Database, g: Graph): Promise<void> {
     result: JSON.parse(r.parsed!),
     plan: JSON.parse(original.input),
     evidence,
-    attempted_actions: await actionLedger(db, g.id)
+    attempted_actions: await actionLedger(db, g.id, undefined, original.edge_id)
   }
   if (head.stage === 'project') {
     const c = await configuration(db, g)

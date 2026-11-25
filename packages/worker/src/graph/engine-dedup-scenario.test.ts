@@ -3,7 +3,7 @@ import { db, env, fixture, deliver, setupGraphHarness, teardownGraphHarness } fr
 import { graph, sql, rows, commit, assignment, type Assignment } from './store.js'
 import { resource } from './mutations.js'
 import { run, tick } from './engine.js'
-import { similarMilestone } from './dedup.js'
+import { similarMilestone, actionLedger } from './dedup.js'
 
 beforeAll(setupGraphHarness, 30000)
 afterAll(teardownGraphHarness)
@@ -171,5 +171,28 @@ describe('milestone dedup', () => {
     // A real rewording of an existing title is still folded.
     const reworded = await similarMilestone(db, g2, milestone('Draft the welcome email'))
     expect(reworded.find((m) => m.id === ids['Draft welcome email'])?.duplicate).toBe(true)
+  })
+})
+
+describe('attempted-action ledger', () => {
+  it('leaves out the action under review so a grader never sees its own work as an earlier attempt', async () => {
+    const { g, source, ref } = await seeded()
+    const gr = await graph(db, g.id)
+    const edges: string[] = []
+    for (const title of ['Add retry to uploader', 'Rotate signing keys']) {
+      const target = crypto.randomUUID(),
+        edge = crypto.randomUUID()
+      edges.push(edge)
+      await commit(db, gr, 'seed_edge', null, {}, [
+        sql(db, "INSERT INTO graph_nodes(id,graph_id,kind,title,description,body,created_at) VALUES(?,?,'outcome',?,'','b',0)", target, g.id, title),
+        sql(db, "INSERT INTO graph_node_states(graph_id,node_id,state,created_at) VALUES(?,?,'active',0)", g.id, target),
+        sql(db, "INSERT INTO graph_edges(id,graph_id,from_id,to_id,title,description,body,source_result_id,created_at) VALUES(?,?,?,?,?,'','','x',?)", edge, g.id, source, target, title, Date.now()),
+        sql(db, "INSERT INTO graph_plans(edge_id,baseline,predicates,steps,undo_steps,cost,recovery_cost,resource_versions,effects) VALUES(?,?,?,?,?,1,1,?,?)", edge, 'b', '[]', '["s"]', '[]', JSON.stringify([ref]), '["e"]')
+      ])
+    }
+    const all = (await actionLedger(db, g.id)) as { actions: { edge_id: string }[] }
+    expect(all.actions.map((a) => a.edge_id).sort()).toEqual([...edges].sort())
+    const others = (await actionLedger(db, g.id, undefined, edges[0])) as { actions: { edge_id: string }[] }
+    expect(others.actions.map((a) => a.edge_id)).toEqual([edges[1]])
   })
 })
