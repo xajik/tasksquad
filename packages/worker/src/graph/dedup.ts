@@ -283,6 +283,9 @@ export async function similarMilestone(
   candidate: Data,
   sem?: SemanticIndex
 ): Promise<MilestoneMatch[]> {
+  // Milestone bodies repeat the goal's boilerplate (scope, constraints), so sibling milestones score high on
+  // title+body. Identity is decided on the title; the body only widens what the reviewer is shown.
+  const mineTitle = tokens(String(candidate.title ?? ''))
   const mine = tokens(`${candidate.title} ${candidate.body}`)
   const [found, semantic] = await Promise.all([
     rows<Data>(
@@ -296,13 +299,15 @@ export async function similarMilestone(
   ])
   return found
     .map((n): MilestoneMatch => {
-      const lexical = jaccard(mine, tokens(`${n.title} ${n.body}`))
+      const titleOnly = jaccard(mineTitle, tokens(String(n.title ?? '')))
+      // Body overlap can raise a match to "near" for the reviewer but never to automatic.
+      const withBody = Math.min(jaccard(mine, tokens(`${n.title} ${n.body}`)), AUTO_DUPLICATE - 0.01)
       const vector = semantic.get(String(n.id))
       return {
         id: String(n.id),
-        similarity: Math.round(lexical * 100) / 100,
+        similarity: Math.round(Math.max(titleOnly, withBody) * 100) / 100,
         ...(vector === undefined ? {} : { semantic: Math.round(vector * 100) / 100 }),
-        duplicate: lexical >= AUTO_DUPLICATE || (vector ?? 0) >= SEMANTIC_AUTO
+        duplicate: titleOnly >= AUTO_DUPLICATE || (vector ?? 0) >= SEMANTIC_AUTO
       }
     })
     .filter((n) => n.similarity >= NEAR_DUPLICATE || (n.semantic ?? 0) >= SEMANTIC_NEAR)
