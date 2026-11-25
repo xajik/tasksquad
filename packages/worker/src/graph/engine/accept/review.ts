@@ -5,12 +5,28 @@ import { executedLineage, planContext } from '../shared.js'
 
 import type { AcceptCtx } from './context.js'
 
+/**
+ * Reviewers may cite evidence by the stored row id or by the label the executor gave it in the result. When an
+ * executor reuses a label, acceptance mints a fresh stored id (see accept.ts), so the label no longer matches
+ * any row. Resolve such labels to the stored row that carries the same predicate; anything else is unsupplied.
+ */
+export function resolveEvidenceIds(input: Data, cited: string[], message: string): string[] {
+  const stored = (input.evidence as Data[]) ?? []
+  const declared = (((input.result as Data | undefined)?.evidence as Data[] | undefined) ?? []).filter(Boolean)
+  const resolved = cited.map((id) => {
+    if (stored.some((e) => e.id === id)) return id
+    const label = declared.find((e) => e.id === id)
+    const row = label && stored.find((e) => e.predicate === label.predicate)
+    if (!row) throw new Error(message)
+    return String(row.id)
+  })
+  return [...new Set(resolved)]
+}
+
 export async function acceptReview(x: AcceptCtx): Promise<void> {
   const { db, g, r, original, c, d, input, ops, enqueue } = x
   if (original.role === 'project' && input.operation === 'decomposition_review') {
-    const allowed = (input.evidence as Data[]).map((e) => e.id)
-    if ((d.evidence_ids as string[]).some((e) => !allowed.includes(e)))
-      throw new Error('Review references unsupplied evidence')
+    resolveEvidenceIds(input, d.evidence_ids as string[], 'Review references unsupplied evidence')
     const feedback = (d.decomposition_feedback as unknown[] | undefined) ?? []
     const running = await sql(
       db,
@@ -39,9 +55,7 @@ export async function acceptReview(x: AcceptCtx): Promise<void> {
     return
   }
 
-  const ids = d.evidence_ids as string[]
-  const allowed = (input.evidence as Data[]).map((e) => e.id)
-  if (ids.some((e) => !allowed.includes(e))) throw new Error('Grade references unsupplied evidence')
+  const ids = resolveEvidenceIds(input, d.evidence_ids as string[], 'Grade references unsupplied evidence')
   ops.push(
     sql(
       db,
