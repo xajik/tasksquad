@@ -143,7 +143,7 @@ async function processAgentHeartbeat(
         .first<{ status: string; settings: string | null; close_steps: string | null }>()
 
       if (!task) return { cancel: true }
-      if (task) {
+      {
         if (task.status === TaskStatus.WrappingUp && agentStatus === AgentStatus.WaitingInput) {
           let closeSteps: string[] = []
           try { closeSteps = task.close_steps ? JSON.parse(task.close_steps) : [] } catch { closeSteps = [] }
@@ -324,12 +324,25 @@ export async function parallelHeartbeat(env: Env, entry: AgentEntry, teamId: str
       AND status IN ('running','wrapping_up') AND NOT EXISTS(SELECT 1 FROM graph_attempts ga WHERE ga.task_id=tasks.id)`).bind(id,device,now,live),
     env.DB.prepare(`UPDATE sessions SET closed_at=?3,status='detached' WHERE agent_id=?1 AND (daemon_device=?2 OR daemon_device IS NULL)
       AND closed_at IS NULL AND started_at<=?3 AND task_id NOT IN (SELECT value FROM json_each(?4))`).bind(id,device,now,live),
+    env.DB.prepare(`UPDATE agent_state SET current_task_id=NULL,current_session=NULL,mode='idle',updated_at=?
+      WHERE agent_id=? AND current_session IN (SELECT id FROM sessions WHERE agent_id=? AND closed_at IS NOT NULL)`).bind(now,id,id),
     env.DB.prepare(`UPDATE graph_attempts SET termination_confirmed_at=? WHERE agent_id=? AND status!='running'
       AND termination_confirmed_at IS NULL AND session_id IN (SELECT id FROM sessions WHERE agent_id=? AND (daemon_device=? OR daemon_device IS NULL) AND closed_at IS NOT NULL)
       AND task_id NOT IN (SELECT value FROM json_each(?))`).bind(now,id,id,device,live),
   ])
+  // An unchanged running session needs no per-task reads. Limit control lookups to sessions
+  // with an actual change so the steady-state heartbeat cost is independent of concurrency.
+  const actionable = await env.DB.prepare(`SELECT json_extract(j.value,'$.task_id') AS task_id,
+      json_extract(j.value,'$.status') AS status FROM json_each(?) j
+    LEFT JOIN tasks t ON t.id=json_extract(j.value,'$.task_id') AND t.agent_id=?
+    WHERE t.id IS NULL OR t.status IN ('done','cancelled','failed')
+      OR (t.status='waiting_input' AND json_extract(j.value,'$.status')='running')
+      OR (json_extract(j.value,'$.status')='waiting_input' AND (t.status='wrapping_up' OR EXISTS (
+        SELECT 1 FROM messages m WHERE m.task_id=t.id AND m.role='user' AND (m.scheduled_at IS NULL OR m.scheduled_at<=?)
+        AND m.created_at>(SELECT COALESCE(MAX(created_at),0) FROM messages WHERE task_id=t.id AND role='agent'))))`)
+    .bind(JSON.stringify(active),id,now).all<ActiveTask>()
   const updates = []
-  for (const task of active) {
+  for (const task of actionable.results) {
     const control = await processAgentHeartbeat(env,id,teamId,task.status,undefined,now,nextPollMs,false,0,task.task_id)
     if (control.reply || control.cancel || control.close || control.close_steps) updates.push({ ...control, task_id: task.task_id })
   }
@@ -423,7 +436,7 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   if (!agentEntries?.length) return err('missing_fields', 400)
 
   for (const entry of agentEntries) {
-    if (entry.active_tasks !== undefined && (!Array.isArray(entry.active_tasks) || !entry.daemon_device ||
+    if (entry.active_tasks !== undefined && (!Array.isArray(entry.active_tasks) || typeof entry.daemon_device !== 'string' || !entry.daemon_device.length || entry.daemon_device.length > 128 ||
         entry.active_tasks.some(t => !t?.task_id || !['running','wrapping_up','waiting_input'].includes(t.status)))) return err('invalid_active_tasks',400)
   }
   const agentIds = agentEntries.map(e => e.id)
@@ -560,8 +573,15 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   if (allIdle) {
     combinedVersion = await getCombinedInboxVersion(env, agentIds)
     const clientEtag = req.headers.get('If-None-Match')
-    if (clientEtag === `"${combinedVersion}"`) {
-      return hb304(combinedVersion)
+    if (clientEtag === `"${combinedVersion}"` && !agentRows.some(row => row?.reset_pending)) {
+      // A queue larger than the last offer page can remain pending after every task in
+      // that page has finished. An unchanged inbox version alone cannot certify idle.
+      const parallel = agentEntries.filter(e => e.active_tasks).map(e => e.id)
+      const waiting = parallel.length && await env.DB.prepare(`SELECT 1 FROM tasks WHERE status='pending' AND agent_id IN (SELECT value FROM json_each(?1))
+        UNION ALL SELECT 1 FROM sessions WHERE closed_at IS NULL AND agent_id IN (SELECT value FROM json_each(?1))
+        UNION ALL SELECT 1 FROM graph_attempts WHERE session_id IS NOT NULL AND termination_confirmed_at IS NULL AND status!='running'
+        AND agent_id IN (SELECT value FROM json_each(?1)) LIMIT 1`).bind(JSON.stringify(parallel)).first()
+      if (!waiting) return hb304(combinedVersion)
     }
   }
 

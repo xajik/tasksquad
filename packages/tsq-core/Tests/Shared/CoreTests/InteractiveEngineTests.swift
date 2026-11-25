@@ -591,7 +591,7 @@ private actor InteractiveWorker {
             let script = """
             #!/bin/sh
             url=$(grep -o 'http://localhost:[0-9]*' .pi/extensions/tasksquad.ts | head -1)
-            query=$(grep -o '/hooks/stop?agent=[^"]*' .pi/extensions/tasksquad.ts | head -1)
+            query="/hooks/stop?agent=$TSQ_AGENT_ID&task_id=$TSQ_TASK_ID&provider=pi"
             curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "$url$query" --data-binary '{"stop_reason":"\(reason)","message":"\(message)","transcript_path":""}' >/dev/null
             sleep 0.3
             exit 1
