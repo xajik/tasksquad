@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { GraphPhaseBadge } from './GraphPhaseBadge'
 import { goalVerificationLabel, needsOwner, isActiveAttempt } from '@/lib/graphStatus'
 import { Link } from 'react-router-dom'
 import { Activity, Archive, CircleCheck, Clock3, Layers3, ListFilter, Network, Target } from 'lucide-react'
@@ -187,7 +188,7 @@ function Candidates({ graph, inspect }: { graph: GraphSnapshot; inspect: (id: st
                       </div>
                       <p className="truncate text-xs font-medium">{assignmentTitle(graph, a)}</p>
                       <p className="truncate text-[10px] text-muted-foreground">
-                        {running ? '● Running now' : a.role}
+                        {running ? '● Running now' : <><GraphPhaseBadge role={a.role} />{a.role}</>}
                       </p>
                     </button>
                   )
@@ -309,6 +310,7 @@ function Candidates({ graph, inspect }: { graph: GraphSnapshot; inspect: (id: st
                           {assignmentTitle(graph, a)}
                         </button>
                         <p className="text-xs text-muted-foreground">
+                          <GraphPhaseBadge role={a.role} />
                           {a.role} · {a.id.slice(-8)}
                         </p>
                       </td>
@@ -454,6 +456,7 @@ function Stale({ graph, now }: { graph: GraphSnapshot; now: number }) {
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{assignmentTitle(graph, a)}</p>
                 <p className="mt-1 text-muted-foreground">
+                  <GraphPhaseBadge role={a.role} />
                   {a.role} · {a.status} · age {duration(age)}
                   {attempt ? ` · deadline ${new Date(attempt.deadline).toLocaleString()}` : ''}
                 </p>

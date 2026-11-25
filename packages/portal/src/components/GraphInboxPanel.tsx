@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { GraphPhaseBadge } from './GraphPhaseBadge'
 import { Link } from 'react-router-dom'
 import type { GraphInboxContext } from '@/lib/api'
 import { graphApi, type GraphSnapshot, type GraphResult } from '@/lib/graph'
@@ -76,7 +77,10 @@ export function GraphInboxPanel({
       className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3 mb-4"
     >
       <div className="flex justify-between gap-3 flex-wrap">
-        <strong className="text-sm">Graph task · {context.role}</strong>
+        <strong className="text-sm">
+          <GraphPhaseBadge role={context.role} />
+          Graph task · {context.role}
+        </strong>
         <Link className="text-sm underline" to={`/dashboard/graphs/${context.graph_id}`}>
           Open graph
         </Link>
@@ -103,7 +107,10 @@ export function GraphInboxPanel({
       )}
       {reviews.map((result) => (
         <article key={result.id} className="space-y-2">
-          <h3 className="text-sm font-medium">Review {context.role} result</h3>
+          <h3 className="text-sm font-medium">
+            <GraphPhaseBadge role={context.role} />
+            Review {context.role} result
+          </h3>
           {(() => {
             const attempt = graph?.attempts.find(t => t.id === result.attempt_id)
             const assignment = graph?.assignments.find(a => a.id === attempt?.assignment_id)

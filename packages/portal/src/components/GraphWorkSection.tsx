@@ -1,4 +1,5 @@
 import { needsOwner } from '@/lib/graphStatus'
+import { GraphPhaseBadge } from './GraphPhaseBadge'
 import { Link } from 'react-router-dom'
 import {
   latestGraphAttempt,
@@ -67,6 +68,7 @@ export function GraphWorkSection({
                           : 'Needs your approval or input'}
                     </b>
                   )}
+                  <GraphPhaseBadge role={a.role} />
                   {a.role} · {a.status} · priority {liveWeight(a).toFixed(3)} · {a.attempt_count}{' '}
                   attempts
                   {current.waiting?.[a.id]?.request_title && (
