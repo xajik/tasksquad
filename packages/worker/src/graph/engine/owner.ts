@@ -171,6 +171,16 @@ export async function dismissStale(db: D1Database, g: Graph): Promise<number> {
         ...stale.map((a) => a.id)
       )
     )
+  // Blocked executions wait for the owner. The automatic grade is skipped, including
+  // on older graphs whose queue slot has already closed. Keep explicit regrades runnable.
+  const skipped = await rows<{ sequence: number }>(db,
+    `SELECT gr.sequence FROM graph_grading gr JOIN graph_results r ON r.id=gr.execution_result_id
+     WHERE gr.graph_id=? AND gr.revision=1 AND gr.status='pending' AND gr.assignment_id IS NULL
+     AND r.status='accepted' AND json_extract(r.parsed,'$.outcome')='blocked'`, g.id)
+  for (const grade of skipped)
+    ops.push(sql(db, "UPDATE graph_grading SET status='cancelled' WHERE sequence=?", grade.sequence))
+  const explicitRegrade = `SELECT execution_result_id FROM graph_grading WHERE graph_id=?
+     AND revision>1 AND status IN ('pending','running')`
   // Park blocked/error continuations without retrying them. A live formatting
   // repair still owns the same serial work until its result is resolved.
   // Inspect queue transitions even when there is no assignment noise to dismiss.
@@ -181,7 +191,8 @@ export async function dismissStale(db: D1Database, g: Graph): Promise<number> {
        (q.kind='assignment' AND q.work_id IN (SELECT id FROM graph_assignments WHERE graph_id=?
          AND (status IN ('cancelled','expired','accepted','continuation') OR (role='continue' AND status IN ('blocked','error')))))
        OR (q.kind='execution' AND q.work_id IN (SELECT id FROM graph_results WHERE status IN ('stale','invalid','rejected')
-         OR (status='accepted' AND json_extract(parsed,'$.outcome')='blocked'))))`,
+         OR (status='accepted' AND json_extract(parsed,'$.outcome')='blocked' AND id NOT IN (${explicitRegrade})))))`,
+    g.id,
     g.id,
     g.id,
     g.id,
@@ -190,9 +201,12 @@ export async function dismissStale(db: D1Database, g: Graph): Promise<number> {
   const reopen = await rows<{ sequence: number }>(
     db,
     `SELECT sequence FROM graph_serial_queue WHERE graph_id=? AND status='done'
-     AND (work_id IN (${ACTIVE_CONTINUE_WORK}) OR work_id IN (${ACTIVE_REPAIR_WORK}))
+     AND (work_id IN (${ACTIVE_CONTINUE_WORK}) OR work_id IN (${ACTIVE_REPAIR_WORK})
+       OR (kind='execution' AND work_id IN (${explicitRegrade}) AND work_id IN
+         (SELECT id FROM graph_results WHERE status='accepted' AND json_extract(parsed,'$.outcome')='blocked')))
      AND sequence=(SELECT MAX(q.sequence) FROM graph_serial_queue q WHERE q.graph_id=graph_serial_queue.graph_id
        AND q.kind=graph_serial_queue.kind AND q.work_id=graph_serial_queue.work_id)`,
+    g.id,
     g.id,
     g.id,
     g.id
@@ -219,7 +233,7 @@ export async function dismissStale(db: D1Database, g: Graph): Promise<number> {
       g,
       'queue_reconciled',
       null,
-      { dismissed: stale.length, released: release.length, reopened: reopen.length },
+      { dismissed: stale.length, skipped_grades: skipped.length, released: release.length, reopened: reopen.length },
       ops
     )
   return stale.length
