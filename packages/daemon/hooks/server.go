@@ -179,6 +179,18 @@ func NewHandler(cfg *config.Config, agents []Agent, reporter SupervisorReporter,
 	return authenticateHooks(mux, token)
 }
 
+func (s *hookServer) runtimes() []Agent {
+	var result []Agent
+	for _, a := range s.agents {
+		if pool, ok := a.(interface{ HookRuntimes() []Agent }); ok {
+			result = append(result, pool.HookRuntimes()...)
+		} else {
+			result = append(result, a)
+		}
+	}
+	return result
+}
+
 // findAndDispatch iterates agents, applies agentID/taskID filters, and calls fn
 // on the first matching agent. Returns true if a match was found.
 // For stale hooks (taskID mismatch), attempts to use stored tmux capture as fallback.
@@ -188,18 +200,6 @@ func findAndDispatch(agents []Agent, agentID, taskIDParam string, fn func(Agent)
 			continue
 		}
 		currentTaskID := a.GetTaskID()
-
-		// Check for stale hook: taskID doesn't match but agent just completed this task
-		if taskIDParam != "" && currentTaskID != taskIDParam && currentTaskID == "" {
-			// Agent is idle - check if we have stored tmux capture for fallback
-			if tmuxCapture := a.GetLastTmuxCapture(); tmuxCapture != "" {
-				logger.Info(fmt.Sprintf("[hooks] Stale hook for task %s - using stored tmux capture (%d chars) as fallback",
-					taskIDParam, len(tmuxCapture)))
-				// Still call fn to process the hook - the agent will use stored tmuxCapture
-				fn(a)
-				return true
-			}
-		}
 
 		// Normal case: taskID matches or no taskID filter
 		if taskIDParam != "" && currentTaskID != taskIDParam {

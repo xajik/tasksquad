@@ -89,11 +89,16 @@ func (p *Claw) Setup(workDir string, hooksPort int, agentID string, taskID strin
 
 // clawHook appends one [[hooks]] entry; toolName "" matches every tool.
 func clawHook(b *strings.Builder, event, toolName, url string) {
-	url = hookauth.URL(url)
 	fmt.Fprintf(b, "[[hooks]]\nevent = %q\n", event)
 	if toolName != "" {
 		fmt.Fprintf(b, "tool_name = %q\n", toolName)
 	}
+	if strings.Contains(url, "$TSQ_TASK_ID") {
+		command := `curl -fsS --max-time 5 -X POST "` + url + `" -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -d '' >/dev/null`
+		fmt.Fprintf(b, "action = { type = \"shell\", command = %q }\n\n", command)
+		return
+	}
+	url = hookauth.URL(url)
 	fmt.Fprintf(b, "action = { type = \"http\", url = %q }\n\n", url)
 }
 

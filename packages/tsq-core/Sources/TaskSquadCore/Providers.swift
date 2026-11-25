@@ -86,6 +86,19 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         }
     }
 
+    /// Shared project plugins read task identity from the process which loaded them.
+    func setupForTask(workDir: String, hooksPort: Int, agentID: String, taskID: String, hookToken: String) throws {
+        let ids: (String, String)
+        switch self {
+        case .gemini, .claw: ids = ("$TSQ_AGENT_ID", "$TSQ_TASK_ID")
+        case .opencode, .pi:
+            ids = (#"" + encodeURIComponent(process.env.TSQ_AGENT_ID ?? "") + ""#,
+                   #"" + encodeURIComponent(process.env.TSQ_TASK_ID ?? "") + ""#)
+        default: ids = (agentID, taskID)
+        }
+        try setup(workDir: workDir, hooksPort: hooksPort, agentID: ids.0, taskID: ids.1, hookToken: hookToken)
+    }
+
     /// Writes hook/plugin files into the work directory for CLIs without a
     /// per-invocation override.
     public func setup(workDir: String, hooksPort: Int, agentID: String, taskID: String, hookToken: String? = nil) throws {
@@ -210,6 +223,11 @@ public enum ProviderKind: String, CaseIterable, Sendable {
         func hook(_ event: String, _ tool: String, _ url: String) {
             block += "[[hooks]]\nevent = \(goQuote(event))\n"
             if !tool.isEmpty { block += "tool_name = \(goQuote(tool))\n" }
+            if taskID == "$TSQ_TASK_ID" {
+                let command = "curl -fsS --max-time 5 -X POST \"\(url)\" -H \"Authorization: Bearer $TSQ_HOOK_TOKEN\" -d '' >/dev/null"
+                block += "action = { type = \"shell\", command = \(goQuote(command)) }\n\n"
+                return
+            }
             var authenticated = url
             if let hookToken { authenticated += "&hook_token=" + hookToken }
             block += "action = { type = \"http\", url = \(goQuote(authenticated)) }\n\n"

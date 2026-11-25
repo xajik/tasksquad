@@ -37,8 +37,13 @@ func (s *hookServer) handleTerminal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid terminal request", 400)
 		return
 	}
-	for _, a := range s.agents {
+	var known bool
+	for _, a := range s.runtimes() {
 		if a.ID() != body.AgentID {
+			continue
+		}
+		known = true
+		if a.GetTaskID() != body.TaskID {
 			continue
 		}
 		controller, ok := a.(terminalController)
@@ -59,6 +64,10 @@ func (s *hookServer) handleTerminal(w http.ResponseWriter, r *http.Request) {
 			s.ctrl.ForcePoll()
 		}
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if known {
+		http.Error(w, "task session changed", 409)
 		return
 	}
 	http.Error(w, "agent not found", 404)

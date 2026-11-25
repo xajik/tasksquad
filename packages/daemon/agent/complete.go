@@ -45,8 +45,6 @@ func (a *Agent) complete(cfg *config.Config, status string) {
 	a.internalComplete(cfg, status, sessionID, agentID, taskID, pw, pid, runLog, outputDone, sess, fifo, transcriptPath, false)
 }
 
-const tmuxCaptureFallbackFile = ".tasksquad-tmux-capture.txt"
-
 func (a *Agent) captureTerminalState(sess string) (content string, path string) {
 	if sess == "" || tmuxBin == "" {
 		return "", ""
@@ -56,8 +54,8 @@ func (a *Agent) captureTerminalState(sess string) (content string, path string) 
 		result := strings.TrimSpace(string(out))
 		logger.Info(fmt.Sprintf("[%s] Captured %d chars from tmux scrollback", a.Config.Name, len(result)))
 
-		fallbackPath := filepath.Join(a.Config.WorkDir, tmuxCaptureFallbackFile)
-		if writeErr := os.WriteFile(fallbackPath, []byte(result), 0644); writeErr == nil {
+		fallbackPath := filepath.Join(config.DefaultDir(), "tasks", filepath.Base(sess)+".capture.txt")
+		if writeErr := os.WriteFile(fallbackPath, []byte(result), 0600); writeErr == nil {
 			logger.Debug(fmt.Sprintf("[%s] Wrote tmux capture to %s", a.Config.Name, fallbackPath))
 			return result, fallbackPath
 		} else {

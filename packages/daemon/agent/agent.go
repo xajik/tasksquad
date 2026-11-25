@@ -43,6 +43,8 @@ const (
 //	transcript.go     — transcript reading and extractFinalText
 //	upload.go         — R2 artifact uploads
 type Agent struct {
+	slotsMu       sync.Mutex
+	slots         map[string]*Agent
 	Config        config.AgentConfig
 	prov          provider.Provider
 	st            *AgentState

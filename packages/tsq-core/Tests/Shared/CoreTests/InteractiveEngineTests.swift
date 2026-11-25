@@ -296,7 +296,8 @@ private actor InteractiveWorker {
         [ "$1" = "-p" ] || exit 23
         ext=.pi/extensions/tasksquad.ts
         port=$(grep -o 'http://localhost:[0-9]*' "$ext" | head -1 | sed 's/.*://')
-        path=$(grep -o '/hooks/stop?agent=[^"]*' "$ext" | head -1)
+        grep -q 'process.env.TSQ_TASK_ID' "$ext" || exit 25
+        path="/hooks/stop?agent=$TSQ_AGENT_ID&task_id=$TSQ_TASK_ID&provider=pi"
         curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "http://127.0.0.1:$port$path" -H 'Content-Type: application/json' --data-binary '{"stop_reason":"idle","message":""}' >/dev/null
         echo 'Error: model omlx/default is not loaded' >&2
         exit 1
@@ -330,7 +331,8 @@ private actor InteractiveWorker {
         printf '%s\\n' "$@" > "$PWD/argv.txt"
         ext=.pi/extensions/tasksquad.ts
         port=$(grep -o 'http://localhost:[0-9]*' "$ext" | head -1 | sed 's/.*://')
-        path=$(grep -o '/hooks/stop?agent=[^"]*' "$ext" | head -1)
+        grep -q 'process.env.TSQ_TASK_ID' "$ext" || exit 25
+        path="/hooks/stop?agent=$TSQ_AGENT_ID&task_id=$TSQ_TASK_ID&provider=pi"
         curl -s -H "Authorization: Bearer $TSQ_HOOK_TOKEN" -X POST "http://127.0.0.1:$port$path" -H 'Content-Type: application/json' --data-binary '{"stop_reason":"idle","message":"answer","transcript_path":"\(transcript.path)"}' >/dev/null
         exit 0
         """
