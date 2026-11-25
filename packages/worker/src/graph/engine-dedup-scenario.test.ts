@@ -152,11 +152,12 @@ describe('milestone dedup', () => {
   const boiler = 'Scope: "Sandbox - task results only". Text only: no files changed, no emails sent, no external services. Record the draft in the task result for the same fictional note-taking app.'
   const milestone = (title: string) => ({ kind: 'milestone', title, body: `Write a short plain-text email. ${boiler}`, parent_id: null })
 
-  it('keeps sibling milestones that differ only in their subject, and still folds a reworded title', async () => {
+  it('keeps sibling milestones that differ only in their subject and leaves rewordings to the reviewer', async () => {
     const { g } = await seeded()
     const gr = await graph(db, g.id)
     const ids: Record<string, string> = {}
-    for (const title of ['Draft welcome email', 'Draft day-3 tips email']) {
+    const titles = ['Draft Quillnote pricing FAQ answer (text only)', 'Draft welcome email']
+    for (const title of titles) {
       const id = crypto.randomUUID()
       ids[title] = id
       await commit(db, gr, 'seed_milestone', null, {}, [
@@ -165,12 +166,16 @@ describe('milestone dedup', () => {
       ])
     }
     const g2 = await graph(db, g.id)
-    // Shared boilerplate must not make a new sibling look like a duplicate.
-    const sibling = await similarMilestone(db, g2, milestone('Draft day-7 nudge email'))
-    expect(sibling.some((m) => m.duplicate)).toBe(false)
-    // A real rewording of an existing title is still folded.
-    const reworded = await similarMilestone(db, g2, milestone('Draft the welcome email'))
-    expect(reworded.find((m) => m.id === ids['Draft welcome email'])?.duplicate).toBe(true)
+    // Shared words ("Draft Quillnote ... FAQ answer (text only)") must not make a new sibling look like a duplicate.
+    for (const sibling of ['Draft Quillnote privacy FAQ answer (text only)', 'Draft Quillnote data export FAQ answer (text only)'])
+      expect((await similarMilestone(db, g2, milestone(sibling))).some((m) => m.duplicate)).toBe(false)
+    expect((await similarMilestone(db, g2, milestone('Draft day-7 nudge email'))).some((m) => m.duplicate)).toBe(false)
+    // A reworded title is surfaced to the reviewer as a near match, never dropped silently.
+    const reworded = (await similarMilestone(db, g2, milestone('Write the welcome email'))).find((m) => m.id === ids['Draft welcome email'])
+    expect(reworded).toBeTruthy()
+    expect(reworded?.duplicate).toBe(false)
+    // A title that is the same after normalisation (case, articles) is dropped.
+    expect((await similarMilestone(db, g2, milestone('Draft the welcome email'))).find((m) => m.id === ids['Draft welcome email'])?.duplicate).toBe(true)
   })
 })
 

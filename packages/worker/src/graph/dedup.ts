@@ -6,6 +6,8 @@ import { rows, type Data, type Graph } from './store.js'
 
 /** Same action at or above this token similarity (and the same resources) is a duplicate without asking a reviewer. */
 export const AUTO_DUPLICATE = 0.65
+/** Sibling milestone titles share most words ("Draft X FAQ answer"); only near-identical titles are dropped without a reviewer. */
+export const MILESTONE_AUTO_DUPLICATE = 0.9
 /** Candidates at or above this similarity are handed to the merge reviewer as near-duplicates. */
 export const NEAR_DUPLICATE = 0.4
 /** Open (pending/uncertain) proposals tolerated from a single state before further ones are dropped. */
@@ -309,7 +311,7 @@ export async function similarMilestone(
         id: String(n.id),
         similarity: Math.round(Math.max(titleOnly, withBody) * 100) / 100,
         ...(vector === undefined ? {} : { semantic: Math.round(vector * 100) / 100 }),
-        duplicate: titleOnly >= AUTO_DUPLICATE || (vector ?? 0) >= SEMANTIC_AUTO
+        duplicate: titleOnly >= MILESTONE_AUTO_DUPLICATE || (vector ?? 0) >= SEMANTIC_AUTO
       }
     })
     .filter((n) => n.similarity >= NEAR_DUPLICATE || (n.semantic ?? 0) >= SEMANTIC_NEAR)
