@@ -1,4 +1,5 @@
 import { extractApprovalRequest } from '../approval.js'
+import type { Role } from '../graph/contracts.js'
 import { bindStatement, intake, releaseAgentStatements, closeSessionStatements, SESSION_END_STEPS, EXECUTION_ROLES } from '../graph/engine.js'
 import { bumpInboxVersion } from '../inbox_version.js'
 import { ulid } from 'ulidx'
@@ -568,7 +569,7 @@ export async function sessionClose(req: Request, env: Env, _ctx: unknown, daemon
   const { session_id, status = SessionStatus.Closed, final_text } = body
   const agentId = daemon.agentId
   if (!session_id) return err('missing_fields', 400)
-  const graphResult = await captureGraphResult(env, session_id, agentId, final_text ?? '', status === SessionStatus.Closed || status === SessionStatus.WaitingInput)
+  const graphResult = await captureGraphResult(env, session_id, agentId, final_text ?? '', status)
   if (graphResult) return graphResult
 
   if (status === SessionStatus.Detached) {
@@ -769,7 +770,7 @@ export async function sessionNotify(req: Request, env: Env, _ctx: unknown, daemo
   const resume = parseResume(body.provider, body.provider_session_id)
   const agentId = daemon.agentId
   if (!session_id || !message) return err('missing_fields', 400)
-  const graphResult = await captureGraphResult(env, session_id, agentId, message, true, body.close_steps === true)
+  const graphResult = await captureGraphResult(env, session_id, agentId, message, SessionStatus.Closed, body.close_steps === true)
   if (graphResult) return graphResult
 
   const session = await env.DB
@@ -1179,12 +1180,12 @@ export async function sessionState(req: Request, env: Env, _ctx: unknown): Promi
 
 
 /** Graph finals never flow through ordinary completion hooks or learning exports. */
-async function captureGraphResult(env: Env, sessionId: string, agentId: string, text: string, completed = true, canRunCloseSteps = false): Promise<Response | null> {
+async function captureGraphResult(env: Env, sessionId: string, agentId: string, text: string, status: string, canRunCloseSteps = false): Promise<Response | null> {
   if (env.ACTION_GRAPH_ENABLED === undefined) return null
   const attempt = await env.DB.prepare(`SELECT t.id,t.status,t.task_id,a.graph_id,a.role,g.team_id,s.status AS session_status
     FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id JOIN graphs g ON g.id=a.graph_id
     LEFT JOIN sessions s ON s.id=t.session_id
-    WHERE t.session_id=? AND t.agent_id=?`).bind(sessionId,agentId).first<{id:string;status:string;task_id:string;graph_id:string;role:string;team_id:string;session_status:string|null}>()
+    WHERE t.session_id=? AND t.agent_id=?`).bind(sessionId,agentId).first<{id:string;status:string;task_id:string;graph_id:string;role:Role;team_id:string;session_status:string|null}>()
   if (!attempt) return null
   const coordinator = () => env.GRAPH_COORDINATOR.get(env.GRAPH_COORDINATOR.idFromName(attempt.team_id))
   // The result is already recorded and the session was kept open for its end-of-session steps: this is the daemon
@@ -1195,10 +1196,18 @@ async function captureGraphResult(env: Env, sessionId: string, agentId: string, 
     try { await coordinator().command(attempt.graph_id,'tick',{team_id:attempt.team_id}) } catch(error) {console.error(JSON.stringify({event:'graph_close_wake_failed',graph_id:attempt.graph_id,error:String(error)}))}
     return json({ok:true,close:true,session_id:sessionId,graph_result:true})
   }
-  if (!completed && attempt.status === 'running') {
+  if (status !== SessionStatus.Closed && status !== SessionStatus.WaitingInput) {
+    // A failed launch has no grader output. Keep its diagnostic on the inbox task and let
+    // maintenance handle retries/reconciliation. Repeated closes must never create a result.
+    const now = Date.now()
+    const diagnostic = status === 'crashed' && text.startsWith('Task could not start:')
     await env.DB.batch([
-      env.DB.prepare('UPDATE graph_attempts SET deadline=? WHERE id=?').bind(Date.now(),attempt.id),
-      ...releaseAgentStatements(env.DB, agentId, sessionId, Date.now())
+      ...(diagnostic ? [env.DB.prepare(`INSERT INTO messages(id,task_id,role,body,created_at)
+        SELECT ?,task_id,'system',?,? FROM sessions WHERE id=? AND status='running'`)
+        .bind(ulid(), text.slice(0, 4000), now, sessionId)] : []),
+      env.DB.prepare("UPDATE sessions SET status=?,closed_at=? WHERE id=? AND status='running'").bind(status, now, sessionId),
+      env.DB.prepare("UPDATE graph_attempts SET deadline=MIN(deadline,?) WHERE id=? AND status='running'").bind(now, attempt.id),
+      ...releaseAgentStatements(env.DB, agentId, sessionId, now)
     ])
     await bumpInboxVersion(env, agentId)
     await coordinator().command(attempt.graph_id,'tick',{team_id:attempt.team_id})
