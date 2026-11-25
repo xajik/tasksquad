@@ -531,7 +531,7 @@ public actor DaemonEngine {
         sessionEnvironment["TSQ_HOOK_TOKEN"] = environment["TSQ_HOOK_TOKEN"]
         // An already-running tmux server would otherwise supply its own PATH.
         if let path = environment["PATH"] { sessionEnvironment["PATH"] = path }
-        try await session.start(command: command + provider.initialPromptArguments(formatted),
+        try await session.start(command: command, initialArguments: provider.initialPromptArguments(formatted),
                                 directory: agent.configuration.workDir, environment: sessionEnvironment)
         let stream: AsyncStream<Data>
         do { stream = try await session.pipeOutput(timeout: timing.fifoOpenTimeout) }
