@@ -135,6 +135,10 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ role }),
       }),
+    setParallelism: (teamId: string, agentId: string, max_parallel_tasks: number) =>
+      request<{ ok: boolean }>(`/teams/${teamId}/agents/${agentId}`, {
+        method: 'PATCH', body: JSON.stringify({ max_parallel_tasks }),
+      }),
     createToken: (teamId: string, agentId: string, label: string) =>
       request<{ id: string; token: string; label: string }>(`/teams/${teamId}/tokens`, {
         method: 'POST',
@@ -408,6 +412,7 @@ export interface Member {
 }
 
 export interface Agent {
+  max_parallel_tasks?: number
   id: string
   name: string
   role: string | null

@@ -1826,6 +1826,9 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
   const [newToken, setNewToken] = useState<{ agentId: string; token: string; agentName: string } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'codex' | 'claude' | 'opencode' | 'pi'>('codex')
+  const [parallel, setParallel] = useState<{ agent: Agent; value: string; unlimited: boolean } | null>(null)
+  const [limitError, setLimitError] = useState('')
+  const [savingLimit, setSavingLimit] = useState(false)
   const [editingRole, setEditingRole] = useState<{ agentId: string; name: string; role: string } | null>(null)
   const [savingRole, setSavingRole] = useState(false)
   const [showHowItWorks, setShowHowItWorks] = useState(false)
@@ -1890,6 +1893,38 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
 
   return (
     <div className="animate-fade-in">
+      <Dialog open={!!parallel} onOpenChange={open => { if (!open && !savingLimit) setParallel(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Parallel tasks for {parallel?.agent.name}</DialogTitle>
+            <DialogDescription>Choose how many tasks this agent can keep open at once. Lowering the limit lets current tasks finish.</DialogDescription>
+          </DialogHeader>
+          {parallel && <form className="space-y-4" onSubmit={async e => {
+            e.preventDefault()
+            const limit = parallel.unlimited ? 0 : Number(parallel.value)
+            if (!parallel.unlimited && (!Number.isSafeInteger(limit) || limit < 1)) {
+              setLimitError('Enter a positive whole number.'); return
+            }
+            setSavingLimit(true)
+            try {
+              await api.agents.setParallelism(teamId, parallel.agent.id, limit)
+              setAgents(current => current.map(a => a.id === parallel.agent.id ? { ...a, max_parallel_tasks: limit } : a))
+              setParallel(null)
+            } catch { setLimitError('Could not save the task limit. Please try again.') }
+            finally { setSavingLimit(false) }
+          }}>
+            <label className="block text-sm">Maximum concurrent tasks
+              <Input type="number" min={1} step={1} required disabled={parallel.unlimited} value={parallel.value}
+                onChange={e => setParallel({ ...parallel, value: e.target.value })} />
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={parallel.unlimited} onChange={e => setParallel({ ...parallel, unlimited: e.target.checked })} /> Unlimited
+            </label>
+            {limitError && <p role="alert" className="text-sm text-destructive">{limitError}</p>}
+            <DialogFooter><Button type="submit" disabled={savingLimit}>Save</Button></DialogFooter>
+          </form>}
+        </DialogContent>
+      </Dialog>
       {/* Edit role dialog */}
       <Dialog open={!!editingRole} onOpenChange={open => { if (!open) setEditingRole(null) }}>
         <DialogContent>
@@ -1990,6 +2025,13 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
                       + Add role description
                     </button>
                   ) : null}
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    Parallel tasks · {a.max_parallel_tasks === 0 ? 'Unlimited' : a.max_parallel_tasks ?? 1}
+                    {isMaintainer && <button className="underline" onClick={() => {
+                      setLimitError('')
+                      setParallel({ agent: a, value: String(a.max_parallel_tasks || 1), unlimited: a.max_parallel_tasks === 0 })
+                    }}>Edit limit</button>}
+                  </div>
                   <div className="text-xs text-muted-foreground font-mono truncate">ID: {a.id}</div>
                   <div className="text-xs text-muted-foreground">
                     Last seen: {a.last_seen ? new Date(a.last_seen).toLocaleString() : 'Never'}
