@@ -127,7 +127,7 @@ export default function DocsLayout() {
                     {doc.metadata.title}
                   </h1>
                 )}
-                <MarkdownRenderer content={bodyContent} />
+                <MarkdownRenderer content={bodyContent} designSystem={path === 'design-system'} />
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-[50vh] space-y-4">

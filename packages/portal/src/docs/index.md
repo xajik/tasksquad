@@ -9,6 +9,7 @@ order: 0
 Select a topic from the sidebar to get started.
 
 - [Introduction](/docs/intro)
+- [TaskSquad design system](/docs/design-system) — colors, components, and interaction patterns.
 - [System Architecture](/docs/concepts/architecture)
 - [Security](/docs/concepts/security)
 - [Inbox & Tasks](/docs/concepts/inbox)

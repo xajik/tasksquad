@@ -1,5 +1,7 @@
 # TaskSquad Design System
 
+Public reference and interactive component examples are available in the [TaskSquad design system](https://tasksquad.ai/docs/design-system).
+
 **Version 1.1 · Source of truth: `packages/portal`**
 
 This is the shared design spec for every TaskSquad surface: the web portal, the macOS app, iOS, mobile, and any future client. The values come from what the portal ships today (Tailwind v4 + shadcn/ui on Radix). The dark theme (§2.7) builds on the macOS palette in `packages/macos/Sources/TaskSquad/Design/Theme.swift`, with **white as the primary color**.
@@ -83,6 +85,18 @@ Use these for task, agent, and system state. Each status has a **foreground** (i
 | `queued`, `waiting_input`, `scheduled`, `stuck`, `wrapping_up` | `secondary` |
 | `failed`, `error` | `destructive` |
 | `pending`, `offline`, unknown | `outline` |
+
+#### Inbox and graph workflow accents
+
+Use these foregrounds on the corresponding light or dark surface. Tint badges with 10% foreground mixed into the card surface. Keep routine panels neutral. Retain the phase, status, or score label when applying color.
+
+| Role | Light | Dark |
+|---|---|---|
+| Success, execution, verified evidence | `#426451` | `#9AB3A0` |
+| Information, plan phase, goal projection | `#405E7D` | `#9BAFC6` |
+| Waiting, recovery, review requested | `#78572F` | `#C4AB88` |
+| Grading phase, proposed-state outline | `#655375` | `#B6A4C4` |
+| Errors and destructive feedback | `#884C50` | `#C6A0A1` |
 
 ### 2.4 Illustration / category accents
 

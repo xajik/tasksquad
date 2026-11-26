@@ -135,6 +135,7 @@ missed heartbeat window.
 
 ## References
 
+- [TaskSquad design system](/docs/design-system) — Color tokens, components, and interaction patterns for the web, macOS, and iOS apps.
 - [System Architecture](./concepts/architecture) — Deeper look at how components connect.
 - [Security & Encryption](./concepts/security) — How data is protected in transit and at rest.
 - [Supervisor](./concepts/supervisor) — Automated health-check for stuck tasks.
