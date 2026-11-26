@@ -46,18 +46,20 @@ export async function acceptMerge(x: AcceptCtx): Promise<void> {
       // Wording changes between decompositions; a near-identical sibling under the same parent is the same milestone.
       const existing = (await similarMilestone(db, g, candidate, semantic)).find((m) => m.duplicate) ?? null
       // Like the forward case, the reviewer judges semantic equivalence; require only that it
-      // names a real milestone in this graph (exact text match would never hold for a rewording).
+      // names a real node of the hierarchy it was shown (exact text match would never hold for a
+      // rewording). The root goal is part of that hierarchy: a milestone that merely restates the
+      // goal is equivalent to it and adds nothing.
       const equivalent =
         d.decision === 'equivalent'
           ? await sql(
               db,
-              "SELECT id FROM graph_nodes WHERE id=? AND graph_id=? AND kind='milestone'",
+              "SELECT id FROM graph_nodes WHERE id=? AND graph_id=? AND kind IN ('goal','milestone')",
               d.equivalent_node_id,
               g.id
             ).first<{ id: string }>()
           : null
       if (d.decision === 'equivalent' && !equivalent && existing?.id !== d.equivalent_node_id)
-        throw new Error('Equivalent milestone outside graph')
+        throw new Error('Equivalent milestone outside the goal hierarchy')
       if (!existing && !equivalent) {
         const n = nodeStatements(db, g, 'milestone', candidate, r.id, String(candidate.parent_id))
         ops.push(...n.statements)

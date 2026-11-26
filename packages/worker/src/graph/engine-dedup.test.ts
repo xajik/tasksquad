@@ -208,3 +208,24 @@ describe('graph action dedup', () => {
     })
   })
 })
+
+describe('milestone equivalent to the root goal', () => {
+  it('accepts a merge review that names the goal and adds no milestone', async () => {
+    const { g, agent } = await fixture(false)
+    await sql(db, 'INSERT INTO graph_agent_capabilities(agent_id,version,seen_at) VALUES(?,1,?)', agent, Date.now()).run()
+    await run(db, g.id, 'run')
+    await tick(env(), g.id)
+    await deliver(
+      g.id,
+      agent,
+      JSON.stringify({ subgoals: [{ title: 'Restate the goal', description: '', body: 'Everything the goal asks', necessity_confidence: 0.9 }] })
+    )
+    await tick(env(), g.id)
+    const goal = (await rows<{ id: string }>(db, "SELECT id FROM graph_nodes WHERE graph_id=? AND kind='goal'", g.id))[0].id
+    await deliver(g.id, agent, JSON.stringify({ decision: 'equivalent', equivalent_node_id: goal, reason: 'same as the goal' }))
+    await tick(env(), g.id)
+    const proposals = await rows<{ status: string }>(db, 'SELECT status FROM graph_proposals WHERE graph_id=?', g.id)
+    expect(proposals.map((p) => p.status)).toEqual(['published'])
+    expect(await rows(db, "SELECT id FROM graph_nodes WHERE graph_id=? AND kind='milestone'", g.id)).toHaveLength(0)
+  })
+})
