@@ -345,8 +345,9 @@ function StatusBadge({ status, activeStep }: { status: string; activeStep?: stri
     const label = activeStep ? `Wrapping up ${activeStep}` : 'Wrapping up'
     return <Badge variant="secondary">{label}</Badge>
   }
+  const variant = STATUS_COLOR[status] ?? 'outline'
   return (
-    <Badge variant={STATUS_COLOR[status] ?? 'outline'}>
+    <Badge variant={variant} className={variant === 'destructive' ? 'bg-status-tint text-status-danger hover:bg-status-tint' : undefined}>
       {status}
     </Badge>
   )
@@ -823,7 +824,7 @@ function InboxView({ teamId, internalUserId }: { teamId: string; internalUserId:
                         <AlertDialogCancel onClick={e => e.stopPropagation()}>Cancel</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={e => { e.stopPropagation(); handleDeleteTask(t.id) }}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          className="bg-status-danger/10 text-status-danger hover:bg-status-danger/15"
                         >
                           Delete
                         </AlertDialogAction>
@@ -898,7 +899,7 @@ function ActivityRow({ message }: { message: Message }) {
     preview = message.body.slice(0, 80).replace(/\n/g, ' ')
   }
 
-  const iconColor = type === MessageType.PermissionRequest && (isPending ? 'text-amber-500' : 'text-muted-foreground/50')
+  const iconColor = type === MessageType.PermissionRequest && (isPending ? 'text-status-warning' : 'text-muted-foreground/50')
 
   return (
     <div className="mb-0.5">
@@ -907,7 +908,7 @@ function ActivityRow({ message }: { message: Message }) {
         className="w-full flex items-center gap-2 px-3 py-1 rounded-md text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors group text-left"
       >
         <Icon className={cn('h-3 w-3 shrink-0 opacity-50 group-hover:opacity-100', iconColor)} />
-        <span className={cn('font-mono text-[11px] shrink-0 opacity-70', type === MessageType.PermissionRequest && isPending && 'text-amber-600 dark:text-amber-400 opacity-100 font-semibold')}>{label}</span>
+        <span className={cn('font-mono text-[11px] shrink-0 opacity-70', type === MessageType.PermissionRequest && isPending && 'text-status-warning opacity-100 font-semibold')}>{label}</span>
         <span className="font-mono text-[11px] truncate flex-1 opacity-50">{preview}</span>
         {type === MessageType.PermissionRequest && message.interaction_status === 'resolved' && (
           <span className="text-[10px] font-medium text-muted-foreground/60 shrink-0">{message.interaction_response}</span>
@@ -915,7 +916,7 @@ function ActivityRow({ message }: { message: Message }) {
         <ChevronRight className={cn('h-3 w-3 shrink-0 opacity-0 group-hover:opacity-40 transition-transform', expanded && 'rotate-90 opacity-40')} />
       </button>
       {expanded && (
-        <div className={cn('mx-3 mb-1 rounded border overflow-x-auto', type === MessageType.PermissionRequest && isPending ? 'border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/10' : 'border-border/40 bg-muted/30')}>
+        <div className={cn('mx-3 mb-1 rounded border overflow-x-auto', type === MessageType.PermissionRequest && isPending ? 'border-status-warning/35 bg-status-warning/5' : 'border-border/40 bg-muted/30')}>
           <pre className="px-3 py-2 text-[11px] font-mono text-foreground/70 whitespace-pre-wrap break-all leading-relaxed">{detail}</pre>
           {type === MessageType.PermissionRequest && message.interaction_status === 'resolved' && (
             <div className="px-3 py-2 border-t border-border/30 text-[11px] text-muted-foreground">
@@ -976,12 +977,12 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit, onGrade }
             className="flex items-center gap-2 w-full px-3 py-1.5 border-b border-border hover:bg-muted/70 transition-colors"
             onClick={() => setExpanded(e => !e)}
           >
-            <ShieldAlert className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-600 flex-1 text-left">Supervisor</span>
+            <ShieldAlert className="h-3.5 w-3.5 text-status-warning shrink-0" />
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-status-warning flex-1 text-left">Supervisor</span>
             {summary && !expanded && (
               <span className="text-[10px] text-foreground/80 truncate max-w-[320px]">{summary}</span>
             )}
-            <span className="text-[10px] text-amber-600 shrink-0">{expanded ? 'Hide' : 'Show'}</span>
+            <span className="text-[10px] text-status-warning shrink-0">{expanded ? 'Hide' : 'Show'}</span>
           </button>
           {expanded && (
             <pre className="px-3 py-2 text-xs text-foreground/80 whitespace-pre-wrap break-words font-mono leading-relaxed">
@@ -1067,7 +1068,7 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit, onGrade }
         </span>
         {isScheduled && scheduledTime && (
           <span className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground border border-primary/30 dark:border-primary/40 px-1.5 py-0.5 rounded">
+            <span className="text-xs font-semibold uppercase tracking-wide bg-primary/10 text-primary border border-primary/30 px-1.5 py-0.5 rounded">
               Scheduled
             </span>
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -1083,12 +1084,12 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit, onGrade }
           </button>
         )}
         {isScheduled && onDelete && (
-          <button onClick={() => onDelete(message.id)} className="ml-1 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Delete scheduled message">
+          <button onClick={() => onDelete(message.id)} className="ml-1 p-1 rounded text-muted-foreground hover:text-status-danger hover:bg-status-danger/10 transition-colors" title="Delete scheduled message">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
         <button onClick={copyBody} className="ml-1 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Copy message">
-          {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? <Check className="h-3.5 w-3.5 text-status-success" /> : <Copy className="h-3.5 w-3.5" />}
         </button>
         {onGrade && (
           <>
@@ -1097,8 +1098,8 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit, onGrade }
               className={cn(
                 'ml-1 p-1 rounded transition-colors',
                 message.grade === 1
-                  ? 'bg-green-500/15 text-green-600'
-                  : 'text-muted-foreground hover:text-green-600 hover:bg-green-500/10'
+                  ? 'bg-status-success/10 text-status-success'
+                  : 'text-muted-foreground hover:text-status-success hover:bg-status-success/10'
               )}
               title="Good"
             >
@@ -1109,8 +1110,8 @@ function MessageBubble({ message, agentName, taskId, onDelete, onEdit, onGrade }
               className={cn(
                 'ml-1 p-1 rounded transition-colors',
                 message.grade === 0
-                  ? 'bg-destructive/15 text-destructive'
-                  : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
+                  ? 'bg-status-danger/10 text-status-danger'
+                  : 'text-muted-foreground hover:text-status-danger hover:bg-status-danger/10'
               )}
               title="Bad"
             >
@@ -1442,17 +1443,13 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
                 <button
                   onClick={toggleSaveTokens}
                   title="Toggle caveman token-saving mode"
-                  style={{
-                    fontSize: 11,
-                    padding: '1px 7px',
-                    borderRadius: 4,
-                    border: '1px solid',
-                    borderColor: task.settings?.save_tokens?.enabled ? '#2563EB' : '#E2E4EA',
-                    background: task.settings?.save_tokens?.enabled ? '#2563EB' : 'transparent',
-                    color: task.settings?.save_tokens?.enabled ? '#fff' : '#6B7280',
-                    cursor: 'pointer',
-                    lineHeight: '1.6',
-                  }}
+                  aria-pressed={!!task.settings?.save_tokens?.enabled}
+                  className={cn(
+                    'cursor-pointer rounded border px-[7px] py-px text-[11px] leading-[1.6]',
+                    task.settings?.save_tokens?.enabled
+                      ? 'border-status-info/30 bg-status-info/10 text-status-info'
+                      : 'text-muted-foreground'
+                  )}
                 >
                   Token saver {task.settings?.save_tokens?.enabled ? 'ON' : 'OFF'}
                 </button>
@@ -1519,7 +1516,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
           )}
 
 
-          <Button variant="ghost" size="icon" onClick={deleteTask} className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive">
+          <Button variant="ghost" size="icon" onClick={deleteTask} className="h-8 w-8 hover:bg-status-danger/10 hover:text-status-danger">
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -1548,10 +1545,10 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
 
       {/* ── Edit form for scheduled messages — only when agent is waiting for input ── */}
       {editingMessage && task?.status === 'waiting_input' && (
-        <div className="border border-primary/20 dark:border-primary/30 rounded-xl overflow-hidden shadow-sm bg-background">
-          <div className="px-4 py-2.5 border-b border-primary/10 dark:border-primary/20 flex items-center gap-2 bg-primary/[0.03] dark:bg-primary/[0.02]">
+        <div className="border border-primary/20 rounded-xl overflow-hidden shadow-sm bg-background">
+          <div className="px-4 py-2.5 border-b border-primary/10 flex items-center gap-2 bg-primary/[0.03]">
             <Clock className="h-3.5 w-3.5 text-primary" />
-            <span className="text-xs font-semibold text-primary dark:text-primary-foreground uppercase tracking-wider">
+            <span className="text-xs font-semibold text-primary uppercase tracking-wider">
               Edit scheduled message
             </span>
           </div>
@@ -1595,13 +1592,13 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
 
       {/* ── Pending scheduled reply banner (blocks reply box) ── */}
       {pendingScheduledReply && !editingMessage && (
-        <div className="border border-primary/20 dark:border-primary/30 rounded-xl overflow-hidden shadow-sm bg-primary/[0.03] dark:bg-primary/[0.02]">
-          <div className="px-4 py-2.5 border-b border-primary/10 dark:border-primary/20 flex items-center gap-2">
+        <div className="border border-primary/20 rounded-xl overflow-hidden shadow-sm bg-primary/[0.03]">
+          <div className="px-4 py-2.5 border-b border-primary/10 flex items-center gap-2">
             <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
-            <span className="text-xs font-semibold text-primary dark:text-primary-foreground uppercase tracking-wider flex-1">
+            <span className="text-xs font-semibold text-primary uppercase tracking-wider flex-1">
               Scheduled reply
             </span>
-            <Badge variant="outline" className="text-xs bg-primary/5 text-primary border-primary/20 dark:border-primary/30">
+            <Badge variant="outline" className="text-xs bg-primary/5 text-primary border-primary/20">
               {pendingScheduledReply.scheduled_at
                 ? new Date(pendingScheduledReply.scheduled_at).toLocaleString(undefined, {
                     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -1614,7 +1611,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
               {pendingScheduledReply.body}
             </p>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2.5 border-t border-primary/10 dark:border-primary/20 bg-primary/[0.02]">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-t border-primary/10 bg-primary/[0.02]">
             <span className="text-xs text-muted-foreground flex-1">
               Delete this scheduled reply to send a message now.
             </span>
@@ -1623,7 +1620,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
                 type="button"
                 variant="outline"
                 size="sm"
-                className="border-primary/30 text-primary hover:bg-primary/10 dark:border-primary/40 dark:text-primary-foreground dark:hover:bg-primary/20"
+                className="border-primary/30 text-primary hover:bg-primary/10"
                 onClick={() => editScheduledMessage(pendingScheduledReply)}
               >
                 <Edit className="h-3.5 w-3.5 mr-1.5" />
@@ -1634,7 +1631,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
               type="button"
               variant="outline"
               size="sm"
-              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+              className="border-status-danger/40 text-status-danger hover:bg-status-danger/10"
               onClick={() => deleteScheduledMessage(pendingScheduledReply.id)}
             >
               <Trash2 className="h-3.5 w-3.5 mr-1.5" />
@@ -1659,12 +1656,12 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
       )}
       {/* ── Reply box when agent is waiting for input ── */}
       {task && !(approvalRequest && !freeText) && ((task.status === 'waiting_input' && (!task.graph || task.graph.can_manage)) || task.graph?.can_reply) && !pendingScheduledReply && !editingMessage && (
-        <div className={cn('border rounded-xl overflow-hidden shadow-sm bg-background', permissionOptions ? 'border-amber-200 dark:border-amber-800' : 'border-border/60')}>
-          <div className={cn('px-4 py-2.5 border-b flex items-center gap-2', permissionOptions ? 'border-amber-200/60 dark:border-amber-800/60' : 'border-border/40')}>
+        <div className={cn('border rounded-xl overflow-hidden shadow-sm bg-background', permissionOptions ? 'border-status-warning/35' : 'border-border/60')}>
+          <div className={cn('px-4 py-2.5 border-b flex items-center gap-2', permissionOptions ? 'border-status-warning/25' : 'border-border/40')}>
             {permissionOptions ? (
               <>
-                <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
-                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Permission Required</span>
+                <ShieldAlert className="h-3.5 w-3.5 text-status-warning" />
+                <span className="text-xs font-semibold text-status-warning uppercase tracking-wider">Permission Required</span>
               </>
             ) : (
               <>
@@ -1674,7 +1671,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
             )}
           </div>
           {permissionOptions && (
-            <div className="px-4 py-3 border-b border-amber-200/40 dark:border-amber-800/40 space-y-1">
+            <div className="px-4 py-3 border-b border-status-warning/20 space-y-1">
               {permissionOptions.map((opt, i) => (
                 <button
                   key={opt}
@@ -1682,10 +1679,10 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
                   onClick={() => handlePermissionOption(opt)}
                   className={cn(
                     'w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm text-left transition-colors',
-                    'hover:bg-amber-50 dark:hover:bg-amber-950/20 hover:text-foreground text-muted-foreground',
+                    'hover:bg-status-warning/10 hover:text-foreground text-muted-foreground',
                   )}
                 >
-                  <span className="font-mono text-xs text-amber-500 shrink-0">{i + 1}.</span>
+                  <span className="font-mono text-xs text-status-warning shrink-0">{i + 1}.</span>
                   <span>{opt}</span>
                 </button>
               ))}
@@ -1704,7 +1701,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
               rows={4}
               className="border-0 rounded-none resize-none focus-visible:ring-0 text-sm px-4 py-3 bg-transparent"
             />
-            {replyError && <p role="alert" className="px-4 pb-2 text-sm text-destructive">{replyError}</p>}
+            {replyError && <p role="alert" className="px-4 pb-2 text-sm text-status-danger">{replyError}</p>}
             {!task.graph?.can_reply && <ImageAttachmentPicker attach={replyAttach} className="px-4 pb-2" />}
             {!task.graph?.can_reply && showSchedulePicker && (
               <div className="px-4 py-3 border-t border-border/20">
@@ -1752,14 +1749,14 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
           <div className="pb-2 flex items-center gap-2 bg-background">
           {!['done', 'failed', 'cancelled'].includes(task.status) && (
             task.status === 'wrapping_up' ? (
-              <Button size="sm" disabled className="bg-emerald-600 text-white shadow-sm opacity-80 cursor-not-allowed">
+              <Button size="sm" disabled className="bg-status-success/10 text-status-success shadow-sm opacity-80 cursor-not-allowed">
                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                 {activeCloseStep(task) ? `Wrapping up ${activeCloseStep(task)}` : 'Wrapping up…'}
               </Button>
             ) : (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                  <Button size="sm" className="bg-status-success/10 text-status-success hover:bg-status-success/15 shadow-sm">
                     <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
                     Close Session
                   </Button>
@@ -1773,7 +1770,7 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Keep open</AlertDialogCancel>
-                    <AlertDialogAction onClick={closeTask} className="bg-emerald-600 hover:bg-emerald-700">
+                    <AlertDialogAction onClick={closeTask} className="bg-status-success/10 text-status-success hover:bg-status-success/15">
                       Close Session
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -1790,8 +1787,8 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
               className={cn(
                 'p-1 rounded transition-colors',
                 taskGrade === 1
-                  ? 'bg-green-500/15 text-green-600'
-                  : 'text-muted-foreground hover:text-green-600 hover:bg-green-500/10'
+                  ? 'bg-status-success/10 text-status-success'
+                  : 'text-muted-foreground hover:text-status-success hover:bg-status-success/10'
               )}
               title="Good task"
             >
@@ -1802,8 +1799,8 @@ function TaskThread({ teamId, plan, internalUserId }: { teamId: string; plan: 'f
               className={cn(
                 'p-1 rounded transition-colors',
                 taskGrade === 0
-                  ? 'bg-destructive/15 text-destructive'
-                  : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
+                  ? 'bg-status-danger/10 text-status-danger'
+                  : 'text-muted-foreground hover:text-status-danger hover:bg-status-danger/10'
               )}
               title="Bad task"
             >

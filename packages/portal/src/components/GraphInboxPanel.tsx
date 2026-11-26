@@ -22,12 +22,12 @@ export function GraphInboxPanel({
   const [graph, setGraph] = useState<GraphSnapshot | null>(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [notice, setNotice] = useState('')
+    [notice, setNotice] = useState<'accept' | 'reject' | null>(null)
   useEffect(() => {
     let active = true
     setGraph(null)
     setError('')
-    setNotice('')
+    setNotice(null)
     async function load() {
       try {
         const next = await graphApi.get(context.team_id, context.graph_id)
@@ -47,7 +47,10 @@ export function GraphInboxPanel({
   }, [taskId, context.team_id, context.graph_id, interval])
   const attemptIds = new Set(graph?.attempts.filter((a) => a.task_id === taskId).map((a) => a.id))
   const reviews = graph?.results.filter((r) => r.status === 'review' && attemptIds.has(r.attempt_id)) ?? []
-  async function review(result: GraphResult, verdict: string) {
+  const needsAttention = context.latest && (
+    reviews.length > 0 || context.can_reply || ['review', 'blocked', 'error'].includes(context.status)
+  )
+  async function review(result: GraphResult, verdict: 'accept' | 'reject') {
     if (!graph) return
     setBusy(true)
     setError('')
@@ -59,11 +62,7 @@ export function GraphInboxPanel({
         verdict
       })
       setGraph(await graphApi.get(context.team_id, context.graph_id))
-      setNotice(
-        verdict === 'accept'
-          ? 'Accepted. The graph applies this result and moves to the next step.'
-          : 'Rejected. This step is blocked; reply in this thread to continue it.'
-      )
+      setNotice(verdict)
       onChange()
     } catch (e) {
       setError(errorText(e))
@@ -74,7 +73,7 @@ export function GraphInboxPanel({
   return (
     <section
       aria-label="Graph inbox task"
-      className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3 mb-4"
+      className={`rounded-lg border p-4 space-y-3 mb-4 ${needsAttention ? 'border-status-warning/30 bg-status-warning/5' : 'bg-card'}`}
     >
       <div className="flex justify-between gap-3 flex-wrap">
         <strong className="text-sm">
@@ -158,12 +157,14 @@ export function GraphInboxPanel({
         </article>
       ))}
       {notice && !error && (
-        <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">
-          {notice}
+        <p role="status" className={`text-sm ${notice === 'accept' ? 'text-status-success' : 'text-status-warning'}`}>
+          {notice === 'accept'
+            ? 'Accepted. The graph applies this result and moves to the next step.'
+            : 'Rejected. This step is blocked; reply in this thread to continue it.'}
         </p>
       )}
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-status-danger">
           {error}
         </p>
       )}

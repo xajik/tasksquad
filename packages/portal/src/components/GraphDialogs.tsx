@@ -105,7 +105,7 @@ export function CloneDialog({
           </div>
         </div>
         {error && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-status-danger">
             {error}
           </p>
         )}
@@ -160,6 +160,7 @@ export function SettingsDialog({
               <>
                 <Button
                   variant="destructive"
+                  className="bg-status-danger/10 text-status-danger hover:bg-status-danger/15"
                   disabled={busy}
                   title="Close graph permanently: stops all work and cannot be reopened"
                   onClick={() => {
@@ -217,14 +218,14 @@ export function SettingsDialog({
               </AlertDialogDescription>
             </AlertDialogHeader>
             {closeError && (
-              <p role="alert" className="text-sm text-destructive">
+              <p role="alert" className="text-sm text-status-danger">
                 {closeError}
               </p>
             )}
             <AlertDialogFooter>
               <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className="bg-status-danger/10 text-status-danger hover:bg-status-danger/15"
                 disabled={busy}
                 onClick={async (event) => {
                   event.preventDefault()

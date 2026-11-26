@@ -123,7 +123,7 @@ export const graphHelp = {
     examples: ['pending: the review has not run yet', 'uncertain: the reviewer was unsure, so it stays unpublished']
   },
   section_canvas: {
-    what: 'The action graph. Goals and milestones are dashed guidance cards; solid cards are execution states. Click a card to inspect it, drag to rearrange, scroll to pan, Ctrl or Command with scroll to zoom.',
+    what: 'The action graph. Goals and milestones guide planning. Violet dashed cards show proposed outcomes and solid cards show observations. Select an action edge for its plan or a node for its history. Click a card to inspect it, drag to rearrange, scroll to pan, Ctrl or Command with scroll to zoom.',
     examples: ['Click a milestone to see its evidence and linked inbox tasks', 'Highlighted amber cards need your reply']
   },
   section_work: {

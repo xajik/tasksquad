@@ -1,12 +1,13 @@
 import { goalVerificationLabel } from '@/lib/graphStatus'
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   type GraphSnapshot,
 } from '@/lib/graph'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { nodeHistory } from '@/lib/graphNodeHistory'
 import { isGuidance } from '@/lib/graphLayout'
 import { goalProjection } from '@/lib/graphProjection'
 import type { GraphAttention } from '@/lib/graphAttention'
@@ -20,6 +21,8 @@ type Edge = GraphSnapshot['edges'][number]
 export function GraphInspector({
   current,
   node,
+  role,
+  onSelect,
   edge,
   nodeAttention,
   projection,
@@ -31,6 +34,8 @@ export function GraphInspector({
 }: {
   current: GraphSnapshot
   node: Node | undefined
+  role: string | undefined
+  onSelect: (id: string) => void
   edge: Edge | undefined
   nodeAttention: GraphAttention[]
   projection: ReturnType<typeof goalProjection> | null
@@ -42,15 +47,17 @@ export function GraphInspector({
 }) {
   const nav = useNavigate()
   const [input, setInput] = useState<Record<string, string>>({})
+  const parent = node?.parent_id && current.nodes.find((n) => n.id === node.parent_id)
+  const history = useMemo(() => node ? nodeHistory(current, node) : [], [current, node])
   return (
     <aside className="border-t xl:border-t-0 xl:border-l p-4 space-y-3 text-sm min-w-0">
       <h3 className="font-semibold">{node?.title ?? edge?.title ?? 'Inspector'}</h3>
       {nodeAttention.length > 0 && (
         <section
           aria-label="Inbox attention"
-          className="rounded border border-amber-500/30 bg-amber-500/10 p-3 space-y-2"
+          className="rounded border border-status-warning/30 bg-status-warning/10 p-3 space-y-2"
         >
-          <p className="font-medium text-amber-700 dark:text-amber-400">
+          <p className="font-medium text-status-warning">
             {nodeAttention.some((a) => a.kind === 'reply')
               ? 'Waiting for your response'
               : nodeAttention.some((a) => a.kind === 'review')
@@ -75,18 +82,39 @@ export function GraphInspector({
       {node ? (
         <>
           <Badge variant="outline">
-            {isGuidance(node) ? `Guidance · ${node.kind}` : `${node.kind} · ${node.state}`}
+            {role} · {node.state}
             {node.reason ? ` / ${node.reason}` : ''}
           </Badge>
-          {isGuidance(node) && (
-            <p className="text-xs text-muted-foreground">
-              Guidance for planning. This item is not an execution state.
-            </p>
-          )}
+          <p className="text-xs text-muted-foreground">
+            {isGuidance(node) ? 'Guides planning and goal evaluation.'
+              : role === 'Proposed state' ? 'Expected outcome of an action plan.'
+              : node.kind === 'observed' ? 'Starting observation for this graph.'
+              : 'Recorded outcome of execution.'}
+          </p>
+          <section className="rounded border p-3 space-y-2" aria-label="Node history">
+            <h4 className="font-medium">Node history</h4>
+            <ol className="max-h-72 overflow-y-auto space-y-3 border-l pl-3 text-xs">
+              {history.map((entry) => (
+                <li key={entry.id}>
+                  <p className="font-medium">{entry.title}</p>
+                  {entry.detail && <p className="break-words">{entry.detail}</p>}
+                  {entry.child && (
+                    <button className="block text-left underline" onClick={() => onSelect(entry.child!.id)}>
+                      {entry.child.title}
+                    </button>
+                  )}
+                  <time className="text-muted-foreground">{stamp(entry.at)}</time>
+                  {entry.taskId && <Link className="ml-2 underline" to={`/dashboard/tasks/${entry.taskId}`}>View task</Link>}
+                </li>
+              ))}
+            </ol>
+            {!node.state_history && <p className="text-xs text-muted-foreground">Earlier transitions unavailable.</p>}
+            {parent && <p className="text-xs">Parent node · <button className="underline" onClick={() => onSelect(parent.id)}>{parent.title}</button></p>}
+          </section>
           {projection && (
             <section
               aria-label="Projection towards goal"
-              className="rounded border border-blue-500/20 bg-blue-500/5 p-3 space-y-2"
+              className="rounded border border-status-info/20 bg-status-info/5 p-3 space-y-2"
             >
               <h4 className="font-medium">Projection towards goal</h4>
               <p>
@@ -148,12 +176,10 @@ export function GraphInspector({
           )}
           <p>{node.description}</p>
           <p className="whitespace-pre-wrap">{node.body}</p>
-          <p className="text-xs text-muted-foreground">
-            {isGuidance(node) ? 'Created' : 'Observed'} {stamp(node.created_at)}
-          </p>
         </>
       ) : edge ? (
         <>
+          <Badge variant="outline">Action edge · plan</Badge>
           <p>Expected quality: {edge.expected_score ?? 'unknown'}</p>
           <p>{edge.description}</p>
           <p className="whitespace-pre-wrap">{edge.body}</p>

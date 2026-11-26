@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { GraphSnapshot } from './graph'
-import { goalProjection } from './graphProjection'
+import { goalLinkScores, goalProjection } from './graphProjection'
 function fixture() {
   return {
     nodes: [
@@ -63,6 +63,19 @@ describe('selected state goal projection', () => {
       })
     expect(goalProjection(graph, 'other').evaluated).toBe(false)
     expect(goalProjection(graph, 'start').evaluated).toBe(false)
+  })
+  it('labels each goal with the predicted and accepted impact for that goal, including zero', () => {
+    const graph = fixture()
+    const milestone = { id: 'ms', kind: 'milestone' }
+    graph.assignments[0].input = JSON.stringify({ plan: { projected_impact: [{ goal_id: 'ms', delta: 0.4 }] } })
+    const review = graph.results.find((r) => r.id === 'projection')!
+    review.parsed = JSON.stringify({ goal_score: 0.7, goal_impacts: [{ goal_id: 'ms', actual: 0 }] })
+    const projection = goalProjection(graph, 'observed')
+    expect(goalLinkScores(projection, milestone)).toEqual({ expected: 0.4, observed: 0 })
+    expect(goalLinkScores(projection, { id: 'root', kind: 'goal' })).toEqual({ expected: null, observed: 0.7 })
+    expect(goalLinkScores(projection, { id: 'other', kind: 'milestone' })).toEqual({ expected: null, observed: null })
+    graph.results = []
+    expect(goalLinkScores(goalProjection(graph, 'candidate'), milestone)).toEqual({ expected: 0.4, observed: null })
   })
   it('never substitutes local quality or pending/rejected projection output', () => {
     const graph = fixture()

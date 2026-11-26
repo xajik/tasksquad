@@ -10,7 +10,7 @@ export function CloseStepsProgress({ steps, activeIdx }: CloseStepsProgressProps
 
   return (
     <div style={{ padding: '12px 0 4px' }}>
-      <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 8 }}>
+      <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-muted-foreground)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 8 }}>
         Closing session
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -20,17 +20,15 @@ export function CloseStepsProgress({ steps, activeIdx }: CloseStepsProgressProps
           return (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {done ? (
-                <CheckCircle2 style={{ width: 15, height: 15, color: '#16a34a', flexShrink: 0 }} />
+                <CheckCircle2 style={{ width: 15, height: 15, color: 'var(--color-status-success)', flexShrink: 0 }} />
               ) : active ? (
-                <Loader2 style={{ width: 15, height: 15, color: '#2563eb', flexShrink: 0, animation: 'spin 1s linear infinite' }} />
+                <Loader2 style={{ width: 15, height: 15, color: 'var(--color-status-info)', flexShrink: 0, animation: 'spin 1s linear infinite' }} />
               ) : (
-                <Circle style={{ width: 15, height: 15, color: '#d1d5db', flexShrink: 0 }} />
+                <Circle style={{ width: 15, height: 15, color: 'var(--color-border)', flexShrink: 0 }} />
               )}
-              <code style={{
+              <code className={done ? 'bg-status-success/10 text-status-success' : active ? 'bg-status-info/10 text-status-info' : 'text-muted-foreground'} style={{
                 fontSize: 12,
                 fontFamily: 'JetBrains Mono, monospace',
-                color: done ? '#16a34a' : active ? '#2563eb' : '#9ca3af',
-                background: done ? '#f0fdf4' : active ? '#eff6ff' : 'transparent',
                 padding: done || active ? '1px 6px' : undefined,
                 borderRadius: 4,
               }}>

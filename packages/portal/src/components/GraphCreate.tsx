@@ -252,7 +252,7 @@ export function CreateGraph({
       </div>
       <PolicyFields value={form.policy} onChange={(policy) => setForm({ ...form, policy })} agents={agents} />
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-status-danger">
           {error}
         </p>
       )}

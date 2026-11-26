@@ -20,8 +20,8 @@ export function graphPhase(role: string): GraphPhase {
 
 /** Badge colours: planning is blue, execution green, grading violet, recovery amber. */
 export const PHASE_CLASS: Record<GraphPhase, string> = {
-  PLAN: 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
-  EXECUTION: 'bg-green-500/15 text-green-700 dark:text-green-300',
-  GRADING: 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
-  RECOVERY: 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+  PLAN: 'text-status-info',
+  EXECUTION: 'text-status-success',
+  GRADING: 'text-status-violet',
+  RECOVERY: 'text-status-warning'
 }

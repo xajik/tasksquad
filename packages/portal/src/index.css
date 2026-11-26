@@ -20,6 +20,14 @@
   --color-border: hsl(214.3 31.8% 91.4%);
   --color-input: hsl(214.3 31.8% 91.4%);
   --color-ring: hsl(222.2 84% 4.9%);
+  /* Workflow accents follow the surface's color scheme. Use low-opacity fills for large areas. */
+  --color-status-success: light-dark(#426451, #9ab3a0);
+  --color-status-info: light-dark(#405e7d, #9bafc6);
+  --color-status-warning: light-dark(#78572f, #c4ab88);
+  --color-status-violet: light-dark(#655375, #b6a4c4);
+  --color-status-danger: light-dark(#884c50, #c6a0a1);
+  /* An opaque badge tint keeps its contrast over heatmap cells and attention panels. */
+  --color-status-tint: color-mix(in srgb, currentColor 10%, var(--color-card));
   --radius: 0.5rem;
 }
 

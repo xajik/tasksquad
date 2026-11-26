@@ -42,6 +42,7 @@ export interface GraphSummary {
   created_at: number
 }
 export interface GraphNode {
+  state_history?: { id: number; state: string; reason: string | null; created_at: number }[]
   state_changed_at?: number
   source_result_id?: string | null
   tags?: string[]
@@ -252,12 +253,31 @@ export const graphApi = {
 export const defaultGraphPolicy: GraphPolicy = { ...(defaultPolicy as GraphPolicy), agents: [] }
 
 /** A format-repair assignment stands in for its parent role: its accepted result IS the parent's result. */
-export function effectiveRole(
+export function originalAssignment(
   graph: Pick<GraphSnapshot, 'assignments'>,
   assignmentId: string | undefined
-): string {
+) {
   let a = graph.assignments.find((x) => x.id === assignmentId)
   for (let guard = 0; a && a.role === 'repair' && a.parent_id && guard < 4; guard++)
     a = graph.assignments.find((x) => x.id === a!.parent_id)
-  return a?.role ?? ''
+  return a
+}
+
+export function effectiveRole(graph: Pick<GraphSnapshot, 'assignments'>, assignmentId: string | undefined) {
+  return originalAssignment(graph, assignmentId)?.role ?? ''
+}
+
+export function observedResultIds(graph: GraphSnapshot) {
+  const attempts = new Map(graph.attempts.map((t) => [t.id, t.assignment_id]))
+  return new Set(graph.results.filter((r) => r.status === 'accepted' &&
+    ['execute', 'undo'].includes(effectiveRole(graph, attempts.get(r.attempt_id)))).map((r) => r.id))
+}
+
+export function nodeRole(node: GraphNode, observed: ReadonlySet<string>) {
+  if (node.kind === 'goal') return 'Goal'
+  if (node.kind === 'milestone') return 'Milestone'
+  if (node.kind === 'restoration') return 'Restoration'
+  if (node.kind === 'observed' || (node.source_result_id && observed.has(node.source_result_id)))
+    return 'Observed state'
+  return 'Proposed state'
 }

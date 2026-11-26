@@ -60,7 +60,7 @@ export function GraphWorkSection({
               <div key={a.id} className="flex flex-col gap-3 py-3 text-sm sm:flex-row sm:items-start">
                 <span className="min-w-0 flex-1 break-words">
                   {needsOwner(current.waiting?.[a.id]?.action) && (
-                    <b className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs">
+                    <b className="mr-2 rounded bg-status-warning/10 text-status-warning px-1.5 py-0.5 text-xs">
                       {current.waiting?.[a.id]?.action === 'review'
                         ? 'Review result'
                         : current.waiting?.[a.id]?.has_request === false

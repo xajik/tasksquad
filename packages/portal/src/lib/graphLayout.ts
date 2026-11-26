@@ -466,3 +466,22 @@ export function fallbackLabel(points: Point[]): Box | null {
     b = points[best + 1]
   return { x: (a.x + b.x) / 2 - 50, y: (a.y + b.y) / 2 - 11, width: 100, height: 22 }
 }
+
+/** Prefer the goal end of a projection, where paths that share a trunk diverge. */
+export function projectionLabelBox(points: Point[], occupied: Box[]): Box | null {
+  for (let i = points.length - 1; i > 0; i--) {
+    const a = points[i - 1], b = points[i]
+    const length = Math.hypot(b.x - a.x, b.y - a.y)
+    if (!length) continue
+    const inset = a.x === b.x ? 16 : 54
+    for (let offset = Math.min(inset, length / 2); offset < length; offset += 16) {
+      const box = {
+        x: b.x + (a.x - b.x) * offset / length - 50,
+        y: b.y + (a.y - b.y) * offset / length - 11,
+        width: 100, height: 22
+      }
+      if (!occupied.some((other) => intersects(expanded(box, 3), other))) return box
+    }
+  }
+  return fallbackLabel(points)
+}

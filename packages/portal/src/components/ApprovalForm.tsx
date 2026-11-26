@@ -37,10 +37,10 @@ export function ApprovalForm({
     <form
       onSubmit={submit}
       aria-label="Approval request"
-      className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 space-y-4 mb-4"
+      className="rounded-xl border border-status-warning/40 bg-status-warning/5 p-4 space-y-4 mb-4"
     >
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+        <p className="text-xs font-semibold uppercase tracking-wider text-status-warning">
           Needs your approval
         </p>
         <h3 className="font-semibold text-sm mt-1">{request.title}</h3>
@@ -50,7 +50,7 @@ export function ApprovalForm({
         <fieldset key={f.id} className="space-y-1.5">
           <legend className="text-sm font-medium">
             {f.label}
-            {f.required && <span className="text-destructive"> *</span>}
+            {f.required && <span className="text-status-danger"> *</span>}
           </legend>
           {f.type === 'text' && (
             <Textarea
@@ -92,7 +92,7 @@ export function ApprovalForm({
         </fieldset>
       ))}
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-status-danger">
           {error}
         </p>
       )}

@@ -8,11 +8,13 @@ import {
   defaultGraphPolicy,
   graphApi,
   graphRunExplanation,
+  observedResultIds,
+  nodeRole,
   type GraphSnapshot,
   type GraphSummary,
   type GraphPolicy,
   type GraphSearchHit,
-  type GraphResource,
+  type GraphResource
 } from '../lib/graph'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,7 +48,6 @@ import {
 import { graphViews, graphView, type GraphView } from '@/lib/graphDashboard'
 
 import { plural, proposalState, stamp } from '@/lib/graphWork'
-
 
 export function Graphs({
   teamId,
@@ -100,31 +101,34 @@ export function Graphs({
     searchRef = useRef<HTMLInputElement>(null)
   const lastDetail = useRef('')
   // `full` also reloads the graph list and agents; routine polls only need the snapshot.
-  const refresh = useCallback(async (full = true) => {
-    const version = ++generation.current
-    try {
-      const [list, ad, detail] = await Promise.all([
-        full ? graphApi.list(teamId) : null,
-        full ? api.agents.list(teamId) : null,
-        graphId ? graphApi.get(teamId, graphId) : Promise.resolve(null)
-      ])
-      if (version !== generation.current) return
-      if (list) setGraphs(list.graphs)
-      if (ad) setAgents(ad.agents)
-      // Keep the same object when nothing changed so memoized derivations and children skip work.
-      const serialized = JSON.stringify(detail)
-      if (serialized !== lastDetail.current) {
-        lastDetail.current = serialized
-        setCurrent(detail)
+  const refresh = useCallback(
+    async (full = true) => {
+      const version = ++generation.current
+      try {
+        const [list, ad, detail] = await Promise.all([
+          full ? graphApi.list(teamId) : null,
+          full ? api.agents.list(teamId) : null,
+          graphId ? graphApi.get(teamId, graphId) : Promise.resolve(null)
+        ])
+        if (version !== generation.current) return
+        if (list) setGraphs(list.graphs)
+        if (ad) setAgents(ad.agents)
+        // Keep the same object when nothing changed so memoized derivations and children skip work.
+        const serialized = JSON.stringify(detail)
+        if (serialized !== lastDetail.current) {
+          lastDetail.current = serialized
+          setCurrent(detail)
+        }
+        setUpdatedAt(Date.now())
+        setError('')
+      } catch (e) {
+        if (version === generation.current) setError(errorText(e))
+      } finally {
+        if (version === generation.current) setLoading(false)
       }
-      setUpdatedAt(Date.now())
-      setError('')
-    } catch (e) {
-      if (version === generation.current) setError(errorText(e))
-    } finally {
-      if (version === generation.current) setLoading(false)
-    }
-  }, [teamId, graphId])
+    },
+    [teamId, graphId]
+  )
   useEffect(() => {
     lastDetail.current = ''
     setCurrent(null)
@@ -230,6 +234,9 @@ export function Graphs({
     : edge
       ? (attention?.edges.get(edge.id) ?? [])
       : []
+  const observations = useMemo(() => (current ? observedResultIds(current) : new Set<string>()), [current])
+  const states = current?.nodes.filter((n) => !isGuidance(n)) ?? []
+  const proposedCount = states.filter((n) => nodeRole(n, observations) === 'Proposed state').length
   const projection = useMemo(
     () => (current && node && !isGuidance(node) ? goalProjection(current, node.id) : null),
     [current, node]
@@ -294,7 +301,7 @@ export function Graphs({
         </div>
       </header>
       {error && (
-        <p role="alert" className="rounded border border-destructive p-3 text-sm text-destructive">
+        <p role="alert" className="rounded border border-status-danger/40 p-3 text-sm text-status-danger">
           {error.includes('not_found') ? 'Graph is not enabled for this workspace.' : error}
         </p>
       )}
@@ -348,13 +355,10 @@ export function Graphs({
                 <p className="text-muted-foreground whitespace-pre-wrap">{current.body}</p>
               </GraphSection>
               <p className="mt-2 text-sm">
-                Goal:{' '}
-                <b>
-                  {goalVerificationLabel(current.goal_verification)}
-                </b>{' '}
-                · {current.status} ·{' '}
-                {plural(current.nodes.filter((n) => !isGuidance(n)).length, 'execution state')} ·{' '}
-                {plural(current.edges.length, 'action')} ·{' '}
+                Goal: <b>{goalVerificationLabel(current.goal_verification)}</b> · {current.status} ·{' '}
+                {plural(proposedCount, 'proposed state')} ·{' '}
+                {plural(states.length - proposedCount, 'observed state')} ·{' '}
+                {plural(current.edges.length, 'action plan')} ·{' '}
                 {plural(current.nodes.filter(isGuidance).length, 'guidance item')}
               </p>
             </div>
@@ -365,7 +369,7 @@ export function Graphs({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span
-                className={`h-2 w-2 rounded-full ${live && !error ? 'bg-emerald-500' : 'bg-muted-foreground'}`}
+                className={`h-2 w-2 rounded-full ${live && !error ? 'bg-status-success' : 'bg-muted-foreground'}`}
               />
               {live ? `Live · refresh every ${plan === 'pro' ? 2 : 5}s` : 'Refresh paused'}
               <span className="text-xs">
@@ -375,7 +379,7 @@ export function Graphs({
             <div className="flex items-center gap-2">
               <select
                 aria-label="Statistics and activity time range"
-                  title="Applies to Statistics and Activity. Other tabs show current state."
+                title="Applies to Statistics and Activity. Other tabs show current state."
                 className="rounded-md border bg-background px-2 py-1.5 text-sm"
                 value={range}
                 onChange={(e) => setRange(Number(e.target.value))}
@@ -399,14 +403,16 @@ export function Graphs({
             </div>
           </div>
           <GraphMetrics graph={current} />
-          <nav role="tablist" aria-label="Graph dashboard" className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b bg-background">
+          <nav
+            role="tablist"
+            aria-label="Graph dashboard"
+            className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b bg-background"
+          >
             {graphViews.map(([id, label], index) => {
               const Icon = graphViewIcons[id]
               const count =
                 id === 'inbox'
-                  ? Object.values(current.waiting ?? {}).filter((w) =>
-                      needsOwner(w.action)
-                    ).length
+                  ? Object.values(current.waiting ?? {}).filter((w) => needsOwner(w.action)).length
                   : id === 'deactivated'
                     ? current.nodes.filter((n) => n.state === 'deactivated').length
                     : null
@@ -462,8 +468,124 @@ export function Graphs({
               since={range ? now - range : 0}
               now={now}
             />
-            {view === 'goals' && <GoalState graph={current} inspect={inspect} now={now} />}
-            {view === 'home' &&
+            {view === 'goals' && (
+              <GoalState graph={current} observations={observations} inspect={inspect} now={now} />
+            )}
+            {(view === 'home' || view === 'inbox') && (
+              <p
+                role="status"
+                className={`rounded border px-3 py-2 text-sm ${
+                  view === 'home' && (reviews.length > 0 || blocked.length > 0)
+                    ? 'border-l-4 border-l-status-warning bg-status-warning/10'
+                    : 'bg-muted/30'
+                }`}
+              >
+                {graphRunExplanation(current)}
+                {view === 'home' && (reviews.length > 0 || blocked.length > 0) && (
+                  <>
+                    {' '}
+                    <Link className="underline font-medium" to="/dashboard">
+                      Open Inbox
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
+            {view === 'home' && active.length > 0 && (
+              <section aria-label="Running jobs" className="flex flex-wrap gap-3 text-sm">
+                {active.map((t) => (
+                  <Link key={t.id} className="text-primary underline" to={`/dashboard/tasks/${t.task_id}`}>
+                    {agents.find((a) => a.id === t.agent_id)?.name ?? t.agent_id}:{' '}
+                    {current.assignments.find((a) => a.id === t.assignment_id)?.role} · {t.status}
+                  </Link>
+                ))}
+              </section>
+            )}
+            {view === 'inbox' &&
+              (current.proposals ?? []).some((p) => p.status === 'pending' || p.status === 'uncertain') && (
+                <GraphSection
+                  id="proposals"
+                  title="Proposals awaiting independent review"
+                  help="section_proposals"
+                  className="rounded border p-4"
+                >
+                  <ul className="divide-y">
+                    {(current.proposals ?? [])
+                      .filter((p) => p.status === 'pending' || p.status === 'uncertain')
+                      .map((p) => {
+                        const proposal = parseJson<{
+                          title?: string
+                          description?: string
+                          kind?: string
+                        }>(p.content, {})
+                        return (
+                          <li key={p.id} className="py-2 text-sm">
+                            <b>{proposal.title ?? proposal.kind ?? 'Proposal'}</b> ·{' '}
+                            {proposalState(current, p.id, p.status)}
+                            <p className="text-muted-foreground">{proposal.description}</p>
+                          </li>
+                        )
+                      })}
+                  </ul>
+                </GraphSection>
+              )}
+            {view === 'home' && (
+              <GraphSection id="canvas" title="Action graph and inspector" help="section_canvas">
+                <Input
+                  ref={searchRef}
+                  aria-label="Search graph"
+                  placeholder="Search nodes, edges and resources…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {matches && (
+                  <section aria-label="Search results" className="flex flex-wrap gap-2">
+                    {matches.nodes.map((n) => (
+                      <Button size="sm" variant="outline" key={n.id} onClick={() => setSelected(n.id)}>
+                        {n.title}
+                      </Button>
+                    ))}
+                    {(matches.edges ?? []).map((e) => (
+                      <Button size="sm" variant="outline" key={e.id} onClick={() => setSelected(e.id)}>
+                        {e.title}
+                      </Button>
+                    ))}
+                    {matches.resources.map((r) => (
+                      <details key={r.id} className="rounded border px-3 py-1 text-sm">
+                        <summary className="cursor-pointer">{r.title}</summary>
+                        <p className="whitespace-pre-wrap">{r.body}</p>
+                      </details>
+                    ))}
+                  </section>
+                )}
+                <section className="grid xl:grid-cols-[minmax(0,1fr)_300px] rounded-lg border overflow-hidden">
+                  <GraphCanvas
+                    graph={current}
+                    observations={observations}
+                    projection={projection}
+                    selected={selected}
+                    onSelect={setSelected}
+                    search={search}
+                    matchedIds={matches?.nodes.map((n) => n.id)}
+                  />
+                  <GraphInspector
+                    current={current}
+                    node={node}
+                    onSelect={setSelected}
+                    role={node && nodeRole(node, observations)}
+                    edge={edge}
+                    nodeAttention={nodeAttention}
+                    projection={projection}
+                    isMaintainer={isMaintainer}
+                    busy={busy}
+                    search={search}
+                    command={command}
+                    onAddResource={() => setResourceOpen(true)}
+                  />
+                </section>
+              </GraphSection>
+            )}
+            {view === 'statistics' &&
               (() => {
                 const latest = latestMessage(current)
                 if (!latest) return null
@@ -486,111 +608,6 @@ export function Graphs({
                   </GraphSection>
                 )
               })()}
-            {(view === 'home' || view === 'inbox') && (
-              <p role="status" className="rounded border bg-muted/30 px-3 py-2 text-sm">
-                {graphRunExplanation(current)}
-              </p>
-            )}
-            {view === 'home' && active.length > 0 && (
-              <section aria-label="Running jobs" className="flex flex-wrap gap-3 text-sm">
-                {active.map((t) => (
-                  <Link key={t.id} className="text-primary underline" to={`/dashboard/tasks/${t.task_id}`}>
-                    {agents.find((a) => a.id === t.agent_id)?.name ?? t.agent_id}:{' '}
-                    {current.assignments.find((a) => a.id === t.assignment_id)?.role} · {t.status}
-                  </Link>
-                ))}
-              </section>
-            )}
-            {view === 'home' && (reviews.length > 0 || blocked.length > 0) && (
-              <p className="text-sm rounded border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2">
-                Replies and result reviews are handled in{' '}
-                <Link className="underline font-medium" to="/dashboard">
-                  Inbox
-                </Link>
-                . Select a highlighted node to open its task.
-              </p>
-            )}
-            {view === 'home' && (
-              <Input
-                ref={searchRef}
-                aria-label="Search graph"
-                placeholder="Search nodes, edges and resources…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            )}
-            {view === 'home' && matches && (
-              <section aria-label="Search results" className="flex flex-wrap gap-2">
-                {matches.nodes.map((n) => (
-                  <Button size="sm" variant="outline" key={n.id} onClick={() => setSelected(n.id)}>
-                    {n.title}
-                  </Button>
-                ))}
-                {(matches.edges ?? []).map((e) => (
-                  <Button size="sm" variant="outline" key={e.id} onClick={() => setSelected(e.id)}>
-                    {e.title}
-                  </Button>
-                ))}
-                {matches.resources.map((r) => (
-                  <details key={r.id} className="rounded border px-3 py-1 text-sm">
-                    <summary className="cursor-pointer">{r.title}</summary>
-                    <p className="whitespace-pre-wrap">{r.body}</p>
-                  </details>
-                ))}
-              </section>
-            )}
-            {view === 'inbox' &&
-              (current.proposals ?? []).some((p) => p.status === 'pending' || p.status === 'uncertain') && (
-                <GraphSection
-                  id="proposals"
-                  title="Proposals awaiting independent review"
-                  help="section_proposals"
-                  className="rounded border p-4"
-                >
-                  <ul className="divide-y">
-                    {(current.proposals ?? [])
-                      .filter((p) => p.status === 'pending' || p.status === 'uncertain')
-                      .map((p) => {
-                        const proposal = parseJson<{ title?: string; description?: string; kind?: string }>(
-                          p.content,
-                          {}
-                        )
-                        return (
-                          <li key={p.id} className="py-2 text-sm">
-                            <b>{proposal.title ?? proposal.kind ?? 'Proposal'}</b> ·{' '}
-                            {proposalState(current, p.id, p.status)}
-                            <p className="text-muted-foreground">{proposal.description}</p>
-                          </li>
-                        )
-                      })}
-                  </ul>
-                </GraphSection>
-              )}
-            {view === 'home' && (
-              <GraphSection id="canvas" title="Action graph and inspector" help="section_canvas">
-                <section className="grid xl:grid-cols-[minmax(0,1fr)_300px] rounded-lg border overflow-hidden">
-                  <GraphCanvas
-                    graph={current}
-                    selected={selected}
-                    onSelect={setSelected}
-                    search={search}
-                    matchedIds={matches?.nodes.map((n) => n.id)}
-                  />
-                  <GraphInspector
-                    current={current}
-                    node={node}
-                    edge={edge}
-                    nodeAttention={nodeAttention}
-                    projection={projection}
-                    isMaintainer={isMaintainer}
-                    busy={busy}
-                    search={search}
-                    command={command}
-                    onAddResource={() => setResourceOpen(true)}
-                  />
-                </section>
-              </GraphSection>
-            )}
             {view === 'statistics' &&
               (() => {
                 const report = dailyReport(current)
@@ -638,7 +655,11 @@ export function Graphs({
                                     size="sm"
                                     variant="outline"
                                     disabled={busy}
-                                    onClick={() => command('regrade', { execution_result_id: r.id })}
+                                    onClick={() =>
+                                      command('regrade', {
+                                        execution_result_id: r.id
+                                      })
+                                    }
                                   >
                                     Request regrade
                                   </Button>
@@ -682,7 +703,7 @@ export function Graphs({
                 <AlertDialogFooter>
                   <AlertDialogCancel>Keep</AlertDialogCancel>
                   <AlertDialogAction
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    className="bg-status-danger/10 text-status-danger hover:bg-status-danger/15"
                     onClick={() => void confirming?.run()}
                   >
                     {confirming?.confirm}

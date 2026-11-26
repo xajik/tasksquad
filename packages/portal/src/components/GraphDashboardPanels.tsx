@@ -131,6 +131,7 @@ function Candidates({ graph, inspect }: { graph: GraphSnapshot; inspect: (id: st
   const visibleCells = cells.slice(0, 60)
   const maxWeight = Math.max(0.0001, ...cells.map(cellWeight))
   const minWeight = Math.min(maxWeight, ...cells.map(cellWeight))
+  const heatColor = (t: number) => `color-mix(in srgb, var(--color-status-warning) ${4 + 20 * t}%, var(--color-card))`
   const heat = (w: number) => (maxWeight === minWeight ? 1 : (w - minWeight) / (maxWeight - minWeight))
   return (
     <div className="space-y-4">
@@ -177,17 +178,17 @@ function Candidates({ graph, inspect }: { graph: GraphSnapshot; inspect: (id: st
                       aria-label={`${assignmentTitle(graph, a)}, weight ${score(w)}${running ? ', running now' : ''}`}
                       title={`${assignmentTitle(graph, a)} · ${running ? 'Running now' : (graph.waiting?.[a.id]?.message ?? 'Eligibility pending')}`}
                       onClick={() => setSelected(a.id)}
-                      style={{ backgroundColor: `hsl(24 95% 53% / ${(0.12 + 0.6 * t).toFixed(2)})` }}
+                      style={{ backgroundColor: heatColor(t) }}
                       className={`min-w-0 rounded-md border p-2 text-left transition focus:outline focus:outline-2 focus:outline-primary ${
                         isSelected ? 'ring-2 ring-primary' : ''
-                      } ${running ? 'border-green-600 ring-1 ring-green-600' : 'border-border'}`}
+                      } ${running ? 'border-status-success' : 'border-border'}`}
                     >
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-base font-semibold tabular-nums">{score(w)}</span>
-                        <span className="text-[10px] text-muted-foreground">#{i + 1}</span>
+                        <span className="text-[10px] text-foreground/80">#{i + 1}</span>
                       </div>
                       <p className="truncate text-xs font-medium">{assignmentTitle(graph, a)}</p>
-                      <p className="truncate text-[10px] text-muted-foreground">
+                      <p className="truncate text-[10px] text-foreground/80">
                         {running ? '● Running now' : <><GraphPhaseBadge role={a.role} />{a.role}</>}
                       </p>
                     </button>
@@ -198,10 +199,10 @@ function Candidates({ graph, inspect }: { graph: GraphSnapshot; inspect: (id: st
                 <span>Cooler</span>
                 <span
                   className="h-2 w-24 rounded"
-                  style={{ background: 'linear-gradient(90deg, hsl(24 95% 53% / .12), hsl(24 95% 53% / .72))' }}
+                  style={{ background: `linear-gradient(90deg, ${heatColor(0)}, ${heatColor(1)})` }}
                 />
                 <span>Hotter (higher weight)</span>
-                <span className="ml-3 inline-block h-2 w-2 rounded-full bg-green-600" /> Running now
+                <span className="ml-3 inline-block h-2 w-2 rounded-full bg-status-success" /> Running now
               </div>
             </>
           ) : (
@@ -335,16 +336,18 @@ function Candidates({ graph, inspect }: { graph: GraphSnapshot; inspect: (id: st
 
 export function GoalState({
   graph,
+  observations,
   inspect,
   now
 }: {
   graph: GraphSnapshot
+  observations: ReadonlySet<string>
   inspect: (id: string) => void
   now: number
 }) {
   const observed = graph.nodes.filter(
     (n) =>
-      n.state === 'active' && ['observed', 'outcome', 'restoration'].includes(n.kind) && n.source_result_id
+      n.state === 'active' && n.source_result_id && observations.has(n.source_result_id)
   )
   const projections = observed
     .map((n) => ({ node: n, projection: goalProjection(graph, n.id) }))
@@ -361,7 +364,7 @@ export function GoalState({
             return (
               <li key={predicate} className="flex items-start gap-3 py-3 text-sm">
                 <CircleCheck
-                  className={`mt-0.5 h-4 w-4 shrink-0 ${state === 'Verified' ? 'text-emerald-600' : 'text-muted-foreground'}`}
+                  className={`mt-0.5 h-4 w-4 shrink-0 ${state === 'Verified' ? 'text-status-success' : 'text-muted-foreground'}`}
                 />
                 <span className="flex-1">{predicate}</span>
                 <Badge variant="outline">{state}</Badge>
@@ -389,7 +392,7 @@ export function GoalState({
                 </div>
                 <div className="h-1.5 rounded bg-muted">
                   <div
-                    className="h-full rounded bg-blue-500"
+                    className="h-full rounded bg-status-info"
                     style={{ width: `${(projection.score ?? 0) * 100}%` }}
                   />
                 </div>
@@ -540,11 +543,11 @@ function Statistics({ graph, since, now }: { graph: GraphSnapshot; since: number
       >
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 bg-blue-500" />
+            <span className="h-2 w-2 bg-status-info" />
             Finished
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 bg-amber-500" />
+            <span className="h-2 w-2 bg-status-warning" />
             Timeout
           </span>
         </div>
@@ -573,14 +576,14 @@ function Statistics({ graph, since, now }: { graph: GraphSnapshot; since: number
                 width="26"
                 height={(b.completed / peak) * 130}
                 rx="2"
-                className="fill-blue-500"
+                className="fill-status-info"
               />
               <rect
                 x={35 + i * 38.3}
                 y={150 - ((b.completed + b.timeout) / peak) * 130}
                 width="26"
                 height={(b.timeout / peak) * 130}
-                className="fill-amber-500"
+                className="fill-status-warning"
               />
             </g>
           ))}
@@ -607,7 +610,7 @@ function Statistics({ graph, since, now }: { graph: GraphSnapshot; since: number
                   </div>
                   <div className="h-2 rounded bg-muted">
                     <div
-                      className="h-2 rounded bg-blue-500/70"
+                      className="h-2 rounded bg-status-info"
                       style={{ width: `${(r.finished / Math.max(1, stats.finished.length)) * 100}%` }}
                     />
                   </div>

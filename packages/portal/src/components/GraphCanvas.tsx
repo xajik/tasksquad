@@ -2,28 +2,33 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { goalVerificationLabel } from '@/lib/graphStatus'
 import { useNavigate } from 'react-router-dom'
 import { Network } from 'lucide-react'
-import { effectiveRole, type GraphSnapshot } from '@/lib/graph'
+import { nodeRole, type GraphSnapshot } from '@/lib/graph'
 import {
   fallbackLabel,
   isGuidance,
   layoutGraph,
   projectionRoute,
+  projectionLabelBox,
   resolveCollisions,
   type Point
 } from '@/lib/graphLayout'
 import { Button } from './ui/button'
-import { goalProjection } from '@/lib/graphProjection'
+import { goalLinkScores, type goalProjection } from '@/lib/graphProjection'
 import { graphAttention } from '@/lib/graphAttention'
 
 /** Guidance and execution share a canvas, with distinct styling and relationships. */
 export function GraphCanvas({
   graph,
+  observations,
+  projection,
   selected,
   onSelect,
   search,
   matchedIds
 }: {
   graph: GraphSnapshot
+  observations: ReadonlySet<string>
+  projection: ReturnType<typeof goalProjection> | null
   selected: string | null
   onSelect: (id: string) => void
   search: string
@@ -98,7 +103,6 @@ export function GraphCanvas({
   const [live, setLive] = useState<{ id: string; at: Point } | null>(null)
   const shown = (id: string) => (live?.id === id ? live.at : (layout.positions.get(id) as Point))
   const selectedExecution = nodes.find((n) => n.id === selected && !isGuidance(n))
-  const projection = selectedExecution ? goalProjection(graph, selectedExecution.id) : null
   const projectionLabel = projection?.evaluated
     ? projection.score === null
       ? 'Alignment unknown'
@@ -106,28 +110,33 @@ export function GraphCanvas({
     : 'Not evaluated'
   // Project towards the top-most guidance only: the root goal first, then the highest milestones
   // (fewest parents, then highest on the canvas), capped at three so the overlay stays readable.
-  const depth = (n: { id: string; parent_id?: string | null }) => {
-    let d = 0
-    for (let cur = n.parent_id; cur && d < 50; d++) cur = nodes.find((x) => x.id === cur)?.parent_id
-    return d
-  }
-  const goalLabel = (goalId: string) => {
-    const impact = projection?.impacts.get(goalId)
-    return impact === undefined ? projectionLabel : impact === null ? 'Alignment unknown' : `Goal alignment ${impact.toFixed(2)}`
-  }
-  const goals = nodes
-    .filter((n) => isGuidance(n) && n.state !== 'deactivated')
-    .sort(
-      (a, b) =>
+  const projectionPaths = useMemo(() => {
+    if (!selectedExecution || !projection) return []
+    const depth = (n: GraphSnapshot['nodes'][number]) => {
+      let d = 0
+      for (let cur = n.parent_id; cur && d < 50; d++) cur = nodes.find((x) => x.id === cur)?.parent_id ?? null
+      return d
+    }
+    const goals = nodes.filter((n) => isGuidance(n) && n.state !== 'deactivated')
+      .sort((a, b) =>
         Number(b.kind === 'goal') - Number(a.kind === 'goal') ||
         depth(a) - depth(b) ||
         (layout.positions.get(a.id)?.y ?? 0) - (layout.positions.get(b.id)?.y ?? 0) ||
-        a.created_at - b.created_at
-    )
-    .slice(0, 3)
-  const projectionPaths = selectedExecution
-    ? goals.map((goal) => ({ goal, points: projectionRoute(layout, selectedExecution.id, goal.id) }))
-    : []
+        a.created_at - b.created_at)
+      .slice(0, 3)
+    const occupied = [...layout.positions.values()]
+    for (const edge of graph.edges) {
+      const geometry = layout.edges.get(edge.id)
+      const box = geometry && (geometry.label ?? fallbackLabel(geometry.points))
+      if (box) occupied.push(box)
+    }
+    return goals.map((goal) => {
+      const points = projectionRoute(layout, selectedExecution.id, goal.id)
+      const label = projectionLabelBox(points, occupied)
+      if (label) occupied.push(label)
+      return { goal, points, label, ...goalLinkScores(projection, goal) }
+    })
+  }, [selectedExecution, projection, nodes, layout, graph.edges])
   function fit() {
     setZoom(1)
     setOffset({ x: 0, y: 0 })
@@ -182,17 +191,6 @@ export function GraphCanvas({
     matchedIds
       ? matchedIds.includes(n.id)
       : !search || `${n.title} ${n.description} ${n.body}`.toLowerCase().includes(search.toLowerCase())
-  const observedResults = new Set(
-    graph.results
-      .filter(
-        (r) =>
-          r.status === 'accepted' &&
-          ['execute', 'undo'].includes(
-            effectiveRole(graph, graph.attempts.find((t) => t.id === r.attempt_id)?.assignment_id)
-          )
-      )
-      .map((r) => r.id)
-  )
   function score(edge: string) {
     const values = graph.evaluations.filter((e) => e.edge_id === edge && e.local_score !== null)
     return values[values.length - 1]?.local_score?.toFixed(2) ?? '—'
@@ -212,7 +210,7 @@ export function GraphCanvas({
             Action graph
           </h3>
           <p className="text-xs text-muted-foreground mt-1">
-            Goals & milestones: right to left · Execution: left to right
+            Dashed violet cards show proposed states. Solid cards show observations. Select an action arrow to inspect its plan.
           </p>
         </div>
         <div className="flex gap-1">
@@ -240,14 +238,17 @@ export function GraphCanvas({
           </Button>
         </div>
       </div>
+      <p className="border-b px-4 py-2 text-xs text-muted-foreground">
+        Scores read expected → observed. Action edges show quality. Blue lines show goal impact. A dash means no score is available.
+      </p>
       {selectedExecution && (
         <div
           role="status"
           aria-label="Goal projection"
-          className="border-b px-4 py-2 text-xs flex flex-wrap gap-x-3 gap-y-1 bg-blue-500/5"
+          className="border-b px-4 py-2 text-xs flex flex-wrap gap-x-3 gap-y-1 bg-status-info/5"
         >
-          <span className="font-medium text-blue-600 dark:text-blue-400">
-            {selectedExecution.title} → {goals.map((g) => g.title).join(', ') || 'Goal'}
+          <span className="font-medium text-status-info">
+            {selectedExecution.title} → {projectionPaths.map(({ goal }) => goal.title).join(', ') || 'Goal'}
           </span>
           <span>{projectionLabel}</span>
           {projection?.evaluated && (
@@ -312,8 +313,7 @@ export function GraphCanvas({
       >
         <title>{graph.title} — goals, milestones, execution states and actions</title>
         <desc>
-          Dashed goal and milestone cards provide planning guidance; solid state cards participate in
-          execution. Use Tab and Enter to inspect states and actions. Drag cards to rearrange (overlaps are resolved on drop), drag the background or scroll to pan, and hold Ctrl or Command while scrolling to zoom. New states
+          Goal and milestone cards provide guidance. Dashed violet cards show the intended outcome of a plan. Solid execution cards show recorded observations. Use Tab and Enter to inspect states and actions. Drag cards to rearrange (overlaps are resolved on drop), drag the background or scroll to pan, and hold Ctrl or Command while scrolling to zoom. New states
           trigger automatic regrouping and collision-aware routing.
         </desc>
         <defs>
@@ -337,7 +337,7 @@ export function GraphCanvas({
             markerHeight="7"
             orient="auto-start-reverse"
           >
-            <path d="M0 0L10 5L0 10Z" className="fill-blue-500 dark:fill-blue-400" />
+            <path d="M0 0L10 5L0 10Z" className="fill-status-info" />
           </marker>
         </defs>
         <g transform={`translate(${offset.x} ${offset.y}) scale(${zoom})`}>
@@ -372,7 +372,7 @@ export function GraphCanvas({
                   fill="none"
                   className={
                     backedUp.includes(link.id)
-                      ? 'stroke-emerald-600 dark:stroke-emerald-400'
+                      ? 'stroke-status-success'
                       : selected === id
                         ? 'stroke-primary'
                         : lineage
@@ -401,13 +401,13 @@ export function GraphCanvas({
                       <rect
                         {...label}
                         rx={5}
-                        className={`fill-background ${up ? 'stroke-emerald-600 dark:stroke-emerald-400' : 'stroke-border'}`}
+                        className={`fill-background ${up ? 'stroke-status-success' : 'stroke-border'}`}
                       />
                       <text
                         x={label.x + label.width / 2}
                         y={label.y + 15}
                         textAnchor="middle"
-                        className={`text-[11px] ${up ? 'fill-emerald-700 dark:fill-emerald-400 font-medium' : 'fill-muted-foreground'}`}
+                        className={`text-[11px] ${up ? 'fill-status-success font-medium' : 'fill-muted-foreground'}`}
                       >
                         {up ? '↩ ' : ''}
                         {edge.expected_score?.toFixed(2) ?? '—'} → {score(link.id)}
@@ -418,44 +418,49 @@ export function GraphCanvas({
               </g>
             )
           })}
-          {projectionPaths.map(({ goal, points }) => (
+          {projectionPaths.map(({ goal, points, label, expected, observed }) => (
             <g
               key={`projection-${goal.id}`}
               data-projection-source={selectedExecution!.id}
               data-projection-goal={goal.id}
               role="img"
-              aria-label={`Projection towards ${goal.title}: ${goalLabel(goal.id)}`}
+              aria-label={`Goal impact for ${goal.title}, expected ${expected?.toFixed(2) ?? 'unknown'}, observed ${observed?.toFixed(2) ?? 'unknown'}`}
               className="pointer-events-none"
             >
               <path
                 d={points.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ')}
                 fill="none"
-                className="stroke-blue-500 dark:stroke-blue-400"
+                className="stroke-status-info"
                 strokeWidth={2.5}
                 strokeDasharray="9 4 2 4"
                 strokeLinejoin="round"
                 markerEnd="url(#graph-projection-arrow)"
               />
+              {label && (
+                <g data-projection-label={goal.id}>
+                  <rect {...label} rx={5} className="fill-background stroke-status-info" />
+                  <text x={label.x + label.width / 2} y={label.y + 15} textAnchor="middle"
+                    className="text-[11px] font-medium fill-status-info">
+                    {expected?.toFixed(2) ?? '—'} → {observed?.toFixed(2) ?? '—'}
+                  </text>
+                </g>
+              )}
             </g>
           ))}
           {nodes.map((n) => {
             const box = layout.positions.get(n.id)!
             const at = shown(n.id)
             const p = { ...box, x: at.x, y: at.y }
-            const observed =
-              n.kind === 'observed' || (n.source_result_id && observedResults.has(n.source_result_id))
+            const role = nodeRole(n, observations)
+            const proposed = role === 'Proposed state'
             const guidance = isGuidance(n)
             const needsAttention = attention.nodes.get(n.id)?.[0]
-            const projectedGoal = !!selectedExecution && goals.some((goal) => goal.id === n.id)
+            const projectedGoal = !!selectedExecution && projectionPaths.some(({ goal }) => goal.id === n.id)
             const label = guidance
               ? n.kind === 'goal'
                 ? `Goal · guidance · ${goalVerificationLabel(graph.goal_verification)}`
                 : 'Milestone · guidance'
-              : observed
-                ? 'Observed state'
-                : n.kind === 'restoration'
-                  ? 'Restoration'
-                  : 'Proposed state'
+              : proposed ? 'Proposed state · plan target' : `${role} · execution`
             return (
               <g
                 key={n.id}
@@ -488,13 +493,13 @@ export function GraphCanvas({
                   width={p.width}
                   height={p.height}
                   rx={8}
-                  className={`${needsAttention ? 'stroke-amber-600 dark:stroke-amber-400' : selected === n.id ? 'stroke-primary' : projectedGoal ? 'stroke-blue-500 dark:stroke-blue-400' : guidance ? 'stroke-muted-foreground' : 'stroke-border'} ${needsAttention ? 'fill-amber-500/10' : guidance ? 'fill-secondary/40' : 'fill-background'}`}
+                  className={`${needsAttention ? 'stroke-status-warning' : selected === n.id ? 'stroke-primary' : projectedGoal ? 'stroke-status-info' : proposed ? 'stroke-status-violet' : guidance ? 'stroke-muted-foreground' : 'stroke-border'} ${needsAttention ? 'fill-status-warning/10' : proposed ? 'fill-status-violet/10' : guidance ? 'fill-secondary/40' : 'fill-background'}`}
                   strokeWidth={selected === n.id ? 2 : 1}
-                  strokeDasharray={guidance ? '6 4' : n.state === 'deactivated' ? '1 3' : undefined}
+                  strokeDasharray={proposed ? '4 3' : guidance ? '6 4' : undefined}
                 />
                 <text x={14} y={23} className="fill-muted-foreground text-[12px]">
                   {label}
-                  {guidance ? '' : ` · ${n.state}`}
+                  {n.state === 'deactivated' ? ' · inactive' : ''}
                 </text>
                 <text x={14} y={48} className="fill-foreground text-[14px] font-medium">
                   {n.title.length > 25 ? n.title.slice(0, 24) + '…' : n.title}
@@ -516,7 +521,7 @@ export function GraphCanvas({
                     <text
                       x={14}
                       y={66}
-                      className="fill-amber-700 dark:fill-amber-400 text-[12px] font-medium underline"
+                      className="fill-status-warning text-[12px] font-medium underline"
                     >
                       {needsAttention.label} →
                     </text>
