@@ -23,7 +23,7 @@
   /* Workflow accents follow the surface's color scheme. Use low-opacity fills for large areas. */
   --color-status-success: light-dark(#15803d, #4ade80);
   --color-status-info: light-dark(#1d4ed8, #60a5fa);
-  --color-status-warning: light-dark(#b45309, #fbbf24);
+  --color-status-warning: light-dark(#d97706, #fbbf24);
   --color-status-violet: light-dark(#7c3aed, #a78bfa);
   --color-status-danger: light-dark(#dc2626, #f87171);
   /* An opaque badge tint keeps its contrast over heatmap cells and attention panels. */

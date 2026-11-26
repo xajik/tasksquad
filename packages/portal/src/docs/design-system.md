@@ -45,7 +45,7 @@ Use this bright palette for graph and inbox work. Keep the status word, icon, sc
 | --- | --- | --- | --- |
 | Success | #15803D | #4ADE80 | Execution, verified evidence, or a successful review |
 | Information | #1D4ED8 | #60A5FA | Planning phase, informational controls, or a goal projection |
-| Attention | #B45309 | #FBBF24 | A reply, review, or recovery needs attention |
+| Attention | #D97706 | #FBBF24 | A reply, review, or recovery needs attention |
 | Violet | #7C3AED | #A78BFA | Grading badge or dashed outline of a proposed state |
 | Danger | #DC2626 | #F87171 | An error or destructive consequence |
 

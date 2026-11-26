@@ -94,7 +94,7 @@ Use these foregrounds on the corresponding light or dark surface. Tint badges wi
 |---|---|---|
 | Success, execution, verified evidence | `#15803D` | `#4ADE80` |
 | Information, plan phase, goal projection | `#1D4ED8` | `#60A5FA` |
-| Waiting, recovery, review requested | `#B45309` | `#FBBF24` |
+| Waiting, recovery, review requested | `#D97706` | `#FBBF24` |
 | Grading phase, proposed-state outline | `#7C3AED` | `#A78BFA` |
 | Errors and destructive feedback | `#DC2626` | `#F87171` |
 
