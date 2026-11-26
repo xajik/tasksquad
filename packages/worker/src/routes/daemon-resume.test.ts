@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Env, DaemonContext } from '../types.js'
-import { parseResume, sessionClose } from './daemon.js'
+import { parallelHeartbeat, parseResume, sessionClose } from './daemon.js'
 
 describe('parseResume', () => {
   it('accepts claude, codex, gemini and opencode session ids', () => {
@@ -88,5 +88,46 @@ describe('sessionClose detached', () => {
     const { db } = fakeDB('waiting_input')
     const res = await detach(db, { session_id: 'other', status: 'detached' })
     expect(res.status).toBe(404)
+  })
+})
+
+// ── parallelHeartbeat: vanished session expires its graph attempt ─────────────
+
+describe('parallelHeartbeat graph attempts', () => {
+  it('expires running graph attempts of vanished sessions before closing those sessions', async () => {
+    const batches: { sql: string; args: unknown[] }[][] = []
+    const db = {
+      prepare(sql: string) {
+        let args: unknown[] = []
+        const stmt = {
+          sql: norm(sql),
+          get args() { return args },
+          bind(...a: unknown[]) { args = a; return stmt },
+          async all() { return { results: [] } },
+          async first() { return { n: 0 } },
+        }
+        return stmt
+      },
+      async batch(stmts: { sql: string; args: unknown[] }[]) {
+        batches.push(stmts.map(s => ({ sql: s.sql, args: s.args })))
+        return []
+      },
+    }
+    await parallelHeartbeat(
+      { DB: db } as unknown as Env,
+      { id: 'agent-1', status: 'idle', daemon_device: 'dev-1', active_tasks: [{ task_id: 'live-1', status: 'running' }] },
+      'team-1',
+      { last_seen: null, reset_pending: 0, paused: 1, max_parallel_tasks: 3 },
+      1_000,
+      60_000,
+    )
+    const stmts = batches[0]
+    const expire = stmts.findIndex(s => s.sql.startsWith('UPDATE graph_attempts SET deadline=MIN(deadline,?3)'))
+    const detach = stmts.findIndex(s => s.sql.startsWith("UPDATE sessions SET closed_at=?3,status='detached'"))
+    expect(expire).toBeGreaterThanOrEqual(0)
+    expect(expire).toBeLessThan(detach)
+    expect(stmts[expire].sql).toContain("status='running'")
+    expect(stmts[expire].sql).toContain('closed_at IS NULL')
+    expect(stmts[expire].args).toEqual(['agent-1', 'dev-1', 1_000, JSON.stringify(['live-1'])])
   })
 })

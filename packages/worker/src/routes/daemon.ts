@@ -319,6 +319,11 @@ export async function parallelHeartbeat(env: Env, entry: AgentEntry, teamId: str
   const missing = `SELECT task_id FROM sessions WHERE agent_id=?1 AND closed_at IS NULL
     AND (daemon_device=?2 OR daemon_device IS NULL) AND started_at<=?3 AND task_id NOT IN (SELECT value FROM json_each(?4))`
   await env.DB.batch([
+    // A graph attempt whose session vanished (daemon restart/crash/upgrade) is expired now instead of at
+    // its 30-minute deadline: maintenance then times it out and queues reconcile, freeing the slot.
+    // Must run before the sessions update below, which closes the rows `missing` selects.
+    env.DB.prepare(`UPDATE graph_attempts SET deadline=MIN(deadline,?3) WHERE status='running'
+      AND task_id IN (${missing})`).bind(id,device,now,live),
     env.DB.prepare(`UPDATE tasks SET status=CASE status WHEN 'running' THEN 'pending' ELSE 'done' END,
       completed_at=CASE status WHEN 'wrapping_up' THEN ?3 ELSE NULL END WHERE id IN (${missing})
       AND status IN ('running','wrapping_up') AND NOT EXISTS(SELECT 1 FROM graph_attempts ga WHERE ga.task_id=tasks.id)`).bind(id,device,now,live),
