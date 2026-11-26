@@ -49,6 +49,12 @@ Use this quieter palette for graph and inbox work. Keep the status word, icon, s
 | Violet | #655375 | #B6A4C4 | Grading badge or dashed outline of a proposed state |
 | Danger | #884C50 | #C6A0A1 | An error or destructive consequence |
 
+These samples use the live tokens, so they follow the light or dark theme.
+
+```design-example
+workflow-highlights
+```
+
 Keep a routine inbox card neutral. Use a light attention tint and a specific action label such as **Review result** when someone can act. For a candidate heatmap, mix the attention color into the card from 4% to 24% as weight increases. Print the numeric weight and rank in each cell.
 
 Shared status icons elsewhere in the app use green for success (#16A34A light, #4ADE80 dark), blue for activity (#2563EB, #7AA7FF), amber for waiting (#D97706, #FBBF24), and red for failure (#DC2626, #F87171). Pair an 8 px live dot with a label. Illustration accents are blue `#3B82F6`, purple `#A855F7`, orange `#F97316`, pink `#EC4899`, green `#22C55E`, yellow `#EAB308`, and indigo `#6366F1`.

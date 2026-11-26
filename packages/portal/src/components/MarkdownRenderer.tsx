@@ -7,6 +7,7 @@ import 'highlight.js/styles/github-dark.css';
 import { isValidElement, type ReactElement } from 'react';
 import DocScreenshot from './DocScreenshot';
 import { DesignSystemExample } from './DesignSystemExample';
+import { WorkflowHighlightsExample } from './WorkflowHighlightsExample';
 
 // Defined once at module level: an inline object would give `pre` a new identity on every render,
 // remounting its subtree (and collapsing any expanded screenshot).
@@ -32,6 +33,11 @@ const DESIGN_COMPONENTS: Components = {
         child.props.className?.split(' ').includes('language-design-example') &&
         String(child.props.children).trim() === 'graph-controls') {
       return <DesignSystemExample />;
+    }
+    if (isValidElement<{ className?: string; children?: unknown }>(child) &&
+        child.props.className?.split(' ').includes('language-design-example') &&
+        String(child.props.children).trim() === 'workflow-highlights') {
+      return <WorkflowHighlightsExample />;
     }
     return <pre {...props}>{children}</pre>;
   },
