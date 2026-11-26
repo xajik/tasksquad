@@ -130,14 +130,10 @@ export const api = {
       request<{ agents: Agent[] }>(`/teams/${teamId}/agents`),
     create: (teamId: string, body: { name: string; role?: string }) =>
       request<Agent>(`/teams/${teamId}/agents`, { method: 'POST', body: JSON.stringify(body) }),
-    updateRole: (teamId: string, agentId: string, role: string) =>
-      request<{ ok: boolean; role: string | null }>(`/teams/${teamId}/agents/${agentId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ role }),
-      }),
-    setParallelism: (teamId: string, agentId: string, max_parallel_tasks: number) =>
+    update: (teamId: string, agentId: string, changes: { role?: string; max_parallel_tasks?: number }) =>
       request<{ ok: boolean }>(`/teams/${teamId}/agents/${agentId}`, {
-        method: 'PATCH', body: JSON.stringify({ max_parallel_tasks }),
+        method: 'PATCH',
+        body: JSON.stringify(changes),
       }),
     createToken: (teamId: string, agentId: string, label: string) =>
       request<{ id: string; token: string; label: string }>(`/teams/${teamId}/tokens`, {

@@ -1826,11 +1826,9 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
   const [newToken, setNewToken] = useState<{ agentId: string; token: string; agentName: string } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'codex' | 'claude' | 'opencode' | 'pi'>('codex')
-  const [parallel, setParallel] = useState<{ agent: Agent; value: string; unlimited: boolean } | null>(null)
-  const [limitError, setLimitError] = useState('')
-  const [savingLimit, setSavingLimit] = useState(false)
-  const [editingRole, setEditingRole] = useState<{ agentId: string; name: string; role: string } | null>(null)
-  const [savingRole, setSavingRole] = useState(false)
+  const [editing, setEditing] = useState<{ agent: Agent; role: string; limit: string; unlimited: boolean } | null>(null)
+  const [editError, setEditError] = useState('')
+  const [saving, setSaving] = useState(false)
   const [showHowItWorks, setShowHowItWorks] = useState(false)
   const nav = useNavigate()
 
@@ -1880,73 +1878,79 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
     load()
   }
 
-  async function saveRole() {
-    if (!editingRole) return
-    setSavingRole(true)
+  function editAgent(agent: Agent) {
+    setEditError('')
+    setEditing({ agent, role: agent.role ?? '', limit: String(agent.max_parallel_tasks || 1), unlimited: agent.max_parallel_tasks === 0 })
+  }
+
+  async function saveAgent(event: React.FormEvent) {
+    event.preventDefault()
+    if (!editing || saving) return
+    const { agent } = editing
+    const limit = editing.unlimited ? 0 : Number(editing.limit)
+    if (!editing.unlimited && (!Number.isSafeInteger(limit) || limit < 1)) {
+      setEditError('Enter a positive whole number.')
+      return
+    }
+    const changes: { role?: string; max_parallel_tasks?: number } = {}
+    const role = editing.role.trim()
+    if (role !== (agent.role ?? '')) changes.role = role
+    if (limit !== (agent.max_parallel_tasks ?? 1)) changes.max_parallel_tasks = limit
+    if (Object.keys(changes).length === 0) {
+      setEditing(null)
+      return
+    }
+    setSaving(true)
+    setEditError('')
     try {
-      await api.agents.updateRole(teamId, editingRole.agentId, editingRole.role)
-      trackEvent('agent_role_updated', { agent_id: editingRole.agentId, team_id: teamId })
-      setEditingRole(null)
-      load()
-    } finally { setSavingRole(false) }
+      await api.agents.update(teamId, agent.id, changes)
+      setAgents(current => current.map(a => a.id === agent.id ? { ...a, ...changes } : a))
+      if (changes.role !== undefined) trackEvent('agent_role_updated', { agent_id: agent.id, team_id: teamId })
+      setEditing(null)
+    } catch {
+      setEditError('Could not save agent settings. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
     <div className="animate-fade-in">
-      <Dialog open={!!parallel} onOpenChange={open => { if (!open && !savingLimit) setParallel(null) }}>
+      <Dialog open={!!editing} onOpenChange={open => { if (!open && !saving) setEditing(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Parallel tasks for {parallel?.agent.name}</DialogTitle>
-            <DialogDescription>Choose how many tasks this agent can keep open at once. Lowering the limit lets current tasks finish.</DialogDescription>
+            <DialogTitle>Edit {editing?.agent.name}</DialogTitle>
+            <DialogDescription>Update the agent’s role and how many tasks it can run at once.</DialogDescription>
           </DialogHeader>
-          {parallel && <form className="space-y-4" onSubmit={async e => {
-            e.preventDefault()
-            const limit = parallel.unlimited ? 0 : Number(parallel.value)
-            if (!parallel.unlimited && (!Number.isSafeInteger(limit) || limit < 1)) {
-              setLimitError('Enter a positive whole number.'); return
-            }
-            setSavingLimit(true)
-            try {
-              await api.agents.setParallelism(teamId, parallel.agent.id, limit)
-              setAgents(current => current.map(a => a.id === parallel.agent.id ? { ...a, max_parallel_tasks: limit } : a))
-              setParallel(null)
-            } catch { setLimitError('Could not save the task limit. Please try again.') }
-            finally { setSavingLimit(false) }
-          }}>
-            <label className="block text-sm">Maximum concurrent tasks
-              <Input type="number" min={1} step={1} required disabled={parallel.unlimited} value={parallel.value}
-                onChange={e => setParallel({ ...parallel, value: e.target.value })} />
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={parallel.unlimited} onChange={e => setParallel({ ...parallel, unlimited: e.target.checked })} /> Unlimited
-            </label>
-            {limitError && <p role="alert" className="text-sm text-destructive">{limitError}</p>}
-            <DialogFooter><Button type="submit" disabled={savingLimit}>Save</Button></DialogFooter>
-          </form>}
-        </DialogContent>
-      </Dialog>
-      {/* Edit role dialog */}
-      <Dialog open={!!editingRole} onOpenChange={open => { if (!open) setEditingRole(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit role for "{editingRole?.name}"</DialogTitle>
-            <DialogDescription>
-              Describe this agent's identity, expertise, or purpose. This is shown on the agent card and helps your team understand what the agent does.
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            value={editingRole?.role ?? ''}
-            onChange={e => setEditingRole(prev => prev ? { ...prev, role: e.target.value } : null)}
-            placeholder="e.g. Senior frontend engineer specialising in React and TypeScript. Handles UI tasks and reviews PRs."
-            rows={4}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingRole(null)}>Cancel</Button>
-            <Button onClick={saveRole} disabled={savingRole}>
-              {savingRole ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Save
-            </Button>
-          </DialogFooter>
+          {editing && (
+            <form className="space-y-4" onSubmit={saveAgent}>
+              <div className="space-y-2">
+                <Label htmlFor="agent-role">Role description</Label>
+                <Textarea id="agent-role" value={editing.role} disabled={saving}
+                  onChange={e => setEditing({ ...editing, role: e.target.value })}
+                  placeholder="Describe this agent’s expertise or purpose." rows={4} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agent-limit">Maximum parallel tasks</Label>
+                <Input id="agent-limit" type="number" min={1} step={1} required disabled={editing.unlimited || saving}
+                  value={editing.limit} onChange={e => setEditing({ ...editing, limit: e.target.value })} />
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={editing.unlimited} disabled={saving}
+                    onChange={e => setEditing({ ...editing, unlimited: e.target.checked })} />
+                  Unlimited
+                </label>
+                <p className="text-xs text-muted-foreground">Lowering the limit lets current tasks finish.</p>
+              </div>
+              {editError && <p role="alert" className="text-sm text-destructive">{editError}</p>}
+              <DialogFooter>
+                <Button type="button" variant="outline" disabled={saving} onClick={() => setEditing(null)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>
+                  {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Save
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -2015,22 +2019,9 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
                   </div>
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
-                  {a.role ? (
-                    <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{a.role}</p>
-                  ) : isMaintainer ? (
-                    <button
-                      className="text-xs text-muted-foreground/60 italic mb-2 hover:text-muted-foreground transition-colors text-left"
-                      onClick={() => setEditingRole({ agentId: a.id, name: a.name, role: '' })}
-                    >
-                      + Add role description
-                    </button>
-                  ) : null}
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {a.role && <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{a.role}</p>}
+                  <div className="text-xs text-muted-foreground">
                     Parallel tasks · {a.max_parallel_tasks === 0 ? 'Unlimited' : a.max_parallel_tasks ?? 1}
-                    {isMaintainer && <button className="underline" onClick={() => {
-                      setLimitError('')
-                      setParallel({ agent: a, value: String(a.max_parallel_tasks || 1), unlimited: a.max_parallel_tasks === 0 })
-                    }}>Edit limit</button>}
                   </div>
                   <div className="text-xs text-muted-foreground font-mono truncate">ID: {a.id}</div>
                   <div className="text-xs text-muted-foreground">
@@ -2063,13 +2054,14 @@ function AgentsView({ teamId, isMaintainer, plan }: { teamId: string; isMaintain
                       )}
                     </div>
                     {isMaintainer && (
-                      <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity">
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                          title="Edit role"
-                          onClick={() => setEditingRole({ agentId: a.id, name: a.name, role: a.role ?? '' })}
+                          title="Edit agent"
+                          aria-label={`Edit ${a.name}`}
+                          onClick={() => editAgent(a)}
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
