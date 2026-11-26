@@ -515,6 +515,45 @@ describe('graph execution workflow', () => {
     await expect(run(db, other.g.id, 'retry_review', { assignment_id: review.id })).rejects.toThrow('blocked or failed')
   })
 
+  it.each([0.8, 0.5, 0.499, null])('decides execution acceptance from local quality %s before publishing evidence', async (score) => {
+    const { g, agent, grader, ref, assignmentId } = await preparedExecution('quality_50')
+    // Also exercise a repaired execution and evidence labels reused by other graphs.
+    if (score === 0.5) {
+      await deliver(g.id, agent, 'invalid')
+      await tick(env(), g.id)
+    }
+    const evidence = { id: 'measurement', predicate: 'verified', value: 'true', scope: 'test',
+      observed_at: Date.now(), expires_at: Date.now() + 60_000, resource_id: ref }
+    const { attempt } = await deliver(g.id, agent, JSON.stringify({
+      outcome: 'complete', title: 'Measured', description: '', body: '', evidence: [evidence], actual_cost: 1
+    }))
+    await tick(env(), g.id)
+    const result = () => sql(db, 'SELECT * FROM graph_results WHERE attempt_id=?', attempt.id).first<Result>()
+    const execution = (await result())!
+    expect(execution.status).toBe('received')
+    const publishedEvidence = () => rows(db, 'SELECT id FROM graph_evidence WHERE source_result_id=?', execution.id)
+    expect(await publishedEvidence()).toEqual([])
+    await expect(run(db, g.id, 'review', {
+      result_id: execution.id, output_hash: execution.output_hash, config_version: 1, verdict: 'accept'
+    })).rejects.toThrow(/not reviewable/)
+    await deliver(g.id, grader, JSON.stringify({ local_score: score, evidence_ids: [evidence.id], reason: 'Measured quality' }))
+    await tick(env(), g.id)
+    await tick(env(), g.id)
+    const passes = score !== null && score >= 0.5
+    expect((await result())?.status).toBe(passes ? 'accepted' : 'rejected')
+    expect(await publishedEvidence()).toHaveLength(passes ? 1 : 0)
+    expect(await rows(db, 'SELECT status FROM graph_assignments WHERE id=?', assignmentId))
+      .toEqual([{ status: passes ? 'accepted' : 'blocked' }])
+    expect(await rows(db, "SELECT id FROM graph_assignments WHERE graph_id=? AND role='project'", g.id))
+      .toHaveLength(passes ? 1 : 0)
+    if (passes) {
+      expect(await rows(db, 'SELECT local_score,evidence_id FROM graph_evaluations WHERE graph_id=?', g.id))
+        .toEqual([{ local_score: score, evidence_id: (await publishedEvidence())[0].id }])
+    } else {
+      expect(await rows(db, "SELECT work_id FROM graph_serial_queue WHERE graph_id=? AND status='pending'", g.id)).toEqual([])
+    }
+  })
+
   it('holds the FIFO head until its execution result is accepted', async () => {
     const { g, agent } = await fixture()
     await run(db, g.id, 'run')

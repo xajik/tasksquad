@@ -1,6 +1,7 @@
 import type { SemanticIndex } from '../dedup.js'
 import { parseResult, templates } from '../contracts.js'
 import { assignment, commit, configuration, json, rows, sql, type Assignment, type Attempt, type Data, type Graph, type Result } from '../store.js'
+import { rebindExecutionReview } from './accept/execute.js'
 import { accept } from './accept.js'
 import { assertContinuationVerified, assertEvidenceResources, assertGoalImpacts, assertReconcileRestoration } from './assertions.js'
 
@@ -69,7 +70,7 @@ export async function revalidateReviews(db: D1Database, g: Graph): Promise<void>
 export async function processResults(db: D1Database, g: Graph, semantic?: SemanticIndex): Promise<void> {
   const pending = await rows<Result>(
     db,
-    `SELECT r.* FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=? AND r.status='received' ORDER BY r.created_at,r.id`,
+    `SELECT r.* FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id JOIN graph_assignments a ON a.id=t.assignment_id WHERE a.graph_id=? AND r.status='received' AND r.parsed IS NULL ORDER BY r.created_at,r.id`,
     g.id
   )
   for (const r of pending) {
@@ -96,13 +97,18 @@ export async function processResults(db: D1Database, g: Graph, semantic?: Semant
       await invalidateResult(db, g, r, a, t, e)
       continue
     }
+    const awaitingGrade = c.policy.review === 'quality_50' && original.role === 'execute'
     await commit(db, g, 'validated', r.id, {}, [
-      sql(db, "UPDATE graph_results SET parsed=?,status='review' WHERE id=?", r.parsed, r.id),
-      sql(db, "UPDATE graph_assignments SET status='review' WHERE id=?", a.id),
+      sql(db, 'UPDATE graph_results SET parsed=?,status=? WHERE id=?', r.parsed, awaitingGrade ? 'received' : 'review', r.id),
+      ...(awaitingGrade
+        ? [sql(db, "UPDATE graph_assignments SET status='grading' WHERE id IN (?,?)", a.id, original.id)]
+        : [sql(db, "UPDATE graph_assignments SET status='review' WHERE id=?", a.id)]),
+      ...(awaitingGrade && a.role === 'repair' ? rebindExecutionReview(db, original.id, r.id) : []),
       sql(db, 'DELETE FROM graph_reservations WHERE attempt_id=?', t.id)
     ])
+    if (awaitingGrade) continue
     r.status = 'review'
-    if (!c.policy.review) {
+    if (c.policy.review !== true) {
       try {
         await accept(db, g, r, [], semantic)
       } catch (e) {

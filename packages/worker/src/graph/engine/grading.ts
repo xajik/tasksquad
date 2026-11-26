@@ -4,6 +4,7 @@ import { queueDone, queuePush } from './queue.js'
 import { assignment, commit, configuration, rows, sql, type Assignment, type Data, type Graph, type Result } from '../store.js'
 import { goalHierarchy } from './assertions.js'
 import { syncInboxStatus } from './owner.js'
+import { rejectExecutionForQuality } from './accept/execute.js'
 import { resolve } from './results.js'
 
 export async function advanceGrading(db: D1Database, g: Graph): Promise<void> {
@@ -30,13 +31,17 @@ export async function advanceGrading(db: D1Database, g: Graph): Promise<void> {
     'SELECT * FROM graph_results WHERE id=?',
     head.execution_result_id
   ).first<Result>())!
-  if (r.status !== 'accepted') return
+  // A validated execution remains unpublished while the initial grade decides acceptance.
+  const awaitingGrade = r.status === 'received' && !!r.parsed && head.stage === 'grade'
+  if (!awaitingGrade && r.status !== 'accepted') return
   const { original } = await resolve(db, r)
-  const evidence = await rows(db, 'SELECT * FROM graph_evidence WHERE source_result_id=?', r.id)
+  const result = JSON.parse(r.parsed!) as Data
+  const evidence = awaitingGrade ? result.evidence : await rows(db, 'SELECT * FROM graph_evidence WHERE source_result_id=?', r.id)
   const context: Data = {
     execution_result_id: r.id,
     grading_sequence: head.sequence,
-    result: JSON.parse(r.parsed!),
+    result,
+    ...(awaitingGrade ? { operation: 'result_acceptance' } : {}),
     plan: JSON.parse(original.input),
     evidence,
     attempted_actions: await actionLedger(db, g.id, undefined, original.edge_id)
@@ -137,6 +142,10 @@ export async function recoverReview(db: D1Database, g: Graph, assignmentId: stri
   if (next) ops.push(review
     ? queuePush(db, g.id, 'execution', review.execution_result_id)
     : queuePush(db, g.id, 'assignment', next.id))
+  if (!retry && review && JSON.parse(a.input).operation === 'result_acceptance') {
+    const execution = await sql(db, "SELECT * FROM graph_results WHERE id=? AND status='received'", review.execution_result_id).first<Result>()
+    if (execution) ops.push(...await rejectExecutionForQuality(db, g, execution, 'Quality review was cancelled without a score.'))
+  }
   await commit(db, g, retry ? 'review_retried' : 'review_cancelled', a.id,
     { retry: next?.id ?? null, grading_sequence: review?.sequence ?? null, user_id: userId ?? null, grading_verified: false }, ops)
   await syncInboxStatus(db, g)

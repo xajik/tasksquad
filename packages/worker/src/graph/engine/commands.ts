@@ -134,7 +134,7 @@ export async function run(
     if (g.status === 'running') throw new Error('Pause before changing configuration')
     const active = await sql(
       db,
-      "SELECT id FROM graph_assignments WHERE graph_id=? AND status IN ('running','pending','review','blocked','reconciling') LIMIT 1",
+      "SELECT id FROM graph_assignments WHERE graph_id=? AND status IN ('running','pending','review','grading','blocked','reconciling') LIMIT 1",
       g.id
     ).first()
     const p = normalize(body.policy as Partial<Policy>)

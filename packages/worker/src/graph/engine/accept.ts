@@ -19,7 +19,8 @@ export async function evidenceStatements(
   g: Graph,
   r: Result,
   node: string,
-  items: Data[]
+  items: Data[],
+  storedIds?: Map<string, string>
 ): Promise<D1PreparedStatement[]> {
   const c = await configuration(db, g),
     now = Date.now(),
@@ -44,8 +45,9 @@ export async function evidenceStatements(
       throw new Error('Evidence freshness invalid')
     // Agents pick evidence IDs, but the primary key is global: a later step reusing "ev1" must not
     // block acceptance. Downstream readers take IDs from the stored rows, so mint a fresh one.
-    let evidenceId = e.id as string
+    let evidenceId = e.id
     if (await sql(db, 'SELECT id FROM graph_evidence WHERE id=?', evidenceId).first()) evidenceId = id()
+    storedIds?.set(e.id, evidenceId)
     ops.push(
       sql(
         db,
@@ -67,25 +69,24 @@ export async function evidenceStatements(
   return ops
 }
 
-export async function accept(
+export async function acceptanceContext(
   db: D1Database,
   g: Graph,
   r: Result,
-  extra: D1PreparedStatement[] = [],
+  ops: D1PreparedStatement[],
+  expectedStatus: 'received' | 'review',
   semantic?: SemanticIndex
-): Promise<void> {
-  if (r.status === 'accepted') return
+): Promise<AcceptCtx> {
   const { a, original } = await resolve(db, r),
     c = await configuration(db, g)
-  if (r.status !== 'review' || original.config_version !== c.version || !r.parsed)
+  if (r.status !== expectedStatus || original.config_version !== c.version || !r.parsed)
     throw new Error('Result no longer eligible')
   const d = JSON.parse(r.parsed) as Data,
     input = JSON.parse(original.input) as Data
   if (['execute', 'undo', 'reconcile'].includes(original.role)) {
     assertEvidenceResources(original, d)
   }
-  const ops: D1PreparedStatement[] = [
-    ...extra,
+  ops.push(
     sql(db, "UPDATE graph_results SET status='accepted',accepted_at=? WHERE id=?", Date.now(), r.id),
     sql(db, "UPDATE graph_assignments SET status='accepted' WHERE id IN (?,?)", a.id, original.id),
     ...(a.role === 'repair'
@@ -97,7 +98,7 @@ export async function accept(
           )
         ]
       : [])
-  ]
+  )
   const enqueue = async (
     role: Role,
     data: unknown,
@@ -107,7 +108,19 @@ export async function accept(
     ops.push(...next.statements)
     return next.id
   }
-  const x: AcceptCtx = { db, g, r, a, original, c, d, input, ops, enqueue, semantic }
+  return { db, g, r, a, original, c, d, input, ops, enqueue, semantic }
+}
+
+export async function accept(
+  db: D1Database,
+  g: Graph,
+  r: Result,
+  extra: D1PreparedStatement[] = [],
+  semantic?: SemanticIndex
+): Promise<void> {
+  if (r.status === 'accepted') return
+  const x = await acceptanceContext(db, g, r, [...extra], 'review', semantic)
+  const { original, ops } = x
   switch (original.role) {
     case 'decompose':
       await acceptDecompose(x)

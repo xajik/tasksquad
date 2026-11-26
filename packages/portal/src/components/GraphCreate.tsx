@@ -103,11 +103,12 @@ export function PolicyFields({
           <LabelText field="review">Result acceptance</LabelText>
           <select
             className="h-9 w-full min-w-0 rounded-md border bg-background px-2"
-            value={value.review ? 'review' : 'auto'}
-            onChange={(e) => field('review', e.target.value === 'review')}
+            value={String(value.review)}
+            onChange={(e) => field('review', e.target.value === 'quality_50' ? 'quality_50' : e.target.value === 'true')}
           >
-            <option value="review">Require review for every role</option>
-            <option value="auto">Accept valid results automatically</option>
+            <option value="true">Require review for every role</option>
+            <option value="false">Accept valid results automatically</option>
+            <option value="quality_50">Accept executions with at least 50% quality and reject the rest</option>
           </select>
         </Label>
       </div>

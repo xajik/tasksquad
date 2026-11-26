@@ -1,8 +1,10 @@
 import { verifyGoal } from '../../contracts.js'
 import { queueDone } from '../queue.js'
-import { rows, sql, type Data } from '../../store.js'
+import { json, rows, sql, type Data, type Result } from '../../store.js'
 import { executedLineage, planContext } from '../shared.js'
 
+import { acceptanceContext } from '../accept.js'
+import { acceptExecute, rejectExecutionForQuality } from './execute.js'
 import type { AcceptCtx } from './context.js'
 
 /**
@@ -55,7 +57,7 @@ export async function acceptReview(x: AcceptCtx): Promise<void> {
     return
   }
 
-  const ids = resolveEvidenceIds(input, d.evidence_ids as string[], 'Grade references unsupplied evidence')
+  let ids = resolveEvidenceIds(input, d.evidence_ids as string[], 'Grade references unsupplied evidence')
   ops.push(
     sql(
       db,
@@ -67,6 +69,25 @@ export async function acceptReview(x: AcceptCtx): Promise<void> {
       Date.now()
     )
   )
+  if (original.role === 'grade' && input.operation === 'result_acceptance') {
+    const execution = await sql(db, "SELECT * FROM graph_results WHERE id=? AND status='received'", input.execution_result_id).first<Result>()
+    if (!execution) throw new Error('Execution no longer awaits a quality grade')
+    if (typeof d.local_score !== 'number' || d.local_score < 0.5) {
+      const reason = d.local_score === null ? 'Execution quality is unknown.' : `Execution quality ${d.local_score} is below 0.5.`
+      ops.push(...await rejectExecutionForQuality(db, g, execution, reason),
+        sql(db, "UPDATE graph_grading SET stage='done',status='done' WHERE sequence=?", input.grading_sequence),
+        queueDone(db, g.id, 'execution', execution.id))
+      return
+    }
+
+    // Publish the execution, its evidence and the deciding grade in the same versioned batch.
+    const executionContext = await acceptanceContext(db, g, execution, ops, 'received')
+    const storedIds = new Map<string, string>()
+    await acceptExecute(executionContext, storedIds)
+    ids = ids.map((id) => storedIds.get(id)!)
+    ops.push(sql(db, 'INSERT INTO graph_events(graph_id,kind,entity_id,data,created_at) VALUES(?,?,?,?,?)',
+      g.id, 'accepted', execution.id, json({ role: 'execute', local_score: d.local_score }), Date.now()))
+  }
   // The stored goal score ranks the candidate; per-goal detail stays in the result itself.
   // Rank by the goal this node moved the most (a milestone counts), not only the far-off root goal.
   const impacts = (d.goal_impacts ?? []) as Data[]

@@ -5,6 +5,7 @@ import { buildSync } from 'esbuild'
 import { readdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { create, graph, sql, rows, commit, assignment, nodeStatements } from './store.js'
+import type { Policy } from './contracts.js'
 import { resource } from './mutations.js'
 import { run, tick, intake, bindStatement } from './engine.js'
 import type { GraphEnv } from './engine.js'
@@ -13,7 +14,7 @@ export let mf: Miniflare, db: D1Database
 export let runtimeOptions: ConstructorParameters<typeof Miniflare>[0]
 export const env = () =>
   ({ DB: db, ACTION_GRAPH_ENABLED: 'true', POLL_CACHE: { put: async () => undefined } }) as GraphEnv
-export async function fixture(review = true, execution = false) {
+export async function fixture(review: Policy['review'] = true, execution = false) {
   const team = crypto.randomUUID(),
     user = crypto.randomUUID(),
     agent = crypto.randomUUID()
@@ -79,8 +80,8 @@ export async function deliver(graphId: string, agent: string, raw: string, befor
   return { session, attempt: attempt! }
 }
 
-export async function preparedExecution() {
-  const f = await fixture(false, true)
+export async function preparedExecution(review: Policy['review'] = false) {
+  const f = await fixture(review, true)
   await resource(db, f.g.id, { title: 'Source', description: '', body: 'Baseline', visibility: 'execution' })
   const g = await graph(db, f.g.id)
   const source = (

@@ -82,7 +82,7 @@ export interface Policy {
   fallback: string | null
   capacity: number
   threshold: number
-  review: boolean
+  review: boolean | 'quality_50'
   deadline_ms: number
   max_attempts: number
   attempt_budget: number
@@ -294,10 +294,10 @@ export function policy(input: Partial<Policy>): Policy {
     !p.agents.length ||
     p.agents.some((a) => typeof a !== 'string' || !a) ||
     !p.grader ||
-    !p.decomposer ||
-    typeof p.review !== 'boolean'
+    !p.decomposer
   )
     throw new Error('Select execution, grader and decomposition agents')
+  if (typeof p.review !== 'boolean' && p.review !== 'quality_50') throw new Error('Invalid result acceptance mode')
   for (const key of [
     'capacity',
     'deadline_ms',

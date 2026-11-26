@@ -67,7 +67,7 @@ export const graphHelp = {
     examples: ['0.5: keep actions judged more likely needed than not', '0.8: keep only clearly necessary actions']
   },
   review: {
-    what: 'Whether a person approves each agent result before the graph applies it. With review, every role holds its result in your inbox until you accept or reject it. Automatic acceptance applies valid results at once.',
+    what: 'Whether a person approves each agent result before the graph applies it. With review, every role holds its result in your inbox until you accept or reject it. Automatic acceptance applies valid results at once. With the 50% cutoff, the grader scores each execution before acceptance. Lower or unknown scores are rejected. Other valid role results are processed automatically.',
     examples: ['Require review: best for production changes and first runs', 'Accept automatically: low-risk research graphs you trust']
   },
   max_attempts: {

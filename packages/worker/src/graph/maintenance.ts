@@ -178,7 +178,7 @@ export async function maintenance(env: Pick<Env, 'DB'>, graphId: string): Promis
     if (job.kind === 'revival' && g.status === 'running') {
       const busy = await sql(
         db,
-        "SELECT 1 FROM graph_assignments WHERE graph_id=? AND status IN ('pending','running','review','blocked','continuation','reconciling') LIMIT 1",
+        "SELECT 1 FROM graph_assignments WHERE graph_id=? AND status IN ('pending','running','review','grading','blocked','continuation','reconciling') LIMIT 1",
         g.id
       ).first()
       if (!busy) {
