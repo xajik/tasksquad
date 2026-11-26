@@ -71,7 +71,7 @@ final class ProviderGoldenTests: PlatformTestCase {
 
             let go = try goSetup(command: command, workDir: goWork, tmp: goTmp, prompt: prompt)
             let kind = ProviderKind.detect(command: command, override: "")
-            try kind.setup(workDir: swiftWork.path, hooksPort: 7374, agentID: "agent-1", taskID: "task-1")
+            try kind.setupForTask(workDir: swiftWork.path, hooksPort: 7374, agentID: "agent-1", taskID: "task-1", hookToken: "fixture-token")
             let args = try kind.setupArguments(hooksPort: 7374, agentID: "agent-1", taskID: "task-1", temporaryDirectory: swiftTmp)
 
             XCTAssertEqual(kind.rawValue, go.name, command)

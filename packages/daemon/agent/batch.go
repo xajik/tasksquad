@@ -70,10 +70,12 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 		entries := make([]map[string]any, len(agents))
 		for i, a := range agents {
 			entry := map[string]any{
-				"id":               a.Config.ID,
-				"status":           a.st.Mode(),
-				"daemon_uptime_ms": uptimeMs,
-                "graph_isolation_version": 1,
+				"id":                      a.Config.ID,
+				"status":                  a.st.Mode(),
+				"daemon_uptime_ms":        uptimeMs,
+				"graph_isolation_version": 1,
+				"active_tasks":            a.activeTasks(),
+				"daemon_device":           config.DeviceID(),
 			}
 			if a.st.ModeValue() == ModeLearning {
 				_, executed := a.st.CloseSteps()
@@ -159,7 +161,7 @@ func RunBatch(cfg *config.Config, agents []*Agent, ctrl *BatchController) {
 			a.st.mu.Lock()
 			a.st.lastPollAt = time.Now()
 			a.st.mu.Unlock()
-			a.processResponse(cfg, item)
+			a.processParallel(cfg, item)
 
 			// Portal assigned by server in batch response (idle agents only).
 			if portalRaw, ok := item["portal"]; ok && portalRaw != nil {

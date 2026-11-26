@@ -86,15 +86,15 @@ func TestLifecycleWithoutToolHooksKeepsTranscriptTools(t *testing.T) {
 	}
 }
 
-func TestRegistryTakeDropsAgentsStaleTasks(t *testing.T) {
+func TestRegistryTakePreservesConcurrentTasks(t *testing.T) {
 	Live("agentA", "old").Hook([]byte(`{"hook_event_name":"Stop"}`), time.Now())
 	cur := Live("agentA", "cur")
 	other := Live("agentB", "x")
 	if Take("agentA", "cur") != cur {
 		t.Fatal("Take returned a different lifecycle")
 	}
-	if Take("agentA", "old") != nil || Take("agentA", "cur") != nil {
-		t.Error("stale entries for agentA survived Take")
+	if Take("agentA", "old") == nil || Take("agentA", "cur") != nil {
+		t.Error("Take affected a sibling or retained the completed collector")
 	}
 	if Take("agentB", "x") != other {
 		t.Error("Take for agentA removed agentB's lifecycle")

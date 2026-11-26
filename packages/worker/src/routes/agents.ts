@@ -27,7 +27,7 @@ export async function list(req: Request, env: Env, _ctx: unknown, auth: AuthCont
   if (!(await requireMember(env.DB, teamId, auth.userId))) return err('not_found', 404)
 
   const rows = await env.DB
-    .prepare('SELECT id, name, role, status, last_seen, created_at, paused, reset_pending FROM agents WHERE team_id = ? ORDER BY created_at ASC')
+    .prepare('SELECT id, name, role, status, last_seen, created_at, paused, reset_pending, max_parallel_tasks FROM agents WHERE team_id = ? ORDER BY created_at ASC')
     .bind(teamId)
     .all<{ id: string; name: string; role: string | null; status: string; last_seen: number | null; created_at: number; paused: number; reset_pending: number }>()
 
@@ -185,12 +185,14 @@ export async function updateAgent(req: Request, env: Env, _ctx: unknown, auth: A
     .first<{ id: string }>()
   if (!agent) return err('not_found', 404)
 
-  const body = await req.json<{ role?: string }>().catch(() => ({} as { role?: string }))
-
-  const role = body.role?.trim() ?? null
-  await env.DB.prepare('UPDATE agents SET role = ? WHERE id = ?').bind(role, agentId).run()
-
-  return json({ ok: true, role })
+  const body = await req.json<{ role?: string; max_parallel_tasks?: number }>().catch(() => null)
+  if (!body || (body.role === undefined && body.max_parallel_tasks === undefined)) return err('missing_fields', 400)
+  if (body.role !== undefined && typeof body.role !== 'string') return err('invalid_role', 400)
+  const limit = body.max_parallel_tasks
+  if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 0)) return err('invalid_parallelism', 400)
+  await env.DB.prepare('UPDATE agents SET role=COALESCE(?,role),max_parallel_tasks=COALESCE(?,max_parallel_tasks) WHERE id=? AND team_id=?')
+    .bind(body.role?.trim() ?? null, limit ?? null, agentId, teamId).run()
+  return json({ ok: true, role: body.role?.trim(), max_parallel_tasks: limit })
 }
 
 export async function deleteAgent(req: Request, env: Env, _ctx: unknown, auth: AuthContext): Promise<Response> {

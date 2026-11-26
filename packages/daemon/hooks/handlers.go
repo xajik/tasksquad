@@ -27,6 +27,7 @@ var unsafeCharsRe = regexp.MustCompile(`[^\x09\x0A\x0D\x20-\x7E]`)
 
 // hookServer holds the shared state needed by every hook handler.
 type codexTaskTurns struct {
+	agentID  string
 	taskID   string
 	threadID string
 	seen     map[string]bool
@@ -79,7 +80,7 @@ func (s *hookServer) handleStop(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
+	found := findAndDispatch(s.runtimes(), agentID, taskIDParam, func(a Agent) {
 		if !a.PinCLISessionID(ev.SessionID) && strictSessionPin(provider) {
 			logger.Warn(fmt.Sprintf("[hooks] Stop hook session_id=%q does not match agent %s's pinned CLI session for task_id=%q — ignoring (likely an unrelated process sharing this agent's hook URL)",
 				ev.SessionID, a.Name(), taskIDParam))
@@ -154,7 +155,7 @@ func (s *hookServer) handleNotification(w http.ResponseWriter, r *http.Request) 
 	logger.Info(fmt.Sprintf("[hooks] Notification received: provider=%s msg=%q transcript_path=%s",
 		provider, msg, nev.TranscriptPath))
 
-	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
+	found := findAndDispatch(s.runtimes(), agentID, taskIDParam, func(a Agent) {
 		if !a.PinCLISessionID(nev.SessionID) && strictSessionPin(provider) {
 			logger.Warn(fmt.Sprintf("[hooks] Notification session_id=%q does not match agent %s's pinned CLI session for task_id=%q — ignoring",
 				nev.SessionID, a.Name(), taskIDParam))
@@ -166,7 +167,7 @@ func (s *hookServer) handleNotification(w http.ResponseWriter, r *http.Request) 
 		}
 	})
 	if !found {
-		logger.Warn(fmt.Sprintf("[hooks] Notification received but no matching active agent (agent=%q task_id=%q modes: %s)", agentID, taskIDParam, getAgentModes(s.agents)))
+		logger.Warn(fmt.Sprintf("[hooks] Notification received but no matching active agent (agent=%q task_id=%q modes: %s)", agentID, taskIDParam, getAgentModes(s.runtimes())))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -190,7 +191,7 @@ func (s *hookServer) handleAfterAgent(w http.ResponseWriter, r *http.Request) {
 	logger.Info(fmt.Sprintf("[hooks] AfterAgent received: provider=%s transcript_path=%s prompt_response_len=%d",
 		provider, aev.TranscriptPath, len(aev.PromptResponse)))
 
-	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
+	found := findAndDispatch(s.runtimes(), agentID, taskIDParam, func(a Agent) {
 		mode := agentmode.Mode(a.GetMode())
 		if mode == agentmode.ModeRunning || mode == agentmode.ModeWaitingInput {
 			logger.Debug(fmt.Sprintf("[hooks] Dispatching PushIntermediateResponse to agent %s (AfterAgent)", a.Name()))
@@ -218,7 +219,7 @@ func (s *hookServer) handleTUIBlocked(w http.ResponseWriter, r *http.Request) {
 	taskIDParam := r.URL.Query().Get("task_id")
 	blocked := r.URL.Query().Get("state") == "on"
 
-	found := findAndDispatch(s.agents, agentID, taskIDParam, func(a Agent) {
+	found := findAndDispatch(s.runtimes(), agentID, taskIDParam, func(a Agent) {
 		logger.Info(fmt.Sprintf("[hooks] tui-blocked: agent=%s task_id=%s blocked=%v", a.Name(), taskIDParam, blocked))
 		a.SetTUIBlocked(blocked)
 	})
@@ -259,9 +260,9 @@ func (s *hookServer) handleEvent(w http.ResponseWriter, r *http.Request) {
 // isCurrentTask reports whether agentID is working on taskID, so a hook
 // arriving after the task closed can't start a collector nobody takes.
 func (s *hookServer) isCurrentTask(agentID, taskID string) bool {
-	for _, a := range s.agents {
-		if a.ID() == agentID {
-			return a.GetTaskID() == taskID
+	for _, a := range s.runtimes() {
+		if a.ID() == agentID && a.GetTaskID() == taskID {
+			return true
 		}
 	}
 	return false
@@ -324,17 +325,22 @@ func (s *hookServer) handleCodex(w http.ResponseWriter, r *http.Request) {
 	agentID, taskID := r.URL.Query().Get("agent"), r.URL.Query().Get("task_id")
 	accepted := false
 	s.codexMu.Lock()
-	for _, a := range s.agents {
+	for _, a := range s.runtimes() {
 		if a.ID() != agentID || a.GetTaskID() != taskID || !a.PinCLISessionID(payload.ThreadID) {
 			continue
 		}
 		if s.codexTurns == nil {
 			s.codexTurns = make(map[string]*codexTaskTurns)
 		}
-		turns := s.codexTurns[agentID]
+		for previousID := range s.codexTurns {
+			if !s.isCurrentTask(agentID, previousID) && s.codexTurns[previousID].agentID == agentID {
+				delete(s.codexTurns, previousID)
+			}
+		}
+		turns := s.codexTurns[taskID]
 		if turns == nil || turns.taskID != taskID || turns.threadID != payload.ThreadID {
-			turns = &codexTaskTurns{taskID: taskID, threadID: payload.ThreadID, seen: make(map[string]bool)}
-			s.codexTurns[agentID] = turns
+			turns = &codexTaskTurns{agentID: agentID, taskID: taskID, threadID: payload.ThreadID, seen: make(map[string]bool)}
+			s.codexTurns[taskID] = turns
 		}
 		if payload.TurnID != "" && turns.seen[payload.TurnID] {
 			break
@@ -398,7 +404,7 @@ func (s *hookServer) handleSkill(w http.ResponseWriter, r *http.Request) {
 
 	agentIDParam := r.URL.Query().Get("agent")
 	var active Agent
-	for _, a := range s.agents {
+	for _, a := range s.runtimes() {
 		if a.IsLearning() {
 			active = a
 			break
@@ -530,7 +536,7 @@ func (s *hookServer) handleAttach(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var attachErr error
-	found := findAndDispatch(s.agents, "", payload.TaskID, func(a Agent) {
+	found := findAndDispatch(s.runtimes(), "", payload.TaskID, func(a Agent) {
 		attachErr = a.AttachImage(s.cfg, payload.Path, payload.Caption)
 	})
 	if !found {

@@ -69,13 +69,14 @@ type MonitoredAgent interface {
 type Supervisor struct {
 	mu            sync.Mutex
 	activeForTask map[string]bool
-	lastAttempt   map[string]time.Time             // when supervision was last attempted per taskID
-	failCount     map[string]int                   // consecutive no-verdict attempts per taskID
+	lastAttempt   map[string]time.Time              // when supervision was last attempted per taskID
+	failCount     map[string]int                    // consecutive no-verdict attempts per taskID
 	verdictChans  map[string]chan supervisorVerdict // taskID → verdict delivery channel
-	cli           string                           // resolved CLI binary path (empty = disabled)
-	fullCmd       string                           // full command string with flags from [supervisor] config
-	daemonBinDir  string                           // directory containing the tsq binary; prepended to PATH in supervisor sessions
+	cli           string                            // resolved CLI binary path (empty = disabled)
+	fullCmd       string                            // full command string with flags from [supervisor] config
+	daemonBinDir  string                            // directory containing the tsq binary; prepended to PATH in supervisor sessions
 	cfg           *config.Config
+	snapshot      func() []MonitoredAgent
 	agents        []MonitoredAgent // populated by Monitor; used by TriggerForTask
 }
 
@@ -158,7 +159,11 @@ func (s *Supervisor) TriggerForTask(taskID string) error {
 		return fmt.Errorf("supervisor already active for task %s", taskID)
 	}
 	var target MonitoredAgent
-	for _, a := range s.agents {
+	agents := s.agents
+	if s.snapshot != nil {
+		agents = s.snapshot()
+	}
+	for _, a := range agents {
 		if a.GetTaskID() == taskID {
 			target = a
 			break
@@ -183,9 +188,12 @@ func (s *Supervisor) TriggerForTask(taskID string) error {
 
 // Monitor watches agents in a loop and spawns supervisor sessions for inactive tasks.
 // Blocks forever; run in a goroutine.
-func (s *Supervisor) Monitor(agents []MonitoredAgent) {
+func (s *Supervisor) Monitor(agents []MonitoredAgent, snapshots ...func() []MonitoredAgent) {
 	s.mu.Lock()
 	s.agents = agents
+	if len(snapshots) > 0 {
+		s.snapshot = snapshots[0]
+	}
 	s.mu.Unlock()
 
 	if s.cli == "" {
@@ -205,7 +213,11 @@ func (s *Supervisor) Monitor(agents []MonitoredAgent) {
 	for {
 		select {
 		case <-ticker.C:
-			for _, a := range agents {
+			current := agents
+			if len(snapshots) > 0 {
+				current = snapshots[0]()
+			}
+			for _, a := range current {
 				mode := a.GetMode()
 				if mode != "running" && mode != "wrapping_up" {
 					continue

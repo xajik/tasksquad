@@ -200,8 +200,10 @@ func runDaemon() {
 	if err == nil && token != "" {
 		orphanCtrl := orphan.New(cfg, token).WithTracked(func(name string) bool {
 			for _, a := range rawAgents {
-				if a.TmuxSession() == name {
-					return true
+				for _, slot := range a.Runtimes() {
+					if slot.TmuxSession() == name {
+						return true
+					}
 				}
 			}
 			return false
@@ -211,11 +213,15 @@ func runDaemon() {
 		logger.Warn("[orphan] skipped: no auth token")
 	}
 
-	supAgents := make([]supervisor.MonitoredAgent, len(rawAgents))
-	for i, a := range rawAgents {
-		supAgents[i] = a
-	}
-	go sup.Monitor(supAgents)
+	go sup.Monitor(nil, func() []supervisor.MonitoredAgent {
+		var result []supervisor.MonitoredAgent
+		for _, a := range rawAgents {
+			for _, slot := range a.Runtimes() {
+				result = append(result, slot)
+			}
+		}
+		return result
+	})
 
 	dreamAgents := make([]dreamer.DreamAgent, len(rawAgents))
 	for i, a := range rawAgents {

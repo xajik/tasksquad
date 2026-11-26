@@ -182,7 +182,9 @@ export async function eligibility(
   const why: string[] = []
   for (const candidate of new Set([...primary, ...(c.policy.fallback ? [c.policy.fallback] : [])])) {
     const taken = used.find((r) => r.agent_id === candidate)
-    if (taken) {
+    const parallel = await sql(db, `SELECT max_parallel_tasks AS limit_tasks FROM agents
+      WHERE id=? AND team_id=? AND parallel_capable=1 AND max_parallel_tasks!=1`, candidate,g.team_id).first<{ limit_tasks: number }>()
+    if (taken && (!parallel || (parallel.limit_tasks > 0 && used.filter(r => r.agent_id === candidate).length >= parallel.limit_tasks))) {
       why.push(`${candidate}: reserved by a ${taken.kind} (graph ${taken.graph_id})`)
       continue
     }
@@ -190,7 +192,11 @@ export async function eligibility(
       why.push(`${candidate}: is the grader, executor must be independent`)
       continue
     }
-    const ready = await sql(
+    const ready = parallel ? await sql(db, `SELECT 1 FROM agents a WHERE a.id=? AND a.paused=0 AND a.status IN ('idle','running','wrapping_up','waiting_input')
+      AND (a.max_parallel_tasks=0 OR a.max_parallel_tasks > (SELECT COUNT(*) FROM (
+        SELECT t.id FROM tasks t WHERE t.agent_id=a.id AND t.status='pending'
+        UNION SELECT s.task_id FROM sessions s WHERE s.agent_id=a.id AND s.closed_at IS NULL
+        UNION SELECT ga.task_id FROM graph_reservations r JOIN graph_attempts ga ON ga.id=r.attempt_id WHERE r.agent_id=a.id)))`,candidate).first() : await sql(
       db,
       `SELECT a.id FROM agents a LEFT JOIN agent_state s ON s.agent_id=a.id
       WHERE a.id=? AND a.team_id=? AND a.paused=0 AND a.status='idle' AND s.current_task_id IS NULL

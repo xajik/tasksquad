@@ -115,7 +115,8 @@ async function processAgentHeartbeat(
   now: number,
   nextPollMs: number,
   portalActive: boolean,
-  daemonUptimeMs: number = 0
+  daemonUptimeMs: number = 0,
+  reportedTask?: string
 ): Promise<Record<string, unknown>> {
   if (agentRow?.reset_pending) {
     await env.DB.batch([
@@ -130,18 +131,19 @@ async function processAgentHeartbeat(
   }
 
   if (agentStatus === AgentStatus.Running || agentStatus === AgentStatus.WaitingInput || agentStatus === AgentStatus.WrappingUp) {
-    const state = await env.DB
+    const state = reportedTask ? { current_task_id: reportedTask } : await env.DB
       .prepare('SELECT current_task_id FROM agent_state WHERE agent_id = ?')
       .bind(agentId)
       .first<{ current_task_id: string | null }>()
 
     if (state?.current_task_id) {
       const task = await env.DB
-        .prepare('SELECT status, settings, close_steps FROM tasks WHERE id = ?')
-        .bind(state.current_task_id)
+        .prepare('SELECT status, settings, close_steps FROM tasks WHERE id = ? AND agent_id = ?')
+        .bind(state.current_task_id, agentId)
         .first<{ status: string; settings: string | null; close_steps: string | null }>()
 
-      if (task) {
+      if (!task) return { cancel: true }
+      {
         if (task.status === TaskStatus.WrappingUp && agentStatus === AgentStatus.WaitingInput) {
           let closeSteps: string[] = []
           try { closeSteps = task.close_steps ? JSON.parse(task.close_steps) : [] } catch { closeSteps = [] }
@@ -221,54 +223,61 @@ async function processAgentHeartbeat(
     .bind(agentId, TaskStatus.Pending)
     .first<{ id: string; subject: string; settings: string | null; resume_provider: string | null; resume_session_id: string | null }>()
 
-  if (task) {
-    const msgRows = await env.DB
-      .prepare("SELECT id, role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') AND (scheduled_at IS NULL OR scheduled_at <= ?) ORDER BY created_at ASC")
-      .bind(task.id, now)
-      .all<{ id: string; role: string; body: string }>()
-    const attachmentsByMessage = await fetchAttachmentsForMessages(env, msgRows.results.map(m => m.id))
-    // Inject caveman instruction into the first user message if save_tokens is enabled
-    let firstUserInjected = false
-    const messages = msgRows.results.map(m => {
-      const attachments = attachmentsByMessage.get(m.id) ?? []
-      const withAttachments = attachments.length ? { ...m, attachments } : m
-      if (!firstUserInjected && m.role === 'user') {
-        firstUserInjected = true
-        return { ...withAttachments, body: injectCaveman(m.body, task.settings) }
-      }
-      return withAttachments
-    })
+  if (task) return taskOffer(env, agentId, teamId, task, now, nextPollMs)
+  return portalOffer(env, agentId, nextPollMs, portalActive, daemonUptimeMs)
+}
 
-    // Auto-inject the team's most recent short-term memory rollup, if memory is
-    // enabled — small, bounded-size "recent activity" context, not full long-term
-    // memory (which is reachable on demand via `tsq memory search` instead).
-    let memoryRollup: string | undefined
-    const team = await env.DB
-      .prepare('SELECT memory_enabled FROM teams WHERE id = ?')
+type OfferedTask = { id: string; subject: string; settings: string | null; resume_provider: string | null; resume_session_id: string | null }
+
+async function taskOffer(env: Env, agentId: string, teamId: string, task: OfferedTask, now: number, nextPollMs: number) {
+  const msgRows = await env.DB
+    .prepare("SELECT id, role, body FROM messages WHERE task_id = ? AND role IN ('user', 'agent') AND (scheduled_at IS NULL OR scheduled_at <= ?) ORDER BY created_at ASC")
+    .bind(task.id, now)
+    .all<{ id: string; role: string; body: string }>()
+  const attachmentsByMessage = await fetchAttachmentsForMessages(env, msgRows.results.map(m => m.id))
+  // Inject caveman instruction into the first user message if save_tokens is enabled
+  let firstUserInjected = false
+  const messages = msgRows.results.map(m => {
+    const attachments = attachmentsByMessage.get(m.id) ?? []
+    const withAttachments = attachments.length ? { ...m, attachments } : m
+    if (!firstUserInjected && m.role === 'user') {
+      firstUserInjected = true
+      return { ...withAttachments, body: injectCaveman(m.body, task.settings) }
+    }
+    return withAttachments
+  })
+
+  // Auto-inject the team's most recent short-term memory rollup, if memory is
+  // enabled — small, bounded-size "recent activity" context, not full long-term
+  // memory (which is reachable on demand via `tsq memory search` instead).
+  let memoryRollup: string | undefined
+  const team = await env.DB
+    .prepare('SELECT memory_enabled FROM teams WHERE id = ?')
+    .bind(teamId)
+    .first<{ memory_enabled: number }>()
+  if (team?.memory_enabled) {
+    const rollup = await env.DB
+      .prepare("SELECT content FROM memory_rollup WHERE team_id = ? AND period = 'daily' ORDER BY period_key DESC LIMIT 1")
       .bind(teamId)
-      .first<{ memory_enabled: number }>()
-    if (team?.memory_enabled) {
-      const rollup = await env.DB
-        .prepare("SELECT content FROM memory_rollup WHERE team_id = ? AND period = 'daily' ORDER BY period_key DESC LIMIT 1")
-        .bind(teamId)
-        .first<{ content: string }>()
-      if (rollup?.content) memoryRollup = rollup.content
-    }
-
-    // A provider CLI session from an earlier spawn of this task: the daemon
-    // resumes it instead of replaying the thread as plain text.
-    const resume = parseResume(task.resume_provider, task.resume_session_id)
-
-    const graphAssignment = env.ACTION_GRAPH_ENABLED !== undefined ? await env.DB.prepare(`SELECT a.role,t.id AS attempt_id,t.epoch FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE t.task_id=? AND t.status='pending'`).bind(task.id).first<{role:string;attempt_id:string;epoch:number}>() : null
-    return {
-      agent_id: agentId,
-      ok: true,
-      task: { id: task.id, subject: task.subject, messages, ...(!graphAssignment && resume ? { resume } : {}), ...(graphAssignment ? { graph: { ...graphAssignment, isolation_version: 1 } } : {}) },
-      ...(!graphAssignment && memoryRollup ? { memory_rollup: memoryRollup } : {}),
-      next_poll_ms: nextPollMs,
-    }
+      .first<{ content: string }>()
+    if (rollup?.content) memoryRollup = rollup.content
   }
 
+  // A provider CLI session from an earlier spawn of this task: the daemon
+  // resumes it instead of replaying the thread as plain text.
+  const resume = parseResume(task.resume_provider, task.resume_session_id)
+
+  const graphAssignment = env.ACTION_GRAPH_ENABLED !== undefined ? await env.DB.prepare(`SELECT a.role,t.id AS attempt_id,t.epoch FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id WHERE t.task_id=? AND t.status='pending'`).bind(task.id).first<{role:string;attempt_id:string;epoch:number}>() : null
+  return {
+    agent_id: agentId,
+    ok: true,
+    task: { id: task.id, subject: task.subject, messages, ...(!graphAssignment && resume ? { resume } : {}), ...(graphAssignment ? { graph: { ...graphAssignment, isolation_version: 1 } } : {}) },
+    ...(!graphAssignment && memoryRollup ? { memory_rollup: memoryRollup } : {}),
+    next_poll_ms: nextPollMs,
+  }
+}
+
+async function portalOffer(env: Env, agentId: string, nextPollMs: number, portalActive: boolean, daemonUptimeMs: number) {
   // Idle: check for a portal needing attention for this agent.
   // Priority order: close signal (browser-initiated or crash recovery) > new pending portal.
   const activePortal = await env.DB
@@ -296,6 +305,61 @@ async function processAgentHeartbeat(
   }
 
   return { agent_id: agentId, ok: true, next_poll_ms: nextPollMs }
+}
+
+type ActiveTask = { task_id: string; status: string; close_step_idx?: number; tui_blocked?: boolean }
+type AgentEntry = { id: string; status: string; close_step_idx?: number; portal_active?: boolean; graph_isolation_version?: number; daemon_uptime_ms?: number; task_id?: string; tui_blocked?: boolean; active_tasks?: ActiveTask[]; daemon_device?: string }
+type AgentSettings = { last_seen: number | null; reset_pending: number; paused: number; max_parallel_tasks: number }
+
+export async function parallelHeartbeat(env: Env, entry: AgentEntry, teamId: string, settings: AgentSettings, now: number, nextPollMs: number) {
+  const { id, active_tasks: active = [], daemon_device: device } = entry
+  if (settings.reset_pending) return processAgentHeartbeat(env,id,teamId,entry.status,settings,now,nextPollMs,false)
+  const live = JSON.stringify(active.map(t => t.task_id))
+  // Only recover sessions from this installation. Another device can be polling the same agent.
+  const missing = `SELECT task_id FROM sessions WHERE agent_id=?1 AND closed_at IS NULL
+    AND (daemon_device=?2 OR daemon_device IS NULL) AND started_at<=?3 AND task_id NOT IN (SELECT value FROM json_each(?4))`
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE tasks SET status=CASE status WHEN 'running' THEN 'pending' ELSE 'done' END,
+      completed_at=CASE status WHEN 'wrapping_up' THEN ?3 ELSE NULL END WHERE id IN (${missing})
+      AND status IN ('running','wrapping_up') AND NOT EXISTS(SELECT 1 FROM graph_attempts ga WHERE ga.task_id=tasks.id)`).bind(id,device,now,live),
+    env.DB.prepare(`UPDATE sessions SET closed_at=?3,status='detached' WHERE agent_id=?1 AND (daemon_device=?2 OR daemon_device IS NULL)
+      AND closed_at IS NULL AND started_at<=?3 AND task_id NOT IN (SELECT value FROM json_each(?4))`).bind(id,device,now,live),
+    env.DB.prepare(`UPDATE agent_state SET current_task_id=NULL,current_session=NULL,mode='idle',updated_at=?
+      WHERE agent_id=? AND current_session IN (SELECT id FROM sessions WHERE agent_id=? AND closed_at IS NOT NULL)`).bind(now,id,id),
+    env.DB.prepare(`UPDATE graph_attempts SET termination_confirmed_at=? WHERE agent_id=? AND status!='running'
+      AND termination_confirmed_at IS NULL AND session_id IN (SELECT id FROM sessions WHERE agent_id=? AND (daemon_device=? OR daemon_device IS NULL) AND closed_at IS NOT NULL)
+      AND task_id NOT IN (SELECT value FROM json_each(?))`).bind(now,id,id,device,live),
+  ])
+  // An unchanged running session needs no per-task reads. Limit control lookups to sessions
+  // with an actual change so the steady-state heartbeat cost is independent of concurrency.
+  const actionable = await env.DB.prepare(`SELECT json_extract(j.value,'$.task_id') AS task_id,
+      json_extract(j.value,'$.status') AS status FROM json_each(?) j
+    LEFT JOIN tasks t ON t.id=json_extract(j.value,'$.task_id') AND t.agent_id=?
+    WHERE t.id IS NULL OR t.status IN ('done','cancelled','failed')
+      OR (t.status='waiting_input' AND json_extract(j.value,'$.status')='running')
+      OR (json_extract(j.value,'$.status')='waiting_input' AND (t.status='wrapping_up' OR EXISTS (
+        SELECT 1 FROM messages m WHERE m.task_id=t.id AND m.role='user' AND (m.scheduled_at IS NULL OR m.scheduled_at<=?)
+        AND m.created_at>(SELECT COALESCE(MAX(created_at),0) FROM messages WHERE task_id=t.id AND role='agent'))))`)
+    .bind(JSON.stringify(active),id,now).all<ActiveTask>()
+  const updates = []
+  for (const task of actionable.results) {
+    const control = await processAgentHeartbeat(env,id,teamId,task.status,undefined,now,nextPollMs,false,0,task.task_id)
+    if (control.reply || control.cancel || control.close || control.close_steps) updates.push({ ...control, task_id: task.task_id })
+  }
+  const count = await env.DB.prepare(`SELECT COUNT(*) AS n FROM sessions WHERE agent_id=? AND closed_at IS NULL
+    AND task_id NOT IN (SELECT value FROM json_each(?))`).bind(id,live).first<{ n: number }>()
+  const room = settings.paused ? 0 : settings.max_parallel_tasks === 0 ? 8 :
+    Math.min(8, Math.max(0, settings.max_parallel_tasks - active.length - (count?.n ?? 0)))
+  // Page offers per poll to bound message hydration. Unlimited sessions can accumulate across polls.
+  const pending = room ? (await env.DB.prepare(`SELECT t.id,t.subject,t.settings,t.resume_provider,t.resume_session_id
+    FROM tasks t WHERE t.agent_id=? AND t.status='pending' AND t.id NOT IN (SELECT value FROM json_each(?))
+    AND NOT EXISTS(SELECT 1 FROM sessions s WHERE s.task_id=t.id AND s.closed_at IS NULL)
+    AND NOT EXISTS(SELECT 1 FROM graph_attempts ga WHERE ga.task_id=t.id AND ga.status!='pending')
+    ORDER BY t.created_at,t.id LIMIT ?`).bind(id,live,room).all<OfferedTask>()).results : []
+  const offers = await Promise.all(pending.map(task => taskOffer(env,id,teamId,task,now,nextPollMs)))
+  const portal = !active.length && !offers.length && !settings.paused
+    ? await portalOffer(env,id,nextPollMs,!!entry.portal_active,entry.daemon_uptime_ms ?? 0) : {}
+  return { ...portal, agent_id: id, next_poll_ms: nextPollMs, offers, task_updates: updates }
 }
 
 async function processConveyors(env: Env, teamIds: string[], now: number) {
@@ -363,7 +427,7 @@ async function processConveyors(env: Env, teamIds: string[], now: number) {
  * the entire batch when all agents are idle and nothing has changed.
  */
 export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Promise<Response> {
-  type AgentEntry = { id: string; status: string; close_step_idx?: number; portal_active?: boolean; graph_isolation_version?: number; daemon_uptime_ms?: number; task_id?: string; tui_blocked?: boolean }
+
   const body = await req
     .json<{ agents?: Array<AgentEntry> }>()
     .catch(() => ({} as { agents?: Array<AgentEntry> }))
@@ -371,8 +435,12 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   const agentEntries = body.agents
   if (!agentEntries?.length) return err('missing_fields', 400)
 
+  for (const entry of agentEntries) {
+    if (entry.active_tasks !== undefined && (!Array.isArray(entry.active_tasks) || typeof entry.daemon_device !== 'string' || !entry.daemon_device.length || entry.daemon_device.length > 128 ||
+        entry.active_tasks.some(t => !t?.task_id || !['running','wrapping_up','waiting_input'].includes(t.status)))) return err('invalid_active_tasks',400)
+  }
   const agentIds = agentEntries.map(e => e.id)
-  const statuses = agentEntries.map(e => e.status ?? AgentStatus.Idle)
+  const statuses = agentEntries.map(e => e.active_tasks?.find(t => t.status === 'running')?.status ?? e.active_tasks?.[0]?.status ?? e.status ?? AgentStatus.Idle)
   const closeStepIdxs = agentEntries.map(e => e.close_step_idx ?? -1)
   const portalActives = agentEntries.map(e => e.portal_active ?? false)
   const daemonUptimesMs = agentEntries.map(e => e.daemon_uptime_ms ?? 0)
@@ -389,7 +457,7 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
     if (capable.length) await env.DB.batch(capable.map(e => env.DB.prepare('INSERT INTO graph_agent_capabilities(agent_id,version,seen_at) VALUES(?,1,?) ON CONFLICT(agent_id) DO UPDATE SET version=1,seen_at=excluded.seen_at').bind(e.id,now)))
     // The daemon clears its task id on returning to idle, so an idle heartbeat carries none. An idle agent has no
     // live process, which confirms termination of every attempt already closed out (completed/timeout/cancelled).
-    const idle = agentEntries.filter(e => e.status === AgentStatus.Idle)
+    const idle = agentEntries.filter(e => !e.active_tasks && e.status === AgentStatus.Idle)
     if (idle.length) await env.DB.batch(idle.map(e => env.DB.prepare("UPDATE graph_attempts SET termination_confirmed_at=? WHERE agent_id=? AND session_id IS NOT NULL AND termination_confirmed_at IS NULL AND status!='running'").bind(now,e.id)))
   }
   const nextPollMs = POLL_BASE_MS + Math.floor(Math.random() * POLL_JITTER_MS)
@@ -452,11 +520,11 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   // Fetch agent rows for rate-limit check + control flags (single D1 batch)
   const agentRowResults = await env.DB.batch(
     agentIds.map(id =>
-      env.DB.prepare('SELECT last_seen, reset_pending, paused FROM agents WHERE id = ?').bind(id)
+      env.DB.prepare('SELECT last_seen, reset_pending, paused, max_parallel_tasks FROM agents WHERE id = ?').bind(id)
     )
   )
   const agentRows = agentRowResults.map(
-    r => r.results[0] as { last_seen: number | null; reset_pending: number; paused: number } | undefined
+    r => r.results[0] as AgentSettings
   )
 
   // Enforce per-agent rate limit; reject the whole batch if any agent fires too fast
@@ -471,10 +539,16 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   await env.DB.batch(
     agentIds.flatMap((id, i) => {
       const stmts = [
-        env.DB.prepare('UPDATE agents SET status = ?, last_seen = ? WHERE id = ?').bind(statuses[i], now, id),
+        env.DB.prepare('UPDATE agents SET status = ?, last_seen = ?, parallel_capable=? WHERE id = ?').bind(statuses[i], now, agentEntries[i].active_tasks ? 1 : 0, id),
         env.DB.prepare('UPDATE agent_state SET mode = ?, updated_at = ? WHERE agent_id = ?').bind(statuses[i], now, id),
       ]
-      if (statuses[i] === AgentStatus.WrappingUp && closeStepIdxs[i] >= 0) {
+      if (agentEntries[i].active_tasks) {
+        const active = JSON.stringify(agentEntries[i].active_tasks)
+        stmts.push(env.DB.prepare(`UPDATE tasks SET tui_blocked=COALESCE(json_extract(j.value,'$.tui_blocked'),0),
+          close_steps_active_idx=COALESCE(json_extract(j.value,'$.close_step_idx'),close_steps_active_idx)
+          FROM json_each(?) j WHERE tasks.id=json_extract(j.value,'$.task_id') AND tasks.agent_id=?`).bind(active,id))
+      }
+      if (!agentEntries[i].active_tasks && statuses[i] === AgentStatus.WrappingUp && closeStepIdxs[i] >= 0) {
         stmts.push(
           env.DB.prepare('UPDATE tasks SET close_steps_active_idx = ? WHERE agent_id = ? AND status = ?')
             .bind(closeStepIdxs[i], id, TaskStatus.WrappingUp)
@@ -499,14 +573,22 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
   if (allIdle) {
     combinedVersion = await getCombinedInboxVersion(env, agentIds)
     const clientEtag = req.headers.get('If-None-Match')
-    if (clientEtag === `"${combinedVersion}"`) {
-      return hb304(combinedVersion)
+    if (clientEtag === `"${combinedVersion}"` && !agentRows.some(row => row?.reset_pending)) {
+      // A queue larger than the last offer page can remain pending after every task in
+      // that page has finished. An unchanged inbox version alone cannot certify idle.
+      const parallel = agentEntries.filter(e => e.active_tasks).map(e => e.id)
+      const waiting = parallel.length && await env.DB.prepare(`SELECT 1 FROM tasks WHERE status='pending' AND agent_id IN (SELECT value FROM json_each(?1))
+        UNION ALL SELECT 1 FROM sessions WHERE closed_at IS NULL AND agent_id IN (SELECT value FROM json_each(?1))
+        UNION ALL SELECT 1 FROM graph_attempts WHERE session_id IS NOT NULL AND termination_confirmed_at IS NULL AND status!='running'
+        AND agent_id IN (SELECT value FROM json_each(?1)) LIMIT 1`).bind(JSON.stringify(parallel)).first()
+      if (!waiting) return hb304(combinedVersion)
     }
   }
 
   // Process each agent independently (in parallel)
   const agentResponses = await Promise.all(
     agentIds.map((agentId, i) =>
+      agentEntries[i].active_tasks ? parallelHeartbeat(env,agentEntries[i],authResult[i].teamId,agentRows[i],now,nextPollMs) :
       processAgentHeartbeat(env, agentId, authResult[i].teamId, statuses[i], agentRows[i], now, nextPollMs, portalActives[i], daemonUptimesMs[i])
     )
   )
@@ -519,7 +601,7 @@ export async function batchHeartbeat(req: Request, env: Env, _ctx: unknown): Pro
 }
 
 export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon: DaemonContext): Promise<Response> {
-  const body = await req.json<{ task_id?: string; tmux_session?: string }>().catch(() => ({} as { task_id?: string; tmux_session?: string }))
+  const body = await req.json<{ task_id?: string; tmux_session?: string; daemon_device?: string }>().catch(() => ({} as { task_id?: string; tmux_session?: string; daemon_device?: string }))
   const { task_id, tmux_session } = body
   const agentId = daemon.agentId
   if (!task_id) return err('missing_fields', 400)
@@ -534,8 +616,8 @@ export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon:
   const now = Date.now()
 
   const openOps: D1PreparedStatement[] = [
-    env.DB.prepare('INSERT INTO sessions (id, task_id, agent_id, status, started_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(sessionId, task_id, agentId, SessionStatus.Running, now),
+    env.DB.prepare('INSERT INTO sessions (id, task_id, agent_id, status, started_at, daemon_device) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(sessionId, task_id, agentId, SessionStatus.Running, now, body.daemon_device ?? null),
     env.DB.prepare("UPDATE tasks SET status = ?, started_at = ? WHERE id = ?")
       .bind(TaskStatus.Running, now, task_id),
     env.DB.prepare('UPDATE agent_state SET current_task_id = ?, current_session = ?, mode = ?, tmux_session = ?, updated_at = ? WHERE agent_id = ?')
@@ -553,7 +635,10 @@ export async function sessionOpen(req: Request, env: Env, _ctx: unknown, daemon:
   }
 
   if (env.ACTION_GRAPH_ENABLED !== undefined) openOps.push(...await bindStatement(env.DB, task_id, agentId, sessionId))
-  await env.DB.batch(openOps)
+  try { await env.DB.batch(openOps) } catch (error) {
+    if (String(error).includes('agent capacity or task changed')) return err('agent_capacity_or_task_changed', 409)
+    throw error
+  }
 
   await notifyTeamMembers(env, task_id, `${task.agent_name} picked up a task`, task.subject)
   return json({ session_id: sessionId }, 201)
@@ -1213,7 +1298,7 @@ async function captureGraphResult(env: Env, sessionId: string, agentId: string, 
     await coordinator().command(attempt.graph_id,'tick',{team_id:attempt.team_id})
     return json({ok:true,close:true,session_id:sessionId,graph_reconciliation:true})
   }
-  const hold = canRunCloseSteps && EXECUTION_ROLES.includes(attempt.role)
+  const hold = canRunCloseSteps && (EXECUTION_ROLES as readonly string[]).includes(attempt.role)
   const graphId = await intake(env,sessionId,agentId,text,hold)
 
   if (graphId) {

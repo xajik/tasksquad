@@ -178,7 +178,8 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 
 	// Open session on the server.
 	sessResp, err := a.post(cfg, "/daemon/session/open", map[string]any{
-		"task_id": taskID,
+		"daemon_device": config.DeviceID(),
+		"task_id":       taskID,
 	})
 	if err != nil {
 		logger.Error(fmt.Sprintf("[%s] Session open failed: %v", a.Config.Name, err))
@@ -187,6 +188,13 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 			"agent_name": a.Config.Name,
 			"error":      "session_open_failed",
 		})
+		a.st.mu.Lock()
+		if a.st.runLog != nil {
+			a.st.runLog.Close()
+			a.st.runLog = nil
+		}
+		a.st.taskID = ""
+		a.st.mu.Unlock()
 		a.st.Transition(EventSpawnFailed) //nolint:errcheck
 		return
 	}
@@ -240,7 +248,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	}
 
 	// Let the provider write any hook/config files it needs.
-	if err := a.prov.Setup(a.Config.WorkDir, cfg.Hooks.Port, a.Config.ID, taskID); err != nil {
+	if err := provider.SetupForTask(a.prov, a.Config.WorkDir, cfg.Hooks.Port, a.Config.ID, taskID); err != nil {
 		logger.Warn(fmt.Sprintf("[%s] Provider setup warning: %v", a.Config.Name, err))
 	}
 
@@ -315,7 +323,7 @@ func (a *Agent) startTask(cfg *config.Config, task map[string]any, memoryRollup 
 	// TSQ_TASK_ID lets the agent invoke `tsq attach --task "$TSQ_TASK_ID" <path>`
 	// (see the tsq-attach-image system skill) without the task ID ever needing
 	// to appear in the prompt text itself.
-	provEnv := append(a.prov.Env(cfg.Hooks.Port), fmt.Sprintf("TSQ_TASK_ID=%s", taskID))
+	provEnv := append(a.prov.Env(cfg.Hooks.Port), fmt.Sprintf("TSQ_TASK_ID=%s", taskID), "TSQ_AGENT_ID="+a.Config.ID)
 	provEnv = append(provEnv, hookauth.Env(cfg.Hooks.Port)...)
 	if len(provEnv) > 0 {
 		cmd.Env = append(os.Environ(), provEnv...)

@@ -61,6 +61,9 @@ public actor DaemonEngine {
     private let onError: @Sendable (String) -> Void
     private var agents: [String: AgentRuntime] = [:]
     private var order: [String] = []
+    private var deviceID = ""
+    private func serverID(_ runtime: String) -> String { agents[runtime]?.configuration.id ?? runtime }
+    private var runtimeKeys: [String] { order + agents.keys.filter { $0 != serverID($0) } }
     private var tasks: [String: Task<Void, Never>] = [:]
     private var daemonLock: DaemonLock?
     private var poller: BatchPoller?
@@ -107,6 +110,7 @@ public actor DaemonEngine {
             throw ConfigurationError("Each configured agent must have a unique ID")
         }
         let lock = try DaemonLock(paths: paths)
+        deviceID = try paths.deviceID()
         let runtimes = configuration.agents.map { AgentRuntime(configuration: $0) }
         // Always listen, as Go does: stdout agents use it too (`tsq send-image`,
         // `tsq report`, supervisor verdicts, Portal-triggered supervisor runs).
@@ -182,9 +186,9 @@ public actor DaemonEngine {
     }
 
     private func supervisedAgents() -> [SupervisedAgent] {
-        order.compactMap { id in
+        runtimeKeys.compactMap { id in
             guard let agent = agents[id] else { return nil }
-            return SupervisedAgent(name: agent.configuration.name, agentID: id, mode: agent.state.mode.rawValue, taskID: agent.state.taskID,
+            return SupervisedAgent(name: agent.configuration.name, agentID: agent.configuration.id, mode: agent.state.mode.rawValue, taskID: agent.state.taskID,
                                    tmuxSession: agent.tmux?.name ?? "", sessionID: agent.state.sessionID, workDir: agent.configuration.workDir,
                                    logPath: agent.artifacts?.logURL.path ?? "", lastActivityAt: agent.lastActivityAt)
         }
@@ -280,7 +284,7 @@ public actor DaemonEngine {
 
     public func forceResourceSync() async { await resourceSync?.forceSync() }
     public func snapshots() -> [AgentSnapshot] {
-        order.compactMap { id in
+        runtimeKeys.compactMap { id in
             guard let agent = agents[id] else { return nil }
             return AgentSnapshot(id: id, name: agent.configuration.name, mode: agent.state.mode,
                                  taskID: agent.state.taskID, sessionID: agent.state.sessionID)
@@ -290,12 +294,39 @@ public actor DaemonEngine {
         guard running else { return [] }
         let uptime = startedAt.duration(to: .now).components
         let milliseconds = uptime.seconds * 1000 + uptime.attoseconds / 1_000_000_000_000_000
-        return order.compactMap { id in agents[id]?.state.heartbeat(agentID: id, uptimeMilliseconds: milliseconds) }
+        return order.compactMap { id in
+            guard var entry = agents[id]?.state.heartbeat(agentID: id, uptimeMilliseconds: milliseconds).object else { return nil }
+            entry["daemon_device"] = .string(deviceID)
+            entry["active_tasks"] = .array(agents.values.compactMap { agent in
+                guard agent.configuration.id == id, agent.state.mode != .idle, !agent.state.taskID.isEmpty else { return nil }
+                return agent.state.heartbeat(agentID: id, uptimeMilliseconds: milliseconds)
+            })
+            return .object(entry)
+        }
     }
     private func receive(_ response: [JSONValue]) {
         guard running else { return }
         for item in response {
             guard let id = item["agent_id"]?.string, let agent = agents[id] else { continue }
+            if item["reset"] == .bool(true) {
+                for key in runtimeKeys where key != id && serverID(key) == id {
+                    receive([.object(["agent_id": .string(key), "reset": .bool(true)])])
+                }
+            }
+            for update in item["task_updates"]?.array ?? [] {
+                guard let taskID = update["task_id"]?.string, let key = matchingAgent(id, taskID), var payload = update.object else { continue }
+                payload["agent_id"] = .string(key)
+                receive([.object(payload)])
+            }
+            if !pullingPaused {
+                for offer in item["offers"]?.array ?? [] {
+                    guard let task = offer["task"], let taskID = task["id"]?.string, !taskID.isEmpty,
+                          matchingAgent(id, taskID) == nil else { continue }
+                    let key = tasks[id] == nil && agents[id]?.state.mode == .idle ? id : id + "/" + taskID
+                    if key != id { agents[key] = AgentRuntime(configuration: agent.configuration) }
+                    beginTask(agentID: key, task: task, memoryRollup: offer["memory_rollup"]?.string ?? "")
+                }
+            }
             // Reset applies in any mode; a user close only while running or awaiting input — during
             // a close sequence (wrapping_up) Go ignores it and lets the steps finish.
             let userClose = item["close"] == .bool(true) && (agent.state.mode == .running || agent.state.mode == .waitingInput)
@@ -414,7 +445,7 @@ public actor DaemonEngine {
             try await artifacts?.writeLines(["# TaskSquad run log", "# agent=\(agent.configuration.name)  task_id=\(taskID)  subject=\(subject)",
                                              "# started=\(GoTime.rfc3339(Date()))", ""])
             let opened: JSONValue
-            do { opened = try await post(agentID: agentID, path: "/daemon/session/open", body: .object(["task_id": .string(taskID)])) }
+            do { opened = try await post(agentID: agentID, path: "/daemon/session/open", body: .object(["task_id": .string(taskID), "daemon_device": .string(deviceID)])) }
             catch {
                 analytics.track("task_spawn_failed", ["task_id": .string(taskID), "agent_name": .string(agent.configuration.name),
                                                       "error": .string("session_open_failed")])
@@ -425,13 +456,13 @@ public actor DaemonEngine {
             agents[agentID]?.sessionOpenedAt = Date()
             // Raw PTY bytes stream to the portal's live terminal (Go: dialTerminalRelay after session open).
             if let token = try? await tokens.token(forceRotation: false) {
-                agents[agentID]?.relay = TerminalRelay.dial(serverURL: relayServerURL, token: token, agentID: agentID, sessionID: sessionID)
+                agents[agentID]?.relay = TerminalRelay.dial(serverURL: relayServerURL, token: token, agentID: agent.configuration.id, sessionID: sessionID)
                 if agents[agentID]?.relay != nil { Log.info("[terminal relay] connected for session \(sessionID)") }
             }
-            try await artifacts?.event(["type": "task_start", "task_id": taskID, "agent": agent.configuration.name, "agent_id": agentID,
+            try await artifacts?.event(["type": "task_start", "task_id": taskID, "agent": agent.configuration.name, "agent_id": serverID(agentID),
                                         "session_id": sessionID, "subject": subject, "log_path": artifacts?.logURL.path ?? ""])
             let messages = await InboundAttachments(api: api, tokens: tokens, report: { [weak self] in self?.fail($0) })
-                .materialize(task["messages"]?.array ?? [], agentID: agentID, workDir: agent.configuration.workDir)
+                .materialize(task["messages"]?.array ?? [], agentID: serverID(agentID), workDir: agent.configuration.workDir)
             try Task.checkCancellation()
             guard agents[agentID]?.state.generation == generation else { throw CancellationError() }
             for message in messages {
@@ -439,7 +470,7 @@ public actor DaemonEngine {
             }
             let provider = agent.provider
             if provider.usesHooks {
-                do { try provider.setup(workDir: agent.configuration.workDir, hooksPort: configuration.hooks.port, agentID: agentID, taskID: taskID, hookToken: hookCapability) }
+                do { try provider.setupForTask(workDir: agent.configuration.workDir, hooksPort: configuration.hooks.port, agentID: serverID(agentID), taskID: taskID, hookToken: hookCapability) }
                 catch { Log.warn("[\(name)] Provider setup warning: \(error.localizedDescription)") }
             }
             // A resumed CLI session already holds the thread, memory and KB note,
@@ -468,10 +499,11 @@ public actor DaemonEngine {
             let parts = agent.configuration.command.split(whereSeparator: \.isWhitespace).map(String.init)
             guard let executable = parts.first else { throw ConfigurationError("Agent command is empty") }
             var arguments = Array(parts.dropFirst()) + provider.extraArguments
-                + (try provider.setupArguments(hooksPort: configuration.hooks.port, agentID: agentID, taskID: taskID))
+                + (try provider.setupArguments(hooksPort: configuration.hooks.port, agentID: serverID(agentID), taskID: taskID))
                 + subAgent
             if let resumeID { arguments = provider.resumeArguments(arguments, id: resumeID) }
             var environment = environment
+            environment["TSQ_AGENT_ID"] = agent.configuration.id
             environment["TSQ_TASK_ID"] = taskID
             environment["TSQ_HOOK_TOKEN"] = hookCapability
             environment.merge(provider.environment) { _, new in new }
@@ -511,7 +543,11 @@ public actor DaemonEngine {
         let cleanup = Task { await self.complete(agentID: agentID, generation: generation, status: status) }
         await cleanup.value
         try? await artifacts?.close()
-        if agents[agentID]?.state.generation == generation { tasks[agentID] = nil; agents[agentID]?.artifacts = nil }
+        if agents[agentID]?.state.generation == generation {
+            tasks[agentID] = nil
+            agents[agentID]?.artifacts = nil
+            if agentID != serverID(agentID) { agents.removeValue(forKey: agentID) }
+        }
     }
 
     /// Ports the tmux branch of agent/lifecycle.go startTask: the CLI runs in a
@@ -527,6 +563,7 @@ public actor DaemonEngine {
         let session = try TmuxTaskSession(tmux: tmux, sessionID: sessionID)
         let formatted = provider.formatPrompt(prompt)
         var sessionEnvironment = provider.environment
+        sessionEnvironment["TSQ_AGENT_ID"] = environment["TSQ_AGENT_ID"]
         sessionEnvironment["TSQ_TASK_ID"] = environment["TSQ_TASK_ID"]
         sessionEnvironment["TSQ_HOOK_TOKEN"] = environment["TSQ_HOOK_TOKEN"]
         // An already-running tmux server would otherwise supply its own PATH.
@@ -690,14 +727,14 @@ public actor DaemonEngine {
         var messageID = "", r2LogKey = ""
         do {
             let response = try await post(agentID: agentID, path: "/daemon/session/close", body: .object([
-                "session_id": .string(sessionID), "agent_id": .string(agentID),
+                "session_id": .string(sessionID), "agent_id": .string(serverID(agentID)),
                 "status": .string(status.rawValue), "final_text": .string(finalText),
             ]))
             messageID = response["message_id"]?.string ?? ""
             r2LogKey = response["r2_log_key"]?.string ?? ""
             Log.debug("[\(agentName)] Session close response: \(Self.goMap(response))")
         } catch { fail("[\(agentName)] Session close error: \(error.localizedDescription)") }
-        let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: agentID)
+        let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: serverID(agentID))
         let log = capture.isEmpty ? agent.output.logContent : capture
         do {
             if let key = try await uploader.attachLog(sessionID: sessionID, content: log) {
@@ -730,13 +767,13 @@ public actor DaemonEngine {
         let sessionID = agent.state.sessionID
         do {
             _ = try await post(agentID: agentID, path: "/daemon/session/close", body: .object([
-                "session_id": .string(sessionID), "agent_id": .string(agentID),
+                "session_id": .string(sessionID), "agent_id": .string(serverID(agentID)),
                 "status": .string(CompletionStatus.detached.rawValue), "resume_failed": .bool(resumeFailed),
             ]))
         } catch { fail("[\(agentName)] Session detach error: \(error.localizedDescription)") }
         let log = agent.output.logContent
         if !log.isEmpty {
-            let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: agentID)
+            let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: serverID(agentID))
             do { try await uploader.attachLog(sessionID: sessionID, content: log) } catch { Log.warn("[\(agentName)] Upload failed: \(error.localizedDescription)") }
         }
         try? await agent.artifacts?.event(["type": "task_end", "status": CompletionStatus.detached.rawValue, "final_text": ""])
@@ -877,7 +914,7 @@ public actor DaemonEngine {
         var response: JSONValue?
         do {
             response = try await post(agentID: agentID, path: "/daemon/session/notify", body: .object(withResume(agentID, [
-                "session_id": .string(sessionID), "agent_id": .string(agentID), "message": .string(text),
+                "session_id": .string(sessionID), "agent_id": .string(serverID(agentID)), "message": .string(text),
                 // This daemon can run close steps after a graph result: the server then keeps the session open
                 // and returns the steps instead of asking for an immediate close (Go: StopAndPause).
                 "close_steps": .bool(true),
@@ -887,7 +924,7 @@ public actor DaemonEngine {
         guard let latest = agents[agentID], latest.state.generation == generation, !latest.completionRequested, !latest.state.completing else { return }
         try? await latest.artifacts?.event(["type": "agent_turn", "body": text, "transcript_path": transcriptPath], omitEmpty: ["transcript_path"])
         analytics.track("task_waiting_for_input", ["task_id": .string(latest.state.taskID), "agent_name": .string(latest.configuration.name)])
-        let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: agentID)
+        let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: serverID(agentID))
         let log = capture.isEmpty ? latest.output.logContent : capture
         Task {
             await self.attachTranscript(uploader: uploader, sessionID: sessionID, messageID: response?["message_id"]?.string ?? "",
@@ -941,7 +978,7 @@ public actor DaemonEngine {
             let message = JSONValue.object(["id": response["reply_message_id"] ?? .string(""),
                                              "body": .string(reply), "attachments": response["reply_attachments"] ?? .array([])])
             let materialized = await InboundAttachments(api: api, tokens: tokens, report: { [weak self] in self?.fail($0) })
-                .materialize([message], agentID: agentID, workDir: agent.configuration.workDir)
+                .materialize([message], agentID: serverID(agentID), workDir: agent.configuration.workDir)
             let reply = materialized.first?["body"]?.string ?? reply
             guard agents[agentID]?.state.generation == agent.state.generation,
                   agents[agentID]?.tmux?.name == session.name, agents[agentID]?.completionRequested == false else { return }
@@ -1043,7 +1080,7 @@ public actor DaemonEngine {
                 Log.debug("[hooks] Ignoring codex title-generation turn (thread=\(thread))")
                 return .json(.object(["status": .string("ignored")]))
             }
-            guard claimCodexTurn(agentID: agentParam, taskID: taskParam, thread: thread, turn: payload["turn-id"]?.string ?? "") else {
+            guard let key = matchingAgent(agentParam, taskParam), claimCodexTurn(agentID: key, taskID: taskParam, thread: thread, turn: payload["turn-id"]?.string ?? "") else {
                 return .json(.object(["status": .string("ignored")]))
             }
             let event = HookAdapter.parseStop(provider: "codex", body: request.body, isFailure: false)
@@ -1168,8 +1205,8 @@ public actor DaemonEngine {
             body = (try? JSONEncoder().encode(JSONValue.object(["hook_event_name": .string(event), "tool_name": .string(query["tool"] ?? "")]))) ?? Data()
         }
         // Only the agent's current task: a hook after close must not start an orphan collector.
-        if !agentParam.isEmpty, !taskParam.isEmpty, body.count <= 4 << 20, agents[agentParam]?.state.taskID == taskParam {
-            let key = agentParam + "/" + taskParam
+        if !agentParam.isEmpty, !taskParam.isEmpty, body.count <= 4 << 20, let runtime = matchingAgent(agentParam, taskParam) {
+            let key = runtime + "/" + taskParam
             let lifecycle = lifecycles[key] ?? SessionLifecycle()
             lifecycles[key] = lifecycle
             lifecycle.hook(body, now: Date())
@@ -1223,15 +1260,15 @@ public actor DaemonEngine {
             "session_id": .string(sessionID), "type": .string("output"),
             "message": .string(caption.isEmpty ? "📎 Attached image" : caption)]))
         guard let messageID = response["message_id"]?.string, !messageID.isEmpty else { throw ConfigurationError("no message_id in response") }
-        let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: agentID)
+        let uploader = ArtifactUploader(api: api, tokens: tokens, agentID: serverID(agentID))
         try await uploader.attach(sessionID: sessionID, messageID: messageID, filename: url.lastPathComponent, data: content, imageMIMEType: mime)
         Log.info("[\(name(agentID))] Sent image \(path) (message \(messageID))")
     }
 
     /// Hooks are routed by agent ID and rejected when their task is stale.
     private func matchingAgent(_ agentParam: String, _ taskParam: String) -> String? {
-        order.first { id in
-            guard agentParam.isEmpty || id == agentParam, let agent = agents[id] else { return false }
+        runtimeKeys.first { id in
+            guard let agent = agents[id], agentParam.isEmpty || id == agentParam || agent.configuration.id == agentParam else { return false }
             return taskParam.isEmpty || agent.state.taskID == taskParam
         }
     }
@@ -1299,8 +1336,9 @@ public actor DaemonEngine {
         guard request.body.count <= 16 * 1024, let body = try? JSONDecoder().decode(TerminalRequest.self, from: request.body),
               !body.agentID.isEmpty, !body.taskID.isEmpty, !body.session.isEmpty else { return .init(status: 400) }
         guard agents[body.agentID] != nil else { return .init(status: 404) }
+        guard let key = matchingAgent(body.agentID, body.taskID) else { return .init(status: 409) }
         if request.path == "/hooks/terminal/close" {
-            guard await requestCompletion(agentID: body.agentID, status: .closed, expectedTask: body.taskID, expectedSession: body.session)
+            guard await requestCompletion(agentID: key, status: .closed, expectedTask: body.taskID, expectedSession: body.session)
             else { return .init(status: 409) }
             await forcePoll()
             return .init(status: 204)
@@ -1308,7 +1346,7 @@ public actor DaemonEngine {
         let data = body.data ?? Data(), submit = body.submit ?? false, pane = body.pane ?? ""
         guard !data.isEmpty, data.count <= 4096, !submit || data.contains(10) || data.contains(13) else { return .init(status: 409) }
         func active() -> TmuxTaskSession? {
-            guard let agent = agents[body.agentID], agent.state.taskID == body.taskID, !agent.completionRequested, !agent.state.completing,
+            guard let agent = agents[key], agent.state.taskID == body.taskID, !agent.completionRequested, !agent.state.completing,
                   agent.state.mode == .running || agent.state.mode == .waitingInput,
                   let session = agent.tmux, session.name == body.session else { return nil }
             return session
@@ -1318,8 +1356,8 @@ public actor DaemonEngine {
         // tmux can trigger a completion hook. Never roll back after a write error:
         // bytes may already have reached the provider.
         guard active() != nil else { return .init(status: 409) }
-        if submit, active() != nil, agents[body.agentID]?.state.mode == .waitingInput {
-            try? agents[body.agentID]?.state.userReplied()
+        if submit, active() != nil, agents[key]?.state.mode == .waitingInput {
+            try? agents[key]?.state.userReplied()
         }
         do { try await session.sendBytes(data, pane: pane) } catch { report(error); return .init(status: 409) }
         if submit { await forcePoll() }
@@ -1393,12 +1431,12 @@ public actor DaemonEngine {
 
     private func post(agentID: String, path: String, body: JSONValue) async throws -> JSONValue {
         let token = try await tokens.token(forceRotation: false)
-        let response = try await api.send(path: path, token: token, agentID: agentID, body: body)
+        let response = try await api.send(path: path, token: token, agentID: serverID(agentID), body: body)
         return response.data.isEmpty ? .object([:]) : try JSONDecoder().decode(JSONValue.self, from: response.data)
     }
     private func get(agentID: String, path: String) async throws -> JSONValue {
         let token = try await tokens.token(forceRotation: false)
-        let response = try await api.send(method: "GET", path: path, token: token, agentID: agentID)
+        let response = try await api.send(method: "GET", path: path, token: token, agentID: serverID(agentID))
         return response.data.isEmpty ? .object([:]) : try JSONDecoder().decode(JSONValue.self, from: response.data)
     }
     private nonisolated func report(_ error: Error) { fail(error.localizedDescription) }

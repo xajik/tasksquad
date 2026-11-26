@@ -49,6 +49,58 @@ private actor WorkerFixture {
 }
 
 @MainActor final class EngineIntegrationTests: PlatformTestCase {
+    func testOneAgentRunsTwoOfferedProcessesAtOnce() async throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let script = home.appendingPathComponent("provider")
+        try Data("""
+        #!/bin/sh
+        touch "$TSQ_TASK_ID.ready"
+        while [ ! -f first.ready ] || [ ! -f second.ready ]; do sleep 0.05; done
+        echo "$TSQ_TASK_ID"
+        """.utf8).write(to: script)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        let done = expectation(description: "both providers passed the barrier")
+        done.expectedFulfillmentCount = 2
+        let server = try LocalHTTPServer { request in
+            let body = (try? JSONDecoder().decode(JSONValue.self, from: request.body)) ?? .null
+            switch request.path {
+            case "/daemon/heartbeat/batch":
+                let offers: [JSONValue] = ["first", "second"].map { .object(["task": .object(["id": .string($0), "subject": .string($0)])]) }
+                return .json(.object(["agents": .array([.object(["agent_id": .string("agent"), "offers": .array(offers)])])]))
+            case "/daemon/session/open":
+                guard request.headers["x-tsq-agent"] == "agent" else { return .init(status: 403) }
+                return .json(.object(["session_id": body["task_id"]!]))
+            case "/daemon/session/close":
+                XCTAssertEqual(body["status"], .string("closed"))
+                XCTAssertEqual(body["final_text"], body["session_id"])
+                done.fulfill()
+                return .json(.object([:]))
+            default: return .init(status: 404)
+            }
+        }
+        let port = try await server.start()
+        let hooks = try await freeLoopbackPort()
+        let config = try DaemonConfiguration.parse("""
+        [server]
+        url = 'http://127.0.0.1:\(port)'
+        [hooks]
+        port = \(hooks)
+        [[agents]]
+        id = 'agent'
+        name = 'Test'
+        command = '\(script.path)'
+        provider = 'stdout'
+        work_dir = '\(home.path)'
+        """)
+        let engine = DaemonEngine(configuration: config, paths: .init(home: home), tokens: FixtureTokens())
+        try await engine.start()
+        await fulfillment(of: [done], timeout: 10)
+        await engine.stop()
+        await server.stop()
+    }
+
     func testDuplicateAgentIDsFailGracefullyInsteadOfTrappingTheAgentsDictionary() async throws {
         // parse() accepts duplicate IDs (matching Go); Dictionary(uniqueKeysWithValues:)
         // in start() would otherwise trap on them instead of failing gracefully.

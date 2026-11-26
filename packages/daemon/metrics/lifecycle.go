@@ -128,19 +128,13 @@ func Live(agentID, taskID string) *Lifecycle {
 	return l
 }
 
-// Take removes and returns the lifecycle for agentID's taskID (nil if no hook
-// ever fired). It also drops any other entry for agentID: those belong to
-// tasks the agent has already left, and would otherwise never be collected.
+// Take releases only this task's collector; other tasks on the agent may still be running.
 func Take(agentID, taskID string) *Lifecycle {
 	registryMu.Lock()
 	defer registryMu.Unlock()
-	l := registry[key(agentID, taskID)]
-	prefix := agentID + "/"
-	for k := range registry {
-		if strings.HasPrefix(k, prefix) {
-			delete(registry, k)
-		}
-	}
+	k := key(agentID, taskID)
+	l := registry[k]
+	delete(registry, k)
 	return l
 }
 

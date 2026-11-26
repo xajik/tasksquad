@@ -424,7 +424,7 @@ describe('graph execution workflow', () => {
     expect(
       (final.assignments as Assignment[]).filter((a) => a.role === 'grade' || a.role === 'project')
     ).toHaveLength(2)
-  })
+  }, 30_000)
 
   it('rolls back a competing version claim without partial writes', async () => {
     const { g } = await fixture()

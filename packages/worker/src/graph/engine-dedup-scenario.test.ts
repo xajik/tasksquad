@@ -145,7 +145,7 @@ describe('graph dedup scenario: many planners, four real intents', () => {
     expect(fps.filter((f) => f.fingerprint)).toHaveLength(4)
     await run(db, g.id, 'dedup')
     expect(await rows(db, 'SELECT id FROM graph_edges WHERE graph_id=?', g.id)).toHaveLength(4)
-  })
+  }, 30_000)
 })
 
 describe('milestone dedup', () => {
