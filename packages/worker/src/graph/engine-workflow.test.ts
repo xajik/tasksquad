@@ -305,6 +305,14 @@ describe('graph execution workflow', () => {
         Date.now()
       )
     ])
+    const view = await snapshot(db, g, true, true)
+    expect(view.nodes).toEqual(expect.arrayContaining([expect.objectContaining({
+      id: inactive.id, state: 'deactivated', reason: 'test',
+      state_history: [
+        expect.objectContaining({ state: 'active', reason: null }),
+        expect.objectContaining({ state: 'deactivated', reason: 'test' })
+      ]
+    })]))
     await run(db, g.id, 'run')
     await tick(env(), g.id)
     await deliver(

@@ -58,9 +58,12 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = 
     evaluations,
     proposals
   ] = await Promise.all([
-    rows(
+    rows<Data & { state_history: string }>(
       db,
-      `SELECT n.*,s.state,s.reason,s.created_at AS state_changed_at FROM graph_nodes n LEFT JOIN graph_node_states s ON s.id=(SELECT MAX(id) FROM graph_node_states WHERE node_id=n.id) WHERE n.graph_id=?`,
+      `SELECT n.*, (
+         SELECT json_group_array(json_object('id',id,'state',state,'reason',reason,'created_at',created_at))
+         FROM (SELECT id,state,reason,created_at FROM graph_node_states WHERE node_id=n.id ORDER BY id)
+       ) AS state_history FROM graph_nodes n WHERE n.graph_id=?`,
       g.id
     ),
     rows(
@@ -190,10 +193,18 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = 
   return {
     ...g,
     config: c,
-    nodes: nodes.map((n) => ({
-      ...n,
-      tags: tags.filter((t) => t.node_id === (n as Data).id).map((t) => t.tag)
-    })),
+    nodes: nodes.map((n) => {
+      const history = JSON.parse(n.state_history) as { id: number; state: string; reason: string | null; created_at: number }[]
+      const latest = history.at(-1)
+      return {
+        ...n,
+        state_history: history,
+        state: latest?.state ?? null,
+        reason: latest?.reason ?? null,
+        state_changed_at: latest?.created_at ?? null,
+        tags: tags.filter((t) => t.node_id === n.id).map((t) => t.tag)
+      }
+    }),
     resource_links: links,
     edges,
     // The page never reads the role template (~10 KB per assignment), so the interactive
