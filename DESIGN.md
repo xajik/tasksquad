@@ -88,15 +88,15 @@ Use these for task, agent, and system state. Each status has a **foreground** (i
 
 #### Inbox and graph workflow accents
 
-Use these foregrounds on the corresponding light or dark surface. Tint badges with 10% foreground mixed into the card surface. Keep routine panels neutral. Retain the phase, status, or score label when applying color.
+Use these foregrounds on the corresponding light or dark surface. Tint badges with 14% foreground mixed into the card surface. Keep routine panels neutral. Retain the phase, status, or score label when applying color.
 
 | Role | Light | Dark |
 |---|---|---|
-| Success, execution, verified evidence | `#426451` | `#9AB3A0` |
-| Information, plan phase, goal projection | `#405E7D` | `#9BAFC6` |
-| Waiting, recovery, review requested | `#78572F` | `#C4AB88` |
-| Grading phase, proposed-state outline | `#655375` | `#B6A4C4` |
-| Errors and destructive feedback | `#884C50` | `#C6A0A1` |
+| Success, execution, verified evidence | `#15803D` | `#4ADE80` |
+| Information, plan phase, goal projection | `#1D4ED8` | `#60A5FA` |
+| Waiting, recovery, review requested | `#B45309` | `#FBBF24` |
+| Grading phase, proposed-state outline | `#7C3AED` | `#A78BFA` |
+| Errors and destructive feedback | `#DC2626` | `#F87171` |
 
 ### 2.4 Illustration / category accents
 

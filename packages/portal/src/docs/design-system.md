@@ -39,15 +39,15 @@ Choose a color by its role. Pair each filled surface with its matching foregroun
 
 ## Workflow highlights
 
-Use this quieter palette for graph and inbox work. Keep the status word, icon, score, or line pattern visible. On a busy heatmap, give a phase badge an opaque background made from 10% of its foreground mixed into the card color. Its text then stays legible across adjacent cells.
+Use this bright palette for graph and inbox work. Keep the status word, icon, score, or line pattern visible. On a busy heatmap, give a phase badge an opaque background made from 14% of its foreground mixed into the card color. Its text then stays legible across adjacent cells.
 
 | Role | Light | Dark | Meaning |
 | --- | --- | --- | --- |
-| Success | #426451 | #9AB3A0 | Execution, verified evidence, or a successful review |
-| Information | #405E7D | #9BAFC6 | Planning phase, informational controls, or a goal projection |
-| Attention | #78572F | #C4AB88 | A reply, review, or recovery needs attention |
-| Violet | #655375 | #B6A4C4 | Grading badge or dashed outline of a proposed state |
-| Danger | #884C50 | #C6A0A1 | An error or destructive consequence |
+| Success | #15803D | #4ADE80 | Execution, verified evidence, or a successful review |
+| Information | #1D4ED8 | #60A5FA | Planning phase, informational controls, or a goal projection |
+| Attention | #B45309 | #FBBF24 | A reply, review, or recovery needs attention |
+| Violet | #7C3AED | #A78BFA | Grading badge or dashed outline of a proposed state |
+| Danger | #DC2626 | #F87171 | An error or destructive consequence |
 
 These samples use the live tokens, so they follow the light or dark theme.
 
