@@ -404,27 +404,6 @@ export function GoalState({
           )}
         </div>
       </DashboardPanel>
-      <DashboardPanel
-        title="Planning predictions"
-        className="xl:col-span-2"
-        description="Expected local quality proposed by planners, on a 0–1 scale. Estimates are not verified outcomes or business-success probabilities."
-      >
-        <div className="max-h-80 overflow-y-auto divide-y">
-          {graph.edges
-            .filter((e) => e.expected_score !== null)
-            .map((e) => (
-              <div key={e.id} className="flex items-center justify-between gap-4 py-3 text-sm">
-                <button className="text-left hover:underline" onClick={() => inspect(e.id)}>
-                  {e.title}
-                </button>
-                <span className="shrink-0 font-mono">Expected quality {score(e.expected_score)}</span>
-              </div>
-            ))}
-          {!graph.edges.some((e) => e.expected_score !== null) && (
-            <Empty>No planning predictions have been recorded.</Empty>
-          )}
-        </div>
-      </DashboardPanel>
     </div>
   )
 }

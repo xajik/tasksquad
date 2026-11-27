@@ -29,6 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from '@/components/ui/alert-dialog'
+import { GraphPredictionTree } from '@/components/GraphPredictionTree'
 import { GraphCanvas } from '@/components/GraphCanvas'
 import { CreateGraphDialog, CloneDialog, SettingsDialog, ResourceDialog } from '@/components/GraphDialogs'
 import { GraphWorkSection, type Confirming } from '@/components/GraphWorkSection'
@@ -469,7 +470,10 @@ export function Graphs({
               now={now}
             />
             {view === 'goals' && (
-              <GoalState graph={current} observations={observations} inspect={inspect} now={now} />
+              <>
+                <GraphPredictionTree key={current.id} graph={current} observations={observations} agents={agents} inspect={inspect} />
+                <GoalState graph={current} observations={observations} inspect={inspect} now={now} />
+              </>
             )}
             {(view === 'home' || view === 'inbox') && (
               <p
