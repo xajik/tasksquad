@@ -12,6 +12,7 @@ import {
   teardownGraphHarness,
 } from './test-harness.js'
 import { graph, configuration, sql, rows, assignment, nodeStatements, type Assignment, type Result } from './store.js'
+import { templates } from './contracts.js'
 import { resource } from './mutations.js'
 import { materialize, embeddingChunks } from './outbox.js'
 import { search } from './search.js'
@@ -266,6 +267,49 @@ describe('graph inbox, review and access', () => {
     expect(await rows(db, "SELECT * FROM graph_serial_queue WHERE work_id=? AND status='pending'", followup.id)).toHaveLength(1)
   })
 
+  it('injects YOLO alongside each role skill, including repairs, only for opted-in graphs', async () => {
+    const { g, agent } = await fixture('yolo')
+    await sql(db, `INSERT INTO skills(id,team_id,name,content,created_at,updated_at)
+      VALUES(?,?,'tsq-graph-grade','Custom grading instructions',0,0)`, crypto.randomUUID(), g.team_id).run()
+    const roles = [...Object.keys(templates) as (keyof typeof templates)[], 'repair'] as const
+    for (const role of roles) {
+      const next = await assignment(db, g, role, {}, { originalRole: 'execute' })
+      await db.batch(next.statements)
+      const stored = (await sql(db, 'SELECT * FROM graph_assignments WHERE id=?', next.id).first<Assignment>())!
+      const message = await sessionFraming(db, g, stored, agent)
+      expect(message).toContain('/tsq-graph-yolo')
+      expect(message).toContain('try another within your role')
+      expect(message).not.toContain('needs_input')
+      if (role === 'grade') expect(message).toContain('Custom grading instructions')
+    }
+    for (const mode of [false, true, 'quality_50'] as const) {
+      const other = await fixture(mode)
+      const next = await assignment(db, other.g, 'execute', {})
+      await db.batch(next.statements)
+      const template = await sql(db, 'SELECT template FROM graph_assignments WHERE id=?', next.id).first<string>('template')
+      expect(template).not.toContain('tsq-graph-yolo')
+      expect(template).toContain('needs_input')
+    }
+  })
+
+  it('repairs a YOLO approval request and auto-accepts a factual blocker without prompting the owner', async () => {
+    const { g, agent, assignmentId, user } = await preparedExecution('yolo')
+    const blocked = { outcome: 'blocked', title: 'Resource unavailable', description: '', body: '', evidence: [], actual_cost: 0 }
+    const { attempt } = await deliver(g.id, agent, JSON.stringify({
+      ...blocked, needs_input: { title: 'Approve access?', fields: [] }
+    }))
+    await tick(env(), g.id)
+    expect(await sql(db, 'SELECT status FROM graph_results WHERE attempt_id=?', attempt.id).first('status')).toBe('invalid')
+    const repaired = await deliver(g.id, agent, JSON.stringify(blocked))
+    await tick(env(), g.id)
+    expect(await sql(db, 'SELECT status FROM graph_results WHERE attempt_id=?', repaired.attempt.id).first('status')).toBe('accepted')
+    expect(await sql(db, 'SELECT status FROM graph_assignments WHERE id=?', assignmentId).first('status')).toBe('blocked')
+    expect(await sql(db, 'SELECT status FROM tasks WHERE id=?', attempt.task_id).first('status')).toBe('done')
+    // A daemon can still be finishing close steps after its result has arrived.
+    await sql(db, "UPDATE tasks SET status='running' WHERE id=?", attempt.task_id).run()
+    expect(await graphInboxTask(env(), attempt.task_id, user)).toMatchObject({ can_reply: false })
+  })
+
   it('frames a first step with repo preparation and execution steps with the end-of-session skills', async () => {
     const { g, agent } = await fixture(false)
     const ex = await assignment(db, g, 'execute', { plan: {} })
@@ -292,8 +336,8 @@ describe('graph inbox, review and access', () => {
     expect(later).not.toContain('/tsq-graph-prepare-repo')
   })
 
-  it('keeps an execution session open for its end-of-session steps and closes it only when the daemon does', async () => {
-    const { g, agent, team, user } = await fixture(false)
+  it.each([false, 'yolo'] as const)('runs each end-of-session skill before closing (review=%s)', async (mode) => {
+    const { g, agent, team, user } = await fixture(mode)
     const handlerEnv = {
       ...env(),
       GRAPH_COORDINATOR: { idFromName: (s: string) => s, get: () => ({ command: async () => undefined }) }
@@ -335,7 +379,11 @@ describe('graph inbox, review and access', () => {
     // A daemon that can: the result is recorded, the steps are returned, and the session stays open and busy.
     const held = await open(true)
     const res = await sessionNotify(post('/daemon/session/notify', { session_id: held.session, message: 'outcome: "complete"', close_steps: true }), handlerEnv, {}, daemon)
-    expect(await res.json()).toMatchObject({ close: false, close_steps: ['/tsq-end-session-learning', '/tsq-memory'], graph_result: true })
+    expect(await res.json()).toMatchObject({
+      close: false,
+      close_steps: ['/tsq-end-session-learning', '/tsq-memory'],
+      graph_result: true
+    })
     expect(await state(held)).toEqual({ session: 'running', task: 'running', busy: true })
     expect(await rows(db, "SELECT 1 FROM graph_results r JOIN graph_attempts t ON t.id=r.attempt_id WHERE t.task_id=? AND t.status='completed'", held.task)).toHaveLength(1)
 

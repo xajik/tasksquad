@@ -142,15 +142,22 @@ export async function commit(
 
 /** Role identity comes from the team's Skills page (`tsq-graph-<role>`, team copy beats the default);
  * the built-in template instruction is only the fallback. */
-export async function roleInstruction(db: D1Database, g: Graph, role: Role): Promise<string | undefined> {
+async function graphSkill(db: D1Database, teamId: string, role: Role | 'yolo'): Promise<string | undefined> {
   const row = await sql(
     db,
     `SELECT content FROM skills WHERE name=? AND (team_id=? OR is_default=1)
      ORDER BY (team_id IS NOT NULL) DESC LIMIT 1`,
     `tsq-graph-${role}`,
-    g.team_id
+    teamId
   ).first<{ content: string }>()
   return row ? skillInstruction(row.content) || undefined : undefined
+}
+
+/** Include the instructions inline so agents can follow them even before their local skills sync. */
+async function yoloInstruction(db: D1Database, teamId: string): Promise<string> {
+  const skill = await graphSkill(db, teamId, 'yolo')
+  const mode = 'Apply /tsq-graph-yolo to this entire step. All actions within the assigned sandbox and task scope are preapproved. Never ask for permission or confirmation.'
+  return skill ? `${mode}\n${skill}` : mode
 }
 
 export async function assignment(
@@ -167,8 +174,12 @@ export async function assignment(
   } = {}
 ): Promise<{ id: string; statements: D1PreparedStatement[] }> {
   const c = await configuration(db, g)
-  const assignmentId = id(),
-    body = prompt(role, input, links.originalRole, await roleInstruction(db, g, role))
+  const assignmentId = id()
+  const [instruction, yolo] = await Promise.all([
+    graphSkill(db, g.team_id, role),
+    c.policy.review === 'yolo' ? yoloInstruction(db, g.team_id) : undefined
+  ])
+  const body = prompt(role, input, links.originalRole, instruction, yolo)
   return {
     id: assignmentId,
     statements: [

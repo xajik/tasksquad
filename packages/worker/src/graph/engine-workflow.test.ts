@@ -496,8 +496,8 @@ describe('graph execution workflow', () => {
     expect(finished.stage).toBe(role === 'grade' ? 'project' : 'done')
   }, 30_000)
 
-  it('cancels a failed review without deactivating its target or inventing a grade', async () => {
-    const { g, agent } = await preparedExecution()
+  it.each([false, 'quality_50'] as const)('cancels a failed review without inventing a grade (review=%s)', async (mode) => {
+    const { g, agent } = await preparedExecution(mode)
     await deliver(g.id, agent, JSON.stringify({ outcome: 'complete', title: 'Measured', description: '', body: '', evidence: [], actual_cost: 0 }))
     await tick(env(), g.id)
     const [review] = await rows<Assignment>(db, "SELECT * FROM graph_assignments WHERE graph_id=? AND role='grade'", g.id)
@@ -511,6 +511,8 @@ describe('graph execution workflow', () => {
     expect((await rows<{ status: string }>(db, 'SELECT status FROM graph_grading WHERE assignment_id=?', review.id))[0].status).toBe('cancelled')
     expect(await rows(db, "SELECT * FROM graph_node_states WHERE graph_id=? AND state='deactivated'", g.id)).toHaveLength(0)
     expect(await rows(db, 'SELECT * FROM graph_evaluations WHERE graph_id=?', g.id)).toHaveLength(0)
+    const execution = await sql(db, 'SELECT status FROM graph_results WHERE id=(SELECT execution_result_id FROM graph_grading WHERE assignment_id=?)', review.id).first()
+    expect(execution).toEqual({ status: mode === 'quality_50' ? 'rejected' : 'accepted' })
     const other = await fixture()
     await expect(run(db, other.g.id, 'retry_review', { assignment_id: review.id })).rejects.toThrow('blocked or failed')
   })

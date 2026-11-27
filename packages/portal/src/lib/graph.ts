@@ -9,7 +9,7 @@ export interface GraphPolicy {
   fallback: string | null
   capacity: number
   threshold: number
-  review: boolean | 'quality_50'
+  review: boolean | 'quality_50' | 'yolo'
   deadline_ms: number
   max_attempts: number
   attempt_budget: number

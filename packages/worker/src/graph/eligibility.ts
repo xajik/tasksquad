@@ -92,8 +92,10 @@ export async function eligibility(
     if (!parent) return wait('missing_parent', 'Recovery parent is missing.')
     effective = parent
   }
+  let resultAgents: string[] = []
   if (['grade', 'project', 'continue'].includes(effective.role)) {
     const input = JSON.parse(effective.input)
+    if (input.operation === 'result_acceptance') resultAgents = input.result_agent_ids
     const work = String(input.serial_work_id ?? input.execution_result_id ?? effective.id)
     const head = await queueHead(ctx)
     if (head?.work_id !== work)
@@ -188,7 +190,11 @@ export async function eligibility(
       why.push(`${candidate}: reserved by a ${taken.kind} (graph ${taken.graph_id})`)
       continue
     }
-    if (a.role === 'execute' && candidate === c.policy.grader) {
+    if (resultAgents.includes(candidate)) {
+      why.push(`${candidate}: produced the result awaiting a quality grade`)
+      continue
+    }
+    if ((a.role === 'execute' || (c.policy.review === 'quality_50' && effective.role === 'execute')) && candidate === c.policy.grader) {
       why.push(`${candidate}: is the grader, executor must be independent`)
       continue
     }

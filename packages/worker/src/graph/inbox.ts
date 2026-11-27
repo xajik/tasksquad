@@ -10,8 +10,9 @@ export async function graphInboxTask(
   if (env.ACTION_GRAPH_ENABLED === undefined) return null
   const row = await env.DB.prepare(
     `SELECT a.id AS assignment_id,a.graph_id,g.team_id,a.node_id,a.edge_id,a.role,a.status,
-    t.epoch,task.status AS task_status,(SELECT MAX(epoch) FROM graph_attempts WHERE assignment_id=a.id) AS latest_epoch,m.role AS member_role
+    json_extract(c.policy,'$.review') AS review,t.epoch,task.status AS task_status,(SELECT MAX(epoch) FROM graph_attempts WHERE assignment_id=a.id) AS latest_epoch,m.role AS member_role
     FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id JOIN graphs g ON g.id=a.graph_id
+    JOIN graph_configs c ON c.graph_id=a.graph_id AND c.version=a.config_version
     JOIN tasks task ON task.id=t.task_id AND task.team_id=g.team_id
     JOIN team_members m ON m.team_id=g.team_id AND m.user_id=? WHERE t.task_id=?`
   )
@@ -27,6 +28,7 @@ export async function graphInboxTask(
       epoch: number
       latest_epoch: number
       member_role: string
+      review: string | number
       task_status: string
     }>()
   if (!row) return null
@@ -46,6 +48,7 @@ export async function graphInboxTask(
     can_reply:
       latest &&
       can_manage &&
+      row.review !== 'yolo' &&
       row.role !== 'repair' &&
       ['blocked', 'error'].includes(row.status) &&
       !['done', 'failed', 'cancelled'].includes(row.task_status)

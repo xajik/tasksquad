@@ -1,7 +1,7 @@
 import type { SemanticIndex } from '../dedup.js'
 import { type Role } from '../contracts.js'
 import { assignment, commit, configuration, id, sql, type Data, type Graph, type Result } from '../store.js'
-import { assertEvidenceResources } from './assertions.js'
+import { assertEvidenceResources, assertPublishableEvidence } from './assertions.js'
 import { resolve } from './results.js'
 
 import { acceptDecompose } from './accept/decompose.js'
@@ -25,29 +25,13 @@ export async function evidenceStatements(
   const c = await configuration(db, g),
     now = Date.now(),
     ops: D1PreparedStatement[] = []
+  await assertPublishableEvidence(db, g.id, items, c.policy.freshness_ms, now)
   for (const e of items) {
-    if (
-      typeof e.id !== 'string' ||
-      !e.resource_id ||
-      !(await sql(
-        db,
-        'SELECT id FROM graph_resources WHERE id=? AND graph_id=?',
-        e.resource_id,
-        g.id
-      ).first())
-    )
-      throw new Error('Evidence requires a supplied graph resource')
-    if (
-      Number(e.observed_at) > now + 60_000 ||
-      Number(e.expires_at) <= Number(e.observed_at) ||
-      Number(e.expires_at) > Number(e.observed_at) + c.policy.freshness_ms
-    )
-      throw new Error('Evidence freshness invalid')
     // Agents pick evidence IDs, but the primary key is global: a later step reusing "ev1" must not
     // block acceptance. Downstream readers take IDs from the stored rows, so mint a fresh one.
-    let evidenceId = e.id
+    let evidenceId = String(e.id)
     if (await sql(db, 'SELECT id FROM graph_evidence WHERE id=?', evidenceId).first()) evidenceId = id()
-    storedIds?.set(e.id, evidenceId)
+    storedIds?.set(String(e.id), evidenceId)
     ops.push(
       sql(
         db,

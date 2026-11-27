@@ -18,6 +18,9 @@ export function rebindExecutionReview(db: D1Database, originalId: string, result
 export async function rejectExecutionForQuality(db: D1Database, g: Graph, r: Result, reason: string) {
   const { a, original } = await resolve(db, r)
   return [
+    ...(['complete', 'blocked'].includes(JSON.parse(r.parsed!).outcome)
+      ? [releaseRecovery(db, g.id, Number(JSON.parse(original.input).plan.recovery_cost))]
+      : []),
     sql(db, "UPDATE graph_results SET status='rejected',validation_error=? WHERE id=?", reason, r.id),
     sql(db, "UPDATE graph_assignments SET status='blocked' WHERE id IN (?,?)", a.id, original.id),
     sql(db, 'INSERT INTO graph_events(graph_id,kind,entity_id,data,created_at) VALUES(?,?,?,?,?)',

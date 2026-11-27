@@ -1,9 +1,10 @@
 import type { SemanticIndex } from '../dedup.js'
 import { parseResult, templates } from '../contracts.js'
 import { assignment, commit, configuration, json, rows, sql, type Assignment, type Attempt, type Data, type Graph, type Result } from '../store.js'
+import { resolveEvidenceIds } from './accept/review.js'
 import { rebindExecutionReview } from './accept/execute.js'
 import { accept } from './accept.js'
-import { assertContinuationVerified, assertEvidenceResources, assertGoalImpacts, assertReconcileRestoration } from './assertions.js'
+import { assertContinuationVerified, assertEvidenceResources, assertGoalImpacts, assertPublishableEvidence, assertReconcileRestoration } from './assertions.js'
 
 export async function resolve(
   db: D1Database,
@@ -86,23 +87,34 @@ export async function processResults(db: D1Database, g: Graph, semantic?: Semant
       ])
       continue
     }
+    const awaitingGrade = c.policy.review === 'quality_50' && original.role === 'execute'
     try {
-      const parsed = parseResult(original.role as keyof typeof templates, r.raw)
+      const parsed = parseResult(original.role as keyof typeof templates, r.raw, c.policy.review)
       assertEvidenceResources(original, parsed as Data)
       await assertReconcileRestoration(db, original, parsed as Data)
       await assertContinuationVerified(db, original, parsed as Data)
       assertGoalImpacts(original, parsed as Data)
+      if (awaitingGrade) {
+        const evidence = parsed.evidence as Data[]
+        if (new Set(evidence.map((item) => item.id)).size !== evidence.length)
+          throw new Error('The grader needs a distinct ID for each piece of evidence')
+        await assertPublishableEvidence(db, g.id, evidence, c.policy.freshness_ms, Date.now())
+      }
+      if (original.role === 'grade') {
+        const input = JSON.parse(original.input) as Data
+        if (input.operation === 'result_acceptance')
+          resolveEvidenceIds(input, parsed.evidence_ids as string[], 'Grade references unsupplied evidence')
+      }
       r.parsed = json(parsed)
     } catch (e) {
       await invalidateResult(db, g, r, a, t, e)
       continue
     }
-    const awaitingGrade = c.policy.review === 'quality_50' && original.role === 'execute'
     await commit(db, g, 'validated', r.id, {}, [
       sql(db, 'UPDATE graph_results SET parsed=?,status=? WHERE id=?', r.parsed, awaitingGrade ? 'received' : 'review', r.id),
-      ...(awaitingGrade
-        ? [sql(db, "UPDATE graph_assignments SET status='grading' WHERE id IN (?,?)", a.id, original.id)]
-        : [sql(db, "UPDATE graph_assignments SET status='review' WHERE id=?", a.id)]),
+      awaitingGrade
+        ? sql(db, "UPDATE graph_assignments SET status='grading' WHERE id IN (?,?)", a.id, original.id)
+        : sql(db, "UPDATE graph_assignments SET status='review' WHERE id=?", a.id),
       ...(awaitingGrade && a.role === 'repair' ? rebindExecutionReview(db, original.id, r.id) : []),
       sql(db, 'DELETE FROM graph_reservations WHERE attempt_id=?', t.id)
     ])

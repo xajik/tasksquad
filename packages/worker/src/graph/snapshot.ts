@@ -144,8 +144,10 @@ export async function snapshot(db: D1Database, g: Graph, enabled = true, slim = 
       )[0]
     const result = (resultsBy.get(String(latest?.id)) ?? [])
       .sort((x, y) => Number(y.created_at) - Number(x.created_at))[0]
-    const request = extractApprovalRequest(String(result?.parsed ?? result?.raw ?? ''))
+    const allowsOwnerInput = c.policy.review !== 'yolo'
+    const request = allowsOwnerInput ? extractApprovalRequest(String(result?.parsed ?? result?.raw ?? '')) : null
     const canReply =
+      allowsOwnerInput &&
       ['blocked', 'error'].includes(a.status) &&
       a.role !== 'repair' &&
       latest &&

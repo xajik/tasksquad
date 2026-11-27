@@ -35,6 +35,28 @@ export function assertEvidenceResources(original: Assignment, d: Data): void {
     )
 }
 
+export async function assertPublishableEvidence(db: D1Database, graphId: string, items: Data[], freshnessMs: number, now: number) {
+  for (const e of items) {
+    if (
+      typeof e.id !== 'string' ||
+      !e.resource_id ||
+      !(await sql(
+        db,
+        'SELECT id FROM graph_resources WHERE id=? AND graph_id=?',
+        e.resource_id,
+        graphId
+      ).first())
+    )
+      throw new Error('Evidence requires a supplied graph resource')
+    if (
+      Number(e.observed_at) > now + 60_000 ||
+      Number(e.expires_at) <= Number(e.observed_at) ||
+      Number(e.expires_at) > Number(e.observed_at) + freshnessMs
+    )
+      throw new Error('Evidence freshness invalid')
+  }
+}
+
 /** A resume/restart of a side-effecting step must attest termination, baseline and checkpoint. Checked at parse
  * time so the agent is asked to repair its answer, instead of the owner hitting a dead end when accepting. */
 export async function assertContinuationVerified(db: D1Database, original: Assignment, d: Data): Promise<void> {

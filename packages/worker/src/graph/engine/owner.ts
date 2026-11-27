@@ -240,7 +240,9 @@ export async function syncInboxStatus(db: D1Database, g: Graph): Promise<void> {
     return
   }
   const needsOwner = `SELECT t.task_id FROM graph_attempts t JOIN graph_assignments a ON a.id=t.assignment_id
-    WHERE a.graph_id=? AND a.status IN ('blocked','error') AND a.role!='repair'
+    JOIN graph_configs c ON c.graph_id=a.graph_id AND c.version=a.config_version
+    WHERE a.graph_id=? AND json_extract(c.policy,'$.review') IS NOT 'yolo'
+    AND a.status IN ('blocked','error') AND a.role!='repair'
     AND NOT EXISTS(SELECT 1 FROM graph_grading grading WHERE grading.assignment_id=a.id AND grading.status='blocked')
     AND NOT EXISTS(SELECT 1 FROM graph_assignments repair WHERE repair.parent_id=a.id AND repair.role='repair' AND repair.status IN ('pending','running','review'))
     AND t.epoch=(SELECT MAX(epoch) FROM graph_attempts WHERE assignment_id=a.id)

@@ -34,14 +34,18 @@ export async function advanceGrading(db: D1Database, g: Graph): Promise<void> {
   // A validated execution remains unpublished while the initial grade decides acceptance.
   const awaitingGrade = r.status === 'received' && !!r.parsed && head.stage === 'grade'
   if (!awaitingGrade && r.status !== 'accepted') return
-  const { original } = await resolve(db, r)
+  const { a, original, t } = await resolve(db, r)
   const result = JSON.parse(r.parsed!) as Data
   const evidence = awaitingGrade ? result.evidence : await rows(db, 'SELECT * FROM graph_evidence WHERE source_result_id=?', r.id)
+  // A repaired result has two authors. Neither may supply the deciding grade through the fallback slot.
+  const authors = awaitingGrade && a.role === 'repair'
+    ? await rows<{ agent_id: string }>(db, 'SELECT DISTINCT agent_id FROM graph_attempts WHERE assignment_id=? AND epoch=?', original.id, original.attempt_count)
+    : []
   const context: Data = {
     execution_result_id: r.id,
     grading_sequence: head.sequence,
     result,
-    ...(awaitingGrade ? { operation: 'result_acceptance' } : {}),
+    ...(awaitingGrade ? { operation: 'result_acceptance', result_agent_ids: [t.agent_id, ...authors.map((row) => row.agent_id)] } : {}),
     plan: JSON.parse(original.input),
     evidence,
     attempted_actions: await actionLedger(db, g.id, undefined, original.edge_id)
